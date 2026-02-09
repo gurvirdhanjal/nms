@@ -66,8 +66,7 @@ def get_local_ip_range():
 
 @scanning_bp.route('/api/scan_network', methods=['POST'])
 def scan_network():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
 
     data = request.get_json(silent=True) or {}
     ip_range = data.get('ip_range')
@@ -111,14 +110,45 @@ def scan_progress(scan_id):
          # But since 'get_scan_status' is a getter, it shouldn't have side effects ideally.
          # The previous implementation saved at end of thread. 
          # We will rely on the service buffer for results.
-         pass
+         # Auto-save scan results to database as requested
+         try:
+             results = service.get_scan_results(scan_id)
+             from models.device import Device
+             
+             count_added = 0
+             for device_data in results:
+                 ip = device_data.get('ip')
+                 if not ip:
+                     continue
+                     
+                 # Check if exists
+                 existing = Device.query.filter_by(device_ip=ip).first()
+                 if not existing:
+                     new_device = Device(
+                         device_name=device_data.get('hostname') or f"Device-{ip}",
+                         device_ip=ip,
+                         device_type='Network Device',
+                         macaddress=device_data.get('mac') or 'N/A',
+                         hostname=device_data.get('hostname') or 'Unknown',
+                         manufacturer=device_data.get('manufacturer') or 'Unknown',
+                         is_monitored=True,
+                         is_active=True
+                     )
+                     db.session.add(new_device)
+                     count_added += 1
+             
+             if count_added > 0:
+                 db.session.commit()
+                 
+         except Exception as e:
+             print(f"Error auto-saving scan results: {e}")
+             db.session.rollback()
 
     return jsonify(status)
 
 @scanning_bp.route('/api/active_scan')
 def active_scan():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
     
     username = session.get('username', 'system')
     service = get_discovery_service()
@@ -150,8 +180,7 @@ def stop_scan(scan_id):
 
 @scanning_bp.route('/api/ping_device', methods=['POST'])
 def ping_device():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
 
     ip = request.get_json().get('ip_address')
     if not ip:
@@ -197,8 +226,7 @@ def ping_device():
 
 @scanning_bp.route('/api/scan_ports', methods=['POST'])
 def scan_ports():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
 
     data = request.get_json()
     ip_address = data.get('ip_address')
@@ -226,8 +254,7 @@ def scan_ports():
 
 @scanning_bp.route('/api/add_to_inventory', methods=['POST'])
 def add_to_inventory():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
     
     try:
         from models.device import Device
@@ -280,8 +307,7 @@ def add_to_inventory():
 
 @scanning_bp.route('/api/discovery/start', methods=['POST'])
 def start_discovery():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
     
     from flask import current_app
     from services.snmp_discovery_service import get_snmp_discovery_service
@@ -317,8 +343,7 @@ def start_discovery():
 
 @scanning_bp.route('/api/discovery/status/<job_id>')
 def discovery_status(job_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
 
     from services.snmp_discovery_service import get_snmp_discovery_service
 
@@ -332,8 +357,7 @@ def discovery_status(job_id):
 
 @scanning_bp.route('/api/discovery/active')
 def discovery_active():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
 
     from services.snmp_discovery_service import get_snmp_discovery_service
     svc = get_snmp_discovery_service()

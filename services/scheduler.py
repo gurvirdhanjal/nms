@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 from services.device_monitor import DeviceMonitor
 import asyncio
+from extensions import db
 
 class MonitoringScheduler:
     def __init__(self, app):
@@ -16,6 +17,7 @@ class MonitoringScheduler:
         """Start the scheduled monitoring tasks"""
         # Monitor every 5 minutes
         schedule.every(5).minutes.do(self.run_monitoring_task)
+        schedule.every(5).minutes.do(self.check_snmp_health)
         
         # Daily report at 23:59
         schedule.every().day.at("23:59").do(self.generate_daily_report)
@@ -51,6 +53,9 @@ class MonitoringScheduler:
                 print(f"Scheduled monitoring completed at {datetime.now()}")
             except Exception as e:
                 print(f"Error in scheduled monitoring: {e}")
+            finally:
+                # Ensure session is cleaned up after background task
+                db.session.remove()
     
     def generate_daily_report(self):
         """Generate daily report"""
@@ -61,3 +66,62 @@ class MonitoringScheduler:
                 # Here you can add email sending or other reporting mechanisms
             except Exception as e:
                 print(f"Error generating daily report: {e}")
+
+    def check_snmp_health(self):
+        """Check server health (CPU, RAM, Disk) via SNMP for configured devices."""
+        with self.app.app_context():
+            try:
+                from models.device import Device
+                from models.snmp_config import DeviceSnmpConfig
+                from models.server_health import ServerHealthLog
+                from services.snmp_service import snmp_service
+
+                # Find devices with SNMP enabled
+                configs = DeviceSnmpConfig.query.filter_by(is_enabled=True).all()
+                if not configs: return
+
+                print(f"Running SNMP Health Check for {len(configs)} devices...")
+                
+                for config in configs:
+                    device = Device.query.get(config.device_id)
+                    if not device: continue
+                    
+                    # Skip if device is not monitored globally
+                    if not device.is_monitored: continue
+                    
+                    metrics = snmp_service.get_server_health_snmp(
+                        device.device_ip, 
+                        config.community_string or 'public', 
+                        config.snmp_version or '2c', 
+                        config.snmp_port or 161
+                    )
+                    
+                    if metrics:
+                        # Fetch uptime if possible to complete the log
+                        sys_info = snmp_service.get_system_info(
+                            device.device_ip, 
+                            config.community_string or 'public', 
+                            config.snmp_version or '2c', 
+                            config.snmp_port or 161
+                        )
+                        uptime = str(sys_info.get('sys_uptime_seconds', ''))
+
+                        log = ServerHealthLog(
+                            device_id=device.device_id,
+                            cpu_usage=metrics.get('cpu_usage'),
+                            memory_usage=metrics.get('memory_usage'),
+                            disk_usage=metrics.get('disk_usage'),
+                            uptime=uptime,
+                            source='snmp'
+                        )
+                        db.session.add(log) # Add log only if metrics exist
+                        config.last_successful_poll = datetime.utcnow()
+                        config.last_poll_error = None
+                    else:
+                        print(f"No metrics for {device.device_ip}")
+                
+                db.session.commit()
+                print("SNMP Health Check Completed.")
+
+            except Exception as e:
+                print(f"Error in check_snmp_health: {e}")

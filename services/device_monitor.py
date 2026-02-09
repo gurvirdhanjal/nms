@@ -129,7 +129,16 @@ class DeviceMonitor:
                  except Exception as e:
                     print(f"SSE Error: {e}")
 
+
             db.session.add(scan_record)
+
+            # Commit per device to prevent long-running transactions/locks
+            try:
+                db.session.commit()
+            except Exception as e:
+                print(f"[ERROR] Failed to commit scan record for {device.device_ip}: {e}")
+                db.session.rollback()
+
             scan_results.append({
                 'device_name': device.device_name,
                 'device_ip': device.device_ip,
@@ -139,7 +148,9 @@ class DeviceMonitor:
                 'timestamp': datetime.utcnow()
             })
         
-        db.session.commit()
+        # Final commit removed as we commit per device
+        # db.session.commit()
+
         return scan_results
     
     def get_device_statistics(self, device_ip, hours=24, start_time=None, end_time=None):

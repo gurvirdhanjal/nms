@@ -83,7 +83,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='NMS_Admin',
+    name='NMS_Dashboard',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

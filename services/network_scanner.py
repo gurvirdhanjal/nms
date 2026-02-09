@@ -388,7 +388,13 @@ class NetworkScanner:
     async def scan_ports(self, ip: str, ports=None):
         """Scan ports on a device (concurrent with timeouts)."""
         if ports is None:
-            ports = [21, 22, 23, 25, 53, 80, 110, 443, 993, 995, 3389]
+            # Expanded list aligned with DeviceClassifier fingerprints + common services
+            ports = [
+                21, 22, 23, 25, 53, 80, 110, 443, 993, 995, 3389, 5002,
+                161, 179, 520, 8080, 8443, 554,
+                3306, 5432, 27017, 6379, 1433,
+                445, 139, 9100, 631, 515
+            ]
 
         open_ports = []
 
@@ -420,7 +426,13 @@ class NetworkScanner:
         services = {
             21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
             80: "HTTP", 110: "POP3", 443: "HTTPS", 993: "IMAPS", 995: "POP3S",
-            3389: "RDP", 5002: "Tactical Agent"
+            3389: "RDP", 5002: "Tactical Agent",
+            161: "SNMP", 179: "BGP", 520: "RIP",
+            8080: "HTTP-Alt", 8443: "HTTPS-Alt", 554: "RTSP",
+            3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB",
+            6379: "Redis", 1433: "MSSQL",
+            445: "SMB", 139: "NetBIOS-SSN", 9100: "JetDirect",
+            631: "IPP", 515: "LPD"
         }
         return services.get(port, "Unknown")
     

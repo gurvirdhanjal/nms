@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.git/
+.gitignore
+venv/
+instance/
+*.db
+dist/
+build/
+client_modules/__pycache__/
+metrics/__pycache__/
+services/__pycache__/
+routes/__pycache__/
+models/__pycache__/
+events/__pycache__/

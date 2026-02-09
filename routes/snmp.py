@@ -53,6 +53,25 @@ def poll_device(device_id):
                 'error': system_info['error']
             }), 500
         
+        # Get server health (CPU/RAM/Disk via SNMP)
+        health_metrics = snmp_service.get_server_health_snmp(
+            device.device_ip, community, version, port
+        )
+        
+        if health_metrics:
+            from models.server_health import ServerHealthLog
+            log = ServerHealthLog(
+                device_id=device_id,
+                cpu_usage=health_metrics.get('cpu_usage'),
+                memory_usage=health_metrics.get('memory_usage'),
+                disk_usage=health_metrics.get('disk_usage'),
+                uptime=str(system_info.get('sys_uptime_seconds', '')),
+                source='snmp'
+            )
+            db.session.add(log)
+            # Add to response for debug
+            system_info['health'] = health_metrics
+
         # Get interfaces
         interfaces = snmp_service.get_interfaces(
             device.device_ip, community, version, port

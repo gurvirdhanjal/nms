@@ -21,6 +21,34 @@
         opacity: 0;
         transform: translateY(6px);
     }
+
+    .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+    .status-healthy { background: #20c997; }
+    .status-warning { background: #ffc107; }
+    .status-critical { background: #dc3545; }
+    .status-offline { background: #6c757d; }
+    .status-unknown { background: #adb5bd; }
+    .server-health-row { cursor: pointer; }
+    .chart-empty {
+        display: none;
+        text-align: center;
+        color: #8899a6;
+        font-size: 0.9rem;
+        padding: 2rem 0;
+    }
+    .device-kpi-card:hover,
+    .server-kpi-card:hover {
+        border-color: rgba(32, 201, 151, 0.6);
+        transform: translateY(-2px);
+        transition: transform 150ms ease, border-color 150ms ease;
+    }
 </style>
 {% endblock %}
 
@@ -64,50 +92,43 @@
     <!-- Error Banner -->
     <div id="global-error" class="alert alert-danger" style="display: none;"></div>
 
-    <!-- ROW 1: Network Health Cards -->
-    <div class="row g-4 mb-4">
-        <!-- Devices Online -->
+    <!-- ROW 1: Device / Network KPIs (Primary) -->
+    <div class="row g-4 mb-4" id="device-kpi-row">
         <div class="col-12 col-md-6 col-lg-3">
-            <div class="tactical-stat-card" id="card-devices-online">
+            <div class="tactical-stat-card device-kpi-card" id="card-devices-online">
                 <div class="stat-label">Devices Online</div>
                 <div class="stat-value" id="val-devices-online">-/-</div>
                 <div class="metric-sub mt-2" id="sub-devices-online">
                     <span class="text-secondary">Loading...</span>
                 </div>
-                <i class="fas fa-server stat-icon"></i>
-            </div>
-        </div>
-
-        <!-- Active Alerts -->
-        <div class="col-12 col-md-6 col-lg-3">
-            <div class="tactical-stat-card" id="card-active-alerts">
-                <div class="stat-label">Active Alerts</div>
-                <div class="stat-value" id="val-active-alerts">-</div>
-                <div class="metric-sub mt-2" id="sub-active-alerts">
-                    <span class="text-secondary">Loading...</span>
-                </div>
-                <i class="fas fa-bell stat-icon"></i>
-            </div>
-        </div>
-
-        <!-- Network Performance -->
-        <div class="col-12 col-md-6 col-lg-3">
-            <div class="tactical-stat-card" id="card-network-perf">
-                <div class="stat-label">Performance</div>
-                <div class="stat-value" id="val-latency">- ms</div>
-                <div class="metric-sub mt-2" id="sub-packet-loss">
-                    Loading...
-                </div>
                 <i class="fas fa-network-wired stat-icon"></i>
             </div>
         </div>
-
-        <!-- Availability -->
+        <div class="col-12 col-md-6 col-lg-2">
+            <div class="tactical-stat-card device-kpi-card" id="card-devices-healthy">
+                <div class="stat-label">Healthy Devices</div>
+                <div class="stat-value text-success" id="val-devices-healthy">-</div>
+                <div class="metric-sub mt-2"><span class="text-secondary">All discovered devices</span></div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+            <div class="tactical-stat-card device-kpi-card" id="card-devices-degraded">
+                <div class="stat-label">Degraded Devices</div>
+                <div class="stat-value text-warning" id="val-devices-degraded">-</div>
+                <div class="metric-sub mt-2"><span class="text-secondary">Latency / loss impacted</span></div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+            <div class="tactical-stat-card device-kpi-card" id="card-devices-offline">
+                <div class="stat-label">Offline Devices</div>
+                <div class="stat-value text-danger" id="val-devices-offline">-</div>
+                <div class="metric-sub mt-2"><span class="text-secondary">No response</span></div>
+            </div>
+        </div>
         <div class="col-12 col-md-6 col-lg-3">
-            <div class="tactical-stat-card" id="card-network-avail">
-                <div class="stat-label">Availability (24h)</div>
+            <div class="tactical-stat-card device-kpi-card" id="card-network-avail">
+                <div class="stat-label">Overall Availability (24h)</div>
                 <div class="stat-value" id="val-availability">-%</div>
-                <!-- Sparkline Container -->
                 <div style="height: 40px; position: relative; margin-top: 10px;">
                     <canvas id="chart-availability-spark"></canvas>
                 </div>
@@ -116,229 +137,353 @@
         </div>
     </div>
 
-    <!-- ROW 2: Tabs Section -->
-    <div class="row g-4 mb-4">
-
-        <!-- Main Tabbed Content -->
-        <div class="col-lg-8">
-            <div class="tactical-card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-project-diagram"></i> Network Intelligence</span>
-                    <div class="tabs">
-                        <button class="tactical-tab active" data-target="tab-latency">Latency</button>
-                        <button class="tactical-tab" data-target="tab-loss">Loss</button>
-                        <button class="tactical-tab" data-target="tab-alerts">Alerts</button>
-                        <button class="tactical-tab" data-target="tab-inventory-list">Inventory</button>
-                        <button class="tactical-tab" data-target="tab-discovery">Discovery</button>
-                    </div>
-                </div>
-
-                <div class="card-body p-0">
-                    <!-- Tab Content: Latency -->
-                    <div id="tab-latency" class="tab-content" style="display: block;">
-                        <table class="tactical-table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Device</th>
-                                    <th>Latency</th>
-                                    <th class="d-none d-md-table-cell">IP</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-top-latency-body">
-                                <tr>
-                                    <td colspan="3" class="text-center text-secondary p-3">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Tab Content: Packet Loss -->
-                    <div id="tab-loss" class="tab-content" style="display: none;">
-                        <table class="tactical-table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Device</th>
-                                    <th>Loss %</th>
-                                    <th class="d-none d-md-table-cell">IP</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-top-loss-body">
-                                <tr>
-                                    <td colspan="3" class="text-center text-secondary p-3">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Tab Content: Recent Alerts -->
-                    <div id="tab-alerts" class="tab-content" style="display: none;">
-                        <table class="tactical-table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Sev</th>
-                                    <th>Message</th>
-                                    <th class="d-none d-md-table-cell">Time</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-recent-alerts-body">
-                                <tr>
-                                    <td colspan="3" class="text-center text-secondary p-3">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Tab Content: Device Inventory -->
-                    <div id="tab-inventory-list" class="tab-content" style="display: none;">
-                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                            <table class="tactical-table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 40px;">
-                                            <div class="form-check d-flex justify-content-center">
-                                                <input class="form-check-input" type="checkbox"
-                                                    id="inventory-select-all">
-                                            </div>
-                                        </th>
-                                        <th>Name</th>
-                                        <th>Brand</th>
-                                        <th>Tier</th>
-                                        <th>IP</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-inventory-body">
-                                    <tr>
-                                        <td colspan="5" class="text-center p-3">Loading Inventory...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+    <!-- Device Breakdown View (Drill-down) -->
+    <div id="device-breakdown" class="mb-4" style="display: none;">
+        <div class="tactical-card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-sitemap"></i> Device Breakdown View</span>
+                <div class="small text-secondary">Last updated: <span id="device-breakdown-updated">-</span></div>
+                <button class="btn btn-sm btn-outline-light" id="device-breakdown-close">Hide</button>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small"><i class="fas fa-boxes"></i> Inventory Breakdown</div>
+                            <div class="card-body">
+                                <div style="height: 220px; position: relative;">
+                                    <canvas id="chart-inventory"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Tab Content: Network Discovery -->
-                    <div id="tab-discovery" class="tab-content" style="display: none;">
-                        <div class="p-4">
-                            <h5 class="tactical-text-primary mb-3"><i class="fas fa-search-location"></i> Recursive
-                                Switch Discovery</h5>
-                            <p class="small tactical-text-muted">Enter a seed IP to start crawling switch neighbors via
-                                LLDP/CDP.</p>
-                            <div class="input-group mb-3" style="max-width: 450px;">
-                                <input type="text" id="seed-ip" class="form-control tactical-input"
-                                    placeholder="e.g. 192.168.1.1">
-                                <button class="btn btn-primary" id="btn-start-discovery">Start Mapping</button>
+                    <div class="col-lg-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small"><i class="fas fa-chart-line"></i> Device Availability</div>
+                            <div class="card-body">
+                                <div class="fw-bold" id="val-availability-breakdown">-%</div>
+                                <div class="small text-secondary">24h Avg: <span id="val-availability-24h">-%</span></div>
+                                <div style="height: 160px; position: relative; margin-top: 10px;">
+                                    <canvas id="chart-availability-breakdown"></canvas>
+                                </div>
                             </div>
-                            <div id="discovery-status" class="small mt-2 p-2 rounded"
-                                style="background: rgba(255,255,255,0.05); display: none;"></div>
-
-                            <div id="discovery-results" class="mt-3" style="display: none;">
-                                <div class="row g-3">
-                                    <div class="col-lg-6">
-                                        <div class="tactical-card">
-                                            <div class="card-header">
-                                                <i class="fas fa-project-diagram"></i> Switches Found
-                                            </div>
-                                            <div class="card-body p-0">
-                                                <div class="table-responsive"
-                                                    style="max-height: 260px; overflow-y: auto;">
-                                                    <table class="table tactical-table table-hover mb-0">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Switch IP</th>
-                                                                <th>Neighbors</th>
-                                                                <th>Devices</th>
-                                                                <th>Errors</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody id="discovery-switches-body">
-                                                            <tr>
-                                                                <td colspan="4" class="text-center p-3">No results
-                                                                    yet.</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-lg-6">
-                                        <div class="tactical-card">
-                                            <div class="card-header">
-                                                <i class="fas fa-sitemap"></i> Devices Found
-                                            </div>
-                                            <div class="card-body p-0">
-                                                <div class="table-responsive"
-                                                    style="max-height: 260px; overflow-y: auto;">
-                                                    <table class="table tactical-table table-hover mb-0">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Switch IP</th>
-                                                                <th>Device IP</th>
-                                                                <th>MAC</th>
-                                                                <th>Port</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody id="discovery-devices-body">
-                                                            <tr>
-                                                                <td colspan="4" class="text-center p-3">No results
-                                                                    yet.</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small"><i class="fas fa-exclamation-triangle"></i> Top Affected Devices</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="tactical-table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Device</th>
+                                                <th>IP</th>
+                                                <th>Last Seen</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="table-top-affected-body">
+                                            <tr>
+                                                <td colspan="3" class="text-center text-secondary p-3">Loading...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Inventory Stats / Distribution -->
-        <div class="col-lg-4">
-            <div class="tactical-card h-100">
-                <div class="card-header">
-                    <i class="fas fa-boxes"></i> Inventory Breakdown
-                </div>
-                <div class="card-body">
-                    <div style="height: 250px; position: relative;">
-                        <canvas id="chart-inventory"></canvas>
+                <div class="row g-4 mt-1">
+                    <div class="col-lg-6">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small"><i class="fas fa-tachometer-alt"></i> Latency</div>
+                            <div class="card-body p-0">
+                                <table class="tactical-table table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Latency</th>
+                                            <th class="d-none d-md-table-cell">IP</th>
+                                            <th class="d-none d-md-table-cell">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-top-latency-body">
+                                        <tr>
+                                            <td colspan="4" class="text-center text-secondary p-3">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small"><i class="fas fa-signal"></i> Packet Loss</div>
+                            <div class="card-body p-0">
+                                <table class="tactical-table table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Loss %</th>
+                                            <th class="d-none d-md-table-cell">IP</th>
+                                            <th class="d-none d-md-table-cell">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-top-loss-body">
+                                        <tr>
+                                            <td colspan="4" class="text-center text-secondary p-3">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-
     </div>
 
-    <!-- ROW 3: Real-Time Metrics -->
-    <div class="row g-4 mb-4">
-        <!-- Interface Utilization -->
-        <div class="col-lg-6">
+    <!-- ROW 2: Server Health (Agent-Only) -->
+    <div class="mb-2">
+        <h5 class="text-uppercase mb-0" style="letter-spacing: 1px; color: var(--tactical-text-primary);">
+            SERVER HEALTH - Agent-Only Monitoring
+        </h5>
+        <div class="tactical-text-muted small">Only servers with agent telemetry are counted.</div>
+    </div>
+    <div class="row g-4 mb-4" id="server-health-summary">
+        <div class="col-12 col-md-4 col-lg-2">
+            <div class="tactical-stat-card server-kpi-card">
+                <div class="stat-label">Total Servers</div>
+                <div class="stat-value" id="val-servers-total">-</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-2">
+            <div class="tactical-stat-card server-kpi-card">
+                <div class="stat-label">Healthy</div>
+                <div class="stat-value text-success" id="val-servers-healthy">-</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-2">
+            <div class="tactical-stat-card server-kpi-card">
+                <div class="stat-label">Warning</div>
+                <div class="stat-value text-warning" id="val-servers-warning">-</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-2">
+            <div class="tactical-stat-card server-kpi-card">
+                <div class="stat-label">Critical</div>
+                <div class="stat-value text-danger" id="val-servers-critical">-</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-2">
+            <div class="tactical-stat-card server-kpi-card">
+                <div class="stat-label">Offline</div>
+                <div class="stat-value text-secondary" id="val-servers-offline">-</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4" id="server-health-detail">
+        <div class="col-12">
             <div class="tactical-card h-100">
                 <div class="card-header">
-                    <i class="fas fa-network-wired"></i> Top Interfaces Utilization
+                    <i class="fas fa-heartbeat"></i> Server List (Agent Telemetry)
                 </div>
-                <div class="card-body">
-                    <div style="height: 250px; position: relative;">
-                        <canvas id="chart-interface-util"></canvas>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0" id="table-server-health">
+                            <thead>
+                                <tr>
+                                    <th>Hostname</th>
+                                    <th>Status</th>
+                                    <th>Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-server-health-body">
+                                <tr>
+                                    <td colspan="3" class="text-center text-secondary p-3">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Network I/O Trend -->
-        <div class="col-lg-6">
+    <!-- ROW 3: Network Intelligence (Alerts) -->
+    <div class="mb-2">
+        <h5 class="text-uppercase mb-0" style="letter-spacing: 1px; color: var(--tactical-text-primary);">
+            NETWORK INTELLIGENCE
+        </h5>
+        <div class="tactical-text-muted small">Centralized alerting (Network, Device, Server)</div>
+    </div>
+    <div class="row g-4 mb-4">
+        <div class="col-12">
             <div class="tactical-card h-100">
-                <div class="card-header">
-                    <i class="fas fa-exchange-alt"></i> Network I/O Trend
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-bell"></i> Active Alerts</span>
+                    <div class="small text-secondary">Last updated: <span id="alerts-last-updated">-</span></div>
                 </div>
                 <div class="card-body">
-                    <div style="height: 250px; position: relative;">
-                        <canvas id="chart-network-io"></canvas>
+                    <div class="row g-3 align-items-center mb-3">
+                        <div class="col-md-2">
+                            <div class="stat-label">Total</div>
+                            <div class="stat-value" id="val-alerts-total">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="stat-label">Critical</div>
+                            <div class="stat-value text-danger" id="val-alerts-critical">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="stat-label">Warning</div>
+                            <div class="stat-value text-warning" id="val-alerts-warning">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="stat-label">Info</div>
+                            <div class="stat-value text-info" id="val-alerts-info">-</div>
+                        </div>
+                        <div class="col-md-4 text-end small text-secondary" id="sub-alerts-scope">-</div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <select id="filter-alert-severity" class="tactical-select form-select-sm">
+                                <option value="all">All Severities</option>
+                                <option value="Critical">Critical</option>
+                                <option value="Warning">Warning</option>
+                                <option value="Informational">Informational</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select id="filter-alert-scope" class="tactical-select form-select-sm">
+                                <option value="all">All Types</option>
+                                <option value="Network">Network</option>
+                                <option value="Device">Device</option>
+                                <option value="Server">Server</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select id="filter-alert-device-type" class="tactical-select form-select-sm">
+                                <option value="all">All Device Types</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input id="filter-alert-device" class="form-control tactical-input" placeholder="Filter by device or message">
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Type</th>
+                                    <th>Device</th>
+                                    <th>Message</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-alerts-body">
+                                <tr>
+                                    <td colspan="5" class="text-center text-secondary p-3">Loading alerts...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Server Details Modal -->
+<div class="modal fade" id="serverDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content tactical-card">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title"><i class="fas fa-server"></i> <span id="server-modal-title">Server
+                        Details</span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Header Info -->
+                <div class="row mb-4 g-3 align-items-end">
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Health Status</div>
+                        <div class="fw-bold" id="server-modal-status">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Last Seen</div>
+                        <div class="fw-bold" id="server-modal-last-seen">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Uptime</div>
+                        <div class="fw-bold" id="server-modal-uptime">-</div>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <select id="server-modal-range" class="tactical-select form-select-sm">
+                            <option value="1h">Last 1 Hour</option>
+                            <option value="24h" selected>Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-4 g-3">
+                    <div class="col-md-4">
+                        <div class="text-secondary small">IP Address</div>
+                        <div class="fw-bold" id="server-modal-ip">-</div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="text-secondary small">OS</div>
+                        <div class="fw-bold" id="server-modal-os">-</div>
+                    </div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">CPU Usage (%)</div>
+                            <div class="card-body">
+                                <div style="height: 200px">
+                                    <canvas id="chart-server-cpu"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Memory Usage (%)</div>
+                            <div class="card-body">
+                                <div style="height: 200px">
+                                    <canvas id="chart-server-mem"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Disk Usage (%)</div>
+                            <div class="card-body">
+                                <div style="height: 200px">
+                                    <canvas id="chart-server-disk"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-1">
+                    <div class="col-md-12">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Network IO (MB)</div>
+                            <div class="card-body">
+                                <div style="height: 220px">
+                                    <canvas id="chart-server-net"></canvas>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

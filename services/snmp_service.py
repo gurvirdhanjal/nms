@@ -287,6 +287,109 @@ class SnmpService:
             'polled_at': datetime.utcnow().isoformat()
         }
 
+    def get_server_health_snmp(self, host: str, community: str = 'public',
+                               version: str = '2c', port: int = 161) -> Dict[str, Any]:
+        """
+        Get server health metrics (CPU, RAM, Disk) via HOST-RESOURCES-MIB.
+        Returns dict with cpu_usage, memory_usage, disk_usage.
+        """
+        if not PYSNMP_AVAILABLE:
+            return {}
+
+        metrics = {}
+        
+        # OIDs
+        HR_PROCESSOR_LOAD = '1.3.6.1.2.1.25.3.3.1.2' # Table of load per core
+        
+        HR_STORAGE_TYPE = '1.3.6.1.2.1.25.2.3.1.2'
+        HR_STORAGE_DESCR = '1.3.6.1.2.1.25.2.3.1.3'
+        HR_STORAGE_SIZE = '1.3.6.1.2.1.25.2.3.1.5'
+        HR_STORAGE_USED = '1.3.6.1.2.1.25.2.3.1.6'
+        HR_STORAGE_UNITS = '1.3.6.1.2.1.25.2.3.1.4'
+        
+        # Storage Types
+        OID_RAM = '1.3.6.1.2.1.25.2.1.2'
+        OID_FIXED_DISK = '1.3.6.1.2.1.25.2.1.4'
+        
+        try:
+            # 1. CPU Load
+            cpu_loads = []
+            for (error_indication, error_status, error_index, var_binds) in nextCmd(
+                self._engine,
+                self._get_community_data(community, version),
+                self._get_transport_target(host, port),
+                ContextData(),
+                ObjectType(ObjectIdentity(HR_PROCESSOR_LOAD)),
+                lexicographicMode=False
+            ):
+                if error_indication or error_status: break
+                for var_bind in var_binds:
+                    cpu_loads.append(int(var_bind[1]))
+            
+            if cpu_loads:
+                metrics['cpu_usage'] = round(sum(cpu_loads) / len(cpu_loads), 1)
+
+            # 2. Storage (RAM & Disk)
+            # We need to walk the implementation to find indices for RAM and Disk
+            # Using bulk walk might be better but nextCmd is safer for compatibility
+            
+            ram_total = 0
+            ram_used = 0
+            disk_stats = []
+            
+            for (error_indication, error_status, error_index, var_binds) in nextCmd(
+                self._engine,
+                self._get_community_data(community, version),
+                self._get_transport_target(host, port),
+                ContextData(),
+                ObjectType(ObjectIdentity(HR_STORAGE_TYPE)),
+                ObjectType(ObjectIdentity(HR_STORAGE_DESCR)),
+                ObjectType(ObjectIdentity(HR_STORAGE_UNITS)),
+                ObjectType(ObjectIdentity(HR_STORAGE_SIZE)),
+                ObjectType(ObjectIdentity(HR_STORAGE_USED)),
+                lexicographicMode=False
+            ):
+                if error_indication or error_status: break
+                
+                for var_bind in var_binds:
+                    # pysnmp returns varBinds as a list of tuples? No, nextCmd returns list of varBinds, each is a tuple?
+                    # Actually nextCmd yields a row of varBinds.
+                    # We requested 5 columns, so var_binds should have 5 elements.
+                    pass 
+                
+                # Unwrap the 5 columns
+                if len(var_binds) < 5: continue
+                
+                s_type = str(var_binds[0][1])
+                s_descr = str(var_binds[1][1])
+                s_units = int(var_binds[2][1])
+                s_size = int(var_binds[3][1])
+                s_used = int(var_binds[4][1])
+                
+                if s_size <= 0: continue
+                
+                if OID_RAM in s_type: # RAM
+                    ram_total += s_size * s_units
+                    ram_used += s_used * s_units
+                elif OID_FIXED_DISK in s_type: # Disk
+                    d_total = s_size * s_units
+                    d_used = s_used * s_units
+                    p = round((d_used / d_total) * 100, 1) if d_total > 0 else 0
+                    disk_stats.append(p)
+            
+            if ram_total > 0:
+                metrics['memory_usage'] = round((ram_used / ram_total) * 100, 1)
+            
+            if disk_stats:
+                # Average of all disks or max? Let's take max to be safe/alerting
+                metrics['disk_usage'] = max(disk_stats)
+                
+            return metrics
+
+        except Exception as e:
+            print(f"SNMP Health Check Error: {e}")
+            return metrics
+
 
 # Singleton instance
 snmp_service = SnmpService()

@@ -54,7 +54,7 @@ def generate_placeholder_image(text="No Feed"):
 
 class NetworkScanner:
     def __init__(self):
-        self.timeout = 0.5  # Reduced from 2s to 0.5s for speed
+        self.timeout = 2.0  # Increased to 2.0s for reliability
         self.max_workers = 100
     
     def get_mac_address(self, ip_address):
@@ -465,8 +465,8 @@ real_time_data = {}
 @tracking_bp.route('/api/tracking/real-time/<mac_address>')
 def api_real_time_tracking(mac_address):
     """Real-time tracking data for device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    # Auth handled by middleware
+
     
     try:
         # Check cache first (CACHE HIT)
@@ -547,8 +547,8 @@ def api_real_time_tracking(mac_address):
 @tracking_bp.route('/api/tracking/history/activity/<int:device_id>')
 def api_activity_history(device_id):
     """Get activity history for device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    # Auth handled by middleware
+
     
     try:
         days = request.args.get('days', 7, type=int)
@@ -582,8 +582,8 @@ def api_activity_history(device_id):
 @tracking_bp.route('/api/tracking/history/resources/<int:device_id>')
 def api_resource_history(device_id):
     """Get resource usage history for device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    # Auth handled by middleware
+
     
     try:
         hours = request.args.get('hours', 24, type=int)
@@ -617,8 +617,8 @@ def api_resource_history(device_id):
 @tracking_bp.route('/api/tracking/history/applications/<int:device_id>')
 def api_application_history(device_id):
     """Get application usage history for device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    # Auth handled by middleware
+
     
     try:
         days = request.args.get('days', 7, type=int)
@@ -668,8 +668,8 @@ def api_application_history(device_id):
 @tracking_bp.route('/api/tracking/stream/screenshot/<mac_address>')
 def api_stream_screenshot(mac_address):
     """Stream real-time screenshots"""
-    if not session.get('logged_in'):
-        return "Unauthorized", 401
+    # Auth handled by middleware
+
     
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
@@ -735,8 +735,8 @@ def api_stream_screenshot(mac_address):
 @tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
 def api_stream_camera(mac_address):
     """Stream real-time camera feed"""
-    if not session.get('logged_in'):
-        return "Unauthorized", 401
+    # Auth handled by middleware
+
     
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:

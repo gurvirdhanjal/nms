@@ -5,9 +5,22 @@ from datetime import timedelta
 
 from flask import Flask
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.engine.url import make_url
 
 from config import Config
 from extensions import db, bcrypt
+
+
+def _safe_db_uri(uri: str) -> str:
+    if not uri:
+        return "<empty>"
+    try:
+        url = make_url(uri)
+        if url.password:
+            url = url.set(password="***")
+        return str(url)
+    except Exception:
+        return "<unparseable>"
 
 
 def create_app(test_config=None):
@@ -36,6 +49,21 @@ def create_app(test_config=None):
     # ---------------------------
     # Initialize extensions
     # ---------------------------
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    print(f"[DB] SQLALCHEMY_DATABASE_URI={_safe_db_uri(db_uri)}")
+    try:
+        url = make_url(db_uri) if db_uri else None
+        if url and url.get_backend_name() == "sqlite":
+            sqlite_path = url.database or ""
+            if sqlite_path:
+                print(f"[DB] SQLite file={sqlite_path} exists={os.path.exists(sqlite_path)}")
+            else:
+                print("[DB] SQLite is in-memory or uses a relative path.")
+        elif url:
+            print(f"[DB] Backend={url.get_backend_name()} Driver={url.get_driver_name()} Host={url.host} DB={url.database}")
+    except Exception:
+        pass
+
     db.init_app(app)
     bcrypt.init_app(app)
 
@@ -53,6 +81,18 @@ def create_app(test_config=None):
                 cursor.execute("PRAGMA busy_timeout=30000") # 30s timeout
                 cursor.close()
 
+        # One-time connectivity check to confirm DB backend is reachable.
+        try:
+            with db.engine.connect() as conn:
+                if app.config['SQLALCHEMY_DATABASE_URI'].startswith("sqlite"):
+                    version = conn.exec_driver_sql("select sqlite_version()").scalar()
+                    print(f"[DB] SQLite connection OK (version {version})")
+                else:
+                    conn.exec_driver_sql("select 1")
+                    print("[DB] Database connection OK")
+        except Exception as e:
+            print(f"[DB] Database connection FAILED: {e}")
+
     # ---------------------------
     # Database setup
     # ---------------------------
@@ -60,36 +100,46 @@ def create_app(test_config=None):
         from models import (
             User, Device, DashboardEvent, DailyDeviceStats, 
             DeviceInterface, InterfaceTrafficHistory, DeviceSnmpConfig,
-            SSHProfile, SwitchTopology, TrackedDevice,
+            SwitchTopology, TrackedDevice,
             DeviceScanHistory, NetworkScan, PortScanResult
         )
+        from utils.db_migrations import ensure_server_health_columns
 
         db.create_all()
+        ensure_server_health_columns()
 
         # ---------------------------
         # Safe admin creation
         # ---------------------------
-        admin_email = "admin@trackoffice.com"
+        admin_email = "gurvirdhanjal004@gmail.com"
 
-        existing_admin = User.query.filter_by(email=admin_email).first()
-
-        if not existing_admin:
+        admin_email = "gurvirdhanjal004@gmail.com"
+        
+        # Check by USERNAME, not email, to ensure we update the existing admin
+        admin_user = User.query.filter_by(username="admin").first()
+        
+        if admin_user:
+            # Update email if it changed
+            if admin_user.email != admin_email:
+                admin_user.email = admin_email
+                db.session.commit()
+                print(f"[OK] Updated admin email to {admin_email}")
+        else:
+            # Create new admin
             try:
-                admin_user = User(
+                new_admin = User(
                     username="admin",
                     email=admin_email,
                     role="admin",
-                    password=bcrypt
-                    .generate_password_hash("admin123")
-                    .decode("utf-8"),
+                    password=bcrypt.generate_password_hash("admin123").decode("utf-8"),
                     is_active=True
                 )
-                db.session.add(admin_user)
+                db.session.add(new_admin)
                 db.session.commit()
                 print("[OK] Default admin user created.")
             except IntegrityError:
                 db.session.rollback()
-                print("[WARN] Admin user already exists. Skipping creation.")
+                print("[WARN] Admin creation failed (IntegrityError).")
 
     # ---------------------------
     # Register blueprints
@@ -109,6 +159,8 @@ def create_app(test_config=None):
     from routes.maintenance import maintenance_bp
     from routes.sse import sse_bp
     from routes.switch_discovery import switch_discovery_bp
+    from routes.agent import agent_bp
+    from routes.server_metrics import server_metrics_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -127,6 +179,8 @@ def create_app(test_config=None):
         maintenance_bp,
         sse_bp,
         switch_discovery_bp,
+        agent_bp,
+        server_metrics_bp,
     ]
 
     for bp in protected_blueprints:
@@ -162,10 +216,15 @@ if __name__ == "__main__":
         print("Access URL: http://localhost:5001")
         print("Default admin: admin / admin123")
 
+
+
         scheduler.start_scheduled_monitoring()
         interface_poller.start_polling(app)
 
-        threading.Timer(2.0, open_browser).start()
+        if os.environ.get("DISABLE_BROWSER_OPEN", "0") != "1":
+            threading.Timer(2.0, open_browser).start()
+
+
 
         # Hydrate collector with DB history
         from routes.monitoring import monitor

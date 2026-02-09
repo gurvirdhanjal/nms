@@ -151,10 +151,6 @@
         const statusFilter = document.getElementById('statusFilter').value;
         const typeFilter = document.getElementById('typeFilter').value;
 
-        // Show loading
-        document.getElementById('loadingIndicator').style.display = 'block';
-        document.getElementById('devicesTable').style.display = 'none';
-
         let url = '/api/monitoring/status';
         const params = new URLSearchParams();
         if (statusFilter !== 'all') params.append('status', statusFilter);
@@ -163,6 +159,19 @@
         if (params.toString()) {
             url += '?' + params.toString();
         }
+
+        // Only show full loading spinner if checking for the first time (table hidden)
+        // Otherwise, keep table visible for seamless update
+        const table = document.getElementById('devicesTable');
+        const isFirstLoad = table.style.display === 'none';
+
+        if (isFirstLoad) {
+            document.getElementById('loadingIndicator').style.display = 'block';
+        }
+
+        // Add a subtle refreshing class to the refresh button if it exists
+        const refBtn = document.getElementById('refreshBtn');
+        if (refBtn) refBtn.querySelector('i').classList.add('fa-spin');
 
         fetch(url)
             .then(response => response.json())
@@ -184,6 +193,8 @@
             })
             .finally(() => {
                 document.getElementById('loadingIndicator').style.display = 'none';
+                const refBtn = document.getElementById('refreshBtn');
+                if (refBtn) refBtn.querySelector('i').classList.remove('fa-spin');
             });
     }
 

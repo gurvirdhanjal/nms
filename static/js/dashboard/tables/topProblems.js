@@ -5,7 +5,7 @@ export function renderTopLatencyTable(data) {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No high latency devices</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No high latency devices</td></tr>';
         return;
     }
 
@@ -14,6 +14,7 @@ export function renderTopLatencyTable(data) {
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-danger">${device.value} ms</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
+            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         </tr>
     `).join('');
 }
@@ -23,7 +24,7 @@ export function renderTopPacketLossTable(data) {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center tactical-text-muted">No packet loss detected</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center tactical-text-muted">No packet loss detected</td></tr>';
         return;
     }
 
@@ -32,6 +33,7 @@ export function renderTopPacketLossTable(data) {
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-danger">${device.value}%</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
+            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         </tr>
     `).join('');
 }
@@ -59,6 +61,24 @@ export function renderRecentAlertsTable(data) {
             '<i class="fas fa-check-circle text-success ms-2" title="Acknowledged"></i>'
         }
             </td>
+        </tr>
+    `).join('');
+}
+
+export function renderTopAffectedDevices(data) {
+    const tbody = document.getElementById('table-top-affected-body');
+    if (!tbody) return;
+
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center tactical-text-muted">No affected devices</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(device => `
+        <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View Device Details">
+            <td>${device.device_name || device.ip}</td>
+            <td class="tactical-text-muted">${device.ip}</td>
+            <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         </tr>
     `).join('');
 }

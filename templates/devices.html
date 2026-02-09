@@ -110,11 +110,37 @@
         <div class="card">
             <div class="card-header">
                 <div class="row align-items-center">
-                    <div class="col-md-4">
+                    <div class="col-md-2">
                         <h5 class="mb-0"><i class="fas fa-list"></i> Device List</h5>
                     </div>
-                    <div class="col-md-4">
-                        <div class="input-group">
+                    <div class="col-md-7 d-flex gap-2">
+                        <button class="btn btn-dark btn-sm border-secondary" onclick="fetchAllStatuses()"
+                            title="Refresh Status">
+                            <i class="fas fa-sync-alt text-success"></i> Refresh
+                        </button>
+
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" id="statusFilter"
+                            onchange="filterTable()" style="max-width: 140px;">
+                            <option value="">All Status</option>
+                            <option value="Online">Online</option>
+                            <option value="Offline">Offline</option>
+                        </select>
+
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" id="typeFilter"
+                            onchange="filterTable()" style="max-width: 140px;">
+                            <option value="">All Types</option>
+                            <option value="switch">Switch</option>
+                            <option value="router">Router</option>
+                            <option value="firewall">Firewall</option>
+                            <option value="server">Server</option>
+                            <option value="workstation">Workstation</option>
+                            <option value="camera">Camera</option>
+                            <option value="printer">Printer</option>
+                            <option value="mobile">Mobile</option>
+                            <option value="iot">IoT</option>
+                        </select>
+
+                        <div class="input-group input-group-sm flex-grow-1">
                             <span class="input-group-text bg-dark border-secondary text-light"><i
                                     class="fas fa-search"></i></span>
                             <input type="text" id="deviceSearch"
@@ -122,7 +148,7 @@
                                 placeholder="Search name, IP, type..." onkeyup="filterTable()">
                         </div>
                     </div>
-                    <div class="col-md-4 text-end">
+                    <div class="col-md-3 text-end">
                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#deviceModal">
                             <i class="fas fa-plus"></i> Add
                         </button>
@@ -283,7 +309,7 @@
 
 <!-- Device Modal -->
 <div class="modal fade" id="deviceModal" tabindex="-1" aria-labelledby="deviceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="deviceModalLabel">
@@ -446,6 +472,15 @@
 {% block extra_js %}
 <script>
     let statusCheckTimers = {};
+    const unclassifiedCount = {{ unclassified_count|default (0, true) | int }};
+
+    function cleanModalArtifacts() {
+        // Remove lingering backdrops and restore body scroll
+        document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    }
 
     // Check device status on page load
     document.addEventListener('DOMContentLoaded', function () {
@@ -476,6 +511,16 @@
         checkboxes.forEach(cb => {
             cb.addEventListener('change', updateBulkUI);
         });
+
+        // Auto-classify devices with unknown type (throttled)
+        autoClassifyDevicesIfNeeded();
+    });
+
+    // Global modal cleanup to prevent "stuck" page after close
+    document.addEventListener('hidden.bs.modal', function () {
+        if (!document.querySelector('.modal.show')) {
+            cleanModalArtifacts();
+        }
     });
 
     function updateBulkUI() {
@@ -538,6 +583,57 @@
             });
     }
 
+    function autoClassifyDevicesIfNeeded() {
+        if (!unclassifiedCount || unclassifiedCount <= 0) return;
+
+        // Throttle: run at most once every 5 minutes per session
+        const key = 'autoClassifyTs';
+        const lastTs = parseInt(sessionStorage.getItem(key) || '0', 10);
+        const now = Date.now();
+        if (lastTs && (now - lastTs) < 5 * 60 * 1000) {
+            return;
+        }
+
+        console.log(`Auto-classify starting for ${unclassifiedCount} device(s)...`);
+
+        fetch('/api/devices/reclassify_all?auto=true', { credentials: 'same-origin' })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) return;
+                if (Array.isArray(data.updated_devices) && data.updated_devices.length > 0) {
+                    applyClassificationUpdates(data.updated_devices);
+                }
+                // Only throttle after a successful response
+                sessionStorage.setItem(key, String(Date.now()));
+            })
+            .catch(err => {
+                console.warn('Auto-classify failed:', err);
+                // Allow retry on next page load
+                sessionStorage.removeItem(key);
+            });
+    }
+
+    function applyClassificationUpdates(updatedDevices) {
+        updatedDevices.forEach(d => {
+            const row = document.querySelector(`tr[data-device-id="${d.device_id}"]`);
+            if (!row) return;
+            const select = row.querySelector('select');
+            if (!select) return;
+
+            const target = d.device_type || 'Unknown';
+            let option = Array.from(select.options)
+                .find(o => (o.value || '').toLowerCase() === target.toLowerCase());
+
+            if (!option) {
+                option = document.createElement('option');
+                option.value = target;
+                option.textContent = target;
+                select.appendChild(option);
+            }
+            select.value = option.value;
+        });
+    }
+
     function checkDeviceStatus(deviceId, deviceIp) {
         const statusElement = document.getElementById('status-' + deviceId);
         if (!statusElement) return;
@@ -568,13 +664,15 @@
                     const statusIcon = isOnline ? 'fa-wifi' : 'fa-times-circle';
                     const latencyText = device.latency ? ' (' + Math.round(device.latency) + 'ms)' : '';
 
-                    statusElement.className = 'badge ' + statusClass;
-                    statusElement.innerHTML = '<i class="fas ' + statusIcon + '"></i> ' + device.status + latencyText;
+                    statusElement.className = 'status-indicator ' + (isOnline ? 'status-online' : 'status-offline');
+                    statusElement.title = device.status + latencyText; // Tooltip
+                    statusElement.innerHTML = ''; // No text inside
 
                     console.log('✓ Device ' + deviceIp + ': ' + device.status);
                 } else {
-                    statusElement.className = 'badge bg-secondary';
-                    statusElement.innerHTML = '<i class="fas fa-question"></i> Unknown';
+                    statusElement.className = 'status-indicator status-unknown';
+                    statusElement.title = 'Unknown';
+                    statusElement.innerHTML = '';
                     console.warn('No device data in response for ' + deviceIp);
                 }
             })
@@ -583,8 +681,9 @@
                 console.error('Error checking device status for ' + deviceIp + ':', error.message);
 
                 // Mark as offline on any error
-                statusElement.className = 'badge bg-danger';
-                statusElement.innerHTML = '<i class="fas fa-times-circle"></i> Offline';
+                statusElement.className = 'status-indicator status-offline';
+                statusElement.title = 'Offline';
+                statusElement.innerHTML = '';
             });
     }
 
@@ -799,7 +898,8 @@
                             const isOnline = device.status === 'Online';
 
                             // Apply heartbeat animation classes
-                            statusElement.className = isOnline ? 'status-indicator status-online' : 'status-indicator status-offline';
+                            statusElement.className = 'status-indicator ' + (isOnline ? 'status-online' : 'status-offline');
+                            statusElement.title = device.status + (device.latency ? ` (${Math.round(device.latency)}ms)` : ''); // Tooltip
                             statusElement.title = device.status; // Show status text on hover
                             statusElement.innerHTML = ''; // No text, just the dot
                         }
@@ -816,40 +916,98 @@
     // Initial fetch on load
     document.addEventListener('DOMContentLoaded', fetchAllStatuses);
 
-    // Search Function
+    // Search & Filter Function
+    // Search & Filter Function
     function filterTable() {
-        const input = document.getElementById("deviceSearch");
-        const filter = input.value.toLowerCase();
-        const table = document.querySelector("table tbody");
-        const tr = table.getElementsByTagName("tr");
+        try {
+            // Get values
+            const searchInput = document.getElementById("deviceSearch");
+            const searchText = (searchInput ? searchInput.value : "").toLowerCase().trim();
 
-        for (let i = 0; i < tr.length; i++) {
-            // Search in Device Name (1), IP (2), Type (3), Hostname (4), and MAC (5)
-            const tdName = tr[i].getElementsByTagName("td")[1];
-            const tdIp = tr[i].getElementsByTagName("td")[2];
-            const tdType = tr[i].getElementsByTagName("td")[3];
-            const tdHost = tr[i].getElementsByTagName("td")[4];
-            const tdMac = tr[i].getElementsByTagName("td")[5];
+            const statusSelect = document.getElementById("statusFilter");
+            const statusFilter = statusSelect ? statusSelect.value.toLowerCase() : "";
 
-            if (tdName || tdIp || tdType || tdHost || tdMac) {
-                const txtName = tdName.textContent || tdName.innerText;
-                const txtIp = tdIp.textContent || tdIp.innerText;
-                const txtType = tdType.textContent || tdType.innerText;
-                const txtHost = tdHost.textContent || tdHost.innerText;
-                const txtMac = tdMac.textContent || tdMac.innerText;
+            const typeSelect = document.getElementById("typeFilter");
+            const typeFilter = typeSelect ? typeSelect.value.toLowerCase().trim() : "";
 
-                if (
-                    txtName.toLowerCase().indexOf(filter) > -1 ||
-                    txtIp.toLowerCase().indexOf(filter) > -1 ||
-                    txtType.toLowerCase().indexOf(filter) > -1 ||
-                    txtHost.toLowerCase().indexOf(filter) > -1 ||
-                    txtMac.toLowerCase().indexOf(filter) > -1
-                ) {
-                    tr[i].style.display = "";
-                } else {
-                    tr[i].style.display = "none";
+            const table = document.querySelector("table tbody");
+            if (!table) return;
+
+            const tr = table.getElementsByTagName("tr");
+
+            // Debug filters
+            // console.log(`Filtering: Search="${searchText}", Status="${statusFilter}", Type="${typeFilter}"`);
+
+            for (let i = 0; i < tr.length; i++) {
+                // Determine cells using indices matching header
+                const tds = tr[i].getElementsByTagName("td");
+                if (tds.length < 5) continue; // Ensure row has enough columns
+
+                // Index Mapping:
+                // 1: Name, 2: IP, 3: Type, 4: Status, 5: Hostname, 6: MAC
+                const tdName = tds[1];
+                const tdIp = tds[2];
+                const tdType = tds[3];
+                const tdStatus = tds[4];
+                const tdHost = tds[5];
+                const tdMac = tds[6];
+
+                // Text Content
+                const txtName = (tdName?.textContent || "").toLowerCase();
+                const txtIp = (tdIp?.textContent || "").toLowerCase();
+                const txtHost = (tdHost?.textContent || "").toLowerCase();
+                const txtMac = (tdMac?.textContent || "").toLowerCase();
+
+                // Get Type Value (Prioritize Select Value)
+                let txtType = "";
+                const rowTypeSelect = tdType?.querySelector('select');
+                if (rowTypeSelect) {
+                    txtType = rowTypeSelect.value.toLowerCase().trim();
+                } else if (tdType) {
+                    txtType = (tdType.textContent || "").toLowerCase().trim();
                 }
+
+                // Get Status Value
+                let txtStatus = "offline"; // default
+                if (tdStatus) {
+                    const statusSpan = tdStatus.querySelector('.status-indicator');
+                    if (statusSpan) {
+                        if (statusSpan.classList.contains('status-online')) txtStatus = "online";
+                        else if (statusSpan.classList.contains('status-offline')) txtStatus = "offline";
+                        else txtStatus = (statusSpan.title || "").toLowerCase();
+                    }
+                }
+
+                // Boolean Checks
+                const matchesSearch = (
+                    searchText === "" ||
+                    txtName.includes(searchText) ||
+                    txtIp.includes(searchText) ||
+                    txtType.includes(searchText) ||
+                    txtHost.includes(searchText) ||
+                    txtMac.includes(searchText)
+                );
+
+                const matchesStatus = (statusFilter === "" || txtStatus.includes(statusFilter));
+
+                // Flexible Type Matching (LIKE/Contains)
+                // "Camera" filter matches "camera", "camera/iot", "ip camera"
+                // "IoT" filter matches "iot", "camera/iot"
+                const matchesType = (
+                    typeFilter === "" ||
+                    txtType.includes(typeFilter) ||
+                    (typeFilter === "unknown" && txtType === "network device")
+                );
+
+                // Debug specific row if needed
+                // if (typeFilter === 'camera' && txtType.includes('iot')) {
+                //    console.log(`Row ${i}: Type="${txtType}" matchesFilter=${matchesType}`);
+                // }
+
+                tr[i].style.display = (matchesSearch && matchesStatus && matchesType) ? "" : "none";
             }
+        } catch (e) {
+            console.error("Error in filterTable:", e);
         }
     }
 

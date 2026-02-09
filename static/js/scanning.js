@@ -1,6 +1,8 @@
 // ============================================================================
 // UTILITY: Toast Notification System (replaces alert())
 // ============================================================================
+const MAX_TOASTS = 4;
+
 function showToast(message, type = 'info', timeout = 3000) {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -11,14 +13,17 @@ function showToast(message, type = 'info', timeout = 3000) {
         container.style.right = '20px';
         container.style.zIndex = '1060';
         container.style.maxWidth = '400px';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
         document.body.appendChild(container);
     }
 
     const toast = document.createElement('div');
     toast.className = `alert alert-${type} alert-dismissible fade show`;
     toast.role = 'alert';
-    toast.style.marginBottom = '10px';
     toast.style.minWidth = '280px';
+    toast.dataset.toastKey = `${type}|${message}`;
     toast.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -26,9 +31,14 @@ function showToast(message, type = 'info', timeout = 3000) {
 
     container.appendChild(toast);
 
+    // Enforce max visible toasts
+    while (container.children.length > MAX_TOASTS) {
+        container.removeChild(container.firstChild);
+    }
+
     // Auto-dismiss after timeout
     if (timeout > 0) {
-        setTimeout(() => {
+        toast._dismissTimer = setTimeout(() => {
             toast.classList.remove('show');
             setTimeout(() => {
                 if (toast.parentNode) toast.remove();
@@ -362,32 +372,19 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    let lastBatchToastAt = 0;
     function showBatchNotification(batchSize, totalFound) {
-        let notification = document.getElementById('batchNotification');
-        if (!notification) {
-            notification = document.createElement('div');
-            notification.id = 'batchNotification';
-            notification.className = 'alert alert-success alert-dismissible fade show';
-            notification.style.position = 'fixed';
-            notification.style.top = '20px';
-            notification.style.right = '20px';
-            notification.style.zIndex = '999';
-            notification.style.minWidth = '300px';
-            document.body.appendChild(notification);
-        }
+        const now = Date.now();
+        if (now - lastBatchToastAt < 2000) return; // throttle to avoid flood
+        lastBatchToastAt = now;
 
-        notification.innerHTML = `
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            <strong><i class="fas fa-bolt"></i> Batch Update!</strong><br>
-            Found ${batchSize} new devices<br>
-            <small>Total: ${totalFound} devices</small>
-        `;
-
-        setTimeout(() => {
-            if (notification && notification.parentNode) {
-                notification.remove();
-            }
-        }, 3000);
+        showToast(
+            `<strong><i class="fas fa-bolt"></i> Batch Update!</strong><br>
+             Found ${batchSize} new devices<br>
+             <small>Total: ${totalFound} devices</small>`,
+            'success',
+            2500
+        );
     }
 
     function findDeviceRow(ip) {

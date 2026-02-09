@@ -32,7 +32,14 @@ The APL Techno Team
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
     
+    # MOCK EMAIL LOGGING (For development/testing)
+    print(f"\n--- [MOCK EMAIL] OTP for {email}: {otp} ---\n")
+    
     try:
+        if not sender_email or not password:
+            print("DEBUG: SMTP credentials not set, skipping real email send.")
+            return
+
         server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
         server.starttls()
         server.login(sender_email, password)

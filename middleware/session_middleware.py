@@ -1,5 +1,5 @@
 # file name: middleware/session_middleware.py
-from flask import session, redirect, url_for, request, jsonify, flash
+from flask import session, redirect, url_for, request, jsonify, flash, current_app
 from datetime import datetime, timedelta
 from functools import wraps
 import json
@@ -47,11 +47,24 @@ def setup_auth_middleware(bp):
             'auth_bp.validate_otp',
             'auth_bp.reset_password',
             'auth_bp.session_status',  # IMPORTANT: Don't check session-status
+            'agent_bp.receive_metrics', # Agent handles its own auth
         ]
         
         # If this is an exempt endpoint, skip auth check
         if endpoint in exempt_endpoints:
             return None
+
+        # Allow API key auth for /api/* endpoints
+        if request.path.startswith('/api/'):
+            provided_key = request.headers.get('X-API-Key')
+            expected_key = current_app.config.get('MOBILE_API_KEY')
+            
+            print(f"DEBUG AUTH: Path={request.path} Header-Key={provided_key} Expected={expected_key}")
+
+            if provided_key:
+                if expected_key and provided_key == expected_key:
+                    return None
+                return jsonify({'success': False, 'error': 'Invalid API key'}), 401
         
         # If user is not logged in at all
         if not session.get('logged_in'):

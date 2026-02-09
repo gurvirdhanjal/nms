@@ -9,13 +9,16 @@ requests==2.31.0
 python-dotenv==1.0.0
 opencv-python==4.8.1.78
 numpy==1.24.3
-wmi
+wmi; platform_system=="Windows"
 psutil
 pynput
 Pillow
 cryptography
-pywin32
+pywin32; platform_system=="Windows"
 
 # SNMP Integration
 pysnmp==4.4.12
 pyasn1==0.4.8
+
+# PostgreSQL Driver
+psycopg2-binary==2.9.9

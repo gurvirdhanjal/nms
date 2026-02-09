@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import random
 from services.email_service import send_otp_email_async
 from middleware.session_middleware import update_last_activity,check_session_timeout
+import time
+from sqlalchemy.exc import OperationalError
 
 
 auth_bp = Blueprint('auth_bp', __name__, url_prefix='')
@@ -164,7 +166,19 @@ def reset_password():
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user = User.query.get(session.get('user_id'))
         user.password = hashed_password
-        db.session.commit()
+        
+        # Retry logic for DB lock
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                db.session.commit()
+                break
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                else:
+                    raise e
         
         # Clear OTP session
         session.pop('otp', None)

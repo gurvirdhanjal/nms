@@ -1,17 +1,18 @@
 /**
  * Dashboard Orchestrator
  */
-import { fetchSummary, fetchTopProblems, fetchTrends, fetchInventory, fetchRealTimeInterfaces, fetchRealTimeIO } from './api.js';
+import { fetchSummary, fetchTopProblems, fetchTrends, fetchInventory, fetchServerHealth, fetchAlerts } from './api.js';
 import { updateState, getState, subscribe, mergeRealtimeUpdate, loadFromCache } from './state.js';
 import { renderDevicesOnline } from './cards/devicesOnline.js';
-import { renderActiveAlerts } from './cards/activeAlerts.js';
-import { renderNetworkPerformance } from './cards/networkPerformance.js';
+import { renderDeviceStatusCards } from './cards/deviceStatus.js';
 import { renderNetworkAvailability } from './cards/networkAvailability.js';
-import { renderRealTimeMetrics } from './cards/realTimeMetrics.js';
-import { renderTopLatencyTable, renderTopPacketLossTable, renderRecentAlertsTable } from './tables/topProblems.js';
+import { renderTopLatencyTable, renderTopPacketLossTable, renderTopAffectedDevices } from './tables/topProblems.js';
 import { renderInventoryTable, initInventoryInteractions } from './tables/inventoryTable.js';
 import { renderInventoryChart } from './charts/inventoryChart.js';
 import { initDiscovery } from './discovery.js';
+import { initServerModal } from './modals/serverDetailModal.js';
+import { renderServerHealthSummary, renderServerHealthTable, initServerHealthTable } from './servers/serverHealth.js';
+import { initAlertCenter, renderAlertCenter } from './alerts/alertCenter.js';
 import { initSSE, getConnectionStatus, ConnectionStatus } from './sseClient.js';
 import { renderConnectionIndicator, initConnectionIndicator } from './connectionIndicator.js';
 
@@ -142,6 +143,21 @@ function initDashboard() {
         // 9. Init Inventory Interactions
         initInventoryInteractions();
 
+        // 10. Init Server Modal
+        initServerModal();
+
+        // 11. Init Server Health Table
+        initServerHealthTable();
+
+        // 12. Init Alert Center
+        initAlertCenter({
+            onDeviceBreakdown: () => openDeviceBreakdown()
+        });
+
+        // 13. Init KPI interactions
+        initDeviceBreakdown();
+        initServerKpiInteractions();
+
         // 9. Start Live Clock
         startClock();
 
@@ -214,18 +230,18 @@ async function refreshAll() {
         console.error('[Dashboard] Inventory fetch failed:', err);
     });
 
-    // 5. Fetch Real-time Interface Utilization
-    fetchWithTimeout(fetchRealTimeInterfaces()).then(interfaces => {
-        updateState('realtimeInterfaces', interfaces);
+    // 5. Fetch Server Health Summary
+    fetchWithTimeout(fetchServerHealth()).then(serverHealth => {
+        updateState('serverHealth', serverHealth);
     }).catch(err => {
-        console.error('[Dashboard] Interface metrics fetch failed:', err);
+        console.error('[Dashboard] Server health fetch failed:', err);
     });
 
-    // 6. Fetch Network I/O Trend
-    fetchWithTimeout(fetchRealTimeIO()).then(ioTrend => {
-        updateState('networkIOTrend', ioTrend);
+    // 6. Fetch Alerts (active)
+    fetchWithTimeout(fetchAlerts('active', 200)).then(alerts => {
+        updateState('alerts', alerts);
     }).catch(err => {
-        console.error('[Dashboard] Network I/O trend fetch failed:', err);
+        console.error('[Dashboard] Alerts fetch failed:', err);
     });
 
     // Clean up loading state eventually
@@ -240,28 +256,25 @@ function renderAll(state) {
 
         if (state.summary) {
             safeRender('Devices Online', () => renderDevicesOnline(state.summary, ts));
-            safeRender('Active Alerts', () => renderActiveAlerts(state.summary, ts));
-            safeRender('Network Performance', () => renderNetworkPerformance(state.summary, ts));
+            safeRender('Device Status Cards', () => renderDeviceStatusCards(state.summary, ts));
             safeRender('Network Availability', () => renderNetworkAvailability(state.summary, state.trends));
         }
 
-        if (typeof Chart !== 'undefined') {
-            safeRender('Real Time Metrics', () => renderRealTimeMetrics(
-                state.realtimeInterfaces,
-                state.networkIOTrend
-            ));
+        if (state.topProblems) {
+            safeRender('Top Latency Table', () => renderTopLatencyTable(state.topProblems.high_latency));
+            safeRender('Top Packet Loss Table', () => renderTopPacketLossTable(state.topProblems.high_packet_loss));
+            if (state.topProblems.recently_down) {
+                safeRender('Top Affected Devices', () => renderTopAffectedDevices(state.topProblems.recently_down));
+            }
         }
 
-        if (state.topProblems) {
-            if (isTabVisible('tab-latency')) {
-                safeRender('Top Latency Table', () => renderTopLatencyTable(state.topProblems.high_latency));
-            }
-            if (isTabVisible('tab-loss')) {
-                safeRender('Top Packet Loss Table', () => renderTopPacketLossTable(state.topProblems.high_packet_loss));
-            }
-            if (isTabVisible('tab-alerts')) {
-                safeRender('Recent Alerts Table', () => renderRecentAlertsTable(state.topProblems.recent_alerts));
-            }
+        if (state.serverHealth) {
+            safeRender('Server Health Summary', () => renderServerHealthSummary(state.serverHealth));
+            safeRender('Server Health Table', () => renderServerHealthTable(state.serverHealth));
+        }
+
+        if (state.alerts) {
+            safeRender('Alert Center', () => renderAlertCenter(state.alerts));
         }
 
         // Render Inventory List
@@ -278,6 +291,14 @@ function renderAll(state) {
         const timeEl = document.getElementById('last-updated-text');
         if (timeEl && state.lastUpdated) {
             timeEl.textContent = state.lastUpdated.toLocaleTimeString();
+        }
+        const breakdownUpdated = document.getElementById('device-breakdown-updated');
+        if (breakdownUpdated && state.lastUpdated) {
+            breakdownUpdated.textContent = state.lastUpdated.toLocaleString();
+        }
+        const alertsUpdated = document.getElementById('alerts-last-updated');
+        if (alertsUpdated && state.lastUpdated) {
+            alertsUpdated.textContent = state.lastUpdated.toLocaleString();
         }
 
         if (!state.error) {
@@ -357,6 +378,47 @@ function setupTabs() {
 
             renderAll(getState());
         });
+    });
+}
+
+function openDeviceBreakdown() {
+    const el = document.getElementById('device-breakdown');
+    if (!el) return;
+    el.style.display = 'block';
+    el.classList.add('is-active');
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 150);
+}
+
+function closeDeviceBreakdown() {
+    const el = document.getElementById('device-breakdown');
+    if (!el) return;
+    el.style.display = 'none';
+    el.classList.remove('is-active');
+}
+
+function initDeviceBreakdown() {
+    const cards = document.querySelectorAll('.device-kpi-card');
+    cards.forEach(card => {
+        card.addEventListener('click', () => openDeviceBreakdown());
+        card.style.cursor = 'pointer';
+    });
+    const closeBtn = document.getElementById('device-breakdown-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeDeviceBreakdown);
+}
+
+function initServerKpiInteractions() {
+    const cards = document.querySelectorAll('.server-kpi-card');
+    const target = document.getElementById('server-health-detail');
+    cards.forEach(card => {
+        card.addEventListener('click', () => {
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        card.style.cursor = 'pointer';
     });
 }
 

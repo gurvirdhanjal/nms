@@ -5,6 +5,7 @@ Provides aggregated health, trends, and problem detection.
 from flask import Blueprint, jsonify, request, session
 from datetime import datetime, timedelta
 from sqlalchemy import func, desc, case
+from utils.server_health import compute_server_health, is_server_device
 from extensions import db
 
 dashboard_bp = Blueprint('dashboard_bp', __name__, url_prefix='/api/dashboard')
@@ -315,7 +316,8 @@ def get_top_problems():
                     'ip': s[0].device_ip, 
                     'value': s[0].ping_time_ms, 
                     'unit': 'ms',
-                    'device_id': s[1].device_id
+                    'device_id': s[1].device_id,
+                    'time': s[0].scan_timestamp.isoformat() if s[0].scan_timestamp else None
                 }
                 for s in high_latency
             ],
@@ -325,7 +327,8 @@ def get_top_problems():
                     'ip': s[0].device_ip, 
                     'value': s[0].packet_loss, 
                     'unit': '%',
-                    'device_id': s[1].device_id
+                    'device_id': s[1].device_id,
+                    'time': s[0].scan_timestamp.isoformat() if s[0].scan_timestamp else None
                 }
                 for s in high_loss
             ],
@@ -373,6 +376,7 @@ def get_all_alerts():
 
     try:
         from models.dashboard import DashboardEvent
+        from models.device import Device
         
         status = request.args.get('status', 'active')
         limit = int(request.args.get('limit', 100))
@@ -385,11 +389,26 @@ def get_all_alerts():
             query = query.filter_by(resolved=True)
             
         alerts = query.order_by(DashboardEvent.timestamp.desc()).limit(limit).all()
-        
+
+        device_ids = [a.device_id for a in alerts if a.device_id]
+        devices = Device.query.filter(Device.device_id.in_(device_ids)).all() if device_ids else []
+        device_map = {d.device_id: d for d in devices}
+
+        def classify_scope(device_type: str) -> str:
+            t = (device_type or '').strip().lower()
+            if t == 'server':
+                return 'Server'
+            if t in ('router', 'switch', 'firewall', 'access_point', 'network device'):
+                return 'Network'
+            return 'Device'
+
         return jsonify([{
             'id': e.event_id,
             'device_id': e.device_id,
             'device_ip': e.device_ip,
+            'device_name': device_map.get(e.device_id).device_name if e.device_id in device_map else None,
+            'device_type': device_map.get(e.device_id).device_type if e.device_id in device_map else None,
+            'scope': classify_scope(device_map.get(e.device_id).device_type) if e.device_id in device_map else 'Device',
             'event_type': e.event_type,
             'severity': e.severity,
             'message': e.message,
@@ -618,7 +637,37 @@ def get_inventory_stats():
         
         # 4. Full Device List (for table)
         devices = Device.query.all()
-        device_list = [d.to_dict() for d in devices]
+        
+        # calculate server health for each device (agent metrics only)
+        from models.server_health import ServerHealthLog
+        
+        # Get latest agent health log for each device
+        latest_health_subq = db.session.query(
+            ServerHealthLog.device_id,
+            func.max(ServerHealthLog.id).label('max_id')
+        ).filter(
+            ServerHealthLog.source == 'agent'
+        ).group_by(ServerHealthLog.device_id).subquery()
+        
+        latest_health_logs = db.session.query(ServerHealthLog).join(
+            latest_health_subq,
+            (ServerHealthLog.id == latest_health_subq.c.max_id)
+        ).all()
+        
+        health_map = {log.device_id: log for log in latest_health_logs}
+        
+        device_list = []
+        for d in devices:
+            d_dict = d.to_dict()
+
+            # Default to unknown/standard
+            d_dict['server_health'] = 'Unknown'
+
+            if is_server_device(d.device_type):
+                log = health_map.get(d.device_id)
+                d_dict['server_health'] = compute_server_health(log)
+            
+            device_list.append(d_dict)
         
         return jsonify({
             'total_devices': total_devices,

@@ -28,8 +28,8 @@ export async function fetchTrends(range = '24h') {
     return fetchAPI(`/api/dashboard/trends?range=${range}`);
 }
 
-export async function fetchAlerts(activeOnly = true, limit = 50) {
-    return fetchAPI(`/api/dashboard/alerts?active=${activeOnly}&limit=${limit}`);
+export async function fetchAlerts(status = 'active', limit = 100) {
+    return fetchAPI(`/api/dashboard/alerts?status=${status}&limit=${limit}`);
 }
 
 export async function fetchInventory() {
@@ -42,4 +42,8 @@ export async function fetchRealTimeInterfaces() {
 
 export async function fetchRealTimeIO() {
     return fetchAPI('/api/dashboard/realtime/network-io');
+}
+
+export async function fetchServerHealth() {
+    return fetchAPI('/api/server/health');
 }

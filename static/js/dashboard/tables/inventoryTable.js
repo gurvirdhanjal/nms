@@ -1,6 +1,7 @@
 /**
  * Device Inventory Table Component
  */
+import { openServerModal } from '../modals/serverDetailModal.js';
 
 export function renderInventoryTable(devices) {
     const tableBody = document.getElementById('table-inventory-body');
@@ -23,16 +24,43 @@ export function renderInventoryTable(devices) {
             `<option value="${t}" ${device.cos_tier === t ? 'selected' : ''}>${t}</option>`
         ).join('');
 
+        const serverHealth = device.server_health || 'Unknown';
+        const deviceType = (device.device_type || '').toLowerCase();
+        const isServer = deviceType === 'server';
+        let healthBadge = '';
+
+        if (isServer || serverHealth !== 'Unknown') {
+            const colors = {
+                'Healthy': 'text-success',
+                'Warning': 'text-warning',
+                'Critical': 'text-danger',
+                'Offline': 'text-secondary',
+                'Unknown': 'text-muted'
+            };
+            const icons = {
+                'Healthy': 'fa-check-circle',
+                'Warning': 'fa-exclamation-triangle',
+                'Critical': 'fa-times-circle',
+                'Offline': 'fa-plug',
+                'Unknown': 'fa-question-circle'
+            };
+            const colorClass = colors[serverHealth] || 'text-muted';
+            const iconClass = icons[serverHealth] || 'fa-question-circle';
+
+            healthBadge = `<div class="mt-1 small ${colorClass}"><i class="fas ${iconClass}"></i> ${serverHealth}</div>`;
+        }
+
         return `
-            <tr data-id="${device.device_id}" data-ip="${device.device_ip}">
+            <tr data-id="${device.device_id}" data-ip="${device.device_ip}" class="${isServer ? 'server-row' : ''}" style="${isServer ? 'cursor: pointer;' : ''}">
                 <td>
                     <div class="form-check d-flex justify-content-center">
                         <input class="form-check-input inventory-checkbox" type="checkbox" value="${device.device_id}">
                     </div>
                 </td>
-                <td>
+                <td class="device-cell">
                     <div class="fw-bold">${device.device_name}</div>
-                    <div class="small text-secondary">${device.device_type}</div>
+                    <div class="small text-secondary">${device.device_type || 'Unknown'}</div>
+                    ${healthBadge}
                 </td>
                 <td>
                     ${(device.device_type === 'Switch') ? `
@@ -55,15 +83,16 @@ export function renderInventoryTable(devices) {
             </tr>
         `;
     }).join('');
-
 }
 
 async function handleSaveDevice(deviceId) {
     const row = document.querySelector(`tr[data-id="${deviceId}"]`);
     if (!row) return;
 
-    const brand = row.querySelector('.brand-select').value;
-    const tier = row.querySelector('.tier-select').value;
+    const brandSelect = row.querySelector('.brand-select');
+    const tierSelect = row.querySelector('.tier-select');
+    const brand = brandSelect ? brandSelect.value : '';
+    const tier = tierSelect ? tierSelect.value : '';
     const btn = row.querySelector('.btn-save-device');
 
     btn.disabled = true;
@@ -121,11 +150,19 @@ export function initInventoryInteractions() {
         }
     });
 
-    // Delegate save button clicks
+    // Delegate clicks
     tableContainer.addEventListener('click', (e) => {
-        const btn = e.target.closest('.btn-save-device');
-        if (!btn) return;
-        handleSaveDevice(btn.dataset.id);
+        const saveBtn = e.target.closest('.btn-save-device');
+        if (saveBtn) {
+            handleSaveDevice(saveBtn.dataset.id);
+            return;
+        }
+
+        // Handle row click for servers (drill-down)
+        const row = e.target.closest('tr.server-row');
+        if (row && !e.target.closest('td:first-child') && !e.target.closest('td:last-child') && !e.target.closest('select')) {
+            openServerModal(row.dataset.id);
+        }
     });
 }
 

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}SSH Profiles - Device Monitoring{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1><i class="fas fa-key"></i> SSH Profiles</h1>
+        <p class="lead">Manage credentials for agentless server monitoring</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-list"></i> Profiles</h5>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#profileModal"
+                    onclick="clearModal()">
+                    <i class="fas fa-plus"></i> Add Profile
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profilesTableBody">
+                            {% for profile in profiles %}
+                            <tr data-id="{{ profile.profile_id }}">
+                                <td><strong>{{ profile.name }}</strong></td>
+                                <td>{{ profile.username }}</td>
+                                <td>{{ profile.description or '-' }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger"
+                                        onclick="deleteProfile({{ profile.profile_id }})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">No profiles found. Create one to get
+                                    started.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Profile Modal -->
+<div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Add SSH Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="profileForm">
+                    <div class="mb-3">
+                        <label class="form-label">Profile Name</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" id="name" required
+                            placeholder="e.g. Linux Admin">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" id="username"
+                            required placeholder="e.g. root">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary" id="password"
+                            placeholder="Leave empty if using key (not yet supported)">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control bg-dark text-light border-secondary" id="description"
+                            rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveProfile()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function clearModal() {
+        document.getElementById('profileForm').reset();
+    }
+
+    function saveProfile() {
+        const data = {
+            name: document.getElementById('name').value,
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+            description: document.getElementById('description').value
+        };
+
+        if (!data.name || !data.username) {
+            alert("Name and Username are required");
+            return;
+        }
+
+        fetch('/api/ssh_profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            });
+    }
+
+    function deleteProfile(id) {
+        if (!confirm("Delete this profile?")) return;
+
+        fetch('/api/ssh_profiles/' + id, {
+            method: 'DELETE'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            });
+    }
+</script>
+{% endblock %}

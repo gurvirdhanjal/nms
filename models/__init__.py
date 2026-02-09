@@ -5,12 +5,12 @@ from .scan_history import DeviceScanHistory, NetworkScan, PortScanResult
 from .dashboard import DashboardEvent, DailyDeviceStats
 from .interfaces import DeviceInterface, InterfaceTrafficHistory
 from .snmp_config import DeviceSnmpConfig
-from .ssh_profile import SSHProfile
 from .topology import SwitchTopology
 from .tracked_device import TrackedDevice
+from .server_health import ServerHealthLog
 
 __all__ = [
     'User', 'Device', 'DeviceScanHistory', 'NetworkScan', 'PortScanResult',
     'DashboardEvent', 'DailyDeviceStats', 'DeviceInterface', 'InterfaceTrafficHistory',
-    'DeviceSnmpConfig', 'SSHProfile', 'SwitchTopology', 'TrackedDevice'
+    'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice', 'ServerHealthLog'
 ]

@@ -1,0 +1,45 @@
+{
+  "active_alerts": {
+    "critical": 0,
+    "info": 0,
+    "total": 1,
+    "warning": 1
+  },
+  "availability": {
+    "history_24h_pct": 100.0,
+    "live_pct": 100.0
+  },
+  "counts": {
+    "degraded": 1,
+    "down": 0,
+    "monitored": 25,
+    "online_total": 25,
+    "total_inventory": 25,
+    "up": 24
+  },
+  "devices": {
+    "degraded": 1,
+    "down": 0,
+    "healthy": 24,
+    "monitored": 25,
+    "online_percent": 100.0,
+    "total": 25,
+    "unknown": 0,
+    "up": 25,
+    "up_percent": 100.0
+  },
+  "meta": {
+    "tooltips": {
+      "avg_latency_ms": "Average pong latency of currently online devices.",
+      "history_24h_pct": "Average uptime percentage of all devices over the last 24 hours.",
+      "live_pct": "Percentage of devices currently online.",
+      "network_health": "General health based on latency and packet loss."
+    }
+  },
+  "network_health": {
+    "avg_latency_ms": 32.92,
+    "avg_packet_loss_pct": 0.0,
+    "packet_loss": 0.0
+  },
+  "timestamp": "2026-02-05T08:41:40.601413"
+}

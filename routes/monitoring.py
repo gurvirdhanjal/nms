@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from extensions import db, event_manager
 from services.device_monitor import DeviceMonitor
 import asyncio
+import time
+from sqlalchemy.exc import OperationalError
 
 monitoring_bp = Blueprint('monitoring_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
@@ -49,8 +51,8 @@ import ipaddress
 
 @monitoring_bp.route('/api/monitoring/status')
 def get_monitoring_status():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     from models.device import Device
     device_type = request.args.get('device_type')
@@ -84,7 +86,8 @@ def get_monitoring_status():
     async def fetch_device_status(device):
         # ... existing fetch_device_status logic ...
         try:
-            status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip)
+            # Optimization: Single ping for dashboard speed
+            status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
             
             # Fallback: Check Tactical Agent Port (5002) if Ping fails
             if status == 'Offline': 
@@ -166,9 +169,21 @@ def get_monitoring_status():
                 history_entries.append(entry)
             
             if history_entries:
-                db.session.add_all(history_entries)
-                db.session.commit()
-                print(f"DEBUG: Saved {len(history_entries)} scan records to history")
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        db.session.add_all(history_entries)
+                        db.session.commit()
+                        print(f"DEBUG: Saved {len(history_entries)} scan records to history")
+                        break
+                    except OperationalError as e:
+                        if "database is locked" in str(e) and attempt < max_retries - 1:
+                            print(f"DEBUG: DB locked, retrying ({attempt+1}/{max_retries})...")
+                            time.sleep(0.1 * (attempt + 1))
+                            continue
+                        else:
+                            raise e
+
 
         except Exception as db_e:
             print(f"DEBUG: Error saving history in monitoring endpoint: {db_e}")
@@ -189,8 +204,8 @@ def get_monitoring_status():
     
 @monitoring_bp.route('/api/monitoring/statistics')
 def get_monitoring_statistics():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     try:
         from models.device import Device
@@ -265,8 +280,8 @@ def get_recent_events():
     Get recent monitoring events.
     Returns JSON list of events.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     try:
         # Get recent events
@@ -289,8 +304,8 @@ def get_metrics():
         - metric_name: Name of the metric (e.g., network_latency_ms)
         - time_range: Time range (e.g., last_1h, last_24h). Default: last_24h
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
         
     device_ip = request.args.get('device_ip')
     metric_name = request.args.get('metric_name')

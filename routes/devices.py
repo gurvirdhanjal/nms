@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from extensions import db
 from services.network_scanner import NetworkScanner
 import asyncio
+import json
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 scanner = NetworkScanner()
@@ -41,7 +42,23 @@ def device_management():
             print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
         return redirect(url_for('devices_bp.device_management'))
 
-    return render_template('devices.html', devices=devices, device=device, prefill_data=prefill_data)
+    # Count devices that still need auto-classification
+    unclassified_count = 0
+    for d in devices:
+        dtype = (d.device_type or "").strip().lower()
+        conf = (d.classification_confidence or "").strip().lower()
+        if conf == "manual":
+            continue
+        if dtype in ("", "unknown", "network device"):
+            unclassified_count += 1
+
+    return render_template(
+        'devices.html',
+        devices=devices,
+        device=device,
+        prefill_data=prefill_data,
+        unclassified_count=unclassified_count
+    )
 
 
 @devices_bp.route('/devices/save', methods=['POST'])
@@ -128,8 +145,8 @@ def save_device():
 
 @devices_bp.route('/api/devices')
 def api_devices():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     from models.device import Device
     devices = Device.query.all()
@@ -137,8 +154,8 @@ def api_devices():
 
 @devices_bp.route('/api/devices/<int:device_id>')
 def api_device_detail(device_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     from models.device import Device
     device = Device.query.get(device_id)
@@ -149,8 +166,8 @@ def api_device_detail(device_id):
 
 @devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST'])
 def toggle_device_monitoring(device_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     from models.device import Device
     device = Device.query.get(device_id)
@@ -163,8 +180,8 @@ def toggle_device_monitoring(device_id):
 
 @devices_bp.route('/api/devices/bulk_add', methods=['POST'])
 def bulk_add_devices():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     try:
         from models.device import Device
@@ -228,8 +245,8 @@ def bulk_add_devices():
 
 @devices_bp.route('/api/devices/bulk_delete', methods=['POST'])
 def bulk_delete_devices():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     try:
         from models.device import Device
@@ -302,8 +319,8 @@ def update_device_type(device_id):
 
 @devices_bp.route('/api/devices/reclassify_all', methods=['GET'])
 def reclassify_all():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
     
     from models.device import Device
     from services.device_classifier import DeviceClassifier, DeviceSignals
@@ -320,55 +337,89 @@ def reclassify_all():
     classifier = DeviceClassifier()
     devices = Device.query.all()
     updated_count = 0
+    updated_devices = []
+    force = request.args.get('force', 'false').lower() == 'true'
+    auto_mode = request.args.get('auto', 'false').lower() == 'true'
+
+    print(f"[Reclassify] start devices={len(devices)} force={force} auto={auto_mode}")
     
     for device in devices:
         try:
-            # Parse ports if stored as comma string or similar
-            open_ports = []
-            if device.port and device.port.isdigit():
-                 open_ports.append(int(device.port))
-            
-            # Smart OUI lookup if manufacturer is unknown
-            manufacturer = device.manufacturer
-            if (not manufacturer or manufacturer == 'Unknown' or manufacturer == 'N/A') and device.macaddress and device.macaddress != 'N/A':
-                 try:
-                     # Use the global scanner instance to lookup vendor
-                     manufacturer = asyncio.run(scanner.get_manufacturer(device.macaddress))
-                 except:
-                     pass
-            
+            dtype = (device.device_type or "").strip().lower()
+            conf = (device.classification_confidence or "").strip().lower()
+
+            # Auto mode: only classify unknown / low-confidence, skip manual
+            if not force:
+                if conf == "manual":
+                    continue
+                if dtype not in ("", "unknown", "network device") and conf in ("medium", "high"):
+                    continue
+                if auto_mode and dtype not in ("", "unknown", "network device"):
+                    continue
+
+            # Ping first (ICMP may be blocked; do not rely on it for classification)
+            status, _latency, _packet_loss = asyncio.run(scanner.ping_device(device.device_ip))
+
+            mac_address = device.macaddress or "N/A"
+            hostname = device.hostname or "Unknown"
+            manufacturer = device.manufacturer or "Unknown"
+
+            if status == "Online":
+                mac_address = scanner.get_mac_address(device.device_ip) or mac_address
+                hostname = scanner.get_hostname(device.device_ip) or hostname
+
+            if (manufacturer in ("Unknown", "N/A", "") and mac_address not in ("", "N/A", None)):
+                try:
+                    manufacturer = asyncio.run(scanner.get_manufacturer(mac_address))
+                except:
+                    pass
+
+            # Port scan for classification (even if ping fails, ports might still be open)
+            open_ports = asyncio.run(scanner.scan_ports(device.device_ip))
+            port_numbers = [p.get("port") for p in open_ports if isinstance(p, dict)]
+
             signals = DeviceSignals(
                 ip_address=device.device_ip,
-                mac_address=device.macaddress,
-                hostname=device.hostname,
+                mac_address=mac_address,
+                hostname=hostname,
                 manufacturer=manufacturer,
-                open_ports=open_ports
+                open_ports=port_numbers
             )
-            
+
             result = classifier.classify(signals)
-            
+
             # Update device
             device.device_type = result.device_type.value
             device.confidence_score = result.score
             device.classification_confidence = result.confidence.value
-            device.classification_details = result.to_dict()
-            device.manufacturer = manufacturer # Save the looked-up manufacturer
-            
+            device.classification_details = json.dumps(result.to_dict())
+            device.manufacturer = manufacturer
+            device.macaddress = mac_address
+            device.hostname = hostname
+
             updated_count += 1
+            updated_devices.append({
+                "device_id": device.device_id,
+                "device_type": device.device_type,
+                "classification_confidence": device.classification_confidence,
+                "confidence_score": device.confidence_score
+            })
         except Exception as e:
-            print(f"Failed to reclassify {device.device_ip}: {e}")
+            print(f"[Reclassify] Failed for {device.device_ip}: {e}")
             
     db.session.commit()
     
     return jsonify({
         'success': True,
         'message': f"Reclassified {updated_count} devices.",
+        'updated_count': updated_count,
+        'updated_devices': updated_devices,
         'db_uri': current_app.config.get('SQLALCHEMY_DATABASE_URI', 'unknown')
     })
 @devices_bp.route('/api/devices/<int:device_id>', methods=['POST'])
 def update_device(device_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+    # Auth handled by middleware
+
         
     from models.device import Device
     device = Device.query.get_or_404(device_id)

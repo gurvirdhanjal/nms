@@ -18,7 +18,8 @@ const dashboardState = {
     ,
     // Real-time metrics data
     realtimeInterfaces: null,
-    networkIOTrend: null
+    networkIOTrend: null,
+    serverHealth: null
 };
 
 const listeners = [];
@@ -49,8 +50,10 @@ function saveToCache() {
                 trends: dashboardState.trends,
                 topProblems: dashboardState.topProblems,
                 inventory: dashboardState.inventory,
+                alerts: dashboardState.alerts,
                 realtimeInterfaces: dashboardState.realtimeInterfaces,
-                networkIOTrend: dashboardState.networkIOTrend
+                networkIOTrend: dashboardState.networkIOTrend,
+                serverHealth: dashboardState.serverHealth
             }
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
@@ -71,8 +74,10 @@ export function loadFromCache() {
         if (data.trends) dashboardState.trends = data.trends;
         if (data.topProblems) dashboardState.topProblems = data.topProblems;
         if (data.inventory) dashboardState.inventory = data.inventory;
+        if (data.alerts) dashboardState.alerts = data.alerts;
         if (data.realtimeInterfaces) dashboardState.realtimeInterfaces = data.realtimeInterfaces;
         if (data.networkIOTrend) dashboardState.networkIOTrend = data.networkIOTrend;
+        if (data.serverHealth) dashboardState.serverHealth = data.serverHealth;
 
         dashboardState.lastUpdated = new Date(cache.timestamp);
         console.log('[State] Hydrated from cache');

@@ -1,6 +1,31 @@
-venv/
+
+# Python
 __pycache__/
-.env
 *.pyc
-dist/
+*.pyo
+
+# Virtual environment
+venv/
+.env
+.env.*
+
+# PyInstaller
 build/
+dist/
+*.spec.bak
+*.toc
+*.pkg
+*.pyz
+
+# Logs
+*.log
+*.lock
+
+# Databases
+*.db
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store
+Thumbs.db

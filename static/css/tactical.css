@@ -1074,3 +1074,106 @@ body.tactical-theme {
     width: 10px;
     height: 10px;
 }
+
+/* ============================================================
+   SCROLLBAR & PERFORMANCE
+   ============================================================ */
+/* Global Smooth Scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Webkit Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--tactical-bg-darkest);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--tactical-bg-elevated);
+    border-radius: 3px;
+    border: 1px solid var(--tactical-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--tactical-accent-dim);
+    border-color: var(--tactical-accent);
+}
+
+/* Table Responsiveness & Scrolling */
+.table-responsive {
+    max-height: 70vh;
+    /* Constrain height to viewport */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
+    overflow-x: auto;
+    /* Enable horizontal scrolling */
+
+    /* Smooth scrolling for the container */
+    scroll-behavior: smooth;
+
+    /* Hardware acceleration hints */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+
+    /* Border and rounding */
+    border: 1px solid var(--tactical-border);
+    border-radius: var(--tactical-radius-lg);
+}
+
+/* Sticky Headers */
+.tactical-table thead th,
+.table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    /* Ensure header stays on top */
+    background: var(--tactical-bg-dark);
+    /* Prevent transparency */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    /* Shadow for depth */
+}
+
+/* ============================================================
+   GLOBAL 60FPS PERFORMANCE OPTIMIZATIONS
+   ============================================================ */
+
+/* Hardware Acceleration Class - Apply to animating elements */
+.gpu-accelerated,
+.tactical-card,
+.tactical-modal,
+.tactical-navbar,
+.btn,
+.nav-link,
+.status-indicator {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    will-change: transform, opacity, box-shadow;
+    /* Hint to browser */
+}
+
+/* Optimize Transitions */
+* {
+    /* Ensure no layout thrashing on hover if possible */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Paint Containment for large areas */
+.container-fluid,
+.card-body,
+.table-responsive {
+    contain: content;
+    /* Isolates layout recalculations */
+}
+
+/* Reduce repaints on scrolling */
+.sidebar,
+.main-content {
+    will-change: scroll-position;
+}

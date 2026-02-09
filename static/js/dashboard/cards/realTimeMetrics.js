@@ -1,7 +1,7 @@
 /**
  * Component: Real-Time Metrics
  * Renders Interface Utilization and Network I/O Trend charts.
- * Currently uses simulated data as backend schema for historical interface metrics is pending.
+ * Uses backend data only (no simulated fallback).
  */
 
 let interfaceChart = null;
@@ -18,15 +18,24 @@ export function renderRealTimeMetrics(interfaceData, ioTrendData) {
 function renderInterfaceChart(data) {
     const ctx = document.getElementById('chart-interface-util');
     if (!ctx) return;
+    const emptyEl = document.getElementById('chart-interface-util-empty');
 
-    // Use Backend Data or Mock fallback
-    let labels = ['Uplink-Gi0/1', 'Server-Agg-1', 'Wifi-Backbone', 'Office-Switch', 'Camera-VLAN'];
-    let values = [85, 62, 45, 28, 15];
-
-    if (data && data.length > 0) {
-        labels = data.map(item => `${item.device}: ${item.name}`);
-        values = data.map(item => item.utilization_pct);
+    const hasData = Array.isArray(data) && data.length > 0;
+    if (!hasData) {
+        if (interfaceChart) {
+            interfaceChart.destroy();
+            interfaceChart = null;
+        }
+        ctx.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        return;
     }
+
+    ctx.style.display = 'block';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const labels = data.map(item => `${item.device}: ${item.name}`);
+    const values = data.map(item => item.utilization_pct);
 
     if (interfaceChart) {
         interfaceChart.data.labels = labels;
@@ -89,17 +98,25 @@ function renderInterfaceChart(data) {
 function renderIoChart(data) {
     const ctx = document.getElementById('chart-network-io');
     if (!ctx) return;
+    const emptyEl = document.getElementById('chart-network-io-empty');
 
-    // Default Mock Data
-    let labels = Array.from({ length: 12 }, (_, i) => `-${(12 - i) * 5}m`);
-    let inData = Array.from({ length: 12 }, () => Math.floor(Math.random() * 50) + 20);
-    let outData = Array.from({ length: 12 }, () => Math.floor(Math.random() * 30) + 5);
-
-    if (data && data.labels && data.labels.length > 0) {
-        labels = data.labels.map(l => new Date(l).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        inData = data.inbound;
-        outData = data.outbound;
+    const hasData = data && data.labels && data.labels.length > 0;
+    if (!hasData) {
+        if (ioChart) {
+            ioChart.destroy();
+            ioChart = null;
+        }
+        ctx.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        return;
     }
+
+    ctx.style.display = 'block';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const labels = data.labels.map(l => new Date(l).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const inData = data.inbound;
+    const outData = data.outbound;
 
     if (ioChart) {
         ioChart.data.labels = labels;

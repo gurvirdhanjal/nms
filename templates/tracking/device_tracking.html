@@ -95,7 +95,7 @@
                         <button class="btn btn-info" id="syncBtn">
                             <i class="fas fa-sync-alt"></i> Sync IPs
                         </button>
-                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                        <button class="btn btn-success" onclick="openAddDeviceModal()">
                             <i class="fas fa-plus"></i> Add Manual
                         </button>
                     </div>
@@ -245,7 +245,7 @@
                                         </div>
                                         <div class="btn-group btn-group-sm mt-1" role="group">
                                             <button class="btn btn-outline-warning edit-device"
-                                                data-device='{{ device.to_dict() | tojson }}' title="Edit Device">
+                                                data-device='{{ device.to_dict() | tojson | e }}' title="Edit Device">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button class="btn btn-outline-danger delete-device"
@@ -263,8 +263,7 @@
                                     <i class="fas fa-laptop fa-3x text-muted mb-3"></i>
                                     <h5>No Devices Configured</h5>
                                     <p class="text-muted">Scan your network or add devices manually to get started.</p>
-                                    <button class="btn btn-primary mt-2" data-bs-toggle="modal"
-                                        data-bs-target="#addDeviceModal">
+                                    <button class="btn btn-primary mt-2" onclick="openAddDeviceModal()">
                                         <i class="fas fa-plus"></i> Add Your First Device
                                     </button>
                                 </td>
@@ -512,6 +511,7 @@
 
         // Save device
         document.getElementById('saveDeviceBtn').addEventListener('click', function () {
+            const originalMac = document.getElementById('editMac').value;
             const formData = {
                 device_name: document.getElementById('deviceName').value,
                 employee_name: document.getElementById('employeeName').value,
@@ -521,6 +521,9 @@
                 department: document.getElementById('department').value,
                 notes: document.getElementById('notes').value
             };
+            if (originalMac) {
+                formData.mac_address = originalMac;
+            }
 
             if (!formData.device_name || !formData.mac_address) {
                 showNotification('Device Name and MAC Address are required', 'warning');
@@ -533,6 +536,12 @@
                 showNotification('Invalid MAC address format. Use format: 00:1A:2B:3C:4D:5E', 'warning');
                 return;
             }
+
+            // Show loading state
+            const btn = document.getElementById('saveDeviceBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            btn.disabled = true;
 
             fetch('/api/tracking/save-device', {
                 method: 'POST',
@@ -560,22 +569,33 @@
                 .catch(error => {
                     console.error('Save error:', error);
                     showNotification('Save error: ' + error.message, 'danger');
+                    alert('Save Failed: ' + error.message);
+                })
+                .finally(() => {
+                    if (typeof btn !== 'undefined') {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    } else {
+                        // Fallback
+                        document.getElementById('saveDeviceBtn').disabled = false;
+                        document.getElementById('saveDeviceBtn').innerHTML = 'Save Device';
+                    }
                 });
+
         });
 
         // Edit device buttons
         document.querySelectorAll('.edit-device').forEach(btn => {
             btn.addEventListener('click', function () {
-                // Use inline data attributes instead of parsing JSON
-                const device = {
-                    device_name: this.closest('tr').querySelector('.device-name').textContent.trim(),
-                    employee_name: this.closest('tr').querySelector('.employee-name').textContent.trim(),
-                    mac_address: this.getAttribute('data-mac'),
-                    ip_address: this.closest('tr').querySelector('.device-ip').textContent.trim(),
-                    hostname: this.closest('tr').querySelector('.device-hostname')?.textContent.trim() || '',
-                    department: this.closest('tr').querySelector('.device-department')?.textContent.trim() || '',
-                    notes: this.getAttribute('data-notes') || ''
-                };
+                const raw = this.getAttribute('data-device');
+                let device = {};
+                if (raw) {
+                    try {
+                        device = JSON.parse(raw);
+                    } catch (e) {
+                        console.error('Invalid device data:', e, raw);
+                    }
+                }
                 populateEditForm(device);
             });
         });
@@ -610,6 +630,8 @@
         document.getElementById('addDeviceModal').addEventListener('hidden.bs.modal', function () {
             clearDeviceForm();
         });
+
+
     }
 
     // Show delete confirmation modal
@@ -662,15 +684,42 @@
         document.getElementById('hostname').value = device.hostname || '';
         document.getElementById('department').value = device.department || '';
         document.getElementById('notes').value = device.notes || '';
+        document.getElementById('editMac').value = device.mac_address || '';
 
-        const modal = new bootstrap.Modal(document.getElementById('addDeviceModal'));
+        const macField = document.getElementById('macAddress');
+        macField.readOnly = true;
+        macField.classList.add('bg-light');
+
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('addDeviceModal'));
         modal.show();
     }
 
-    // Clear device form
+    // Open Add Device Modal safely
+    window.openAddDeviceModal = function () {
+        clearDeviceForm();
+        const modalEl = document.getElementById('addDeviceModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    };
+
+    // Clear device form and reset states
     function clearDeviceForm() {
         document.getElementById('modalTitle').textContent = 'Add New Device';
         document.getElementById('deviceForm').reset();
+        document.getElementById('editMac').value = '';
+
+        const macField = document.getElementById('macAddress');
+        if (macField) {
+            macField.readOnly = false;
+            macField.classList.remove('bg-light');
+        }
+
+        // Reset save button state
+        const btn = document.getElementById('saveDeviceBtn');
+        if (btn) {
+            btn.innerHTML = 'Save Device';
+            btn.disabled = false;
+        }
     }
 
     // Export devices list

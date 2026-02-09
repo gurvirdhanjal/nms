@@ -27,7 +27,7 @@ class Device(db.Model):
     # Phase 3: Transport & Capability
     transport_type = db.Column(db.String(20), default='SNMP') # SNMP, API, SSH
     if_index_map = db.Column(db.JSON, nullable=True) # Stores ifIndex -> canonical_name mapping
-    ssh_profile_id = db.Column(db.Integer, db.ForeignKey('ssh_profiles.profile_id'), nullable=True)
+    # ssh_profile_id = db.Column(db.Integer, db.ForeignKey('ssh_profiles.profile_id'), nullable=True)
     
     # Phase 3: Infrastructure Mapping & Topology
     parent_switch_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=True)
@@ -38,7 +38,7 @@ class Device(db.Model):
     cos_tier = db.Column(db.String(20), default='Standard') # Critical, Standard, Low
     
     # Relationships
-    ssh_profile = db.relationship('SSHProfile', backref=db.backref('devices', lazy=True))
+    # ssh_profile = db.relationship('SSHProfile', backref=db.backref('devices', lazy=True))
     
     # Explicitly specify foreign_keys to resolve AmbiguousForeignKeysError
     child_devices = db.relationship(
