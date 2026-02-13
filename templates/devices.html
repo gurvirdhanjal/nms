@@ -124,17 +124,19 @@
                             <option value="">All Status</option>
                             <option value="Online">Online</option>
                             <option value="Offline">Offline</option>
+                            <option value="Maintenance">Maintenance</option>
                         </select>
 
                         <select class="form-select form-select-sm bg-dark text-light border-secondary" id="typeFilter"
                             onchange="filterTable()" style="max-width: 140px;">
                             <option value="">All Types</option>
                             <option value="switch">Switch</option>
+                            <option value="access_point">Access Point</option>
                             <option value="router">Router</option>
                             <option value="firewall">Firewall</option>
                             <option value="server">Server</option>
                             <option value="workstation">Workstation</option>
-                            <option value="camera">Camera</option>
+                            <option value="camera">Camera/IoT</option>
                             <option value="printer">Printer</option>
                             <option value="mobile">Mobile</option>
                             <option value="iot">IoT</option>
@@ -180,28 +182,19 @@
                     Found {{ devices|length }} device(s) in the database.
                 </div>
                 <div class="table-responsive">
+
                     <table class="table table-hover">
                         <thead class="table-dark">
                             <tr>
-                                <th>
+                                <th style="width: 40px;">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
                                     </div>
                                 </th>
-                                <th onclick="sortTable(1)" style="cursor: pointer;">Device Name <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(2)" style="cursor: pointer;">IP Address <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(3)" style="cursor: pointer;">Type <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(4)" style="cursor: pointer;">Status <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(5)" style="cursor: pointer;">Hostname <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(6)" style="cursor: pointer;">MAC Address <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
-                                <th onclick="sortTable(7)" style="cursor: pointer;">Monitoring <i
-                                        class="fas fa-sort float-end mt-1 text-muted"></i></th>
+                                <th>Name</th>
+                                <th>IP Address</th>
+                                <th>Type</th>
+                                <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -219,65 +212,58 @@
                                     {% if device.rstplink %}
                                     <i class="fas fa-video text-info ms-1" title="RTSP Stream Available"></i>
                                     {% endif %}
+                                    <div class="small text-muted mt-1">
+                                        <span class="me-1">MAC</span>
+                                        <code>{{ device.macaddress or 'N/A' }}</code>
+                                    </div>
                                 </td>
                                 <td><code>{{ device.device_ip }}</code></td>
                                 <td>
-                                    <select class="form-select form-select-sm"
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                         onchange="updateDeviceType({{ device.device_id }}, this.value, this)"
-                                        style="width: 130px; background-color: #2c3034; color: #fff; border: 1px solid #444; font-size: 0.8rem; padding: 0.2rem 0.5rem;">
-                                        {% set type = device.device_type|lower %}
-                                        <option value="firewall" {{ 'selected' if type=='firewall' }}>Firewall</option>
-                                        <option value="router" {{ 'selected' if type=='router' }}>Router</option>
-                                        <option value="switch" {{ 'selected' if type=='switch' }}>Switch</option>
-                                        <option value="access_point" {{ 'selected' if type=='access_point' }}>Access
-                                            Point</option>
-                                        <option value="server" {{ 'selected' if type=='server' }}>Server</option>
-                                        <option value="workstation" {{ 'selected' if type=='workstation' }}>Workstation
-                                        </option>
-                                        <option value="printer" {{ 'selected' if type=='printer' }}>Printer</option>
-                                        <option value="camera" {{ 'selected' if type=='camera' }}>Camera</option>
-                                        <option value="mobile" {{ 'selected' if type=='mobile' }}>Mobile</option>
-                                        <option value="iot" {{ 'selected' if type=='iot' }}>IoT</option>
-                                        <option value="unknown" {{ 'selected' if type=='unknown' or
-                                            type=='network device' }}>Unknown</option>
-                                        {% if type not in ['firewall', 'router', 'switch', 'access_point', 'server',
-                                        'workstation', 'printer', 'camera', 'mobile', 'iot', 'unknown', 'network
-                                        device'] %}
-                                        <option value="{{ device.device_type }}" selected>{{ device.device_type }}
-                                        </option>
-                                        {% endif %}
+                                        style="width: 130px;">
+                                        <option value="unknown" {% if (device.device_type or '')|lower in ['','unknown'] %}selected{% endif %}>
+                                            Unknown</option>
+                                        <option value="switch" {% if device.device_type|lower=='switch' %}selected{% endif %}>
+                                            Switch</option>
+                                        <option value="access_point" {% if device.device_type|lower=='access_point' %}selected{% endif %}>
+                                            Access Point</option>
+                                        <option value="router" {% if device.device_type|lower=='router' %}selected{% endif %}>
+                                            Router</option>
+                                        <option value="firewall" {% if device.device_type|lower=='firewall' %}selected{% endif %}>
+                                            Firewall</option>
+                                        <option value="server" {% if device.device_type|lower=='server' %}selected{% endif %}>
+                                            Server</option>
+                                        <option value="workstation" {% if device.device_type|lower=='workstation' %}selected{% endif %}>
+                                            Workstation</option>
+                                        <option value="camera" {% if device.device_type|lower in ['camera','camera/iot','camera_iot'] %}selected{% endif %}>
+                                            Camera/IoT</option>
+                                        <option value="printer" {% if device.device_type|lower=='printer' %}selected{% endif %}>
+                                            Printer</option>
+                                        <option value="mobile" {% if device.device_type|lower=='mobile' %}selected{% endif %}>
+                                            Mobile</option>
+                                        <option value="iot" {% if device.device_type|lower=='iot' %}selected{% endif %}>IoT</option>
                                     </select>
                                 </td>
-                                <td class="text-center">
-                                    <span id="status-{{ device.device_id }}" class="status-indicator status-checking"
-                                        title="Checking..."></span>
-                                </td>
-                                <td>{{ device.hostname or 'Unknown' }}</td>
-                                <td><small>{{ device.macaddress or 'N/A' }}</small></td>
                                 <td>
-                                    {% if device.is_monitored %}
-                                    <span class="badge bg-success">Enabled</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">Disabled</span>
-                                    {% endif %}
+                                    <span id="status-{{ device.device_id }}" class="status-indicator status-unknown"
+                                        title="Unknown"></span>
                                 </td>
+
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-primary"
-                                            onclick="editDevice({{ device.device_id }})" title="Edit Device">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
                                         <button class="btn btn-outline-info"
-                                            onclick="viewDeviceDetails({{ device.device_id }})" title="View Details">
+                                            onclick="showDeviceDetails({{ device.device_id }})" title="Details">
                                             <i class="fas fa-info-circle"></i>
                                         </button>
                                         <button class="btn btn-outline-warning"
                                             onclick="toggleMonitoring({{ device.device_id }})"
-                                            title="{{ 'Disable' if device.is_monitored else 'Enable' }} Monitoring">
-                                            <i class="fas {{ 'fa-pause' if device.is_monitored else 'fa-play' }}"></i>
+                                            title="Toggle Monitoring">
+                                            <i
+                                                class="fas {% if device.is_monitored %}fa-eye-slash{% else %}fa-eye{% endif %}"></i>
                                         </button>
                                         <button class="btn btn-outline-danger"
-                                            onclick="deleteDevice({{ device.device_id }})" title="Delete Device">
+                                            onclick="deleteDevice({{ device.device_id }})" title="Delete">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </div>
@@ -288,18 +274,13 @@
                     </table>
                 </div>
                 {% else %}
-                <div class="text-center py-4">
-                    <i class="fas fa-server fa-3x text-muted mb-3"></i>
+                <div class="empty-state">
+                    <i class="fas fa-server fa-3x mb-3"></i>
                     <h5>No Devices Found</h5>
-                    <p class="text-muted">Get started by adding your first device or scanning your network.</p>
-                    <div class="d-grid gap-2 d-md-block">
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#deviceModal">
-                            <i class="fas fa-plus"></i> Add First Device
-                        </button>
-                        <a href="{{ url_for('scanning_bp.scanner_page') }}" class="btn btn-outline-success">
-                            <i class="fas fa-search"></i> Scan Network
-                        </a>
-                    </div>
+                    <p>Start a network scan to discover devices on your network.</p>
+                    <a href="{{ url_for('scanning_bp.scanner_page') }}" class="btn btn-primary mt-2">
+                        <i class="fas fa-search"></i> Go to Scanner
+                    </a>
                 </div>
                 {% endif %}
             </div>
@@ -308,192 +289,346 @@
 </div>
 
 <!-- Device Modal -->
-<div class="modal fade" id="deviceModal" tabindex="-1" aria-labelledby="deviceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deviceModalLabel">
-                    {% if device %}Edit Device{% else %}Add New Device{% endif %}
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<div class="modal fade" id="deviceModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="fas fa-plus-circle text-primary"></i> Add / Edit Device</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
-            <form method="POST" action="{{ url_for('devices_bp.save_device') }}">
-                <div class="modal-body">
-                    {% if device %}
-                    <input type="hidden" name="device_id" value="{{ device.device_id }}">
-                    {% endif %}
+            <div class="modal-body">
+                <form id="deviceForm" action="{{ url_for('devices_bp.save_device') }}" method="POST">
+                    <input type="hidden" name="device_id" id="device_id">
 
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="device_name" class="form-label">Device Name *</label>
-                                <input type="text" class="form-control" id="device_name" name="device_name"
-                                    value="{% if device %}{{ device.device_name }}{% elif prefill_data and prefill_data.hostname %}{{ prefill_data.hostname }}{% endif %}"
-                                    required placeholder="e.g., Main Router">
+                    <!-- Navbar Tabs -->
+                    <ul class="nav nav-tabs border-secondary mb-3" id="deviceTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active text-light" id="tab-identity-btn" data-bs-toggle="tab"
+                                data-bs-target="#tab-identity" type="button" role="tab"><i class="fas fa-id-card"></i>
+                                Identity</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link text-light" id="tab-monitoring-btn" data-bs-toggle="tab"
+                                data-bs-target="#tab-monitoring" type="button" role="tab"><i
+                                    class="fas fa-heartbeat"></i> Monitoring</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link text-light" id="tab-ops-btn" data-bs-toggle="tab"
+                                data-bs-target="#tab-ops" type="button" role="tab"><i class="fas fa-cogs"></i>
+                                Operations</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content" id="deviceTabsContent">
+
+                        <!-- IDENTITY TAB -->
+                        <div class="tab-pane fade show active" id="tab-identity" role="tabpanel">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Device Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="device_name" id="device_name" required placeholder="e.g. APP-SERVER-01">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">IP Address <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="device_ip" id="device_ip" required placeholder="e.g. 192.168.1.5">
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Device Type <span class="text-danger">*</span></label>
+                                    <select class="form-select bg-dark text-light border-secondary" name="device_type"
+                                        id="device_type" required onchange="toggleDeviceTypeFields()">
+                                        <option value="server">Server</option>
+                                        <option value="switch">Switch</option>
+                                        <option value="router">Router</option>
+                                        <option value="firewall">Firewall</option>
+                                        <option value="workstation">Workstation</option>
+                                        <option value="camera">Camera/IoT</option>
+                                        <option value="printer">Printer</option>
+                                        <option value="iot">IoT</option>
+                                        <option value="unknown">Unknown</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Hostname</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="hostname" id="hostname" placeholder="Optional">
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">MAC Address</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="macaddress" id="macaddress" placeholder="00:11:22:33:44:55">
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Manufacturer</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="manufacturer" id="manufacturer" placeholder="Optional">
+                                </div>
+
+                                <div class="col-md-12">
+                                    <label class="form-label">Location</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="location" id="location" placeholder="e.g. Data Center / Rack 2 / U5">
+                                </div>
+
+                                <div class="col-md-12">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control bg-dark text-light border-secondary"
+                                        name="description" id="description" rows="2"
+                                        placeholder="Optional notes..."></textarea>
+                                </div>
+
+                                <!-- Camera Specific (Conditional) -->
+                                <div id="cameraFields" style="display: none;"
+                                    class="col-12 border-top border-secondary pt-2 mt-2">
+                                    <h6 class="text-info"><i class="fas fa-video"></i> Camera Settings</h6>
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Brand</label>
+                                            <select class="form-select bg-dark text-light border-secondary" name="brand"
+                                                id="brand">
+                                                <option value="">Generic</option>
+                                                <option value="hikvision">Hikvision</option>
+                                                <option value="dahua">Dahua</option>
+                                                <option value="axis">Axis</option>
+                                                <option value="uniview">Uniview</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">RTSP Port</label>
+                                            <input type="number"
+                                                class="form-control bg-dark text-light border-secondary" name="port"
+                                                id="port" value="554">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Username</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="username" id="username">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Password</label>
+                                            <input type="password"
+                                                class="form-control bg-dark text-light border-secondary" name="password"
+                                                id="password">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Custom RTSP Link</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="rstplink" id="rstplink"
+                                                placeholder="rtsp://user:pass@ip:554/stream">
+                                            <div class="form-text text-muted">Leave blank to auto-generate based on
+                                                brand.</div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+
+                        <!-- MONITORING TAB -->
+                        <div class="tab-pane fade" id="tab-monitoring" role="tabpanel">
                             <div class="mb-3">
-                                <label for="device_ip" class="form-label">IP Address *</label>
-                                <input type="text" class="form-control" id="device_ip" name="device_ip"
-                                    value="{% if device %}{{ device.device_ip }}{% elif prefill_data and prefill_data.device_ip %}{{ prefill_data.device_ip }}{% endif %}"
-                                    required placeholder="e.g., 192.168.1.1">
+                                <label class="form-label">Monitoring Mode</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_ping"
+                                        value="ping" checked onchange="toggleMonitoringFields()">
+                                    <label class="btn btn-outline-secondary" for="mode_ping">Ping Only</label>
+
+                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_snmp"
+                                        value="snmp" onchange="toggleMonitoringFields()">
+                                    <label class="btn btn-outline-secondary" for="mode_snmp">SNMP</label>
+
+                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_agent"
+                                        value="agent" onchange="toggleMonitoringFields()">
+                                    <label class="btn btn-outline-secondary" for="mode_agent">Agent</label>
+
+                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_wmi"
+                                        value="wmi" onchange="toggleMonitoringFields()">
+                                    <label class="btn btn-outline-secondary" for="mode_wmi">WMI</label>
+                                </div>
+                            </div>
+
+                            <!-- SNMP Fields -->
+                            <div id="snmpFields" style="display: none;"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                                <h6 class="text-info mb-3">SNMP Configuration</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Version</label>
+                                        <select class="form-select bg-dark text-light border-secondary"
+                                            name="snmp_version" id="snmp_version" onchange="toggleSnmpVersion()">
+                                            <option value="v2c">v2c</option>
+                                            <option value="v3">v3</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Port</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                                            name="snmp_port" id="snmp_port" value="161">
+                                    </div>
+
+                                    <!-- v2c Community -->
+                                    <div class="col-md-12" id="snmp_v2_fields">
+                                        <label class="form-label">Community String</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            name="snmp_community" id="snmp_community" value="public">
+                                    </div>
+
+                                    <!-- v3 Fields -->
+                                    <div class="col-md-12" id="snmp_v3_fields" style="display: none;">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Username</label>
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="snmp_username" id="snmp_username">
+                                            </div>
+                                            <div class="col-md-6"></div>
+
+                                            <div class="col-md-6">
+                                                <label class="form-label">Auth Protocol</label>
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    name="snmp_auth_proto" id="snmp_auth_proto">
+                                                    <option value="">None</option>
+                                                    <option value="MD5">MD5</option>
+                                                    <option value="SHA">SHA</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Auth Password</label>
+                                                <input type="password"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="snmp_auth_password" id="snmp_auth_password">
+                                            </div>
+
+                                            <div class="col-md-6">
+                                                <label class="form-label">Priv Protocol</label>
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    name="snmp_priv_proto" id="snmp_priv_proto">
+                                                    <option value="">None</option>
+                                                    <option value="DES">DES</option>
+                                                    <option value="AES">AES</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Priv Password</label>
+                                                <input type="password"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="snmp_priv_password" id="snmp_priv_password">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Agent Fields -->
+                            <div id="agentFields" style="display: none;"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                                <h6 class="text-info mb-3">Agent Configuration</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Token / Key</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            name="agent_token" id="agent_token">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">OS Type</label>
+                                        <select class="form-select bg-dark text-light border-secondary"
+                                            name="agent_os_type" id="agent_os_type">
+                                            <option value="windows">Windows</option>
+                                            <option value="linux">Linux</option>
+                                            <option value="macos">macOS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Check-in Interval (sec)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                                            name="agent_interval" id="agent_interval" value="300">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- WMI Fields -->
+                            <div id="wmiFields" style="display: none;"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                                <h6 class="text-info mb-3">WMI Configuration</h6>
+                                <div class="alert alert-warning py-1 small"><i class="fas fa-exclamation-triangle"></i>
+                                    Not recommended for long-term monitoring.</div>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Domain</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            name="wmi_domain" id="wmi_domain">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Username</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            name="wmi_username" id="wmi_username">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Password</label>
+                                        <input type="password" class="form-control bg-dark text-light border-secondary"
+                                            name="wmi_password" id="wmi_password">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Connectivity Test -->
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-outline-info" id="testConnectBtn"
+                                    onclick="testConnectivity()">
+                                    <i class="fas fa-plug"></i> Test Connectivity
+                                </button>
+                                <div id="testResult" class="mt-2"></div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="device_type" class="form-label">Device Type *</label>
-                                <select class="form-control" id="device_type" name="device_type" required>
-                                    <option value="">Select Type</option>
-                                    <option value="router" {{ 'selected' if device and device.device_type=='router'
-                                        else '' }}>Router</option>
-                                    <option value="switch" {{ 'selected' if device and device.device_type=='switch'
-                                        else '' }}>Switch</option>
-                                    <option value="camera" {{ 'selected' if device and device.device_type=='camera'
-                                        else '' }}>Camera</option>
-                                    <option value="server" {{ 'selected' if device and device.device_type=='server'
-                                        else '' }}>Server</option>
-                                    <option value="workstation" {{ 'selected' if device and
-                                        device.device_type=='workstation' else '' }}>Workstation</option>
-                                    <option value="printer" {{ 'selected' if device and device.device_type=='printer'
-                                        else '' }}>Printer</option>
-                                    <option value="other" {{ 'selected' if device and device.device_type=='other'
-                                        else '' }}>Other</option>
-                                </select>
+                        <!-- OPERATIONS TAB -->
+                        <div class="tab-pane fade" id="tab-ops" role="tabpanel">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="is_monitored" id="is_monitored"
+                                    checked>
+                                <label class="form-check-label" for="is_monitored">Monitoring Enabled</label>
+                                <div class="form-text text-muted">Identify if the system should actively poll this
+                                    device.</div>
+                            </div>
+
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="maintenance_mode"
+                                    id="maintenance_mode">
+                                <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
+                                <div class="form-text text-muted">Suppress alerts for this device.</div>
+                            </div>
+
+                            <div class="alert alert-dark border-secondary">
+                                <small><i class="fas fa-info-circle"></i> Advanced operational settings like "Alert
+                                    Thresholds" and "Auto-Discovery Neighbors" can be configured after creation.</small>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="brand" class="form-label">Camera Brand</label>
-                                <select class="form-control" id="brand" name="brand">
-                                    <option value="">Select Brand (Optional)</option>
-                                    <option value="hikvision" {{ 'selected' if device and device.brand=='hikvision'
-                                        else '' }}>Hikvision</option>
-                                    <option value="dahua" {{ 'selected' if device and device.brand=='dahua' else '' }}>
-                                        Dahua</option>
-                                    <option value="axis" {{ 'selected' if device and device.brand=='axis' else '' }}>
-                                        Axis</option>
-                                    <option value="uniview" {{ 'selected' if device and device.brand=='uniview' else ''
-                                        }}>Uniview</option>
-                                    <option value="generic" {{ 'selected' if device and device.brand=='generic' else ''
-                                        }}>Generic (ONVIF)</option>
-                                </select>
-                                <div class="form-text">Auto-generates RTSP link if selected</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="port" class="form-label">Port</label>
-                                <input type="number" class="form-control" id="port" name="port"
-                                    value="{{ device.port if device else '' }}" placeholder="e.g., 80, 554">
-                            </div>
-                        </div>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username"
-                                    placeholder="Device username">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
-                                <input type="password" class="form-control" id="password" name="password"
-                                    placeholder="Device password">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="rstplink" class="form-label">RTSP Link</label>
-                        <input type="text" class="form-control" id="rstplink" name="rstplink"
-                            value="{{ device.rstplink if device else '' }}"
-                            placeholder="e.g., rtsp://username:password@ip:port/stream">
-                        <div class="form-text">Leave empty to auto-generate from credentials above</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="macaddress" class="form-label">MAC Address</label>
-                        <input type="text" class="form-control" id="macaddress" name="macaddress"
-                            value="{% if device %}{{ device.macaddress }}{% elif prefill_data and prefill_data.macaddress %}{{ prefill_data.macaddress }}{% endif %}"
-                            placeholder="e.g., 00:1A:2B:3C:4D:5E">
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="hostname" class="form-label">Hostname</label>
-                        <input type="text" class="form-control" id="hostname" name="hostname"
-                            value="{% if device %}{{ device.hostname }}{% elif prefill_data and prefill_data.hostname %}{{ prefill_data.hostname }}{% endif %}"
-                            placeholder="Device hostname">
-                    </div>
-
-                    <div class="mb-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="is_monitored" name="is_monitored"
-                                {{ 'checked' if not device or device.is_monitored else '' }}>
-                            <label class="form-check-label" for="is_monitored">
-                                Enable monitoring for this device
-                            </label>
-                        </div>
-                    </div>
-
-                    {% if prefill_data %}
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Pre-filled with scan results:</strong>
-                        <ul class="mb-0 mt-2">
-                            {% if prefill_data.device_ip %}<li>IP: {{ prefill_data.device_ip }}</li>{% endif %}
-                            {% if prefill_data.hostname %}<li>Hostname: {{ prefill_data.hostname }}</li>{% endif %}
-                            {% if prefill_data.macaddress %}<li>MAC: {{ prefill_data.macaddress }}</li>{% endif %}
-                        </ul>
-                    </div>
-                    {% endif %}
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        {% if device %}Update Device{% else %}Add Device{% endif %}
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="deviceForm" class="btn btn-primary">Save Device</button>
+            </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
 <script>
-    let statusCheckTimers = {};
-    const unclassifiedCount = {{ unclassified_count|default (0, true) | int }};
-
-    function cleanModalArtifacts() {
-        // Remove lingering backdrops and restore body scroll
-        document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-    }
-
-    // Check device status on page load
     document.addEventListener('DOMContentLoaded', function () {
-        const tableRows = document.querySelectorAll('tbody tr[data-device-id]');
-        console.log('Found ' + tableRows.length + ' devices to check');
-
-        tableRows.forEach(row => {
-            const deviceId = row.getAttribute('data-device-id');
-            const deviceIp = row.getAttribute('data-device-ip');
-            if (deviceId && deviceIp) {
-                checkDeviceStatus(deviceId, deviceIp);
-            }
-        });
+        // Initialize components
+        const typeSelect = document.getElementById('device_type');
+        if (typeSelect) {
+            typeSelect.addEventListener('change', toggleDeviceTypeFields);
+            toggleDeviceTypeFields(); // initial state
+        }
 
         // Bulk Selection Logic
         const selectAll = document.getElementById('selectAllCheckbox');
@@ -512,16 +647,137 @@
             cb.addEventListener('change', updateBulkUI);
         });
 
-        // Auto-classify devices with unknown type (throttled)
-        autoClassifyDevicesIfNeeded();
+        // Initialize status polling
+        fetchAllStatuses();
+        startStatusPolling();
+
+        // Auto-classify if needed
+        const unclassifiedCount = {{ unclassified_count|default (0, true) | int
+    }};
+    if (unclassifiedCount > 0) {
+        autoClassifyDevicesIfNeeded(unclassifiedCount);
+    }
+
+    bindStatusPollingToModal();
+
+    // Check for edit params
+    const urlParams = new URLSearchParams(window.location.search);
+    const modal = document.getElementById('deviceModal');
+    if (modal && urlParams.has('edit_id')) {
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
     });
 
-    // Global modal cleanup to prevent "stuck" page after close
-    document.addEventListener('hidden.bs.modal', function () {
-        if (!document.querySelector('.modal.show')) {
-            cleanModalArtifacts();
+    function toggleDeviceTypeFields() {
+        const typeSelect = document.getElementById('device_type');
+        if (!typeSelect) return;
+        const val = typeSelect.value.toLowerCase();
+
+        const cameraFields = document.getElementById('cameraFields');
+        const brandField = document.getElementById('brand');
+
+        if (val === 'camera' || val === 'camera_iot' || val === 'camera/iot') {
+            if (cameraFields) cameraFields.style.display = 'block';
+        } else {
+            if (cameraFields) cameraFields.style.display = 'none';
         }
-    });
+    }
+
+    function toggleMonitoringFields() {
+        const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
+
+        document.getElementById('snmpFields').style.display = mode === 'snmp' ? 'block' : 'none';
+        document.getElementById('agentFields').style.display = mode === 'agent' ? 'block' : 'none';
+        document.getElementById('wmiFields').style.display = mode === 'wmi' ? 'block' : 'none';
+    }
+
+    function toggleSnmpVersion() {
+        const version = document.getElementById('snmp_version').value;
+        const v2Fields = document.getElementById('snmp_v2_fields');
+        const v3Fields = document.getElementById('snmp_v3_fields');
+
+        if (version === 'v2c') {
+            v2Fields.style.display = 'block';
+            v3Fields.style.display = 'none';
+        } else {
+            v2Fields.style.display = 'none';
+            v3Fields.style.display = 'block';
+        }
+    }
+
+    function testConnectivity() {
+        const btn = document.getElementById('testConnectBtn');
+        const resultDiv = document.getElementById('testResult');
+        const originalText = btn.innerHTML;
+
+        // Gather data
+        const ip = document.getElementById('device_ip').value;
+        if (!ip) {
+            resultDiv.innerHTML = '<div class="alert alert-danger py-1">IP Address is required</div>';
+            return;
+        }
+
+        const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
+        const formData = {
+            ip: ip,
+            mode: mode,
+            snmp_community: document.getElementById('snmp_community').value,
+            snmp_version: document.getElementById('snmp_version').value,
+            snmp_port: document.getElementById('snmp_port').value,
+            // Add other fields if needed for auth
+        };
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+        resultDiv.innerHTML = '';
+
+        fetch('/api/check_connectivity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = `<div class="alert alert-success py-1"><i class="fas fa-check-circle"></i> ${data.message}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger py-1"><i class="fas fa-times-circle"></i> ${data.message}</div>`;
+                }
+            })
+            .catch(err => {
+                resultDiv.innerHTML = `<div class="alert alert-danger py-1">Error: ${err.message}</div>`;
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+    }
+
+    // Reset modal on open
+    const deviceModalEl = document.getElementById('deviceModal');
+    if (deviceModalEl) {
+        deviceModalEl.addEventListener('show.bs.modal', function (event) {
+            // Check if relatedTarget (the button) has data-edit-id
+            const button = event.relatedTarget;
+            // If we implement edit later, check button dataset
+            // For now, assume Add
+            document.getElementById('deviceForm').reset();
+            document.getElementById('device_id').value = '';
+
+            // Reset tabs
+            const firstTab = document.querySelector('#deviceTabs button:first-child');
+            if (firstTab) {
+                const tab = new bootstrap.Tab(firstTab);
+                tab.show();
+            }
+
+            toggleDeviceTypeFields();
+            toggleMonitoringFields();
+            toggleSnmpVersion();
+            document.getElementById('testResult').innerHTML = '';
+        });
+    }
 
     function updateBulkUI() {
         const selected = document.querySelectorAll('.device-checkbox:checked');
@@ -529,10 +785,10 @@
         const bulkDiv = document.getElementById('bulkActions');
         const countSpan = document.getElementById('selectedCount');
 
-        if (count > 0) {
+        if (count > 0 && bulkDiv) {
             bulkDiv.style.display = 'flex';
-            countSpan.textContent = count;
-        } else {
+            if (countSpan) countSpan.textContent = count;
+        } else if (bulkDiv) {
             bulkDiv.style.display = 'none';
         }
     }
@@ -548,9 +804,11 @@
         }
 
         const btn = document.getElementById('bulkDeleteBtn');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
-        btn.disabled = true;
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+            btn.disabled = true;
+        }
 
         fetch('/api/devices/bulk_delete', {
             method: 'POST',
@@ -565,8 +823,6 @@
                         const row = document.querySelector(`tr[data-device-id="${id}"]`);
                         if (row) row.remove();
                     });
-
-                    // Update UI or Reload
                     alert(`Successfully deleted ${data.deleted} devices.`);
                     location.reload();
                 } else {
@@ -578,237 +834,111 @@
                 alert('Error deleting devices');
             })
             .finally(() => {
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                if (btn) {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
             });
     }
 
-    function autoClassifyDevicesIfNeeded() {
-        if (!unclassifiedCount || unclassifiedCount <= 0) return;
+    function updateDeviceType(deviceId, newType, selectIdx) {
+        const selectElement = selectIdx || event.target;
+        selectElement.disabled = true;
 
-        // Throttle: run at most once every 5 minutes per session
-        const key = 'autoClassifyTs';
-        const lastTs = parseInt(sessionStorage.getItem(key) || '0', 10);
-        const now = Date.now();
-        if (lastTs && (now - lastTs) < 5 * 60 * 1000) {
-            return;
-        }
-
-        console.log(`Auto-classify starting for ${unclassifiedCount} device(s)...`);
-
-        fetch('/api/devices/reclassify_all?auto=true', { credentials: 'same-origin' })
+        fetch('/api/devices/' + deviceId + '/update_type', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_type: newType })
+        })
             .then(response => response.json())
             .then(data => {
-                if (!data.success) return;
-                if (Array.isArray(data.updated_devices) && data.updated_devices.length > 0) {
-                    applyClassificationUpdates(data.updated_devices);
-                }
-                // Only throttle after a successful response
-                sessionStorage.setItem(key, String(Date.now()));
-            })
-            .catch(err => {
-                console.warn('Auto-classify failed:', err);
-                // Allow retry on next page load
-                sessionStorage.removeItem(key);
-            });
-    }
-
-    function applyClassificationUpdates(updatedDevices) {
-        updatedDevices.forEach(d => {
-            const row = document.querySelector(`tr[data-device-id="${d.device_id}"]`);
-            if (!row) return;
-            const select = row.querySelector('select');
-            if (!select) return;
-
-            const target = d.device_type || 'Unknown';
-            let option = Array.from(select.options)
-                .find(o => (o.value || '').toLowerCase() === target.toLowerCase());
-
-            if (!option) {
-                option = document.createElement('option');
-                option.value = target;
-                option.textContent = target;
-                select.appendChild(option);
-            }
-            select.value = option.value;
-        });
-    }
-
-    function checkDeviceStatus(deviceId, deviceIp) {
-        const statusElement = document.getElementById('status-' + deviceId);
-        if (!statusElement) return;
-
-        console.log('Checking status for device: ' + deviceIp);
-
-        // Set timeout for the request
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-        fetch('/api/monitoring/status?device_ip=' + encodeURIComponent(deviceIp), {
-            signal: controller.signal
-        })
-            .then(response => {
-                clearTimeout(timeoutId);
-                if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Status response for ' + deviceIp + ':', data);
-
-                if (data.devices && data.devices.length > 0) {
-                    const device = data.devices[0];
-                    const isOnline = device.status === 'Online';
-                    const statusClass = isOnline ? 'bg-success' : 'bg-danger';
-                    const statusIcon = isOnline ? 'fa-wifi' : 'fa-times-circle';
-                    const latencyText = device.latency ? ' (' + Math.round(device.latency) + 'ms)' : '';
-
-                    statusElement.className = 'status-indicator ' + (isOnline ? 'status-online' : 'status-offline');
-                    statusElement.title = device.status + latencyText; // Tooltip
-                    statusElement.innerHTML = ''; // No text inside
-
-                    console.log('✓ Device ' + deviceIp + ': ' + device.status);
+                if (data.success) {
+                    // Show success toast
+                    const toast = document.createElement('div');
+                    toast.className = 'position-fixed bottom-0 end-0 p-3';
+                    toast.style.zIndex = '9999';
+                    toast.innerHTML = `
+                <div class="toast show align-items-center text-white bg-success border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="fas fa-check-circle"></i> Device type updated to ${newType}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>`;
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
                 } else {
-                    statusElement.className = 'status-indicator status-unknown';
-                    statusElement.title = 'Unknown';
-                    statusElement.innerHTML = '';
-                    console.warn('No device data in response for ' + deviceIp);
+                    alert('Error updating type: ' + data.error);
                 }
             })
             .catch(error => {
-                clearTimeout(timeoutId);
-                console.error('Error checking device status for ' + deviceIp + ':', error.message);
-
-                // Mark as offline on any error
-                statusElement.className = 'status-indicator status-offline';
-                statusElement.title = 'Offline';
-                statusElement.innerHTML = '';
+                console.error('Error:', error);
+                alert('Error updating type');
+            })
+            .finally(() => {
+                selectElement.disabled = false;
             });
     }
 
-    function editDevice(deviceId) {
-        window.location.href = '/devices?edit_id=' + deviceId;
-    }
-
-    function viewDeviceDetails(deviceId) {
+    function showDeviceDetails(deviceId) {
         fetch('/api/devices/' + deviceId)
             .then(response => response.json())
             .then(data => {
-                const monitoringBadge = data.is_monitored
-                    ? '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Enabled</span>'
-                    : '<span class="badge bg-secondary"><i class="fas fa-ban"></i> Disabled</span>';
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
 
-                // Format dates
-                const createdDate = data.created_at ? new Date(data.created_at).toLocaleString() : 'N/A';
-                const updatedDate = data.updated_at ? new Date(data.updated_at).toLocaleString() : 'N/A';
+                const createdDate = new Date(data.created_at).toLocaleString();
+                const updatedDate = new Date(data.last_seen).toLocaleString();
+
+                let monitoringBadge = data.is_monitored
+                    ? '<span class="badge bg-success">Enabled</span>'
+                    : '<span class="badge bg-secondary">Disabled</span>';
 
                 const detailsHtml = `
-            <div class="device-details-container">
-                <div class="detail-item">
-                    <div class="detail-label">
-                        <i class="fas fa-tv"></i> Device Name
-                    </div>
-                    <div class="detail-value text-primary fw-bold">
-                        ${data.device_name}
-                    </div>
-                </div>
-                
-                <hr class="my-3">
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-network-wired"></i> IP Address
+                    <div class="device-details-container">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="detail-item">
+                                    <div class="detail-label"><i class="fas fa-tag"></i> Name</div>
+                                    <div class="detail-value">${data.device_name}</div>
+                                </div>
                             </div>
-                            <div class="detail-value">
-                                <code class="bg-light p-2 rounded">${data.device_ip}</code>
+                            <div class="col-md-6">
+                                <div class="detail-item">
+                                    <div class="detail-label"><i class="fas fa-network-wired"></i> IP</div>
+                                    <div class="detail-value">${data.device_ip}</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-6">
+                        <hr class="my-3">
                         <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-cube"></i> Device Type
+                            <div class="detail-label"><i class="fas fa-satellite-dish"></i> Status</div>
+                            <div class="detail-value">${monitoringBadge}</div>
+                        </div>
+                         <hr class="my-3">
+                        <div class="row">
+                             <div class="col-md-6">
+                                <div class="detail-item">
+                                    <div class="detail-label"><i class="fas fa-calendar-plus"></i> Added</div>
+                                    <div class="detail-value">${createdDate}</div>
+                                </div>
                             </div>
-                            <div class="detail-value">
-                                <span class="badge bg-info">${data.device_type}</span>
+                            <div class="col-md-6">
+                                <div class="detail-item">
+                                    <div class="detail-label"><i class="fas fa-sync"></i> Updated</div>
+                                    <div class="detail-value">${updatedDate}</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-                
-                <hr class="my-3">
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-globe"></i> Hostname
-                            </div>
-                            <div class="detail-value">
-                                ${data.hostname || '<span class="text-muted">N/A</span>'}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-address-card"></i> MAC Address
-                            </div>
-                            <div class="detail-value">
-                                <small class="text-muted">${data.macaddress || 'N/A'}</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <hr class="my-3">
-                
-                <div class="detail-item">
-                    <div class="detail-label">
-                        <i class="fas fa-satellite-dish"></i> Monitoring Status
-                    </div>
-                    <div class="detail-value">
-                        ${monitoringBadge}
-                    </div>
-                </div>
-                
-                <hr class="my-3">
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-calendar-plus"></i> Added Date
-                            </div>
-                            <div class="detail-value">
-                                <small><i class="fas fa-clock text-success"></i> ${createdDate}</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="detail-item">
-                            <div class="detail-label">
-                                <i class="fas fa-calendar-check"></i> Last Updated
-                            </div>
-                            <div class="detail-value">
-                                <small><i class="fas fa-sync text-info"></i> ${updatedDate}</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+                    </div>`;
 
-                // Create and show modal
-                const modalId = 'deviceDetailsModal';
-                let modal = document.getElementById(modalId);
-
+                let modal = document.getElementById('deviceDetailsModal');
                 if (!modal) {
                     modal = document.createElement('div');
-                    modal.id = modalId;
+                    modal.id = 'deviceDetailsModal';
                     modal.className = 'modal fade';
                     modal.setAttribute('tabindex', '-1');
                     modal.setAttribute('aria-hidden', 'true');
@@ -816,47 +946,39 @@
                 }
 
                 modal.innerHTML = `
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header bg-gradient" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                        <h5 class="modal-title text-white">
-                            <i class="fas fa-info-circle"></i> Device Details
-                        </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        ${detailsHtml}
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
-                            <i class="fas fa-times"></i> Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-dark text-white">
+                                <h5 class="modal-title"><i class="fas fa-info-circle"></i> Device Details</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">${detailsHtml}</div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>`;
 
                 const bsModal = new bootstrap.Modal(modal);
+                modal.addEventListener('hidden.bs.modal', function handler() {
+                    modal.removeEventListener('hidden.bs.modal', handler);
+                    modal.remove();
+                });
                 bsModal.show();
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error fetching device details');
+                alert('Error fetching details');
             });
     }
 
     function toggleMonitoring(deviceId) {
         if (confirm('Toggle monitoring for this device?')) {
-            fetch('/api/devices/' + deviceId + '/toggle_monitoring', {
-                method: 'POST'
-            })
+            fetch('/api/devices/' + deviceId + '/toggle_monitoring', { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    } else {
-                        alert('Error toggling monitoring');
-                    }
+                    if (data.success) location.reload();
+                    else alert('Error toggling monitoring');
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -866,28 +988,21 @@
     }
 
     function deleteDevice(deviceId) {
-        if (confirm('Are you sure you want to delete this device? This action cannot be undone.')) {
+        if (confirm('Are you sure you want to delete this device?')) {
             window.location.href = '/devices?delete_id=' + deviceId;
         }
     }
 
-    // Auto-open modal if editing device or prefill data exists
-    document.addEventListener('DOMContentLoaded', function () {
-        const modal = document.getElementById('deviceModal');
-        const urlParams = new URLSearchParams(window.location.search);
+    let statusPollingInterval = null;
 
-        if (modal && urlParams.has('edit_id')) {
-            const bsModal = new bootstrap.Modal(modal);
-            bsModal.show();
-        }
-    });
-
-    // Bulk Status Update Function
     function fetchAllStatuses() {
-        console.log('Fetching status for ALL devices...');
-        fetch('/api/monitoring/status')
+        if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
+            window.cleanupBootstrapModal();
+        }
+
+        fetch('/api/monitoring/status?mode=latest&fallback=live')
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                if (!response.ok) throw new Error('Network response not ok');
                 return response.json();
             })
             .then(data => {
@@ -895,219 +1010,121 @@
                     data.devices.forEach(device => {
                         const statusElement = document.getElementById('status-' + device.device_id);
                         if (statusElement) {
-                            const isOnline = device.status === 'Online';
+                            const status = (device.status || 'Unknown').toLowerCase();
+                            let statusClass = 'status-unknown';
 
-                            // Apply heartbeat animation classes
-                            statusElement.className = 'status-indicator ' + (isOnline ? 'status-online' : 'status-offline');
-                            statusElement.title = device.status + (device.latency ? ` (${Math.round(device.latency)}ms)` : ''); // Tooltip
-                            statusElement.title = device.status; // Show status text on hover
-                            statusElement.innerHTML = ''; // No text, just the dot
+                            if (status === 'online') statusClass = 'status-online';
+                            else if (status === 'offline') statusClass = 'status-offline';
+                            else if (status === 'maintenance') statusClass = 'status-maintenance';
+
+                            const latencyText = (device.latency != null && status === 'online')
+                                ? ` (${Math.round(device.latency)}ms)` : '';
+
+                            statusElement.className = 'status-indicator ' + statusClass;
+                            statusElement.title = (device.status || 'Unknown') + latencyText;
                         }
                     });
-                    console.log(`Updated status for ${data.devices.length} devices.`);
                 }
             })
-            .catch(error => console.error('Error fetching bulk statuses:', error));
+            .catch(error => console.error('Error fetching statuses:', error));
     }
 
-    // Refresh all device statuses every 30 seconds
-    setInterval(fetchAllStatuses, 30000);
+    function startStatusPolling() {
+        if (statusPollingInterval) return;
+        statusPollingInterval = setInterval(fetchAllStatuses, 30000);
+    }
 
-    // Initial fetch on load
-    document.addEventListener('DOMContentLoaded', fetchAllStatuses);
+    function stopStatusPolling() {
+        if (!statusPollingInterval) return;
+        clearInterval(statusPollingInterval);
+        statusPollingInterval = null;
+    }
 
-    // Search & Filter Function
-    // Search & Filter Function
-    function filterTable() {
-        try {
-            // Get values
-            const searchInput = document.getElementById("deviceSearch");
-            const searchText = (searchInput ? searchInput.value : "").toLowerCase().trim();
-
-            const statusSelect = document.getElementById("statusFilter");
-            const statusFilter = statusSelect ? statusSelect.value.toLowerCase() : "";
-
-            const typeSelect = document.getElementById("typeFilter");
-            const typeFilter = typeSelect ? typeSelect.value.toLowerCase().trim() : "";
-
-            const table = document.querySelector("table tbody");
-            if (!table) return;
-
-            const tr = table.getElementsByTagName("tr");
-
-            // Debug filters
-            // console.log(`Filtering: Search="${searchText}", Status="${statusFilter}", Type="${typeFilter}"`);
-
-            for (let i = 0; i < tr.length; i++) {
-                // Determine cells using indices matching header
-                const tds = tr[i].getElementsByTagName("td");
-                if (tds.length < 5) continue; // Ensure row has enough columns
-
-                // Index Mapping:
-                // 1: Name, 2: IP, 3: Type, 4: Status, 5: Hostname, 6: MAC
-                const tdName = tds[1];
-                const tdIp = tds[2];
-                const tdType = tds[3];
-                const tdStatus = tds[4];
-                const tdHost = tds[5];
-                const tdMac = tds[6];
-
-                // Text Content
-                const txtName = (tdName?.textContent || "").toLowerCase();
-                const txtIp = (tdIp?.textContent || "").toLowerCase();
-                const txtHost = (tdHost?.textContent || "").toLowerCase();
-                const txtMac = (tdMac?.textContent || "").toLowerCase();
-
-                // Get Type Value (Prioritize Select Value)
-                let txtType = "";
-                const rowTypeSelect = tdType?.querySelector('select');
-                if (rowTypeSelect) {
-                    txtType = rowTypeSelect.value.toLowerCase().trim();
-                } else if (tdType) {
-                    txtType = (tdType.textContent || "").toLowerCase().trim();
-                }
-
-                // Get Status Value
-                let txtStatus = "offline"; // default
-                if (tdStatus) {
-                    const statusSpan = tdStatus.querySelector('.status-indicator');
-                    if (statusSpan) {
-                        if (statusSpan.classList.contains('status-online')) txtStatus = "online";
-                        else if (statusSpan.classList.contains('status-offline')) txtStatus = "offline";
-                        else txtStatus = (statusSpan.title || "").toLowerCase();
-                    }
-                }
-
-                // Boolean Checks
-                const matchesSearch = (
-                    searchText === "" ||
-                    txtName.includes(searchText) ||
-                    txtIp.includes(searchText) ||
-                    txtType.includes(searchText) ||
-                    txtHost.includes(searchText) ||
-                    txtMac.includes(searchText)
-                );
-
-                const matchesStatus = (statusFilter === "" || txtStatus.includes(statusFilter));
-
-                // Flexible Type Matching (LIKE/Contains)
-                // "Camera" filter matches "camera", "camera/iot", "ip camera"
-                // "IoT" filter matches "iot", "camera/iot"
-                const matchesType = (
-                    typeFilter === "" ||
-                    txtType.includes(typeFilter) ||
-                    (typeFilter === "unknown" && txtType === "network device")
-                );
-
-                // Debug specific row if needed
-                // if (typeFilter === 'camera' && txtType.includes('iot')) {
-                //    console.log(`Row ${i}: Type="${txtType}" matchesFilter=${matchesType}`);
-                // }
-
-                tr[i].style.display = (matchesSearch && matchesStatus && matchesType) ? "" : "none";
+    function bindStatusPollingToModal() {
+        document.addEventListener('show.bs.modal', stopStatusPolling);
+        document.addEventListener('hidden.bs.modal', () => {
+            if (!document.querySelector('.modal.show')) {
+                fetchAllStatuses();
+                startStatusPolling();
             }
-        } catch (e) {
-            console.error("Error in filterTable:", e);
-        }
+        });
     }
 
-    // Sort Function
-    function sortTable(n) {
-        var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-        table = document.querySelector("table");
-        switching = true;
-        // Set the sorting direction to ascending:
-        dir = "asc";
-
-        while (switching) {
-            switching = false;
-            rows = table.rows;
-            /* Loop through all table rows (except the first, which contains table headers): */
-            for (i = 1; i < (rows.length - 1); i++) {
-                for (i = 1; i < (rows.length - 1); i++) {
-                    shouldSwitch = false;
-                    /* Get the two elements you want to compare, one from current row and one from the next: */
-                    x = rows[i].getElementsByTagName("TD")[n];
-                    y = rows[i + 1].getElementsByTagName("TD")[n];
-
-                    /* Check device IP for special sorting if n==2 */
-                    let xContent = x.textContent.toLowerCase();
-                    let yContent = y.textContent.toLowerCase();
-
-                    if (dir == "asc") {
-                        if (xContent > yContent) {
-                            shouldSwitch = true;
-                            break;
-                        }
-                    } else if (dir == "desc") {
-                        if (xContent < yContent) {
-                            shouldSwitch = true;
-                            break;
-                        }
-                    }
-                }
-                if (shouldSwitch) {
-                    /* If a switch has been marked, make the switch and mark that a switch has been done: */
-                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true;
-                    switchcount++;
-                } else {
-                    /* If no switching has been done AND the direction is "asc", set the direction to "desc" and run the while loop again. */
-                    if (switchcount == 0 && dir == "asc") {
-                        dir = "desc";
-                        switching = true;
-                    }
-                }
-            }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            stopStatusPolling();
+        } else {
+            fetchAllStatuses();
+            startStatusPolling();
         }
-    }
+    });
 
-    function updateDeviceType(deviceId, newType, selectIdx) {
-        // Fallback for select element if passed
-        const selectElement = selectIdx || event.target;
-        const originalText = selectElement.options[selectElement.selectedIndex].text;
+    function autoClassifyDevicesIfNeeded(count) {
+        if (!count || count <= 0) return;
 
-        // Show loading state (optional, or just rely on toast)
-        // selectElement.disabled = true;
+        const key = 'autoClassifyTs';
+        const lastTs = parseInt(sessionStorage.getItem(key) || '0', 10);
+        const now = Date.now();
 
-        fetch('/api/devices/' + deviceId + '/update_type', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ device_type: newType })
-        })
+        if (lastTs && (now - lastTs) < 5 * 60 * 1000) return;
+
+        console.log(`Auto-classify starting for ${count} devices...`);
+        fetch('/api/devices/reclassify_all?auto=true')
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    // Show success toast or visual feedback
-                    const toast = document.createElement('div');
-                    toast.className = 'position-fixed bottom-0 end-0 p-3';
-                    toast.style.zIndex = '9999';
-                    toast.innerHTML = `
-                    <div class="toast show align-items-center text-white bg-success border-0" role="alert">
-                        <div class="d-flex">
-                            <div class="toast-body">
-                                <i class="fas fa-check-circle"></i> Device type updated to ${newType}
-                            </div>
-                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                        </div>
-                    </div>
-                `;
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 3000);
-                } else {
-                    alert('Error updating type: ' + data.error);
-                    // Revert selection if possible or reload
+                if (data.success && data.updated_devices) {
+                    data.updated_devices.forEach(d => {
+                        const row = document.querySelector(`tr[data-device-id="${d.device_id}"]`);
+                        if (row) {
+                            const select = row.querySelector('select');
+                            if (select) select.value = d.device_type;
+                        }
+                    });
+                    sessionStorage.setItem(key, String(Date.now()));
                 }
             })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating type');
-            })
-            .finally(() => {
-                // event.target.disabled = false;
-            });
+            .catch(console.warn);
+    }
+
+    function filterTable() {
+        const searchInput = document.getElementById("deviceSearch");
+        const searchText = (searchInput ? searchInput.value : "").toLowerCase().trim();
+        const statusSelect = document.getElementById("statusFilter");
+        const statusFilter = statusSelect ? statusSelect.value.toLowerCase() : "";
+        const typeSelect = document.getElementById("typeFilter");
+        const typeFilter = typeSelect ? typeSelect.value.toLowerCase().trim() : "";
+
+        const normalizeType = (value) => {
+            const raw = (value || "").toLowerCase().trim();
+            if (raw === "camera" || raw === "camera/iot" || raw === "camera_iot") {
+                return "camera";
+            }
+            return raw;
+        };
+
+        const table = document.querySelector("table tbody");
+        if (!table) return;
+        const tr = table.getElementsByTagName("tr");
+
+        for (let i = 0; i < tr.length; i++) {
+            const row = tr[i];
+            const name = row.cells[1]?.textContent.toLowerCase() || "";
+            const ip = row.cells[2]?.textContent.toLowerCase() || "";
+            const type = row.querySelector('select') ? row.querySelector('select').value.toLowerCase() : "";
+            const statusIndicator = row.querySelector('.status-indicator');
+            let status = "unknown";
+
+            if (statusIndicator) {
+                if (statusIndicator.classList.contains('status-online')) status = "online";
+                else if (statusIndicator.classList.contains('status-offline')) status = "offline";
+                else if (statusIndicator.classList.contains('status-maintenance')) status = "maintenance";
+            }
+
+            const matchesSearch = name.includes(searchText) || ip.includes(searchText);
+            const matchesStatus = statusFilter === "" || status === statusFilter;
+            const matchesType = typeFilter === "" || normalizeType(type) === normalizeType(typeFilter);
+            row.style.display = (matchesSearch && matchesStatus && matchesType) ? "" : "none";
+        }
     }
 </script>
 {% endblock %}

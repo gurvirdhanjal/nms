@@ -3,7 +3,7 @@ Dashboard API endpoints for Network Monitoring System.
 Provides aggregated health, trends, and problem detection.
 """
 from flask import Blueprint, jsonify, request, session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case
 from utils.server_health import compute_server_health, is_server_device
 from extensions import db
@@ -56,7 +56,11 @@ def get_summary():
         
         # 1. Device Counts
         # Total Inventory (All devices)
+        # Total Inventory (All devices)
         inventory_count = Device.query.count()
+        
+        # Maintenance Count
+        maintenance_count = Device.query.filter_by(maintenance_mode=True).count()
         
         # DEBUG LOGGING
         db_path = db.engine.url.database
@@ -193,6 +197,7 @@ def get_summary():
                 'up': healthy_count, 
                 'degraded': degraded_count,
                 'down': offline_count,
+                'maintenance': maintenance_count,
                 'online_total': online_count
             },
             # Backward compatibility for frontend
@@ -205,6 +210,7 @@ def get_summary():
                 'offline': offline_count,
                 'degraded': degraded_count,
                 'healthy': healthy_count,
+                'maintenance': maintenance_count,
                 'unknown': unknown_count,
                 'up_percent': availability_live,
                 'online_percent': availability_live
@@ -258,9 +264,11 @@ def get_top_problems():
     if 'logged_in' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    cached = get_cached('top-problems', 60)
-    if cached:
-        return jsonify(cached)
+    force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    if not force_fresh:
+        cached = get_cached('top-problems', 10)
+        if cached:
+            return jsonify(cached)
     
     try:
         from models.device import Device
@@ -293,6 +301,30 @@ def get_top_problems():
             if s[0].packet_loss is not None and 0 < s[0].packet_loss < 100 and s[0].status == 'Online'
         ]
         high_loss = sorted(with_packet_loss, key=lambda x: x[0].packet_loss or 0, reverse=True)[:5]
+
+        def iso_utc(ts):
+            if not ts:
+                return None
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts.isoformat()
+
+        def build_ping_stats(device_ip, limit=10):
+            scans = DeviceScanHistory.query.filter(
+                DeviceScanHistory.device_ip == device_ip
+            ).order_by(DeviceScanHistory.scan_id.desc()).limit(limit).all()
+            latencies = [s.ping_time_ms for s in scans if s.ping_time_ms is not None]
+            losses = [s.packet_loss for s in scans if s.packet_loss is not None]
+            jitters = [s.jitter for s in scans if s.jitter is not None]
+            stats = {
+                'latency_avg': round(sum(latencies) / len(latencies), 2) if latencies else None,
+                'latency_min': round(min(latencies), 2) if latencies else None,
+                'latency_max': round(max(latencies), 2) if latencies else None,
+                'loss_avg': round(sum(losses) / len(losses), 2) if losses else None,
+                'loss_max': round(max(losses), 2) if losses else None,
+                'jitter_avg': round(sum(jitters) / len(jitters), 2) if jitters else None
+            }
+            return stats
         
         # Recently Down (Top 5 offline devices)
         offline_scans = sorted(
@@ -317,7 +349,8 @@ def get_top_problems():
                     'value': s[0].ping_time_ms, 
                     'unit': 'ms',
                     'device_id': s[1].device_id,
-                    'time': s[0].scan_timestamp.isoformat() if s[0].scan_timestamp else None
+                    'time': iso_utc(s[0].scan_timestamp),
+                    **build_ping_stats(s[0].device_ip)
                 }
                 for s in high_latency
             ],
@@ -328,7 +361,8 @@ def get_top_problems():
                     'value': s[0].packet_loss, 
                     'unit': '%',
                     'device_id': s[1].device_id,
-                    'time': s[0].scan_timestamp.isoformat() if s[0].scan_timestamp else None
+                    'time': iso_utc(s[0].scan_timestamp),
+                    **build_ping_stats(s[0].device_ip)
                 }
                 for s in high_loss
             ],
@@ -336,7 +370,7 @@ def get_top_problems():
                 {
                     'device_name': s[0].device_name, 
                     'ip': s[0].device_ip, 
-                    'time': s[0].scan_timestamp.isoformat() if s[0].scan_timestamp else None,
+                    'time': iso_utc(s[0].scan_timestamp),
                     'device_id': s[1].device_id
                 }
                 for s in offline_scans
@@ -347,14 +381,14 @@ def get_top_problems():
                     'device_ip': e.device_ip,
                     'message': e.message, 
                     'severity': e.severity, 
-                    'time': e.timestamp.isoformat() if e.timestamp else None,
+                    'time': iso_utc(e.timestamp),
                     'is_acknowledged': e.is_acknowledged
                 }
                 for e in recent_alerts
             ]
         }
         
-        set_cached('top-problems', result, ttl_seconds=30)
+        set_cached('top-problems', result, ttl_seconds=10)
         return jsonify(result)
         
     except Exception as e:
@@ -402,6 +436,13 @@ def get_all_alerts():
                 return 'Network'
             return 'Device'
 
+        def iso_utc(ts):
+            if not ts:
+                return None
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts.isoformat()
+
         return jsonify([{
             'id': e.event_id,
             'device_id': e.device_id,
@@ -412,11 +453,11 @@ def get_all_alerts():
             'event_type': e.event_type,
             'severity': e.severity,
             'message': e.message,
-            'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+            'timestamp': iso_utc(e.timestamp),
             'resolved': e.resolved,
             'is_acknowledged': e.is_acknowledged,
             'acknowledged_by': e.acknowledged_by,
-            'acknowledged_at': e.acknowledged_at.isoformat() if e.acknowledged_at else None
+            'acknowledged_at': iso_utc(e.acknowledged_at)
         } for e in alerts])
 
     except Exception as e:
@@ -591,6 +632,128 @@ def get_trends():
 
 
 # ============================================================
+# GET /api/dashboard/availability-details
+# ============================================================
+@dashboard_bp.route('/availability-details')
+def get_availability_details():
+    """
+    Returns availability detail data for the last 24 hours:
+    - 24h uptime heatmap (hourly buckets)
+    - Devices contributing to downtime (offline scans)
+    - Top 5 worst availability
+    Cache: 60s (unless fresh=1)
+    """
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    if not force_fresh:
+        cached = get_cached('availability-details', 60)
+        if cached:
+            return jsonify(cached)
+
+    try:
+        from models.scan_history import DeviceScanHistory
+        from models.device import Device
+
+        now = datetime.utcnow()
+        bucket_start = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
+        cutoff = bucket_start
+
+        # Build 24 hourly buckets
+        buckets = {}
+        for i in range(24):
+            ts = bucket_start + timedelta(hours=i)
+            buckets[ts] = {'online': 0, 'total': 0}
+
+        scans = DeviceScanHistory.query.filter(
+            DeviceScanHistory.scan_timestamp >= cutoff
+        ).all()
+
+        for scan in scans:
+            if not scan.scan_timestamp:
+                continue
+            ts_bucket = scan.scan_timestamp.replace(minute=0, second=0, microsecond=0)
+            if ts_bucket in buckets:
+                buckets[ts_bucket]['total'] += 1
+                if scan.status == 'Online':
+                    buckets[ts_bucket]['online'] += 1
+
+        heatmap = []
+        for ts in sorted(buckets.keys()):
+            total = buckets[ts]['total']
+            online = buckets[ts]['online']
+            pct = round((online / total) * 100, 1) if total > 0 else 0.0
+            heatmap.append({
+                'time': ts.replace(tzinfo=timezone.utc).isoformat(),
+                'value': pct,
+                'online': int(online),
+                'total': int(total)
+            })
+
+        stats_subq = db.session.query(
+            DeviceScanHistory.device_ip.label('device_ip'),
+            func.count(DeviceScanHistory.scan_id).label('total'),
+            func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
+        ).filter(
+            DeviceScanHistory.scan_timestamp >= cutoff
+        ).group_by(DeviceScanHistory.device_ip).subquery()
+
+        stats = db.session.query(
+            stats_subq.c.device_ip,
+            stats_subq.c.total,
+            stats_subq.c.online,
+            Device.device_name,
+            Device.device_type
+        ).outerjoin(
+            Device,
+            Device.device_ip == stats_subq.c.device_ip
+        ).all()
+
+        devices = []
+        for row in stats:
+            total = int(row.total or 0)
+            online = int(row.online or 0)
+            offline = max(total - online, 0)
+            uptime_pct = round((online / total) * 100, 1) if total > 0 else 0.0
+            downtime_pct = round(100.0 - uptime_pct, 1) if total > 0 else 0.0
+            devices.append({
+                'device_name': row.device_name or row.device_ip or 'Unknown',
+                'ip': row.device_ip,
+                'device_type': row.device_type or 'Unknown',
+                'total_scans': total,
+                'offline_scans': offline,
+                'uptime_pct': uptime_pct,
+                'downtime_pct': downtime_pct
+            })
+
+        downtime_contributors = sorted(
+            [d for d in devices if d['offline_scans'] > 0],
+            key=lambda d: (d['offline_scans'], d['downtime_pct']),
+            reverse=True
+        )[:10]
+
+        worst_availability = sorted(
+            [d for d in devices if d['total_scans'] > 0],
+            key=lambda d: (d['uptime_pct'], -d['total_scans'])
+        )[:5]
+
+        result = {
+            'generated_at': now.replace(tzinfo=timezone.utc).isoformat(),
+            'heatmap': heatmap,
+            'downtime_contributors': downtime_contributors,
+            'worst_availability': worst_availability
+        }
+
+        set_cached('availability-details', result, ttl_seconds=60)
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"Availability details error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
 # GET /api/dashboard/inventory
 # ============================================================
 @dashboard_bp.route('/inventory')
@@ -620,16 +783,24 @@ def get_inventory_stats():
             for v in vendor_query
         }
         
+        def normalize_inventory_type(value: str) -> str:
+            raw = (value or '').strip().lower()
+            if raw in ('camera', 'camera/iot', 'camera_iot'):
+                return 'Camera/IoT'
+            if not raw or raw == 'unknown':
+                return 'Unknown'
+            return raw.replace('_', ' ').title()
+
         # 2. Device Type Distribution
         type_query = db.session.query(
             Device.device_type, 
             func.count(Device.device_id)
         ).group_by(Device.device_type).all()
-        
-        by_type = {
-            (t[0] or 'Unknown'): t[1] 
-            for t in type_query
-        }
+
+        by_type = {}
+        for dtype, count in type_query:
+            label = normalize_inventory_type(dtype)
+            by_type[label] = by_type.get(label, 0) + count
         
         # 3. SNMP Stats
         total_devices = Device.query.count()
