@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Maintenance Window - NMS{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 style="font-family: 'Orbitron', monospace; color: #00ffc8; letter-spacing: 2px;">
+                <i class="fas fa-tools" style="color: #00d4aa;"></i> MAINTENANCE WINDOW
+            </h2>
+            <p class="text-muted mb-0" style="color: #6a6a80 !important;">
+                Toggle maintenance mode to suppress alerts for devices under scheduled downtime.
+            </p>
+        </div>
+        <div>
+            <span class="badge bg-info" id="maintenanceCount" style="font-size: 0.9rem;">
+                <i class="fas fa-wrench"></i> <span id="mCountVal">0</span> In Maintenance
+            </span>
+        </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search devices...">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="typeFilter">
+                        <option value="">All Types</option>
+                        <option value="Server">Server</option>
+                        <option value="Switch">Switch</option>
+                        <option value="Router">Router</option>
+                        <option value="Camera">Camera</option>
+                        <option value="Workstation">Workstation</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="statusFilter">
+                        <option value="">All Statuses</option>
+                        <option value="maintenance">In Maintenance</option>
+                        <option value="active">Active Monitoring</option>
+                    </select>
+                </div>
+                <div class="col-md-2 text-end">
+                    <button class="btn btn-sm btn-secondary" onclick="loadDevices()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Devices Table -->
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-server"></i> Device Maintenance Status
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="maintenanceTable">
+                    <thead>
+                        <tr>
+                            <th>Device</th>
+                            <th>IP Address</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Strikes</th>
+                            <th class="text-center">Maintenance Mode</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deviceTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center py-4" style="color: #6a6a80;">
+                                <i class="fas fa-spinner fa-spin"></i> Loading devices...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/maintenance.js') }}"></script>
+{% endblock %}

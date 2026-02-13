@@ -6,6 +6,7 @@ class TrackedDevice(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     mac_address = db.Column(db.String(17), unique=True, nullable=False, index=True)
+    unique_client_id = db.Column(db.String(36), unique=True, index=True) # UUID is 36 chars
     device_name = db.Column(db.String(100), nullable=False)
     employee_name = db.Column(db.String(100))
     hostname = db.Column(db.String(100))
@@ -13,6 +14,7 @@ class TrackedDevice(db.Model):
     department = db.Column(db.String(100))
     notes = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
+    maintenance_mode = db.Column(db.Boolean, default=False)
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -26,6 +28,7 @@ class TrackedDevice(db.Model):
         return {
             'id': self.id,
             'mac_address': self.mac_address,
+            'unique_client_id': self.unique_client_id,
             'device_name': self.device_name,
             'employee_name': self.employee_name,
             'hostname': self.hostname,
@@ -33,6 +36,7 @@ class TrackedDevice(db.Model):
             'department': self.department,
             'notes': self.notes,
             'is_active': self.is_active,
+            'maintenance_mode': self.maintenance_mode,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
@@ -89,7 +93,9 @@ class DeviceResourceLog(db.Model):
     cpu_usage = db.Column(db.Float)  # percentage
     memory_usage = db.Column(db.Float)  # percentage
     disk_usage = db.Column(db.Float)  # percentage
-    network_usage = db.Column(db.Float)  # MB/s
+    network_usage = db.Column(db.Float)  # MB/s (Total)
+    upload_kbps = db.Column(db.Float)  # KB/s
+    download_kbps = db.Column(db.Float)  # KB/s
     
     def to_dict(self):
         return {
@@ -99,7 +105,9 @@ class DeviceResourceLog(db.Model):
             'cpu_usage': self.cpu_usage,
             'memory_usage': self.memory_usage,
             'disk_usage': self.disk_usage,
-            'network_usage': self.network_usage
+            'network_usage': self.network_usage,
+            'upload_kbps': self.upload_kbps,
+            'download_kbps': self.download_kbps
         }
 
 class DeviceApplicationLog(db.Model):

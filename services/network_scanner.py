@@ -483,12 +483,60 @@ class NetworkScanner:
             print(f"[DEBUG] Fetch identity failed for {ip}: {e}")
             pass
         return None
+    
+    # ---------------------------
+    # Agent Discovery
+    # ---------------------------
+    async def check_tactical_agent(self, ip: str):
+        """Check if device is running the Tactical Agent service on port 5002."""
+        try:
+            print(f"[DEBUG] Checking agent on {ip}:5002...")
+            # First check if port is open quickly
+            _, is_open = await self.check_port(ip, 5002)
+            if not is_open:
+                print(f"[DEBUG] {ip}:5002 is CLOSED")
+                return None
+            
+            print(f"[DEBUG] {ip}:5002 is OPEN, fetching identity...")
+
+            # Fetch identity endpoints
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(self._executor, self._fetch_agent_identity, ip)
+            print(f"[DEBUG] Identity result for {ip}: {result}")
+            return result
+        except Exception as e:
+            print(f"[DEBUG] Error checking agent on {ip}: {e}")
+            return None
+
+    async def check_port(self, ip, port, timeout=1.0):
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port),
+                timeout=timeout
+            )
+            writer.close()
+            await writer.wait_closed()
+            return port, True
+        except Exception:
+            return port, False
+
+    def _fetch_agent_identity(self, ip):
+        try:
+            url = f"http://{ip}:5002/api/identity"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=2) as response:
+                if response.status == 200:
+                    return json.loads(response.read().decode())
+        except Exception as e:
+            print(f"[DEBUG] Fetch identity failed for {ip}: {e}")
+            pass
+        return None
 
     # ---------------------------
     # Single device scan (faster)
     # ---------------------------
 
-    async def scan_single_device(self, ip: str):
+    async def scan_single_device(self, ip: str, scan_mode: str = 'heavy'):
         """Comprehensive scan of a single device (fast + safe)."""
         try:
             status, latency, packet_loss = await self.ping_device(ip, timeout=self.timeout)
@@ -507,6 +555,18 @@ class NetworkScanner:
             if status != "Online":
                 return device_info
 
+            # In 'light' mode, we prioritize speed.
+
+
+            # Ping-only: no MAC, no hostname, no manufacturer, no ports.
+
+
+            if scan_mode == 'light':
+
+
+                return device_info
+
+            # HEAVY MODE: Full enrichment
             loop = asyncio.get_running_loop()
 
             # Run blocking lookups concurrently in the shared executor
@@ -539,52 +599,113 @@ class NetworkScanner:
                 device_info["open_ports"] = await self.scan_ports(ip)
 
                 # Run Classification Engine if not agent
+
+
                 # (Agent devices are trusted as "Tactical Agent" or specific OS)
+
+
                 try:
+
+
                     from services.device_classifier import DeviceClassifier, DeviceSignals
-                    
+
+
+
                     # Extract port numbers from scan results for classifier
+
+
                     open_ports_list = device_info.get("open_ports", [])
+
+
                     port_numbers = [p["port"] for p in open_ports_list if isinstance(p, dict) and "port" in p]
-                    
+
+
+
                     classifier = DeviceClassifier()
+
+
                     signals = DeviceSignals(
+
+
                         ip_address=ip,
+
+
                         mac_address=device_info.get("mac"),
+
+
                         hostname=device_info.get("hostname"),
+
+
                         open_ports=port_numbers,
+
+
                         manufacturer=device_info.get("manufacturer")
+
+
                         # Add SNMP here if gathered
+
+
                     )
-                    
+
+
+
                     classification = classifier.classify(signals)
-                    
+
+
+
                     device_info.update({
-                        "device_type": classification.device_type.value,
+                        "device_type": DeviceClassifier.normalize_device_type(classification.device_type),
                         "confidence_score": classification.score,
                         "classification_confidence": classification.confidence.value,
                         "classification_details": classification.to_dict()
                     })
 
+
+
                     # Broadcast real-time classification update
+
+
                     try:
+
+
                         from services.sse_broadcaster import broadcast_event
+
+
                         # Only broadcast if confidence is medium or high to reduce noise
-                        if classification.score >= 25:
+                        if classification.score >= classifier.THRESHOLD_MEDIUM:
+
+
                             broadcast_event('classification_update', {
+
+
                                 'ip_address': ip,
+
+
                                 'classification': classification.to_dict(),
+
+
                                 'device': device_info
+
+
                             })
+
+
                     except Exception as b_err:
+
+
                         print(f"Broadcast error: {b_err}")
 
+
+
                 except Exception as c_err:
+
+
                     print(f"Classification error for {ip}: {c_err}")
+
+
                     pass
 
             return device_info
-
         except Exception as e:
             return {
                 "ip": ip,
@@ -641,7 +762,7 @@ class NetworkScanner:
     # Incremental scan (FASTER + SAFE, same architecture)
     # ---------------------------
 
-    async def scan_network_range_incremental(self, ip_range=None, scan_id=None, active_scans=None, active_scans_lock=None):
+    async def scan_network_range_incremental(self, ip_range=None, scan_id=None, active_scans=None, active_scans_lock=None, scan_mode='heavy'):
         """
         Incremental scan with batch discovery + progress updates.
         Keeps your polling architecture:
@@ -683,7 +804,7 @@ class NetworkScanner:
                     # stop check inside the bounded call (fast response)
                     if self._scan_stopped(scan_id, active_scans, active_scans_lock):
                         return None
-                    return await self.scan_single_device(ip_str)
+                    return await self.scan_single_device(ip_str, scan_mode=scan_mode)
 
             # We still do "batch-ish" updates so UI gets updates frequently.
             # But internally we do concurrency-limited scans for speed.

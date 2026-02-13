@@ -20,8 +20,9 @@ export async function fetchSummary() {
     return fetchAPI('/api/dashboard/summary');
 }
 
-export async function fetchTopProblems() {
-    return fetchAPI('/api/dashboard/top-problems');
+export async function fetchTopProblems(forceFresh = false) {
+    const suffix = forceFresh ? '?fresh=1' : '';
+    return fetchAPI(`/api/dashboard/top-problems${suffix}`);
 }
 
 export async function fetchTrends(range = '24h') {
@@ -46,4 +47,13 @@ export async function fetchRealTimeIO() {
 
 export async function fetchServerHealth() {
     return fetchAPI('/api/server/health');
+}
+
+export async function fetchFleetMetrics() {
+    return fetchAPI('/api/server/fleet-metrics');
+}
+
+export async function fetchAvailabilityDetails(forceFresh = false) {
+    const suffix = forceFresh ? '?fresh=1' : '';
+    return fetchAPI(`/api/dashboard/availability-details${suffix}`);
 }

@@ -138,85 +138,227 @@
 </div>
 
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-chart-line"></i> Device Performance Reports</h5>
+    <!-- Tabs -->
+    <ul class="nav nav-pills mb-4" id="reportTabs" role="tablist"
+        style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="executive-tab" data-bs-toggle="pill" data-bs-target="#executive"
+                type="button" role="tab">
+                <i class="fas fa-briefcase me-2"></i> Executive Health
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="inspector-tab" data-bs-toggle="pill" data-bs-target="#inspector" type="button"
+                role="tab">
+                <i class="fas fa-search me-2"></i> Device Inspector
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="operational-tab" data-bs-toggle="pill" data-bs-target="#operational"
+                type="button" role="tab">
+                <i class="fas fa-cogs me-2"></i> Operational
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="reportTabContent">
+
+        <!-- Tab 1: Executive Fleet Health -->
+        <div class="tab-pane fade show active" id="executive" role="tabpanel">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-globe"></i> Fleet Overview</h5>
+                    <div class="d-flex gap-2">
+                        <select class="form-select form-select-sm" id="execRange" style="width: 150px;">
+                            <option value="24h">Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                            <option value="mtd">Month to Date</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-4" id="execContent">
+                    <!-- Loaded via JS -->
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">Generating Executive Summary...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5><i class="fas fa-exclamation-triangle"></i> Top 10 Problematic Devices</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="problematicTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Type</th>
+                                            <th class="text-end">Availability</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center text-muted p-4">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5><i class="fas fa-chart-pie"></i> Health Distribution</h5>
+                        </div>
+                        <div class="card-body d-flex justify-content-center align-items-center"
+                            style="min-height: 300px;">
+                            <canvas id="healthPieChart" style="max-height: 250px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Operational Activity -->
+        <div class="tab-pane fade" id="operational" role="tabpanel">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-fingerprint"></i> Activity Heatmap</h5>
+                    <div class="d-flex gap-2">
+                        <select class="form-select form-select-sm" id="opsRange" style="width: 150px;">
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary" onclick="loadOperationalReport()">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-4">
-                    <div class="row align-items-end mb-4">
-                        <div class="col-md-5">
-                            <label for="deviceSearch" class="form-label text-uppercase text-muted small fw-bold">Select
-                                Device</label>
-                            <div class="search-select-container">
-                                <input type="text" class="search-select-input" id="deviceSearch"
-                                    placeholder="Search Device..." autocomplete="off">
-                                <i class="fas fa-search search-select-icon"></i>
-                                <div class="search-select-dropdown" id="deviceList">
-                                    <div class="search-select-item disabled">Loading...</div>
+                    <div id="activityHeatmap" style="overflow-x: auto;">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <p class="mt-2 text-muted">Loading Heatmap...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5><i class="fas fa-clipboard-check"></i> Audit Log</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 400px;">
+                                <table class="table table-hover mb-0" id="auditTable">
+                                    <thead class="table-dark text-uppercase small">
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Event</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center text-muted p-4">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5><i class="fas fa-plus-circle"></i> Recently Added Devices</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="newDevicesTable">
+                                    <thead class="table-dark text-uppercase small">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Type</th>
+                                            <th>Added</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="3" class="text-center text-muted p-4">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Device Inspector (Original Content) -->
+        <div class="tab-pane fade" id="inspector" role="tabpanel">
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-chart-line"></i> Individual Device Performance</h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="row align-items-end mb-4">
+                                <div class="col-md-5">
+                                    <label for="deviceSearch"
+                                        class="form-label text-uppercase text-muted small fw-bold">Select
+                                        Device</label>
+                                    <div class="search-select-container">
+                                        <input type="text" class="search-select-input" id="deviceSearch"
+                                            placeholder="Search Device..." autocomplete="off">
+                                        <i class="fas fa-search search-select-icon"></i>
+                                        <div class="search-select-dropdown" id="deviceList">
+                                            <div class="search-select-item disabled">Loading...</div>
+                                        </div>
+                                        <input type="hidden" id="selectedDeviceIp">
+                                    </div>
                                 </div>
-                                <input type="hidden" id="selectedDeviceIp">
+                                <div class="col-md-4">
+                                    <label for="periodSelect"
+                                        class="form-label text-uppercase text-muted small fw-bold">Time
+                                        Period</label>
+                                    <select class="form-select" id="periodSelect">
+                                        <option value="24h">Last 24 Hours</option>
+                                        <option value="7d">Last 7 Days</option>
+                                        <option value="30d">Last 30 Days</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-primary w-100" id="generateReport">
+                                        <i class="fas fa-bolt"></i> GENERATE
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="periodSelect" class="form-label text-uppercase text-muted small fw-bold">Time
-                                Period</label>
-                            <select class="form-select" id="periodSelect"
-                                style="padding: 0.75rem 1rem; background-color: var(--tactical-bg-input); border-color: var(--tactical-border); color: var(--tactical-text-primary);">
-                                <option value="24h">Last 24 Hours</option>
-                                <option value="7d">Last 7 Days</option>
-                                <option value="30d">Last 30 Days</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-primary w-100" id="generateReport"
-                                style="padding: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">
-                                <i class="fas fa-bolt"></i> GENERATE
-                            </button>
-                        </div>
-                    </div>
 
-                    <div id="reportResults">
-                        <div class="empty-state text-center py-5">
-                            <div class="mb-3">
-                                <i class="fas fa-chart-pie fa-4x" style="color: var(--tactical-border);"></i>
+                            <div id="reportResults">
+                                <div class="empty-state text-center py-5">
+                                    <div class="mb-3">
+                                        <i class="fas fa-chart-pie fa-4x" style="color: var(--tactical-border);"></i>
+                                    </div>
+                                    <h5 class="text-muted">No Report Generated</h5>
+                                    <p class="text-muted small">Select a device and time period above to view analytics.
+                                    </p>
+                                </div>
                             </div>
-                            <h5 class="text-muted">No Report Generated</h5>
-                            <p class="text-muted small">Select a device and time period above to view analytics.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-calendar-day"></i> Daily Summary</h5>
-                </div>
-                <div class="card-body p-4">
-                    <div id="dailyReport">
-                        <div class="empty-state">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            <p>Loading daily report...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-history"></i> Recent Activity</h5>
-                </div>
-                <div class="card-body p-4">
-                    <div id="recentActivity">
-                        <div class="empty-state">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            <p>Loading recent activity...</p>
                         </div>
                     </div>
                 </div>
@@ -229,15 +371,130 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        loadDevices();
-        loadDailyReport();
-        loadRecentActivity();
+        // Initialization happens after function definitions below.
 
-        document.getElementById('generateReport').addEventListener('click', generateReport);
-        document.getElementById('periodSelect').addEventListener('change', generateReport);
+        // ==========================================
+        // Operational Report Logic
+        // ==========================================
+        function loadOperationalReport() {
+            const range = document.getElementById('opsRange').value;
+            const heatmapDiv = document.getElementById('activityHeatmap');
+            const auditTableBody = document.querySelector('#auditTable tbody');
+            const newDevicesBody = document.querySelector('#newDevicesTable tbody');
 
+            // Show Loading
+            heatmapDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading Heatmap...</p></div>';
+            auditTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
+            newDevicesBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
 
-        // Search & Select Logic
+            fetch(`/api/reports/operational?range=${range}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        heatmapDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        return;
+                    }
+
+                    // 1. Render Heatmap
+                    renderHeatmap(data.heatmap, heatmapDiv);
+
+                    // 2. Render Audit Log
+                    if (data.audit_log && data.audit_log.length > 0) {
+                        auditTableBody.innerHTML = data.audit_log.map(e => `
+                            <tr>
+                                <td style="white-space:nowrap;">
+                                    <small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">${e.event_type}</span>
+                                </td>
+                                <td>
+                                    <div class="small">${e.message || 'No details'}</div>
+                                    ${e.device_ip ? `<small class="text-muted monospace">${e.device_ip}</small>` : ''}
+                                </td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        auditTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No recent audit events found.</td></tr>';
+                    }
+
+                    // 3. Render New Devices
+                    if (data.new_devices && data.new_devices.length > 0) {
+                        newDevicesBody.innerHTML = data.new_devices.map(d => `
+                            <tr>
+                                <td>
+                                    <div class="fw-bold text-white">${d.device_name}</div>
+                                    <small class="text-muted monospace">${d.device_ip}</small>
+                                </td>
+                                <td><span class="badge bg-dark border border-secondary">${d.device_type}</span></td>
+                                <td>
+                                    <small class="text-muted">${d.created_at ? new Date(d.created_at).toLocaleDateString() : 'Unknown'}</small>
+                                </td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        newDevicesBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No new devices added in this period.</td></tr>';
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    heatmapDiv.innerHTML = `<div class="alert alert-danger">Failed to load report: ${e.message}</div>`;
+                });
+        }
+
+        function renderHeatmap(data, container) {
+            // Data is [day, hour, count]
+            // We need to build a grid: 7 rows (Days), 24 cols (Hours)
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const hours = Array.from({ length: 24 }, (_, i) => i);
+
+            // Find max count for opacity normalization
+            let maxCount = 0;
+            const map = {}; // key: "day-hour" -> count
+            data.forEach(item => {
+                const count = item[2];
+                if (count > maxCount) maxCount = count;
+                map[`${item[0]}-${item[1]}`] = count;
+            });
+
+            let html = '<div class="d-flex flex-column gap-1" style="min-width: 800px;">';
+
+            // Header Row (Hours)
+            html += '<div class="d-flex align-items-center mb-1">';
+            html += '<div style="width: 40px;"></div>'; // Spacer for Day labels
+            hours.forEach(h => {
+                html += `<div class="text-center text-muted small" style="flex:1; font-size: 10px;">${h}</div>`;
+            });
+            html += '</div>';
+
+            // Grid Rows
+            days.forEach((dayName, dayIndex) => {
+                html += '<div class="d-flex align-items-center">';
+                html += `<div class="text-muted small fw-bold" style="width: 40px; font-size: 11px;">${dayName}</div>`;
+
+                hours.forEach(hourIndex => {
+                    const count = map[`${dayIndex}-${hourIndex}`] || 0;
+                    const opacity = maxCount > 0 ? 0.2 + (0.8 * (count / maxCount)) : 0.1;
+                    const color = count > 0 ? `rgba(0, 255, 136, ${opacity})` : 'rgba(255,255,255,0.05)';
+                    const title = `${dayName} ${hourIndex}:00 - ${count} activities`;
+
+                    html += `
+                        <div style="flex:1; height: 24px; background: ${color}; margin: 1px; border-radius: 2px;" 
+                             title="${title}" data-bs-toggle="tooltip">
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            });
+
+            html += '</div>';
+            html += '<div class="d-flex justify-content-end mt-2"><small class="text-muted me-2">Less</small> <div style="width:10px; height:10px; background:rgba(255,255,255,0.05)"></div> <div style="width:10px; height:10px; background:rgba(0, 255, 136, 1)"></div> <small class="text-muted ms-2">More</small></div>';
+
+            container.innerHTML = html;
+        }
+
+        // ==========================================
+        // Executive Report Logic
         const searchInput = document.getElementById('deviceSearch');
         const deviceList = document.getElementById('deviceList');
         const hiddenInput = document.getElementById('selectedDeviceIp');
@@ -314,9 +571,120 @@
                 });
         }
 
+        // ==========================================
+        // Executive Report Logic
+        // ==========================================
+        function loadExecutiveReport() {
+            const range = document.getElementById('execRange').value;
+            const contentDiv = document.getElementById('execContent');
+            const tableBody = document.querySelector('#problematicTable tbody');
+
+            // Show Loading
+            contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing Fleet Data...</p></div>';
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
+
+            fetch(`/api/reports/executive?range=${range}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        contentDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        return;
+                    }
+
+                    // Render Statistics
+                    contentDiv.innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-md-3 border-end border-secondary">
+                                <h2 class="display-4 fw-bold" style="color: ${data.uptime_score >= 99 ? '#00ff88' : '#ffaa00'}">${data.uptime_score}%</h2>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Fleet Availability</p>
+                            </div>
+                            <div class="col-md-3 border-end border-secondary">
+                                <h2 class="display-4 fw-bold text-white">${data.total_devices}</h2>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Total Devices</p>
+                            </div>
+                            <div class="col-md-3 border-end border-secondary">
+                                <h2 class="display-4 fw-bold text-info">${data.avg_latency}<span class="fs-6">ms</span></h2>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Avg Latency</p>
+                            </div>
+                             <div class="col-md-3">
+                                <h2 class="display-4 fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2;">
+                                    ${data.sla_metrics.mtta_human.split(',')[0]}
+                                </h2>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">MTTA (Avg)</p>
+                            </div>
+                        </div>
+                    `;
+
+                    // Render Pie Chart
+                    renderHealthChart(data.health_distribution);
+
+                    // Render Table
+                    if (data.top_problematic && data.top_problematic.length > 0) {
+                        tableBody.innerHTML = data.top_problematic.map(d => `
+                            <tr>
+                                <td>
+                                    <div class="fw-bold text-white">${d.name}</div>
+                                    <small class="text-muted" style="font-family: monospace;">${d.ip}</small>
+                                </td>
+                                <td><span class="badge bg-secondary opacity-75">${d.type}</span></td>
+                                <td class="text-end">
+                                    <span class="text-danger fw-bold">${d.uptime}%</span>
+                                </td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4"><i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.</td></tr>';
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    contentDiv.innerHTML = `<div class="alert alert-danger">Failed to load report: ${e.message}</div>`;
+                });
+        }
+
+        let healthChartInstance = null;
+        function renderHealthChart(distribution) {
+            const canvas = document.getElementById('healthPieChart');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            if (healthChartInstance) healthChartInstance.destroy();
+
+            healthChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(distribution),
+                    datasets: [{
+                        data: Object.values(distribution),
+                        backgroundColor: ['#00ff88', '#ff3b5c', '#ffaa00'], // Healthy, Critical, Warning
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#aaa',
+                                font: { family: 'Rajdhani' },
+                                boxWidth: 12
+                            }
+                        }
+                    },
+                    cutout: '75%',
+                    layout: { padding: 20 }
+                }
+            });
+        }
+
+
         function generateReport() {
             const deviceIp = document.getElementById('selectedDeviceIp').value;
             const period = document.getElementById('periodSelect').value;
+            // ... (rest of generateReport logic same as before)
 
             if (!deviceIp) {
                 alert('Please select a device from the list');
@@ -560,11 +928,13 @@
         }
 
         function loadDailyReport() {
+            const dailyEl = document.getElementById('dailyReport');
+            if (!dailyEl) return;
             fetch('/api/daily_report')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('dailyReport').innerHTML = `
+                        dailyEl.innerHTML = `
                         <div class="empty-state">
                             <i class="fas fa-exclamation-triangle"></i>
                             <p>${data.error}</p>
@@ -598,11 +968,11 @@
                         html += '<div class="empty-state"><p>No data available for today.</p></div>';
                     }
 
-                    document.getElementById('dailyReport').innerHTML = html;
+                    dailyEl.innerHTML = html;
                 })
                 .catch(error => {
                     console.error('Error loading daily report:', error);
-                    document.getElementById('dailyReport').innerHTML = `
+                    dailyEl.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-times-circle"></i>
                         <p>Error loading report</p>
@@ -612,11 +982,13 @@
         }
 
         function loadRecentActivity() {
+            const recentEl = document.getElementById('recentActivity');
+            if (!recentEl) return;
             fetch('/api/monitoring/status')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('recentActivity').innerHTML = `
+                        recentEl.innerHTML = `
                         <div class="empty-state">
                             <i class="fas fa-exclamation-triangle"></i>
                             <p>${data.error}</p>
@@ -652,11 +1024,11 @@
                         html = '<div class="empty-state"><p>No recent activity</p></div>';
                     }
 
-                    document.getElementById('recentActivity').innerHTML = html;
+                    recentEl.innerHTML = html;
                 })
                 .catch(error => {
                     console.error('Error loading recent activity:', error);
-                    document.getElementById('recentActivity').innerHTML = `
+                    recentEl.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-times-circle"></i>
                         <p>Error loading activity</p>
@@ -664,6 +1036,30 @@
                 `;
                 });
         }
+
+        // ==========================================
+        // Init (bind globals + load initial data)
+        // ==========================================
+        window.loadExecutiveReport = loadExecutiveReport;
+        window.loadOperationalReport = loadOperationalReport;
+
+        const generateBtn = document.getElementById('generateReport');
+        if (generateBtn) generateBtn.addEventListener('click', generateReport);
+        const periodSelect = document.getElementById('periodSelect');
+        if (periodSelect) periodSelect.addEventListener('change', generateReport);
+        const execRange = document.getElementById('execRange');
+        if (execRange) execRange.addEventListener('change', loadExecutiveReport);
+        const opsRange = document.getElementById('opsRange');
+        if (opsRange) opsRange.addEventListener('change', loadOperationalReport);
+
+        loadDevices();
+        if (document.getElementById('dailyReport')) {
+            loadDailyReport();
+        }
+        if (document.getElementById('recentActivity')) {
+            loadRecentActivity();
+        }
+        loadExecutiveReport(); // Load default tab
     });
 </script>
 {% endblock %}

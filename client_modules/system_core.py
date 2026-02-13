@@ -5,9 +5,12 @@ class SystemMonitor:
     """Core system metrics monitor (CPU, Memory)"""
     def get_core_metrics(self):
         """Get current CPU and Memory usage"""
+        mem = psutil.virtual_memory()
         return {
             "cpu_percent": psutil.cpu_percent(interval=None),
-            "memory_percent": psutil.virtual_memory().percent,
+            "memory_percent": mem.percent,
+            "used_gb": round(mem.used / (1024**3), 2),
+            "total_gb": round(mem.total / (1024**3), 2),
             "disk_usage": psutil.disk_usage('/').percent
         }
 

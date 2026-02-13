@@ -25,10 +25,12 @@ export function renderDeviceStatusCards(data, timestamp) {
     const offline = devices.offline ?? devices.down ?? 0;
 
     setValue('val-devices-healthy', healthy);
-    setValue('val-devices-degraded', degraded);
+    setValue('val-devices-healthy', healthy);
+    // Degraded removed from UI
     setValue('val-devices-offline', offline);
+    setValue('val-devices-maintenance', devices.maintenance ?? 0);
 
     checkStale(timestamp, 'card-devices-healthy');
-    checkStale(timestamp, 'card-devices-degraded');
     checkStale(timestamp, 'card-devices-offline');
+    checkStale(timestamp, 'card-devices-maintenance');
 }

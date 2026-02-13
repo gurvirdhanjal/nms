@@ -80,7 +80,7 @@ process_monitor = ProcessMonitor()
 current_stats_lock = threading.Lock()
 current_secure_stats = {
     "network": {"upload_speed_kbps": 0.0, "download_speed_kbps": 0.0},
-    "core": {"cpu_percent": 0.0, "memory_percent": 0.0},
+    "core": {"cpu_percent": 0.0, "memory_percent": 0.0, "used_gb": 0.0, "total_gb": 0.0},
     "window": None,
     "top_processes": []
 }
@@ -277,6 +277,9 @@ def get_live_stats():
     current_time = time.time()
     idle_time = current_time - activity_metrics['system']['last_activity']
     
+    # Get network metrics
+    net_metrics = network_monitor.get_network_metrics()
+
     return jsonify({
         "timestamp": datetime.now().isoformat(),
         "activity": {
@@ -289,7 +292,8 @@ def get_live_stats():
             "cpu": psutil.cpu_percent(interval=0.1),
             "memory": psutil.virtual_memory().percent,
             "current_app": system_monitor.current_app
-        }
+        },
+        "network": net_metrics
     })
 
 # ============================================================
@@ -1132,6 +1136,8 @@ def get_secure_stats():
         "system_metrics": {
             "cpu_percent": current_stats.get('core', {}).get('cpu_percent', 0),
             "memory_percent": current_stats.get('core', {}).get('memory_percent', 0),
+            "used_gb": current_stats.get('core', {}).get('used_gb', 0),
+            "total_gb": current_stats.get('core', {}).get('total_gb', 0),
             "disk_usage": current_stats.get('core', {}).get('disk_usage', 0),  # Use cached value
             "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
             # New Enhanced Metrics (Respecting Gating)
@@ -1228,10 +1234,183 @@ def toggle_maintenance_mode():
 # SCREEN CAPTURE MANAGER (Background Thread)
 # ============================================================
 
+import pyaudio
+import wave
+import mss
+
+# ... existing imports ...
+
+# ============================================================
+# OPTIMIZED MICROPHONE MANAGER (Background Audio Thread)
+# ============================================================
+
+class MicrophoneManager:
+    """
+    Background thread-based audio capture manager.
+    Captures raw PCM audio efficiently using PyAudio.
+    """
+    def __init__(self, sample_rate=16000, channels=1, chunk_size=1024):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.chunk_size = chunk_size
+        self.audio = None
+        self.stream = None
+        self.lock = threading.Lock()
+        self.is_running = False
+        self.capture_thread = None
+        self.active_clients = 0
+        self.chunk_counter = 0
+        self.last_chunk = None
+        self.last_error = None
+        self.last_error_time = None
+        self.last_start_time = None
+        # Circular buffer for audio chunks (store last ~2 seconds)
+        self.audio_buffer = deque(maxlen=int(sample_rate / chunk_size * 2))
+
+    def _set_error(self, message: str):
+        self.last_error = message
+        self.last_error_time = time.time()
+
+    def get_input_device_summary(self):
+        """Return count + default input device info for debugging."""
+        summary = {
+            "input_device_count": 0,
+            "default_input_index": None,
+            "default_input_name": None
+        }
+        try:
+            pa = pyaudio.PyAudio()
+            device_count = pa.get_device_count()
+            input_devices = []
+            for idx in range(device_count):
+                info = pa.get_device_info_by_index(idx)
+                if info.get('maxInputChannels', 0) > 0:
+                    input_devices.append(info)
+            summary["input_device_count"] = len(input_devices)
+
+            try:
+                default_info = pa.get_default_input_device_info()
+                summary["default_input_index"] = default_info.get('index')
+                summary["default_input_name"] = default_info.get('name')
+            except Exception:
+                pass
+            pa.terminate()
+        except Exception as e:
+            summary["error"] = str(e)
+        return summary
+
+    def start_microphone(self):
+        """Initialize microphone if not already running"""
+        with self.lock:
+            if self.is_running:
+                return True
+
+            try:
+                self.audio = pyaudio.PyAudio()
+                self.stream = self.audio.open(
+                    format=pyaudio.paInt16,
+                    channels=self.channels,
+                    rate=self.sample_rate,
+                    input=True,
+                    frames_per_buffer=self.chunk_size
+                )
+                self.is_running = True
+                self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+                self.capture_thread.start()
+                self.last_error = None
+                self.last_start_time = time.time()
+                print("✓ Microphone initialized successfully (16kHz Mono)")
+                return True
+            except Exception as e:
+                self._set_error(str(e))
+                print(f"Microphone initialization error: {e}")
+                self._cleanup()
+                return False
+
+    def _capture_loop(self):
+        """Background loop that captures audio chunks"""
+        print("✓ Microphone capture thread started")
+        while self.is_running:
+            if maintenance_mode:
+                time.sleep(1)
+                continue
+
+            try:
+                # Read raw PCM data
+                data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                with self.lock:
+                    self.audio_buffer.append(data)
+                    self.last_chunk = data
+                    self.chunk_counter += 1
+            except Exception as e:
+                self._set_error(str(e))
+                print(f"Audio capture error: {e}")
+                time.sleep(0.1)
+        
+        print("Microphone capture thread stopped")
+
+    def get_audio_stream(self):
+        """Generator that yields audio chunks for a client"""
+        # Wait for buffer to fill slightly
+        while len(self.audio_buffer) == 0 and self.is_running:
+            time.sleep(0.1)
+
+        last_seen = -1
+        try:
+            while self.is_running:
+                if maintenance_mode:
+                    time.sleep(1)
+                    continue
+
+                with self.lock:
+                    current_counter = self.chunk_counter
+                    if current_counter != last_seen:
+                        chunk = self.last_chunk
+                        last_seen = current_counter
+                    else:
+                        chunk = None
+
+                if chunk:
+                    yield chunk
+                
+                # Sleep approx duration of one chunk (1024/16000 = ~0.064s)
+                # We sleep slightly less to avoid lag build-up
+                time.sleep(0.05)
+
+        except GeneratorExit:
+            print("Audio client disconnected")
+
+    def _cleanup(self):
+        """Cleanup resources"""
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+        if self.audio:
+            self.audio.terminate()
+        self.stream = None
+        self.audio = None
+        self.is_running = False
+
+    def stop_microphone(self):
+        """Stop microphone capture"""
+        self.is_running = False
+        if self.capture_thread:
+            self.capture_thread.join(timeout=1)
+        self._cleanup()
+        print("✓ Microphone stopped")
+
+# Global Microphone Manager
+mic_manager = MicrophoneManager()
+
+# ============================================================
+# OPTIMIZED SCREEN CAPTURE MANAGER (Background Thread)
+# ============================================================
+
 class ScreenCaptureManager:
     """
     Background thread-based screen capture manager.
     Captures once, streams to many clients.
+    OPTIMIZED: Uses mss for high-performance capture.
     """
     def __init__(self, target_fps=5):
         self.latest_frame = None
@@ -1240,6 +1419,7 @@ class ScreenCaptureManager:
         self.capture_thread = None
         self.target_fps = target_fps
         self.frame_interval = 1.0 / target_fps
+        self.sct = None
 
     def start(self):
         """Start background capture thread"""
@@ -1248,7 +1428,7 @@ class ScreenCaptureManager:
         self.is_running = True
         self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.capture_thread.start()
-        print("✓ Screen capture background thread started")
+        print(f"✓ Screen capture background thread started (Target FPS: {self.target_fps})")
 
     def stop(self):
         """Stop background capture thread"""
@@ -1257,40 +1437,53 @@ class ScreenCaptureManager:
             self.capture_thread.join(timeout=2)
         with self.lock:
             self.latest_frame = None
+        if self.sct:
+            self.sct.close()
+            self.sct = None
         print("✓ Screen capture stopped")
 
     def _capture_loop(self):
-        """Background loop that captures screen frames"""
-        while self.is_running:
-            if maintenance_mode:
-                time.sleep(0.5)
-                continue
+        """Background loop that captures screen frames using mss"""
+        # Initialize mss in the thread
+        with mss.mss() as sct:
+            self.sct = sct
+            # Get the primary monitor
+            monitor = sct.monitors[1]
+            
+            while self.is_running:
+                if maintenance_mode:
+                    time.sleep(0.5)
+                    continue
 
-            try:
-                start_time = time.time()
+                try:
+                    start_time = time.time()
 
-                # Capture screen
-                screen = ImageGrab.grab()
-                screen_np = np.array(screen)
-                screen_bgr = cv2.cvtColor(screen_np, cv2.COLOR_RGB2BGR)
-                screen_resized = cv2.resize(screen_bgr, (1280, 720))
+                    # Capture using mss (raw pixels) - Extremely Fast
+                    sct_img = sct.grab(monitor)
+                    
+                    # Convert to numpy array (BGRA -> BGR)
+                    img = np.array(sct_img)
+                    frame_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                    
+                    # Resize for performance and bandwidth (1280x720)
+                    screen_resized = cv2.resize(frame_bgr, (1280, 720))
 
-                # Encode to JPEG once
-                ret, buffer = cv2.imencode('.jpg', screen_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    # Encode to JPEG (Quality 50% for speed/size)
+                    ret, buffer = cv2.imencode('.jpg', screen_resized, [cv2.IMWRITE_JPEG_QUALITY, 50])
 
-                if ret:
-                    frame_bytes = buffer.tobytes()
-                    with self.lock:
-                        self.latest_frame = frame_bytes
+                    if ret:
+                        frame_bytes = buffer.tobytes()
+                        with self.lock:
+                            self.latest_frame = frame_bytes
 
-                # Maintain target FPS
-                elapsed = time.time() - start_time
-                sleep_time = max(0, self.frame_interval - elapsed)
-                time.sleep(sleep_time)
+                    # Maintain target FPS
+                    elapsed = time.time() - start_time
+                    sleep_time = max(0, self.frame_interval - elapsed)
+                    time.sleep(sleep_time)
 
-            except Exception as e:
-                print(f"Screen capture error: {e}")
-                time.sleep(1)
+                except Exception as e:
+                    print(f"Screen capture error: {e}")
+                    time.sleep(1)
 
     def get_frame(self):
         """Get the latest cached frame (thread-safe)"""
@@ -1298,7 +1491,7 @@ class ScreenCaptureManager:
             return self.latest_frame
 
 # Global Screen Capture Manager
-screen_manager = ScreenCaptureManager(target_fps=5)
+screen_manager = ScreenCaptureManager(target_fps=5) # 5 FPS is enough for monitoring
 
 
 def generate_screen_stream():
@@ -1314,7 +1507,7 @@ def generate_screen_stream():
             if frame:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            time.sleep(0.1)  # ~10 FPS output from 5 FPS capture
+            time.sleep(0.2)  # Client poll rate
     except GeneratorExit:
         print("Screen stream client disconnected")
     except Exception as e:
@@ -1328,9 +1521,10 @@ def generate_screen_stream():
 class CameraManager:
     """
     Background thread-based camera capture manager.
-    Captures at 30 FPS, encodes once, streams to many clients.
+    Captures, encodes once, streams to many clients.
+    OPTIMIZED: 15 FPS, Quality 60.
     """
-    def __init__(self, target_fps=30):
+    def __init__(self, target_fps=15):
         self.camera = None
         self.lock = threading.Lock()
         self.frame_lock = threading.Lock()
@@ -1342,6 +1536,7 @@ class CameraManager:
         self.target_fps = target_fps
         self.frame_interval = 1.0 / target_fps
 
+    # ... (rest of CameraManager remains mostly same, ensuring init uses FPS 15) ...
     def start_camera(self):
         """Initialize camera if not already running"""
         with self.lock:
@@ -1358,14 +1553,14 @@ class CameraManager:
                 if self.camera and self.camera.isOpened():
                     self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    self.camera.set(cv2.CAP_PROP_FPS, 30)
+                    self.camera.set(cv2.CAP_PROP_FPS, self.target_fps)
                     self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer lag
                     self.is_running = True
                     
                     # Start background capture thread
                     self._start_capture_thread()
                     
-                    print("✓ Camera initialized successfully")
+                    print(f"✓ Camera initialized successfully (Target FPS: {self.target_fps})")
                     return True
                 else:
                     print("Failed to open camera")
@@ -1402,8 +1597,8 @@ class CameraManager:
                         frame = None
 
                 if ret and frame is not None:
-                    # Encode to JPEG once
-                    ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    # Encode to JPEG (Quality 60 for speed)
+                    ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
                     if ret_enc:
                         with self.frame_lock:
                             self.latest_frame_bytes = buffer.tobytes()
@@ -1480,8 +1675,8 @@ class CameraManager:
             return self.is_running
 
 
-# Global Camera Manager instance
-camera_manager = CameraManager(target_fps=30)
+# Global Camera Manager instance (15 FPS DEFAULT)
+camera_manager = CameraManager(target_fps=15)
 
 
 def generate_camera_stream():
@@ -1554,6 +1749,91 @@ def camera_status():
         "message": "Camera is active" if is_active else "Camera is inactive"
     })
 
+# ============================================================
+# AUDIO STREAMING ENDPOINTS
+# ============================================================
+
+@app.route('/audio_stream.wav', methods=['GET'])
+@require_api_key
+def stream_audio():
+    """Stream microphone audio as WAV/PCM"""
+    def audio_gen():
+        # WAV Header for 16kHz, 16-bit, Mono (PCM)
+        # We can send raw PCM if the client expects it, OR use a simple WAV header
+        # For simplicity in this agent: Raw PCM stream logic suited for modern browsers/tools
+        
+        # Start microphone if needed
+        if not mic_manager.start_microphone():
+            return
+            
+        try:
+            for chunk in mic_manager.get_audio_stream():
+                yield chunk
+        except Exception:
+            pass
+
+    # Use a raw PCM mime type or wav. Browser support varies. 
+    # 'audio/x-raw; rate=16000; channels=1; format=s16le' is explicit
+    return Response(audio_gen(), mimetype='audio/x-raw; rate=16000; channels=1; format=s16le')
+
+@app.route('/mic_status', methods=['GET'])
+@require_api_key
+def mic_status():
+    """Get microphone status"""
+    return jsonify({
+        "active": mic_manager.is_running,
+        "sample_rate": mic_manager.sample_rate,
+        "message": "Microphone is active" if mic_manager.is_running else "Microphone is inactive",
+        "last_error": mic_manager.last_error,
+        "last_error_time": datetime.fromtimestamp(mic_manager.last_error_time).isoformat() if mic_manager.last_error_time else None,
+        "last_start_time": datetime.fromtimestamp(mic_manager.last_start_time).isoformat() if mic_manager.last_start_time else None,
+        "input_devices": mic_manager.get_input_device_summary()
+    })
+
+@app.route('/stop_mic', methods=['GET'])
+@require_api_key
+def stop_mic():
+    """Stop microphone capture"""
+    mic_manager.stop_microphone()
+    return jsonify({"message": "Microphone stopped"})
+
+
+
+def get_persistent_client_id():
+    """
+    Get or create a persistent unique client ID.
+    Stored in client_id.txt to survive restarts and IP changes.
+    """
+    client_id_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'client_id.txt')
+    try:
+        if os.path.exists(client_id_file):
+            with open(client_id_file, 'r') as f:
+                client_id = f.read().strip()
+                if client_id:
+                    return client_id
+    except Exception as e:
+        print(f"Error reading client_id: {e}")
+
+    # Generate new ID if missing or empty
+    new_id = str(uuid.uuid4())
+    try:
+        with open(client_id_file, 'w') as f:
+            f.write(new_id)
+        # Apply hidden attribute on Windows
+        if platform.system() == "Windows":
+             import ctypes
+             FILE_ATTRIBUTE_HIDDEN = 0x02
+             ctypes.windll.kernel32.SetFileAttributesW(client_id_file, FILE_ATTRIBUTE_HIDDEN)
+    except Exception as e:
+        print(f"Error saving client_id: {e}")
+    
+    return new_id
+
+@app.route('/api/secure/stats', methods=['GET'])
+@require_api_key
+def get_secure_stats_endpoint():
+    """Get secure live statistics"""
+    return get_live_stats()
 
 @app.route('/api/identity', methods=['GET'])
 def get_identity():
@@ -1565,8 +1845,9 @@ def get_identity():
         return jsonify({
             "hostname": get_exact_hostname(),
             "mac_address": get_mac_address(),
+            "unique_client_id": get_persistent_client_id(),
             "os": f"{platform.system()} {platform.release()}",
-            "agent_version": "1.0",
+            "agent_version": "2.2",
             "type": "Tactical Agent",
             "status": "active"
         })

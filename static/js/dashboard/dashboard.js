@@ -1,8 +1,8 @@
 /**
  * Dashboard Orchestrator
  */
-import { fetchSummary, fetchTopProblems, fetchTrends, fetchInventory, fetchServerHealth, fetchAlerts } from './api.js';
-import { updateState, getState, subscribe, mergeRealtimeUpdate, loadFromCache } from './state.js';
+import { fetchSummary, fetchTopProblems, fetchTrends, fetchInventory, fetchServerHealth, fetchAlerts, fetchFleetMetrics, fetchAvailabilityDetails } from './api.js';
+import { updateState, getState, subscribe, loadFromCache } from './state.js';
 import { renderDevicesOnline } from './cards/devicesOnline.js';
 import { renderDeviceStatusCards } from './cards/deviceStatus.js';
 import { renderNetworkAvailability } from './cards/networkAvailability.js';
@@ -11,23 +11,27 @@ import { renderInventoryTable, initInventoryInteractions } from './tables/invent
 import { renderInventoryChart } from './charts/inventoryChart.js';
 import { initDiscovery } from './discovery.js';
 import { initServerModal } from './modals/serverDetailModal.js';
-import { renderServerHealthSummary, renderServerHealthTable, initServerHealthTable } from './servers/serverHealth.js';
+import { renderServerHealthSummary, renderServerHealthTable, initServerHealthTable, setServerHealthFilter, renderFleetOverview, renderEnhancedServerTable } from './servers/serverHealth.js';
 import { initAlertCenter, renderAlertCenter } from './alerts/alertCenter.js';
-import { initSSE, getConnectionStatus, ConnectionStatus } from './sseClient.js';
 import { renderConnectionIndicator, initConnectionIndicator } from './connectionIndicator.js';
+import { timeAgo, setupTacticalDropdown, formatPercent, formatNumber } from './utils.js';
 
 console.log("[Dashboard] Module loading...");
 
 // Prevent double-init (e.g., back/forward cache)
 const dashboardBootKey = '__dashboardBooted';
 
-// Polling fallback state
+// Polling state
 let pollingInterval = null;
 const POLLING_INTERVAL_MS = 30000;
 
 // Batch DOM updates to the next animation frame
+// Batch DOM updates to the next animation frame
 let renderScheduled = false;
 let latestState = null;
+let booting = true;
+let maintenanceModalInstance = null;
+let availabilityModalInstance = null;
 
 // Init
 if (document.readyState === 'loading') {
@@ -41,6 +45,7 @@ function initDashboard() {
     if (window[dashboardBootKey]) {
         // Page might be restored from cache; just refresh data
         refreshAll().catch(() => { });
+        startPolling();
         return;
     }
     window[dashboardBootKey] = true;
@@ -49,65 +54,39 @@ function initDashboard() {
     const errorEl = document.getElementById('global-error');
 
     try {
-        // 1. Initialize connection indicator
-        console.log('[Dashboard] Setting up connection indicator...');
+        // 1. Initialize connection indicator (polling mode)
+        console.log('[Dashboard] Setting up connection indicator (polling)...');
         initConnectionIndicator();
 
         // 2. Initialize Discovery UI
         initDiscovery();
 
-        // 3. Try to load from cache for instant render
+        // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
+        // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
         if (loadFromCache()) {
-            console.log('[Dashboard] Loaded cache, fast rendering...');
-            scheduleRender(getState());
+            console.log('[Dashboard] Loaded cache, immediate critical render...');
+            // Render visible state immediately (CRITICAL ONLY)
+            requestAnimationFrame(() => renderCritical(getState()));
+        } else {
+            // No cache? Render empty skeleton state if needed
+            // (The HTML already provides a good skeleton structure)
+            console.log('[Dashboard] No cache, waiting for fetch...');
         }
 
-        // 4. Initial Fetch (Stale-while-revalidate)
-        console.log('[Dashboard] Starting initial fetch (background)...');
-        refreshAll().catch(err => {
-            console.error('[Dashboard] Async fetch error:', err);
-            showGlobalError(`Fetch Error: ${err.message}`);
+        // 4. Initial Fetch (Stale-while-revalidate pattern)
+        // We fetch fresh data in the background, updating the UI when ready
+        console.log('[Dashboard] Starting background fetch...');
+
+        // Defer the network request slightly to let the UI paint first
+        requestAnimationFrame(() => {
+            refreshAll().catch(err => {
+                console.error('[Dashboard] Async fetch error:', err);
+                showGlobalError(`Fetch Error: ${err.message}`);
+            });
         });
 
-        // 4. Initialize SSE for real-time updates (DELAYED to allow initial fetch to complete)
-        console.log('[Dashboard] Scheduling SSE initialization (3s delay)...');
-        setTimeout(() => {
-            console.log('[Dashboard] Initializing SSE...');
-            initSSE({
-                onDeviceStatus: (data) => {
-                    console.log('[Dashboard] Device status event:', data);
-                    mergeRealtimeUpdate('device_status', data);
-                },
-                onAlertCreated: (data) => {
-                    console.log('[Dashboard] Alert created event:', data);
-                    mergeRealtimeUpdate('alert_created', data);
-                },
-                onLatencySpike: (data) => {
-                    console.log('[Dashboard] Latency spike event:', data);
-                    mergeRealtimeUpdate('latency_spike', data);
-                },
-                onInterfaceThreshold: (data) => {
-                    console.log("Interface Threshold:", data);
-                },
-                onClassificationUpdate: (data) => {
-                    console.log("Device Classified:", data);
-                    const row = document.querySelector(`tr[data-ip="${data.ip_address}"]`);
-                    if (row) {
-                        row.classList.add('highlight-update');
-                        setTimeout(() => row.classList.remove('highlight-update'), 2000);
-                        const typeCell = row.querySelector('.device-type-cell');
-                        if (typeCell && data.classification) typeCell.textContent = data.classification.device_type;
-                    }
-                },
-                onConnectionChange: (status) => {
-                    console.log('[Dashboard] Connection status changed:', status);
-                    updateState('connectionStatus', status);
-                    renderConnectionIndicator(status);
-                    if (status === ConnectionStatus.DISCONNECTED) startPollingFallback();
-                    else if (status === ConnectionStatus.CONNECTED) stopPollingFallback();
-                }
-            });
-        }, 3000);
+        // 5. Start polling loop (30s)
+        startPolling();
 
         // 5. Setup Manual Refresh Button
         const refreshBtn = document.getElementById('btn-refresh');
@@ -121,15 +100,24 @@ function initDashboard() {
         }
 
         // 6. Setup Time Range Dropdown
-        const timeRangeEl = document.getElementById('time-range');
-        if (timeRangeEl) {
-            const savedRange = localStorage.getItem('tactical_dashboard_range') || '24h';
-            timeRangeEl.value = savedRange;
-            timeRangeEl.addEventListener('change', (e) => {
-                const newValue = e.target.value;
-                localStorage.setItem('tactical_dashboard_range', newValue);
-                refreshAll();
-            });
+        const savedRange = localStorage.getItem('tactical_dashboard_range') || '24h';
+        let timeRangeDropdown = null;
+
+        if (document.getElementById('time-range-container')) {
+            timeRangeDropdown = setupTacticalDropdown(
+                'time-range-container',
+                (newValue) => {
+                    localStorage.setItem('tactical_dashboard_range', newValue);
+                    refreshAll();
+                },
+                [
+                    { value: '24h', label: 'Last 24 Hours' },
+                    { value: '7d', label: 'Last 7 Days' },
+                    { value: '30d', label: 'Last 30 Days' }
+                ]
+            );
+            // Set initial
+            if (timeRangeDropdown) timeRangeDropdown.setValue(savedRange);
         }
 
         // 7. Subscribe to State Changes to Render UI (batched to reduce DOM thrash)
@@ -151,15 +139,12 @@ function initDashboard() {
 
         // 12. Init Alert Center
         initAlertCenter({
-            onDeviceBreakdown: () => openDeviceBreakdown()
+            onDeviceBreakdown: () => toggleDeviceBreakdown()
         });
 
         // 13. Init KPI interactions
         initDeviceBreakdown();
         initServerKpiInteractions();
-
-        // 9. Start Live Clock
-        startClock();
 
         console.log('[Dashboard] Initialization sequence complete.');
 
@@ -170,30 +155,27 @@ function initDashboard() {
 }
 
 /**
- * Start polling fallback when SSE is disconnected.
+ * Start polling loop (always on).
  */
-function startPollingFallback() {
-    if (pollingInterval) return; // Already polling
-    console.log('[Dashboard] Starting polling fallback (30s interval)');
+function startPolling() {
+    if (pollingInterval) return;
+    console.log('[Dashboard] Starting polling (30s interval)');
     pollingInterval = setInterval(refreshAll, POLLING_INTERVAL_MS);
 }
 
-/**
- * Stop polling fallback when SSE reconnects.
- */
-function stopPollingFallback() {
-    if (!pollingInterval) return;
-    console.log('[Dashboard] Stopping polling fallback (SSE active)');
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-}
-
-async function refreshAll() {
+async function refreshAll(options = {}) {
+    if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
+        window.cleanupBootstrapModal();
+    }
+    if (document.querySelector('.modal.show')) {
+        console.log('[Dashboard] Modal open; skipping refresh');
+        return;
+    }
     console.log('[Dashboard] Refreshing data...');
     updateState('isLoading', true);
 
-    const timeRange = document.getElementById('time-range')?.value || '24h';
-    console.log(`[Dashboard] Refreshing with range: ${timeRange}`);
+    const { forceFreshTopProblems = false } = options;
+    const timeRange = document.querySelector('#time-range-container .dropdown-toggle')?.dataset.value || '24h';
 
     // Helper for timeout
     const fetchWithTimeout = (p, ms = 15000) => Promise.race([
@@ -201,65 +183,86 @@ async function refreshAll() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
     ]);
 
-    // 1. Fetch Summary
-    fetchWithTimeout(fetchSummary()).then(summary => {
-        updateState('summary', summary);
-    }).catch(err => {
-        showGlobalError(`Summary Sync Failed: ${err.message}`);
-    });
+    // 1. CRITICAL DATA (Summary + Fleet)
+    // These are needed for the top-fold KPIs.
+    const criticalPromises = [
+        fetchWithTimeout(fetchSummary()).then(summary => updateState('summary', summary)),
+        fetchWithTimeout(fetchFleetMetrics()).then(fleetMetrics => updateState('fleetMetrics', fleetMetrics))
+    ];
 
-    // 2. Fetch Top Problems
-    fetchWithTimeout(fetchTopProblems()).then(topProblems => {
-        updateState('topProblems', topProblems);
-    }).catch(err => {
-        console.error('[Dashboard] Top Problems fetch failed:', err);
-    });
+    // Wait for critical data
+    await Promise.allSettled(criticalPromises);
 
-    // 3. Fetch Trends
-    fetchWithTimeout(fetchTrends(timeRange)).then(trends => {
-        console.log('[Dashboard] Trends received:', trends);
-        updateState('trends', trends);
-    }).catch(err => {
-        console.error('[Dashboard] Trends fetch failed:', err);
-    });
+    // Initial critical render is done via updateState -> subscribe -> scheduleRender
 
-    // 4. Fetch Inventory
-    fetchWithTimeout(fetchInventory()).then(inventory => {
-        updateState('inventory', inventory);
-    }).catch(err => {
-        console.error('[Dashboard] Inventory fetch failed:', err);
-    });
+    // Stop loading indicator immediately after critical data
+    updateState('isLoading', false);
 
-    // 5. Fetch Server Health Summary
-    fetchWithTimeout(fetchServerHealth()).then(serverHealth => {
-        updateState('serverHealth', serverHealth);
-    }).catch(err => {
-        console.error('[Dashboard] Server health fetch failed:', err);
-    });
+    // If this was the boot sequence, we can now allow full rendering
+    if (booting) {
+        setTimeout(() => {
+            booting = false;
+            // Force a full re-render state check
+            scheduleRender(getState());
+        }, 100);
+    }
 
-    // 6. Fetch Alerts (active)
-    fetchWithTimeout(fetchAlerts('active', 200)).then(alerts => {
-        updateState('alerts', alerts);
-    }).catch(err => {
-        console.error('[Dashboard] Alerts fetch failed:', err);
-    });
+    // 2. SECONDARY DATA (De-prioritized)
+    // Fetched in idle time so we don't block the UI thread
+    const fetchSecondary = () => {
+        // Top Problems
+        fetchWithTimeout(fetchTopProblems(forceFreshTopProblems)).then(topProblems => updateState('topProblems', topProblems)).catch(console.error);
+        // Trends
+        fetchWithTimeout(fetchTrends(timeRange)).then(trends => updateState('trends', trends)).catch(console.error);
+        // Inventory
+        fetchWithTimeout(fetchInventory()).then(inventory => updateState('inventory', inventory)).catch(console.error);
+        // Server Health
+        fetchWithTimeout(fetchServerHealth()).then(serverHealth => updateState('serverHealth', serverHealth)).catch(console.error);
+        // Alerts
+        fetchWithTimeout(fetchAlerts('active', 200)).then(alerts => updateState('alerts', alerts)).catch(console.error);
+    };
 
-    // Clean up loading state eventually
-    setTimeout(() => updateState('isLoading', false), 2000);
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(fetchSecondary);
+    } else {
+        setTimeout(fetchSecondary, 50);
+    }
 }
 
-function renderAll(state) {
-    if (state.error) return;
+// === RENDER ORCHESTRATION ===
 
+function renderCritical(state) {
+    if (state.error) return;
     try {
         const ts = state.lastUpdated ? state.lastUpdated.toISOString() : null;
 
+        // 1. Summary KPIs (Network)
         if (state.summary) {
             safeRender('Devices Online', () => renderDevicesOnline(state.summary, ts));
             safeRender('Device Status Cards', () => renderDeviceStatusCards(state.summary, ts));
+            safeRender('Overall Health', () => renderOverallHealth(state));
+        }
+
+        // 2. Fleet Overview (KPIs)
+        if (state.fleetMetrics) {
+            safeRender('Fleet Overview', () => renderFleetOverview(state.fleetMetrics));
+        }
+    } catch (e) {
+        console.error("Critical Render Error", e);
+    }
+}
+
+function renderSecondary(state) {
+    if (state.error) return;
+    try {
+        const ts = state.lastUpdated ? state.lastUpdated.toISOString() : null;
+
+        // 3. Network Availability (Sparkline Chart)
+        if (state.summary) {
             safeRender('Network Availability', () => renderNetworkAvailability(state.summary, state.trends));
         }
 
+        // 4. Top Problems Tables
         if (state.topProblems) {
             safeRender('Top Latency Table', () => renderTopLatencyTable(state.topProblems.high_latency));
             safeRender('Top Packet Loss Table', () => renderTopPacketLossTable(state.topProblems.high_packet_loss));
@@ -268,16 +271,21 @@ function renderAll(state) {
             }
         }
 
+        // 5. Server Health (Table + Meta)
         if (state.serverHealth) {
+            safeRender('Server Health Table', () => renderEnhancedServerTable(state.serverHealth));
+            safeRender('Server Health Meta', () => renderServerLastCheck(state.serverHealth));
             safeRender('Server Health Summary', () => renderServerHealthSummary(state.serverHealth));
-            safeRender('Server Health Table', () => renderServerHealthTable(state.serverHealth));
+        } else {
+            safeRender('Server Health Meta', () => renderServerLastCheck(null));
         }
 
+        // 6. Alert Center (Table)
         if (state.alerts) {
             safeRender('Alert Center', () => renderAlertCenter(state.alerts));
         }
 
-        // Render Inventory List
+        // 7. Inventory (Table + Chart)
         if (state.inventory) {
             if (isTabVisible('tab-inventory-list')) {
                 safeRender('Inventory List', () => renderInventoryTable(state.inventory.devices));
@@ -287,29 +295,37 @@ function renderAll(state) {
             }
         }
 
-        // Update Last Updated Text
+        // 8. Timestamps
         const timeEl = document.getElementById('last-updated-text');
-        if (timeEl && state.lastUpdated) {
-            timeEl.textContent = state.lastUpdated.toLocaleTimeString();
-        }
-        const breakdownUpdated = document.getElementById('device-breakdown-updated');
-        if (breakdownUpdated && state.lastUpdated) {
-            breakdownUpdated.textContent = state.lastUpdated.toLocaleString();
-        }
-        const alertsUpdated = document.getElementById('alerts-last-updated');
-        if (alertsUpdated && state.lastUpdated) {
-            alertsUpdated.textContent = state.lastUpdated.toLocaleString();
-        }
+        if (timeEl && state.lastUpdated) timeEl.textContent = state.lastUpdated.toLocaleTimeString();
 
+        const breakdownUpdated = document.getElementById('device-breakdown-updated');
+        if (breakdownUpdated && state.lastUpdated) breakdownUpdated.textContent = state.lastUpdated.toLocaleString();
+
+        const alertsUpdated = document.getElementById('alerts-last-updated');
+        if (alertsUpdated && state.lastUpdated) alertsUpdated.textContent = state.lastUpdated.toLocaleString();
+
+        // 9. Global Error Clearing
         if (!state.error) {
             const errorEl = document.getElementById('global-error');
             if (errorEl && !errorEl.dataset.hasErrors) {
                 errorEl.style.display = 'none';
             }
         }
+
     } catch (e) {
-        console.error("Critical Render Error", e);
-        showGlobalError(`Rendering Failed: ${e.message}`);
+        console.error("Secondary Render Error", e);
+    }
+}
+
+function renderAll(state) {
+    // This function is kept for backward compatibility if called elsewhere,
+    // but internally we now prioritize critical vs secondary.
+    renderCritical(state);
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => renderSecondary(state));
+    } else {
+        setTimeout(() => renderSecondary(state), 0);
     }
 }
 
@@ -324,7 +340,12 @@ function safeRender(name, renderFn) {
 function showGlobalError(msg, isSticky = false) {
     const errorEl = document.getElementById('global-error');
     if (errorEl) {
-        errorEl.textContent = msg;
+        const textEl = document.getElementById('global-error-text');
+        if (textEl) {
+            textEl.textContent = msg;
+        } else {
+            errorEl.textContent = msg;
+        }
         errorEl.style.display = 'block';
         if (isSticky) errorEl.dataset.hasErrors = 'true';
     }
@@ -381,32 +402,308 @@ function setupTabs() {
     });
 }
 
+
+
+let breakdownLiveInFlight = false;
+async function triggerLiveBreakdownRefresh() {
+    if (breakdownLiveInFlight) return;
+    const state = getState();
+    const lastUpdate = state.lastUpdated ? new Date(state.lastUpdated).getTime() : 0;
+    if (Date.now() - lastUpdate < 15000) {
+        refreshAll({ forceFreshTopProblems: true }).catch(() => { });
+        return;
+    }
+    breakdownLiveInFlight = true;
+    try {
+        await fetch('/api/monitoring/status', { credentials: 'same-origin' });
+    } catch (e) {
+        console.error('[Dashboard] Live breakdown refresh failed:', e);
+    } finally {
+        breakdownLiveInFlight = false;
+    }
+    refreshAll({ forceFreshTopProblems: true }).catch(() => { });
+}
+
+function toggleDeviceBreakdown() {
+    const el = document.getElementById('device-breakdown');
+    if (!el) return;
+
+    // Toggle active class
+    if (el.classList.contains('is-active')) {
+        el.classList.remove('is-active');
+    } else {
+        el.classList.add('is-active');
+        triggerLiveBreakdownRefresh();
+
+        // Ensure visible before scrolling
+        // requestAnimationFrame to allow display transition (if any pure CSS) or just scroll
+        requestAnimationFrame(() => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        // Trigger resize for charts
+        setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+            renderAll(getState());
+        }, 150);
+    }
+}
+
 function openDeviceBreakdown() {
     const el = document.getElementById('device-breakdown');
     if (!el) return;
-    el.style.display = 'block';
-    el.classList.add('is-active');
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-    }, 150);
+    if (!el.classList.contains('is-active')) {
+        toggleDeviceBreakdown();
+    }
 }
 
 function closeDeviceBreakdown() {
     const el = document.getElementById('device-breakdown');
     if (!el) return;
-    el.style.display = 'none';
     el.classList.remove('is-active');
 }
 
 function initDeviceBreakdown() {
-    const cards = document.querySelectorAll('.device-kpi-card');
-    cards.forEach(card => {
-        card.addEventListener('click', () => openDeviceBreakdown());
-        card.style.cursor = 'pointer';
+    // Event Delegation for Device KPI Cards
+    document.body.addEventListener('click', (e) => {
+        const card = e.target.closest('.device-kpi-card');
+        if (card) {
+            if (card.id === 'card-devices-maintenance') {
+                openMaintenanceModal();
+            } else if (card.id === 'card-network-avail') {
+                openAvailabilityModal();
+            } else {
+                toggleDeviceBreakdown();
+            }
+        }
+
+        // Close button delegation
+        const closeBtn = e.target.closest('#device-breakdown-close');
+        if (closeBtn) {
+            closeDeviceBreakdown();
+        }
+
+        // Maintenance toggle action in modal
+        const maintenanceBtn = e.target.closest('.maintenance-toggle-btn');
+        if (maintenanceBtn) {
+            e.preventDefault();
+            toggleMaintenanceDevice(maintenanceBtn.dataset.deviceId, maintenanceBtn);
+        }
     });
-    const closeBtn = document.getElementById('device-breakdown-close');
-    if (closeBtn) closeBtn.addEventListener('click', closeDeviceBreakdown);
+}
+
+function getMaintenanceModal() {
+    const el = document.getElementById('maintenance-modal');
+    if (!el || !window.bootstrap) return null;
+    if (!maintenanceModalInstance) {
+        maintenanceModalInstance = new window.bootstrap.Modal(el);
+    }
+    return maintenanceModalInstance;
+}
+
+async function openMaintenanceModal() {
+    const modal = getMaintenanceModal();
+    if (!modal) return;
+    await renderMaintenanceList();
+    modal.show();
+}
+
+async function renderMaintenanceList() {
+    const tbody = document.getElementById('maintenance-list-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</td></tr>';
+    try {
+        const res = await fetch('/api/maintenance/devices');
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            throw new Error(data.error || 'Failed to load maintenance devices');
+        }
+
+        const maintenanceDevices = (data.devices || []).filter(d => d.maintenance_mode);
+        if (maintenanceDevices.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No devices in maintenance mode.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = maintenanceDevices.map(d => `
+            <tr>
+                <td class="fw-bold text-white">${d.device_name || 'Unknown'}</td>
+                <td><code>${d.device_ip || '-'}</code></td>
+                <td>${d.device_type || 'Unknown'}</td>
+                <td><span class="badge bg-warning text-dark"><i class="fas fa-wrench"></i> Maintenance</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning maintenance-toggle-btn" data-device-id="${d.device_id}">
+                        Disable
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error("Failed to load maintenance devices", err);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Failed to load data.</td></tr>';
+    }
+}
+
+async function toggleMaintenanceDevice(deviceId, buttonEl) {
+    if (!deviceId) return;
+    const original = buttonEl ? buttonEl.innerHTML : '';
+    if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    try {
+        const res = await fetch('/api/maintenance/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: Number(deviceId) })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            throw new Error(data.error || 'Failed to toggle maintenance');
+        }
+        await renderMaintenanceList();
+    } catch (err) {
+        console.error('Failed to toggle maintenance', err);
+        alert(err.message || 'Failed to toggle maintenance');
+    } finally {
+        if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.innerHTML = original;
+        }
+    }
+}
+
+let availabilityInFlight = false;
+
+function getAvailabilityModal() {
+    const el = document.getElementById('availability-modal');
+    if (!el || !window.bootstrap) return null;
+    if (!availabilityModalInstance) {
+        availabilityModalInstance = new window.bootstrap.Modal(el);
+    }
+    return availabilityModalInstance;
+}
+
+async function openAvailabilityModal() {
+    const modal = getAvailabilityModal();
+    if (!modal) return;
+    await renderAvailabilityDetails();
+    modal.show();
+}
+
+async function renderAvailabilityDetails() {
+    if (availabilityInFlight) return;
+    availabilityInFlight = true;
+
+    const heatmapEl = document.getElementById('availability-heatmap');
+    const updatedEl = document.getElementById('availability-modal-updated');
+    const downtimeBody = document.getElementById('availability-downtime-body');
+    const worstBody = document.getElementById('availability-worst-body');
+
+    if (heatmapEl) heatmapEl.innerHTML = '<div class="text-secondary">Loading...</div>';
+    if (downtimeBody) downtimeBody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary p-3">Loading...</td></tr>';
+    if (worstBody) worstBody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary p-3">Loading...</td></tr>';
+
+    try {
+        const data = await fetchAvailabilityDetails(true);
+        if (updatedEl) {
+            const timestamp = data.generated_at ? new Date(data.generated_at) : new Date();
+            updatedEl.textContent = timestamp.toLocaleString();
+        }
+        renderAvailabilityHeatmap(data.heatmap || [], heatmapEl);
+        renderAvailabilityRows(data.downtime_contributors || [], downtimeBody, 'downtime');
+        renderAvailabilityRows(data.worst_availability || [], worstBody, 'worst');
+    } catch (err) {
+        console.error('[Dashboard] Availability detail error:', err);
+        if (heatmapEl) heatmapEl.innerHTML = '<div class="text-danger">Failed to load heatmap.</div>';
+        if (downtimeBody) downtimeBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger p-3">Failed to load data.</td></tr>';
+        if (worstBody) worstBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger p-3">Failed to load data.</td></tr>';
+    } finally {
+        availabilityInFlight = false;
+    }
+}
+
+function renderAvailabilityHeatmap(heatmap, targetEl) {
+    const el = targetEl || document.getElementById('availability-heatmap');
+    if (!el) return;
+    if (!Array.isArray(heatmap) || heatmap.length === 0) {
+        el.innerHTML = '<div class="text-secondary">No availability data for the last 24 hours.</div>';
+        return;
+    }
+
+    const cells = heatmap.map((entry) => {
+        const online = entry.online ?? 0;
+        const total = entry.total ?? 0;
+        const hasData = total > 0;
+        const value = hasData ? Number(entry.value ?? 0) : 0;
+        const className = hasData ? getAvailabilityClass(value) : 'avail-unknown';
+        const timeLabel = formatAvailabilityHour(entry.time);
+        const tooltip = hasData
+            ? `${timeLabel} • ${formatPercent(value)} (${online}/${total})`
+            : `${timeLabel} • No data`;
+        return `<div class="availability-cell ${className}" title="${tooltip}"></div>`;
+    });
+
+    el.innerHTML = cells.join('');
+}
+
+function renderAvailabilityRows(rows, tbody, mode) {
+    if (!tbody) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+        const emptyMessage = mode === 'worst'
+            ? 'No availability records yet.'
+            : 'No downtime recorded in the last 24 hours.';
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-secondary p-3">${emptyMessage}</td></tr>`;
+        return;
+    }
+
+    if (mode === 'downtime') {
+        tbody.innerHTML = rows.map((row) => {
+            const name = row.device_name || 'Unknown';
+            const ip = row.ip || '-';
+            const offline = formatNumber(row.offline_scans ?? 0);
+            const downtimePct = formatPercent(row.downtime_pct ?? 0);
+            return `
+                <tr>
+                    <td class="fw-bold text-white">${name}</td>
+                    <td><code>${ip}</code></td>
+                    <td>${offline}</td>
+                    <td>${downtimePct}</td>
+                </tr>
+            `;
+        }).join('');
+        return;
+    }
+
+    tbody.innerHTML = rows.map((row) => {
+        const name = row.device_name || 'Unknown';
+        const ip = row.ip || '-';
+        const uptime = formatPercent(row.uptime_pct ?? 0);
+        const offline = formatNumber(row.offline_scans ?? 0);
+        return `
+            <tr>
+                <td class="fw-bold text-white">${name}</td>
+                <td><code>${ip}</code></td>
+                <td>${uptime}</td>
+                <td>${offline}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function formatAvailabilityHour(isoString) {
+    if (!isoString) return 'Unknown';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return 'Unknown';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function getAvailabilityClass(value) {
+    if (value >= 99) return 'avail-excellent';
+    if (value >= 95) return 'avail-good';
+    if (value >= 90) return 'avail-warning';
+    return 'avail-bad';
 }
 
 function initServerKpiInteractions() {
@@ -414,6 +711,14 @@ function initServerKpiInteractions() {
     const target = document.getElementById('server-health-detail');
     cards.forEach(card => {
         card.addEventListener('click', () => {
+            const filter = card.dataset.serverFilter || 'all';
+            setServerHealthFilter(filter);
+            cards.forEach(c => c.classList.remove('server-filter-active'));
+            card.classList.add('server-filter-active');
+            const state = getState();
+            if (state.serverHealth) {
+                renderServerHealthTable(state.serverHealth);
+            }
             if (target) {
                 target.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
@@ -430,7 +735,15 @@ function scheduleRender(state) {
     renderScheduled = true;
     requestAnimationFrame(() => {
         renderScheduled = false;
-        if (latestState) renderAll(latestState);
+        if (latestState) {
+            if (booting) {
+                // During boot, only render critical components to avoid thrashing
+                renderCritical(latestState);
+            } else {
+                // Otherwise render everything (split into critical + idle)
+                renderAll(latestState);
+            }
+        }
     });
 }
 
@@ -440,6 +753,169 @@ function isTabVisible(id) {
     return window.getComputedStyle(el).display !== 'none';
 }
 
+
+function renderOverallHealth(state) {
+    const card = document.getElementById('overall-health-card');
+    const statusEl = document.getElementById('overall-health-status');
+    const subEl = document.getElementById('overall-health-subtext');
+    if (!card || !statusEl) return;
+
+    const summary = state.summary;
+    const serverHealth = state.serverHealth;
+    const alerts = state.alerts;
+
+    if (!summary) {
+        statusEl.textContent = 'Loading...';
+        card.classList.remove('health-healthy', 'health-degraded', 'health-critical');
+        card.classList.add('health-degraded');
+        return;
+    }
+
+    const networkState = computeNetworkHealthState(summary, alerts);
+    const serverState = computeServerHealthState(serverHealth);
+    const alertCounts = getAlertCounts(alerts, summary);
+
+    const overall = computeOverallState(networkState, serverState, alertCounts);
+
+    card.classList.remove('health-healthy', 'health-degraded', 'health-critical');
+    card.classList.add(`health-${overall.toLowerCase()}`);
+    statusEl.textContent = overall;
+    if (subEl) subEl.textContent = 'Based on network health, server telemetry, and critical alerts.';
+}
+
+function renderServerLastCheck(serverHealth) {
+    const el = document.getElementById('server-last-check');
+    if (!el) return;
+    if (!serverHealth || !serverHealth.timestamp) {
+        el.textContent = '-';
+        return;
+    }
+    el.textContent = timeAgo(serverHealth.timestamp);
+}
+
+function computeNetworkHealthState(summary, alerts) {
+    const devices = summary?.devices || {};
+    const net = summary?.network_health || {};
+
+    const total = devices.total ?? 0;
+    const offline = devices.offline ?? devices.down ?? 0;
+    // Maintenance devices are excluded from "offline" count in the backend usually, but let's be safe
+    // If backend returns them as "maintenance", they might not be in total/offline/online counts depending on aggregation.
+    // Assuming "degraded" might capturing them or they are separate. 
+
+    // We treat Maintenance as "Healthy" or "Ignored" for Health State calculation.
+
+    const degraded = devices.degraded ?? 0;
+
+    // Filter out maintenance from total for percentage calc if needed, but usually we just ignore them in "Offline" check.
+
+    const offlinePct = total > 0 ? (offline / total) * 100 : 0;
+    const degradedPct = total > 0 ? (degraded / total) * 100 : 0;
+
+    const latency = net.avg_latency_ms ?? 0;
+    const loss = net.avg_packet_loss_pct ?? net.packet_loss ?? 0;
+
+    const alertCounts = getAlertCounts(alerts, summary);
+    const networkCritical = alertCounts.networkCritical + alertCounts.deviceCritical;
+    const networkWarning = alertCounts.networkWarning + alertCounts.deviceWarning;
+
+    if (offlinePct >= 10 || latency >= 300 || loss >= 10 || networkCritical >= 1) return 'Critical';
+    if (offlinePct >= 3 || degradedPct >= 10 || latency >= 150 || loss >= 5 || networkWarning >= 1) return 'Degraded';
+    return 'Healthy';
+}
+
+function computeServerHealthState(serverHealth) {
+    const counts = serverHealth?.counts;
+    if (!counts) return 'Degraded';
+
+    const total = counts.total ?? 0;
+    if (total <= 0) return 'Degraded';
+
+    const critical = counts.critical ?? 0;
+    const warning = counts.warning ?? 0;
+    const offline = counts.offline ?? 0;
+
+    const criticalPct = (critical / total) * 100;
+    const offlinePct = (offline / total) * 100;
+    const warningPct = (warning / total) * 100;
+
+    if (criticalPct >= 5 || offlinePct >= 5) return 'Critical';
+    if (warningPct >= 10) return 'Degraded';
+    return 'Healthy';
+}
+
+function computeOverallState(networkState, serverState, alertCounts) {
+    const stateScore = {
+        Healthy: 100,
+        Degraded: 60,
+        Critical: 20
+    };
+
+    const criticalAlerts = alertCounts.critical;
+    const warningAlerts = alertCounts.warning;
+
+    const alertScore = criticalAlerts > 0 ? 30 : (warningAlerts > 0 ? 70 : 100);
+
+    const networkScore = stateScore[networkState] ?? 60;
+    const serverScore = stateScore[serverState] ?? 60;
+
+    if (criticalAlerts >= 3 && (networkState !== 'Healthy' || serverState !== 'Healthy')) {
+        return 'Critical';
+    }
+
+    const overallScore = 0.45 * networkScore + 0.35 * serverScore + 0.20 * alertScore;
+    if (overallScore >= 80) return 'Healthy';
+    if (overallScore >= 50) return 'Degraded';
+    return 'Critical';
+}
+
+function getAlertCounts(alerts, summary) {
+    const counts = {
+        critical: 0,
+        warning: 0,
+        info: 0,
+        networkCritical: 0,
+        networkWarning: 0,
+        deviceCritical: 0,
+        deviceWarning: 0,
+        serverCritical: 0,
+        serverWarning: 0
+    };
+
+    if (Array.isArray(alerts) && alerts.length > 0) {
+        alerts.forEach(a => {
+            const sev = (a.severity || '').toUpperCase();
+            const scope = (a.scope || '').toLowerCase();
+            const isCritical = sev === 'CRITICAL';
+            const isWarning = sev === 'WARNING';
+
+            if (isCritical) counts.critical += 1;
+            else if (isWarning) counts.warning += 1;
+            else counts.info += 1;
+
+            if (scope === 'network') {
+                if (isCritical) counts.networkCritical += 1;
+                if (isWarning) counts.networkWarning += 1;
+            } else if (scope === 'server') {
+                if (isCritical) counts.serverCritical += 1;
+                if (isWarning) counts.serverWarning += 1;
+            } else {
+                if (isCritical) counts.deviceCritical += 1;
+                if (isWarning) counts.deviceWarning += 1;
+            }
+        });
+        return counts;
+    }
+
+    const summaryAlerts = summary?.active_alerts;
+    if (summaryAlerts) {
+        counts.critical = summaryAlerts.critical ?? 0;
+        counts.warning = summaryAlerts.warning ?? 0;
+        counts.info = summaryAlerts.info ?? 0;
+    }
+    return counts;
+}
+
 // Refresh when page is restored from bfcache
 window.addEventListener('pageshow', (evt) => {
     if (evt.persisted) {
@@ -447,19 +923,6 @@ window.addEventListener('pageshow', (evt) => {
     }
 });
 
-function startClock() {
-    const timeEl = document.getElementById('clock-time');
-    const dateEl = document.getElementById('clock-date');
-    if (!timeEl || !dateEl) return;
-
-    function update() {
-        const now = new Date();
-        timeEl.textContent = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        dateEl.textContent = now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-    }
-    update();
-    setInterval(update, 1000);
-}
 
 // Smart Visibility Handling
 document.addEventListener('visibilitychange', () => {
@@ -477,12 +940,8 @@ document.addEventListener('visibilitychange', () => {
             console.log('[Dashboard] Data fresh enough, skipping immediate refresh.');
         }
 
-        // Resume polling if disconnected
-        if (state.connectionStatus === 'disconnected') {
-            startPollingFallback();
-        }
+        startPolling();
     } else {
-        // Tab hidden: We could pause polling here if we wanted to be very efficient
-        // But for now, we leave SSE open. Polling fallback (if active) continues.
+        // Tab hidden: keep polling; no SSE used
     }
 });

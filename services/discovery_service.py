@@ -1,13 +1,29 @@
 import asyncio
 import threading
 import uuid
+import json
 from datetime import datetime
 from services.network_scanner import NetworkScanner
 
-# Global instance
+try:
+    from flask import current_app
+except ImportError:
+    current_app = None
+
+# Global instance fallback
 _discovery_service = None
 
 def get_discovery_service():
+    # Try to use current_app if available (Flask context)
+    if current_app:
+        try:
+            if not hasattr(current_app, 'discovery_service'):
+                current_app.discovery_service = DiscoveryService()
+            return current_app.discovery_service
+        except RuntimeError:
+            # Working outside of application context
+            pass
+            
     global _discovery_service
     if _discovery_service is None:
         _discovery_service = DiscoveryService()
@@ -15,16 +31,23 @@ def get_discovery_service():
 
 class DiscoveryService:
     def __init__(self):
+        print(f"[DEBUG] DiscoveryService Initialized: {id(self)}")
         self.scanner = NetworkScanner()
         self.active_scans = {}
         self.active_scans_lock = threading.Lock()
         
-    def start_scan(self, ip_range, username='system'):
+    def start_scan(self, ip_range, username='system', scan_mode='heavy'):
         """
         Start a new background scan.
         Returns the scan_id.
         """
         scan_id = str(uuid.uuid4())
+        app_obj = None
+        if current_app:
+            try:
+                app_obj = current_app._get_current_object()
+            except RuntimeError:
+                app_obj = None
         
         # Calculate approximate host count for initial stats
         try:
@@ -47,14 +70,16 @@ class DiscoveryService:
                 'start_time': datetime.utcnow().isoformat(),
                 'username': username,
                 'ip_range': ip_range,
+                'scan_mode': scan_mode,
                 'stop': False,
-                'error': None
+                'error': None,
+                'saved': False
             }
 
         # Start background thread
         t = threading.Thread(
             target=self._run_async_scan_wrapper,
-            args=(scan_id, ip_range),
+            args=(scan_id, ip_range, scan_mode, app_obj),
             daemon=True
         )
         t.start()
@@ -91,8 +116,10 @@ class DiscoveryService:
                 'total_found': scan['total_found'],
                 'scanned_hosts': scan['scanned_hosts'],
                 'total_hosts': scan['total_hosts'],
+                'scan_mode': scan.get('scan_mode'),
                 'new_devices': new_devices,
-                'error': scan.get('error')
+                'error': scan.get('error'),
+                'saved': scan.get('saved', False)
             }
 
     def get_scan_results(self, scan_id):
@@ -116,7 +143,7 @@ class DiscoveryService:
                     return scan_id
         return None
 
-    def _run_async_scan_wrapper(self, scan_id, ip_range):
+    def _run_async_scan_wrapper(self, scan_id, ip_range, scan_mode='heavy', app=None):
         """
         Wrapper to run async scanner in a thread.
         """
@@ -131,7 +158,8 @@ class DiscoveryService:
                     ip_range,
                     scan_id,
                     self.active_scans,
-                    self.active_scans_lock
+                    self.active_scans_lock,
+                    scan_mode=scan_mode
                 )
             )
 
@@ -149,6 +177,8 @@ class DiscoveryService:
                         scan['progress'] = 100
                         # Final sync of devices just in case
                         scan['devices'] = devices 
+            # Save results even if UI is not polling
+            self._save_scan_results(scan_id, devices, app)
 
         except Exception as e:
             import traceback
@@ -159,6 +189,71 @@ class DiscoveryService:
                     self.active_scans[scan_id]['error'] = str(e)
         finally:
             loop.close()
+
+    def _save_scan_results(self, scan_id, devices, app=None):
+        if not devices:
+            return
+
+        def _persist():
+            from extensions import db
+            from services.device_identity import upsert_device_from_identity
+            from services.device_classifier import DeviceClassifier
+
+            count_added = 0
+            count_updated = 0
+
+            for device_data in devices:
+                ip = device_data.get('ip')
+                if not ip:
+                    continue
+
+                device_type_raw = (device_data.get('device_type') or device_data.get('type') or '').strip()
+                device_type = DeviceClassifier.normalize_device_type(device_type_raw)
+                confidence_score = device_data.get('confidence_score')
+                classification_confidence = (device_data.get('classification_confidence') or '').strip()
+                classification_details = device_data.get('classification_details')
+
+                device, action, _prev_ip = upsert_device_from_identity(
+                    ip=ip,
+                    mac=device_data.get('mac'),
+                    hostname=device_data.get('hostname') or 'Unknown',
+                    manufacturer=device_data.get('manufacturer') or 'Unknown',
+                    device_type=device_type or 'unknown',
+                    is_monitored=True,
+                    is_active=True
+                )
+
+                if device and (classification_confidence or confidence_score is not None or classification_details):
+                    if (device.classification_confidence or '').strip().lower() != 'manual':
+                        if classification_confidence:
+                            device.classification_confidence = classification_confidence
+                        if confidence_score is not None:
+                            device.confidence_score = confidence_score
+                        if classification_details is not None:
+                            if not isinstance(classification_details, str):
+                                classification_details = json.dumps(classification_details)
+                            device.classification_details = classification_details
+
+                if action == "created":
+                    count_added += 1
+                elif action == "updated":
+                    count_updated += 1
+
+            if count_added > 0 or count_updated > 0:
+                db.session.commit()
+
+            with self.active_scans_lock:
+                if scan_id in self.active_scans:
+                    self.active_scans[scan_id]['saved'] = True
+
+        if app is None:
+            return
+
+        try:
+            with app.app_context():
+                _persist()
+        except Exception as e:
+            print(f"[Discovery] Failed to save scan results: {e}")
     def start_recursive_discovery(self, seed_ip):
         """
         Start a recursive discovery process starting from a seed IP.
@@ -176,7 +271,7 @@ class DiscoveryService:
             seed_device = Device(
                 device_ip=seed_ip, 
                 device_name=f"Seed-Core-{seed_ip}",
-                device_type='Switch',
+                device_type='switch',
                 is_monitored=True
             )
             db.session.add(seed_device)
@@ -198,7 +293,7 @@ class DiscoveryService:
                 neighbor = Device(
                     device_ip=remote_ip,
                     device_name=n.get('remote_hostname', f"Discovered-{remote_ip}"),
-                    device_type='Switch', # Assume switch for now
+                    device_type='switch', # Assume switch for now
                     parent_switch_id=seed_device.device_id, # Temporary direct link
                     last_discovery_method='LLDP'
                 )

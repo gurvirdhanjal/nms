@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from extensions import db
+from sqlalchemy.orm.exc import StaleDataError
 from services.network_scanner import NetworkScanner
 import statistics
 
@@ -92,6 +93,10 @@ class DeviceMonitor:
         scan_results = []
         
         for device in devices:
+            # Skip devices in maintenance window
+            if getattr(device, 'maintenance_mode', False):
+                continue
+
             status, latency, packet_loss = await self.scanner.ping_device(device.device_ip)
             
             # Save scan history
@@ -135,6 +140,9 @@ class DeviceMonitor:
             # Commit per device to prevent long-running transactions/locks
             try:
                 db.session.commit()
+            except StaleDataError as e:
+                print(f"[WARN] Device disappeared during commit for {device.device_ip}: {e}")
+                db.session.rollback()
             except Exception as e:
                 print(f"[ERROR] Failed to commit scan record for {device.device_ip}: {e}")
                 db.session.rollback()

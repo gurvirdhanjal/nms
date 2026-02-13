@@ -1,65 +1,151 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
 from extensions import db
 from services.network_scanner import NetworkScanner
+from services.device_identity import upsert_device_from_identity
 import asyncio
 import json
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
-scanner = NetworkScanner()
+
+from services.discovery_service import get_discovery_service
 
 @devices_bp.route('/devices')
 def device_management():
     if 'logged_in' not in session:
         return redirect(url_for('auth_bp.login'))
-    
-    from models.device import Device
-    devices = Device.query.all()
-    print(f"DEBUG: Found {len(devices)} devices in database")  # Debug line
-    
-    device = None
-    
-    prefill_data = None
-    if request.args.get('prefill') == 'true':
-        prefill_data = {
-            'device_ip': request.args.get('ip'),
-            'hostname': request.args.get('hostname'),
-            'macaddress': request.args.get('mac')
-        }
+        
+    try:
+        from models.device import Device
+        devices = Device.query.order_by(Device.device_ip.asc()).all()
+        print(f"DEBUG: Found {len(devices)} devices in database")  # Debug line
+        
+        device = None
+        
+        prefill_data = None
+        if request.args.get('prefill') == 'true':
+            prefill_data = {
+                'device_ip': request.args.get('ip'),
+                'hostname': request.args.get('hostname'),
+                'macaddress': request.args.get('mac')
+            }
 
-    if 'edit_id' in request.args:
-        device = Device.query.get(request.args.get('edit_id'))
-        print(f"DEBUG: Editing device {device}")  # Debug line
+        if 'edit_id' in request.args:
+            device = Device.query.get(request.args.get('edit_id'))
+            print(f"DEBUG: Editing device {device}")  # Debug line
 
-    if 'delete_id' in request.args:
-        device = Device.query.get(request.args.get('delete_id'))
-        if device:
-            # Clean up scan history
-            from models.scan_history import DeviceScanHistory
-            DeviceScanHistory.query.filter_by(device_ip=device.device_ip).delete()
+        if 'delete_id' in request.args:
+            device = Device.query.get(request.args.get('delete_id'))
+            if device:
+                # Clean up scan history
+                from models.scan_history import DeviceScanHistory
+                DeviceScanHistory.query.filter_by(device_ip=device.device_ip).delete()
+                
+                # Clean up dashboard events (Fix for FK violation)
+                from models.dashboard import DashboardEvent, DailyDeviceStats
+                DashboardEvent.query.filter_by(device_id=device.device_id).delete()
+                DailyDeviceStats.query.filter_by(device_id=device.device_id).delete()
+                
+                db.session.delete(device)
+                db.session.commit()
+                print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
+            return redirect(url_for('devices_bp.device_management'))
+
+        # Count devices that still need auto-classification
+        unclassified_count = 0
+        for d in devices:
+            dtype = (d.device_type or "").strip().lower()
+            conf = (d.classification_confidence or "").strip().lower()
+            if conf == "manual":
+                continue
+            if dtype in ("", "unknown", "network device"):
+                unclassified_count += 1
+
+        return render_template(
+            'devices.html',
+            devices=devices,
+            device=device,
+            prefill_data=prefill_data,
+            unclassified_count=unclassified_count
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"Internal Error: {str(e)} <br> <pre>{traceback.format_exc()}</pre>", 500
+
+
+from services.snmp_service import snmp_service
+
+@devices_bp.route('/api/check_connectivity', methods=['POST'])
+def check_connectivity():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    ip = data.get('ip')
+    mode = data.get('mode', 'ping')
+    
+    if not ip:
+        return jsonify({'success': False, 'message': 'IP Address is required'})
+    
+    scanner = get_discovery_service().scanner
+    
+    try:
+        if mode == 'ping':
+            status, latency, packet_loss = asyncio.run(scanner.ping_device(ip, timeout=2, count=2))
+            if status == 'Online':
+                return jsonify({
+                    'success': True, 
+                    'message': f"Ping successful ({latency}ms)",
+                    'latency': latency
+                })
+            else:
+                return jsonify({'success': False, 'message': 'Ping failed (Host unreachable)'})
+        
+        elif mode == 'snmp':
+            community = data.get('snmp_community', 'public')
+            version = data.get('snmp_version', 'v2c')
+            port = int(data.get('snmp_port', 161))
             
-            db.session.delete(device)
-            db.session.commit()
-            print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
-        return redirect(url_for('devices_bp.device_management'))
+            # Use sync wrapper for simplicity or async if available
+            sys_info = snmp_service.get_system_info(ip, community, version, port)
+            
+            if 'error' in sys_info:
+                return jsonify({'success': False, 'message': f"SNMP Failed: {sys_info['error']}"})
+            else:
+                return jsonify({
+                    'success': True,
+                    'message': f"SNMP Connected: {sys_info.get('sys_descr', 'System info retrieved')}"
+                })
+                
+        elif mode == 'agent':
+            # Check tactical agent
+            agent_info = asyncio.run(scanner.check_tactical_agent(ip))
+            if agent_info:
+                return jsonify({
+                    'success': True,
+                    'message': f"Agent Detected: {agent_info.get('agent_version', 'Unknown Version')}"
+                })
+            else:
+                return jsonify({'success': False, 'message': 'Agent not detected on port 5002'})
+        
+        elif mode == 'wmi':
+            # Basic port check for RPC (135) or SMB (445)
+            # Using scanner.check_port
+            is_rpc = asyncio.run(scanner.check_port(ip, 135, timeout=2))
+            if is_rpc and is_rpc[1]:
+                 return jsonify({'success': True, 'message': 'WMI Port (RPC 135) is reachable'})
+            
+            is_smb = asyncio.run(scanner.check_port(ip, 445, timeout=2))
+            if is_smb and is_smb[1]:
+                 return jsonify({'success': True, 'message': 'WMI Port (SMB 445) is reachable'})
+                 
+            return jsonify({'success': False, 'message': 'WMI Ports (135/445) unreachable'})
+            
+        else:
+            return jsonify({'success': False, 'message': 'Unknown monitoring mode'})
 
-    # Count devices that still need auto-classification
-    unclassified_count = 0
-    for d in devices:
-        dtype = (d.device_type or "").strip().lower()
-        conf = (d.classification_confidence or "").strip().lower()
-        if conf == "manual":
-            continue
-        if dtype in ("", "unknown", "network device"):
-            unclassified_count += 1
-
-    return render_template(
-        'devices.html',
-        devices=devices,
-        device=device,
-        prefill_data=prefill_data,
-        unclassified_count=unclassified_count
-    )
-
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 @devices_bp.route('/devices/save', methods=['POST'])
 def save_device():
@@ -72,11 +158,51 @@ def save_device():
         device_name = request.form['device_name']
         device_ip = request.form['device_ip']
         device_type = request.form['device_type']
-        port = request.form.get('port', '')
-        username = request.form.get('username', '')
-        password = request.form.get('password', '')
-        rstplink = request.form.get('rstplink', '')
+        
+        # Identity
+        hostname = request.form.get('hostname', 'Unknown')
+        mac_address = request.form.get('macaddress', 'N/A')
+        manufacturer = request.form.get('manufacturer', 'Unknown')
+        location = request.form.get('location', '')
+        description = request.form.get('description', '')
+        
+        # Monitoring Config
         is_monitored = request.form.get('is_monitored') == 'on'
+        monitoring_mode = request.form.get('monitoring_mode', 'ping')
+        
+        # SNMP
+        snmp_version = request.form.get('snmp_version', 'v2c')
+        snmp_community = request.form.get('snmp_community', '')
+        snmp_port = int(request.form.get('snmp_port', 161))
+        snmp_timeout = int(request.form.get('snmp_timeout', 2))
+        snmp_retries = int(request.form.get('snmp_retries', 1))
+        snmp_username = request.form.get('snmp_username', '')
+        snmp_auth_proto = request.form.get('snmp_auth_proto', '')
+        snmp_auth_password = request.form.get('snmp_auth_password', '')
+        snmp_priv_proto = request.form.get('snmp_priv_proto', '')
+        snmp_priv_password = request.form.get('snmp_priv_password', '')
+
+        # Agent
+        agent_token = request.form.get('agent_token', '')
+        agent_interval = int(request.form.get('agent_interval', 300))
+        agent_os_type = request.form.get('agent_os_type', '')
+
+        # WMI
+        wmi_username = request.form.get('wmi_username', '')
+        wmi_password = request.form.get('wmi_password', '')
+        wmi_domain = request.form.get('wmi_domain', '')
+        
+        # Operational
+        maintenance_mode = request.form.get('maintenance_mode') == 'on'
+
+        # Legacy fields mapping
+        port = request.form.get('port', str(snmp_port) if monitoring_mode == 'snmp' else '')
+        rstplink = request.form.get('rstplink', '')
+        username = request.form.get('username', '') # Legacy
+        password = request.form.get('password', '') # Legacy
+
+        # Get shared scanner instance
+        scanner = get_discovery_service().scanner
 
         # Generator Smart RTSP link based on brand if not provided
         if not rstplink and username and password and port and device_type == 'camera':
@@ -95,17 +221,18 @@ def save_device():
                 # Generic fallback
                 rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/stream"
 
-        # Get network information
-        status, latency, _packet_loss = asyncio.run(scanner.ping_device(device_ip))
+        # Get network information - fast path only
+        status, latency, _packet_loss = "Unknown", None, 0.0
+        if is_monitored and monitoring_mode == 'ping':
+            try:
+                # Fast timeout
+                status, latency, _packet_loss = asyncio.run(scanner.ping_device(device_ip, timeout=1, count=1))
+            except Exception:
+                status, latency, _packet_loss = "Offline", None, 100.0
         
-        if status == "Online":
-            mac_address = scanner.get_mac_address(device_ip)
-            hostname = scanner.get_hostname(device_ip)
-            manufacturer = asyncio.run(scanner.get_manufacturer(mac_address))
-        else:
-            mac_address = request.form.get('macaddress', 'N/A')
-            hostname = request.form.get('hostname', 'Unknown')
-            manufacturer = "Unknown"
+        # NOTE: We skip synchronous MAC/Hostname enrichment here to prevent UI blocking.
+        # The background scanner will pick this up later.
+
 
         if device_id:
             # Update existing device
@@ -113,6 +240,36 @@ def save_device():
             device.device_name = device_name
             device.device_ip = device_ip
             device.device_type = device_type
+            
+            device.location = location
+            device.description = description
+            device.monitoring_mode = monitoring_mode
+            
+            # SNMP
+            device.snmp_version = snmp_version
+            device.snmp_community = snmp_community
+            device.snmp_port = snmp_port
+            device.snmp_timeout = snmp_timeout
+            device.snmp_retries = snmp_retries
+            device.snmp_username = snmp_username
+            device.snmp_auth_proto = snmp_auth_proto
+            device.snmp_auth_password = snmp_auth_password
+            device.snmp_priv_proto = snmp_priv_proto
+            device.snmp_priv_password = snmp_priv_password
+            
+            # Agent
+            device.agent_token = agent_token
+            device.agent_interval = agent_interval
+            device.agent_os_type = agent_os_type
+            
+            # WMI
+            device.wmi_username = wmi_username
+            device.wmi_password = wmi_password
+            device.wmi_domain = wmi_domain
+            
+            device.maintenance_mode = maintenance_mode
+            
+            # Legacy & Common
             device.port = port
             device.rstplink = rstplink
             device.macaddress = mac_address
@@ -125,13 +282,40 @@ def save_device():
                 device_name=device_name,
                 device_ip=device_ip,
                 device_type=device_type,
+                location=location,
+                description=description,
+                monitoring_mode=monitoring_mode,
+                
+                # SNMP
+                snmp_version=snmp_version,
+                snmp_community=snmp_community,
+                snmp_port=snmp_port,
+                snmp_timeout=snmp_timeout,
+                snmp_retries=snmp_retries,
+                snmp_username=snmp_username,
+                snmp_auth_proto=snmp_auth_proto,
+                snmp_auth_password=snmp_auth_password,
+                snmp_priv_proto=snmp_priv_proto,
+                snmp_priv_password=snmp_priv_password,
+                
+                # Agent
+                agent_token=agent_token,
+                agent_interval=agent_interval,
+                agent_os_type=agent_os_type,
+                
+                # WMI
+                wmi_username=wmi_username,
+                wmi_password=wmi_password,
+                wmi_domain=wmi_domain,
+                
+                maintenance_mode=maintenance_mode,
+                
                 port=port,
                 rstplink=rstplink,
                 macaddress=mac_address,
                 hostname=hostname,
                 manufacturer=manufacturer,
                 is_monitored=is_monitored
-                
             )
             db.session.add(device)
         
@@ -145,18 +329,13 @@ def save_device():
 
 @devices_bp.route('/api/devices')
 def api_devices():
-    # Auth handled by middleware
-
-    
     from models.device import Device
-    devices = Device.query.all()
-    return jsonify([device.to_dict() for device in devices])
+    devices_query = Device.query.order_by(Device.device_ip.asc()).all()
+    device_dicts = [d.to_dict() for d in devices_query]
+    return jsonify(device_dicts)
 
 @devices_bp.route('/api/devices/<int:device_id>')
 def api_device_detail(device_id):
-    # Auth handled by middleware
-
-    
     from models.device import Device
     device = Device.query.get(device_id)
     if device:
@@ -191,42 +370,60 @@ def bulk_add_devices():
              return jsonify({'error': 'Invalid data format. Expected a list of devices.'}), 400
 
         added_count = 0
+        updated_count = 0
         skipped_count = 0
         errors = []
 
+        seen_ips = set()
+        
         for data in devices_data:
             ip_address = data.get('ip', '').strip()
             hostname = data.get('hostname', 'Unknown').strip()
             mac_address = data.get('mac', 'N/A').strip()
             manufacturer = data.get('manufacturer', 'Unknown').strip()
+            from services.device_classifier import DeviceClassifier
+            device_type_raw = (data.get('device_type') or data.get('type') or '').strip()
+            device_type = DeviceClassifier.normalize_device_type(device_type_raw)
+            confidence_score = data.get('confidence_score')
+            classification_confidence = (data.get('classification_confidence') or '').strip()
+            classification_details = data.get('classification_details')
             
             if not ip_address:
                 continue
-
-            # Check if exists (by IP or MAC if MAC is valid)
-            existing = Device.query.filter_by(device_ip=ip_address).first()
-            
-            # Also check by MAC if we have one
-            if not existing and mac_address and mac_address != 'N/A':
-                 existing = Device.query.filter_by(macaddress=mac_address).first()
-
-            if existing:
-                skipped_count += 1
+                
+            if ip_address in seen_ips:
                 continue
-            
+            seen_ips.add(ip_address)
+
             try:
-                device = Device(
-                    device_name=hostname if hostname != 'Unknown' else f"Device-{ip_address}",
-                    device_ip=ip_address,
-                    device_type='Network Device',
-                    macaddress=mac_address,
+                device, action, _prev_ip = upsert_device_from_identity(
+                    ip=ip_address,
+                    mac=mac_address,
                     hostname=hostname,
                     manufacturer=manufacturer,
-                    is_monitored=False, # Default to not monitored
+                    device_type=device_type or 'unknown',
+                    is_monitored=False,
                     is_active=True
                 )
-                db.session.add(device)
-                added_count += 1
+
+                # Apply classification metadata when available (avoid overwriting manual)
+                if device and (classification_confidence or confidence_score is not None or classification_details):
+                    if (device.classification_confidence or '').strip().lower() != 'manual':
+                        if classification_confidence:
+                            device.classification_confidence = classification_confidence
+                        if confidence_score is not None:
+                            device.confidence_score = confidence_score
+                        if classification_details is not None:
+                            if not isinstance(classification_details, str):
+                                classification_details = json.dumps(classification_details)
+                            device.classification_details = classification_details
+
+                if action == "created":
+                    added_count += 1
+                elif action == "updated":
+                    updated_count += 1
+                else:
+                    skipped_count += 1
             except Exception as item_error:
                 errors.append(f"Error adding {ip_address}: {str(item_error)}")
 
@@ -235,6 +432,7 @@ def bulk_add_devices():
         return jsonify({
             'success': True,
             'added': added_count,
+            'updated': updated_count,
             'skipped': skipped_count,
             'errors': errors
         }), 201
@@ -269,6 +467,11 @@ def bulk_delete_devices():
                     # Clean up scan history
                     from models.scan_history import DeviceScanHistory
                     DeviceScanHistory.query.filter_by(device_ip=device.device_ip).delete()
+                    
+                    # Clean up dashboard events (Fix for FK violation)
+                    from models.dashboard import DashboardEvent, DailyDeviceStats
+                    DashboardEvent.query.filter_by(device_id=device.device_id).delete()
+                    DailyDeviceStats.query.filter_by(device_id=device.device_id).delete()
                     
                     db.session.delete(device)
                     deleted_count += 1
@@ -340,6 +543,9 @@ def reclassify_all():
     updated_devices = []
     force = request.args.get('force', 'false').lower() == 'true'
     auto_mode = request.args.get('auto', 'false').lower() == 'true'
+    
+    # Get shared scanner instance
+    scanner = get_discovery_service().scanner
 
     print(f"[Reclassify] start devices={len(devices)} force={force} auto={auto_mode}")
     
@@ -361,7 +567,13 @@ def reclassify_all():
             status, _latency, _packet_loss = asyncio.run(scanner.ping_device(device.device_ip))
 
             mac_address = device.macaddress or "N/A"
-            hostname = device.hostname or "Unknown"
+            hostname = device.hostname or ""
+            if not hostname or hostname.strip().lower() in ("unknown", "n/a", "na"):
+                name_fallback = device.device_name or ""
+                if name_fallback and name_fallback.strip().lower() not in ("unknown", "n/a", "na"):
+                    hostname = name_fallback
+                else:
+                    hostname = "Unknown"
             manufacturer = device.manufacturer or "Unknown"
 
             if status == "Online":
@@ -387,9 +599,10 @@ def reclassify_all():
             )
 
             result = classifier.classify(signals)
+            normalized_type = DeviceClassifier.normalize_device_type(result.device_type)
 
             # Update device
-            device.device_type = result.device_type.value
+            device.device_type = normalized_type
             device.confidence_score = result.score
             device.classification_confidence = result.confidence.value
             device.classification_details = json.dumps(result.to_dict())

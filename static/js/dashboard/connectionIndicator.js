@@ -1,45 +1,27 @@
 /**
  * Connection Status Indicator Component
- * 
- * Displays real-time connection status with visual feedback:
- * - 🟢 Green dot + "Live" when connected
- * - 🟡 Yellow dot + "Reconnecting..." when connecting
- * - 🔴 Red dot + "Offline - Polling" when disconnected
+ *
+ * Displays polling status with visual feedback:
+ * - Green dot + "Polling (30s)"
  */
-
-import { ConnectionStatus } from './sseClient.js';
 
 /**
  * Render the connection status indicator.
- * 
+ *
  * @param {string} status Current connection status
  */
-export function renderConnectionIndicator(status) {
+export function renderConnectionIndicator(status = 'polling') {
     const container = document.getElementById('connection-indicator');
     if (!container) {
         console.warn('[ConnectionIndicator] Container #connection-indicator not found');
         return;
     }
 
-    const configs = {
-        [ConnectionStatus.CONNECTED]: {
-            dotClass: 'indicator-dot--connected',
-            text: 'Live',
-            title: 'Real-time updates active'
-        },
-        [ConnectionStatus.CONNECTING]: {
-            dotClass: 'indicator-dot--connecting',
-            text: 'Reconnecting...',
-            title: 'Attempting to reconnect'
-        },
-        [ConnectionStatus.DISCONNECTED]: {
-            dotClass: 'indicator-dot--disconnected',
-            text: 'Polling',
-            title: 'Using polling fallback (30s refresh)'
-        }
+    const config = {
+        dotClass: 'indicator-dot--connected',
+        text: 'Polling (30s)',
+        title: 'Dashboard updates every 30 seconds'
     };
-
-    const config = configs[status] || configs[ConnectionStatus.DISCONNECTED];
 
     container.innerHTML = `
         <div class="connection-indicator" title="${config.title}">
@@ -50,8 +32,8 @@ export function renderConnectionIndicator(status) {
 }
 
 /**
- * Initialize the connection indicator with default disconnected state.
+ * Initialize the connection indicator with polling state.
  */
 export function initConnectionIndicator() {
-    renderConnectionIndicator(ConnectionStatus.DISCONNECTED);
+    renderConnectionIndicator('polling');
 }

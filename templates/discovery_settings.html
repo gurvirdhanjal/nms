@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+
+{% block title %}Discovery Settings - Device Monitoring{% endblock %}
+{% block extra_css %}
+<style>
+    .settings-section {
+        margin-bottom: 2rem;
+    }
+
+    .settings-section h5 {
+        font-family: 'Orbitron', monospace;
+        color: var(--tactical-accent-bright, #00ffc8);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(0, 212, 170, 0.2);
+    }
+
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stat-item {
+        background: rgba(0, 212, 170, 0.05);
+        border-left: 3px solid #00d4aa;
+        padding: 1rem;
+        border-radius: 4px;
+    }
+
+    .stat-item .stat-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #6a6a80;
+        margin-bottom: 4px;
+    }
+
+    .stat-item .stat-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        font-family: 'Orbitron', monospace;
+        color: #00ffc8;
+    }
+
+    .subnet-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .subnet-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        color: #e8e8f0;
+    }
+
+    .subnet-list li .btn-close-sm {
+        background: none;
+        border: none;
+        color: #ff3b5c;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 2px 6px;
+    }
+
+    .master-toggle {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        background: rgba(0, 212, 170, 0.08);
+        border: 1px solid rgba(0, 212, 170, 0.2);
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .master-toggle label {
+        font-weight: 700;
+        font-size: 1rem;
+        color: #ffffff;
+        margin: 0;
+    }
+
+    .form-switch .form-check-input {
+        width: 3rem;
+        height: 1.5rem;
+    }
+
+    .trigger-btn-group {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .save-bar {
+        position: sticky;
+        bottom: 0;
+        background: linear-gradient(180deg, transparent, #0d0d14 30%);
+        padding: 1.5rem 0 0.5rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="tactical-card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <h4><i class="fas fa-satellite-dish"></i> Auto-Discovery Settings</h4>
+                    <span class="badge bg-info" id="statusBadge">Loading...</span>
+                </div>
+                <div class="card-body">
+
+                    <!-- Master Toggle -->
+                    <div class="master-toggle">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="enabledToggle">
+                        </div>
+                        <label for="enabledToggle">Enable Auto-Discovery</label>
+                    </div>
+
+                    <!-- Subnets -->
+                    <div class="settings-section">
+                        <h5><i class="fas fa-network-wired me-2"></i>Subnets</h5>
+                        <ul class="subnet-list" id="subnetList"></ul>
+                        <div class="input-group input-group-sm mt-2" style="max-width: 350px;">
+                            <input type="text" class="form-control" id="newSubnet" placeholder="e.g. 192.168.1.0/24">
+                            <button class="btn btn-outline-info" type="button" id="addSubnetBtn">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Intervals -->
+                    <div class="settings-section">
+                        <h5><i class="fas fa-clock me-2"></i>Scan Intervals</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Light Sweep Interval (minutes)</label>
+                                <input type="number" class="form-control" id="lightInterval" min="1" max="1440">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Heavy Scan Interval (minutes)</label>
+                                <input type="number" class="form-control" id="heavyInterval" min="1" max="10080">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance -->
+                    <div class="settings-section">
+                        <h5><i class="fas fa-tachometer-alt me-2"></i>Performance</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Max Concurrent Pings</label>
+                                <input type="number" class="form-control" id="maxPings" min="1" max="200">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Ping Timeout (seconds)</label>
+                                <input type="number" class="form-control" id="pingTimeout" min="1" max="10">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Policy -->
+                    <div class="settings-section">
+                        <h5><i class="fas fa-shield-alt me-2"></i>Auto-Add Policy</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Policy</label>
+                                <select class="form-select" id="autoAddPolicy">
+                                    <option value="auto">Auto-add immediately</option>
+                                    <option value="approval">Queue for approval</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Consecutive Detections</label>
+                                <input type="number" class="form-control" id="autoAddAfterN" min="1" max="10">
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoMonitor">
+                                    <label class="form-check-label small" for="autoMonitor">Monitor new devices</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save -->
+                    <div class="save-bar">
+                        <button class="btn btn-primary" id="saveBtn">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Right Column: Stats + Triggers -->
+    <div class="col-lg-4">
+        <!-- Stats -->
+        <div class="tactical-card mb-3">
+            <div class="card-header">
+                <h4><i class="fas fa-chart-bar"></i> Last Scan Stats</h4>
+            </div>
+            <div class="card-body">
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Last Light Scan</div>
+                        <div class="stat-value" id="statLightScan">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Last Heavy Scan</div>
+                        <div class="stat-value" id="statHeavyScan">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Duration</div>
+                        <div class="stat-value" id="statDuration">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">New Devices</div>
+                        <div class="stat-value" id="statNew">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Updated</div>
+                        <div class="stat-value" id="statUpdated">0</div>
+                    </div>
+                </div>
+                <div id="statError" class="small text-danger mt-2" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Manual Triggers -->
+        <div class="tactical-card">
+            <div class="card-header">
+                <h4><i class="fas fa-bolt"></i> Manual Triggers</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Trigger a scan immediately without waiting for the scheduler.</p>
+                <div class="trigger-btn-group">
+                    <button class="btn btn-outline-info flex-fill" id="triggerLightBtn">
+                        <i class="fas fa-wifi"></i> Light Sweep
+                    </button>
+                    <button class="btn btn-outline-warning flex-fill" id="triggerHeavyBtn">
+                        <i class="fas fa-microscope"></i> Heavy Scan
+                    </button>
+                </div>
+                <div id="triggerStatus" class="small mt-2" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let currentSubnets = [];
+
+        // ---- Load settings ----
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/discovery-settings');
+                const cfg = await res.json();
+                populateForm(cfg);
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+        }
+
+        function populateForm(cfg) {
+            document.getElementById('enabledToggle').checked = cfg.enabled;
+            document.getElementById('lightInterval').value = cfg.light_interval_min;
+            document.getElementById('heavyInterval').value = cfg.heavy_interval_min;
+            document.getElementById('maxPings').value = cfg.max_concurrent_pings;
+            document.getElementById('pingTimeout').value = cfg.ping_timeout || 2;
+            document.getElementById('autoAddPolicy').value = cfg.auto_add_policy;
+            document.getElementById('autoAddAfterN').value = cfg.auto_add_after_n;
+            document.getElementById('autoMonitor').checked = cfg.auto_monitor_new;
+
+            currentSubnets = cfg.subnets || [];
+            renderSubnets();
+
+            // Stats
+            const badge = document.getElementById('statusBadge');
+            if (cfg.enabled) {
+                badge.textContent = 'Active';
+                badge.className = 'badge bg-success';
+            } else {
+                badge.textContent = 'Disabled';
+                badge.className = 'badge bg-secondary';
+            }
+
+            document.getElementById('statLightScan').textContent =
+                cfg.last_light_scan ? new Date(cfg.last_light_scan).toLocaleString() : '—';
+            document.getElementById('statHeavyScan').textContent =
+                cfg.last_heavy_scan ? new Date(cfg.last_heavy_scan).toLocaleString() : '—';
+            document.getElementById('statDuration').textContent =
+                cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '—';
+            document.getElementById('statNew').textContent = cfg.last_new_count || 0;
+            document.getElementById('statUpdated').textContent = cfg.last_updated_count || 0;
+
+            const errEl = document.getElementById('statError');
+            if (cfg.last_error) {
+                errEl.textContent = cfg.last_error;
+                errEl.style.display = 'block';
+            } else {
+                errEl.style.display = 'none';
+            }
+        }
+
+        // ---- Subnets ----
+        function renderSubnets() {
+            const ul = document.getElementById('subnetList');
+            if (currentSubnets.length === 0) {
+                ul.innerHTML = '<li class="text-muted">No subnets configured.</li>';
+                return;
+            }
+            ul.innerHTML = currentSubnets.map(function (s, i) {
+                return '<li>' + s +
+                    '<button class="btn-close-sm" data-idx="' + i + '" title="Remove">' +
+                    '<i class="fas fa-times"></i></button></li>';
+            }).join('');
+
+            ul.querySelectorAll('.btn-close-sm').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const idx = parseInt(this.dataset.idx);
+                    currentSubnets.splice(idx, 1);
+                    renderSubnets();
+                });
+            });
+        }
+
+        document.getElementById('addSubnetBtn').addEventListener('click', function () {
+            const input = document.getElementById('newSubnet');
+            const val = input.value.trim();
+            if (!val) return;
+            // Basic CIDR validation
+            if (!/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(val)) {
+                alert('Please enter a valid CIDR (e.g. 192.168.1.0/24)');
+                return;
+            }
+            if (currentSubnets.includes(val)) {
+                alert('Subnet already added.');
+                return;
+            }
+            currentSubnets.push(val);
+            input.value = '';
+            renderSubnets();
+        });
+
+        // ---- Save ----
+        document.getElementById('saveBtn').addEventListener('click', async function () {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                const payload = {
+                    enabled: document.getElementById('enabledToggle').checked,
+                    subnets: currentSubnets,
+                    light_interval_min: parseInt(document.getElementById('lightInterval').value) || 30,
+                    heavy_interval_min: parseInt(document.getElementById('heavyInterval').value) || 1440,
+                    max_concurrent_pings: parseInt(document.getElementById('maxPings').value) || 50,
+                    ping_timeout: parseInt(document.getElementById('pingTimeout').value) || 2,
+                    auto_add_policy: document.getElementById('autoAddPolicy').value,
+                    auto_add_after_n: parseInt(document.getElementById('autoAddAfterN').value) || 2,
+                    auto_monitor_new: document.getElementById('autoMonitor').checked
+                };
+
+                const res = await fetch('/api/discovery-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    populateForm(data.config);
+                    showTriggerStatus('Settings saved.', 'text-success');
+                } else {
+                    showTriggerStatus('Error saving: ' + (data.error || 'Unknown'), 'text-danger');
+                }
+            } catch (e) {
+                showTriggerStatus('Save failed: ' + e.message, 'text-danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+            }
+        });
+
+        // ---- Triggers ----
+        document.getElementById('triggerLightBtn').addEventListener('click', async function () {
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+            try {
+                const res = await fetch('/api/discovery-settings/trigger-light', { method: 'POST' });
+                const data = await res.json();
+                showTriggerStatus(data.message || 'Triggered.', 'text-info');
+            } catch (e) {
+                showTriggerStatus('Failed: ' + e.message, 'text-danger');
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-wifi"></i> Light Sweep';
+                // Reload stats after a short delay
+                setTimeout(loadSettings, 5000);
+            }
+        });
+
+        document.getElementById('triggerHeavyBtn').addEventListener('click', async function () {
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+            try {
+                const res = await fetch('/api/discovery-settings/trigger-heavy', { method: 'POST' });
+                const data = await res.json();
+                showTriggerStatus(data.message || 'Triggered.', 'text-warning');
+            } catch (e) {
+                showTriggerStatus('Failed: ' + e.message, 'text-danger');
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-microscope"></i> Heavy Scan';
+                setTimeout(loadSettings, 10000);
+            }
+        });
+
+        function showTriggerStatus(msg, cls) {
+            const el = document.getElementById('triggerStatus');
+            el.textContent = msg;
+            el.className = 'small mt-2 p-2 rounded ' + cls;
+            el.style.display = 'block';
+            el.style.background = 'rgba(255,255,255,0.05)';
+            setTimeout(function () { el.style.display = 'none'; }, 6000);
+        }
+
+        // ---- Enabled toggle: live update badge ----
+        document.getElementById('enabledToggle').addEventListener('change', function () {
+            const badge = document.getElementById('statusBadge');
+            if (this.checked) {
+                badge.textContent = 'Active (unsaved)';
+                badge.className = 'badge bg-warning';
+            } else {
+                badge.textContent = 'Disabled (unsaved)';
+                badge.className = 'badge bg-warning';
+            }
+        });
+
+        // ---- Init ----
+        loadSettings();
+
+    });
+</script>
+{% endblock %}

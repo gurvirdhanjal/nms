@@ -49,8 +49,8 @@ def event_stream():
                     message = client_queue.get(timeout=35)
                     yield message
                 except Exception:
-                    # Timeout - send empty comment as keep-alive
-                    yield ": keep-alive\n\n"
+                    # Timeout - send heartbeat event as keep-alive
+                    yield "event: heartbeat\ndata: {}\n\n"
                     
         except GeneratorExit:
             # Client disconnected

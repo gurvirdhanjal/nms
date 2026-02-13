@@ -94,3 +94,86 @@ export function animateValue(element, start, end, duration = 500) {
     };
     window.requestAnimationFrame(step);
 }
+
+/**
+ * Setup a tactical dropdown (Bootstrap structure acting as select)
+ * @param {string} containerId - ID of the container .dropdown
+ * @param {function} onChange - Callback (value) => {}
+ * @param {Array} initialOptions - (Optional) [{value, label}, ...]
+ * @returns {Object} - { getValue, updateOptions, setValue }
+ */
+export function setupTacticalDropdown(containerId, onChange, initialOptions = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return null;
+
+    const btn = container.querySelector('.dropdown-toggle');
+    const menu = container.querySelector('.dropdown-menu');
+    if (!btn || !menu) return null;
+
+    let currentValue = btn.dataset.value || initialOptions[0]?.value || 'all';
+
+    // Helper to render options
+    const renderOptions = (options) => {
+        menu.innerHTML = options.map(opt =>
+            `<li><a class="dropdown-item" href="#" data-value="${opt.value}">${opt.label}</a></li>`
+        ).join('');
+        attachListeners();
+    };
+
+    // Helper to update state
+    const setValue = (val, label) => {
+        currentValue = val;
+        btn.textContent = label;
+        btn.dataset.value = val;
+        // Visual selection state
+        menu.querySelectorAll('.dropdown-item').forEach(item => {
+            if (item.dataset.value === val) item.classList.add('active');
+            else item.classList.remove('active');
+        });
+    };
+
+    const attachListeners = () => {
+        menu.querySelectorAll('.dropdown-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const newVal = item.dataset.value;
+                const newLabel = item.textContent;
+                setValue(newVal, newLabel);
+                if (onChange) onChange(newVal);
+            });
+        });
+    };
+
+    // Initial render if options provided
+    if (initialOptions && initialOptions.length > 0) {
+        renderOptions(initialOptions);
+        // Set initial if matches
+        const initial = initialOptions.find(o => o.value === currentValue);
+        if (initial) setValue(initial.value, initial.label);
+    } else {
+        // Just attach to existing static options
+        attachListeners();
+        // Set initial value from DOM if present
+        const activeItem = menu.querySelector('.dropdown-item.active') || menu.querySelector('.dropdown-item');
+        if (activeItem && !btn.dataset.value) {
+            setValue(activeItem.dataset.value, activeItem.textContent);
+        }
+    }
+
+    return {
+        getValue: () => currentValue,
+        setValue: (val) => {
+            // Find label
+            const item = Array.from(menu.querySelectorAll('.dropdown-item')).find(i => i.dataset.value === val);
+            if (item) setValue(val, item.textContent);
+        },
+        updateOptions: (newOptions) => {
+            renderOptions(newOptions);
+            // If current value no longer exists, reset to first or all
+            const exists = newOptions.find(o => o.value === currentValue);
+            if (!exists && newOptions.length > 0) {
+                setValue(newOptions[0].value, newOptions[0].label);
+            }
+        }
+    };
+}

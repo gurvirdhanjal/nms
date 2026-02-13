@@ -35,6 +35,7 @@ export function renderInventoryTable(devices) {
                 'Warning': 'text-warning',
                 'Critical': 'text-danger',
                 'Offline': 'text-secondary',
+                'Maintenance': 'text-warning', // Yellow for maintenance
                 'Unknown': 'text-muted'
             };
             const icons = {
@@ -42,6 +43,7 @@ export function renderInventoryTable(devices) {
                 'Warning': 'fa-exclamation-triangle',
                 'Critical': 'fa-times-circle',
                 'Offline': 'fa-plug',
+                'Maintenance': 'fa-wrench',
                 'Unknown': 'fa-question-circle'
             };
             const colorClass = colors[serverHealth] || 'text-muted';
@@ -60,7 +62,9 @@ export function renderInventoryTable(devices) {
                 <td class="device-cell">
                     <div class="fw-bold">${device.device_name}</div>
                     <div class="small text-secondary">${device.device_type || 'Unknown'}</div>
-                    ${healthBadge}
+                    ${(device.maintenance_mode || device.status === 'Maintenance')
+                ? '<div class="mt-1 small text-warning"><i class="fas fa-wrench"></i> Maintenance</div>'
+                : healthBadge}
                 </td>
                 <td>
                     ${(device.device_type === 'Switch') ? `

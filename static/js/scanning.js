@@ -68,6 +68,13 @@ function cleanModalArtifacts() {
 // NETWORK SCANNING MAIN CODE
 // ============================================================================
 document.addEventListener('DOMContentLoaded', function () {
+    // Prevent double init
+    if (window.scanningInitialized) return;
+    window.scanningInitialized = true;
+
+    // ============================================================================
+    // NETWORK SCANNING MAIN CODE
+    // ============================================================================
     const getLocalRangeBtn = document.getElementById('getLocalRange');
     const startScanBtn = document.getElementById('startScan');
     const ipRangeInput = document.getElementById('ipRange');
@@ -79,6 +86,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const bulkAddBtn = document.getElementById('bulkAddBtn');
 
     let currentScanId = null;
+    let currentScanMode = 'heavy';
     let progressInterval = null;
     let isScanning = false;
     let totalDevicesFound = 0;
@@ -87,7 +95,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Store all discovered devices: ip -> deviceObject
     let discoveredDevices = new Map();
+    // Cache DOM rows: ip -> tr element
+    let deviceRows = new Map();
     let selectedIPs = new Set();
+    let lastUIUpdate = 0;
 
     // ========================================================================
     // Get Local IP Range
@@ -138,6 +149,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // Reset state
             discoveredDevices.clear();
+            deviceRows.clear();
             selectedIPs.clear();
             updateBulkUI();
 
@@ -184,13 +196,19 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
 
+        const scanMode = document.querySelector('input[name="scanMode"]:checked').value;
+
+        currentScanMode = scanMode;
+        applyScanModeUI();
+
         fetch('/api/scan_network', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                ip_range: ipRange
+                ip_range: ipRange,
+                scan_mode: scanMode
             })
         })
             .then(response => response.json())
@@ -222,9 +240,16 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch(`/api/scan_progress/${currentScanId}`)
             .then(response => response.json())
             .then(data => {
+                if (data.scan_mode) {
+                    currentScanMode = data.scan_mode;
+                    applyScanModeUI();
+                }
                 updateScanProgress(data);
 
                 if (data.status === 'completed' || data.status === 'error' || data.status === 'stopped') {
+                    // Prevent double-firing
+                    if (!isScanning) return;
+
                     stopProgressPolling();
                     if (data.status === 'error') {
                         showError(data.error);
@@ -240,6 +265,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateScanProgress(data) {
+        // Always process new devices immediately (data integrity)
+        if (data.new_devices && data.new_devices.length > 0) {
+            // Add new devices to store
+            data.new_devices.forEach(d => {
+                if (!discoveredDevices.has(d.ip)) {
+                    discoveredDevices.set(d.ip, d);
+                }
+            });
+            displayNewDevicesBatch(data.new_devices, data.total_found);
+        }
+
+        // Throttled UI updates (progress bar, text) to avoid layout thrashing
+        const now = Date.now();
+        if (now - lastUIUpdate < 800) return;
+        lastUIUpdate = now;
+
         const progressText = document.getElementById('progressText');
         const detailedProgress = document.getElementById('detailedProgress');
 
@@ -259,36 +300,48 @@ document.addEventListener('DOMContentLoaded', function () {
             progressText.textContent = statusText;
         }
 
-        if (data.new_devices && data.new_devices.length > 0) {
-            // Add new devices to store
-            data.new_devices.forEach(d => {
-                if (!discoveredDevices.has(d.ip)) {
-                    discoveredDevices.set(d.ip, d);
-                }
-            });
-            displayNewDevicesBatch(data.new_devices, data.total_found);
-        }
-
         if (data.total_found > 0 && !document.querySelector('table')) {
             initializeResultsTable();
         }
     }
 
+    function isLightScan() {
+        return (currentScanMode || '').toLowerCase() === 'light';
+    }
+
+    function applyScanModeUI() {
+        if (!bulkActions || !bulkAddBtn) return;
+        if (isLightScan()) {
+            bulkActions.style.display = 'none';
+            bulkAddBtn.disabled = true;
+            selectedIPs.clear();
+            updateBulkUI();
+        } else {
+            bulkAddBtn.disabled = false;
+        }
+    }
+
+
     function initializeResultsTable() {
+        const checkboxHeader = isLightScan()
+            ? ''
+            : `
+                            <th style="width: 40px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
+                                </div>
+                            </th>`;
+
         scanResults.innerHTML = `
             <div class="alert alert-info py-2 mb-2">
                 <i class="fas fa-sync fa-spin"></i> 
                 Network scan in progress... Found <span id="liveCount">0</span> devices so far...
             </div>
             <div class="table-responsive">
-                <table class="table table-striped table-hover align-middle">
+                <table class="table table-hover align-middle">
                     <thead class="table-dark">
                         <tr>
-                            <th style="width: 40px;">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
-                                </div>
-                            </th>
+                            ${checkboxHeader}
                             <th>IP Address</th>
                             <th>Hostname</th>
                             <th>MAC Address</th>
@@ -311,7 +364,33 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
 
-        // Event listener handled by delegation
+        // Event Delegation for Table Actions
+        const tableBody = document.getElementById('devicesTableBody');
+        // Attach to parent scanResults or existing container if tableBody is transient
+        // But since we just created it inside scanResults, we can attach to scanResults (delegation root)
+
+        // Ensure we don't duplicate listeners on scanResults (it's persistent)
+        // Actually, scanResults is cleared on start.
+        // Let's attach to scanResults, as it contains the table.
+        scanResults.removeEventListener('click', handleTableClick);
+        scanResults.addEventListener('click', handleTableClick);
+    }
+
+    function handleTableClick(e) {
+        // Minimal action icons
+        const addIcon = e.target.closest('.action-add');
+        if (addIcon) {
+            e.stopPropagation();
+            addDeviceToInventory(addIcon.dataset.ip);
+            return;
+        }
+
+        const scanIcon = e.target.closest('.action-scan');
+        if (scanIcon) {
+            e.stopPropagation();
+            scanPorts(scanIcon.dataset.ip);
+            return;
+        }
     }
 
     function toggleSelectAll(e) {
@@ -331,6 +410,62 @@ document.addEventListener('DOMContentLoaded', function () {
         updateBulkUI();
     }
 
+    function findDeviceRow(ip) {
+        // Check cache first
+        if (deviceRows.has(ip)) {
+            return deviceRows.get(ip);
+        }
+        // Fallback to DOM query
+        return document.querySelector(`tr[data-ip-row="${ip}"]`);
+    }
+
+    function createDeviceRow(device) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-ip-row', device.ip);
+
+        // Status badge logic
+        let statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+        if (device.status === 'Online') {
+            statusBadge = '<span class="badge bg-success">Online</span>';
+        } else if (device.status === 'Offline') {
+            statusBadge = '<span class="badge bg-danger">Offline</span>';
+        }
+
+        // Latency
+        const latency = device.latency ? `${Math.round(device.latency)} ms` : '-';
+
+        const actionIcons = isLightScan()
+            ? ''
+            : `
+                <i class="fas fa-plus action-icon action-add" title="Add to Inventory" data-ip="${device.ip}"></i>
+                <i class="fas fa-search action-icon action-scan" title="Port Scan" data-ip="${device.ip}"></i>
+            `;
+
+        const checkboxCell = isLightScan()
+            ? ''
+            : `
+            <td>
+                <div class="form-check">
+                    <input class="form-check-input device-checkbox" type="checkbox" value="${device.ip}">
+                </div>
+            </td>`;
+
+        tr.innerHTML = `
+            ${checkboxCell}
+            <td>${device.ip}</td>
+            <td>${device.hostname || 'Unknown'}</td>
+            <td>${device.mac || 'N/A'}</td>
+            <td>${device.manufacturer || 'Unknown'}</td>
+            <td>${statusBadge}</td>
+            <td>${latency}</td>
+            <td class="device-actions">
+                ${actionIcons}
+            </td>
+        `;
+
+        return tr;
+    }
+
     function displayNewDevicesBatch(devices, totalFound) {
         let tableBody = document.getElementById('devicesTableBody');
         let totalCount = document.getElementById('totalCount');
@@ -343,24 +478,30 @@ document.addEventListener('DOMContentLoaded', function () {
             liveCount = document.getElementById('liveCount');
         }
 
-        devices.forEach(device => {
-            const existingRow = findDeviceRow(device.ip);
-            if (!existingRow) {
-                const row = createDeviceRow(device);
-                tableBody.appendChild(row);
+        const fragment = document.createDocumentFragment();
+        let addedCount = 0;
 
-                row.style.opacity = '0';
-                setTimeout(() => {
-                    row.style.transition = 'opacity 0.5s ease-in';
-                    row.style.opacity = '1';
-                }, 10);
+        devices.forEach(device => {
+            if (!findDeviceRow(device.ip)) {
+                const row = createDeviceRow(device);
+                fragment.appendChild(row);
+                // Cache the row
+                deviceRows.set(device.ip, row);
+                addedCount++;
             }
         });
+
+        if (addedCount > 0) {
+            tableBody.appendChild(fragment);
+
+            // Animate only the new rows (optional, but keep it performant)
+            // We can skip specific row animation loop for massive performance
+        }
 
         if (totalCount) totalCount.textContent = totalFound;
         if (liveCount) liveCount.textContent = totalFound;
 
-        attachEventListeners();
+        // attachEventListeners(); -> REMOVED (Replaced by Delegation)
 
         // Show bulk actions if we have results
         if (totalFound > 0) {
@@ -385,112 +526,6 @@ document.addEventListener('DOMContentLoaded', function () {
             'success',
             2500
         );
-    }
-
-    function findDeviceRow(ip) {
-        return document.querySelector(`tr[data-ip-row="${ip}"]`);
-    }
-
-    function createDeviceRow(device) {
-        const isAgent = device.is_agent || device.type === 'Tactical Agent';
-        const statusClass = device.status === 'Online' ? 'success' : 'secondary';
-        const statusIcon = device.status === 'Online' ? 'fa-wifi' : 'fa-times-circle';
-        const latencyText = device.latency ? `${device.latency} ms` : 'N/A';
-
-        const row = document.createElement('tr');
-        row.className = 'device-row';
-        if (isAgent) {
-            row.classList.add('tactical-agent-row');
-            row.style.boxShadow = "inset 4px 0 0 0 #00ffc8"; // Neon left border
-            row.style.background = "rgba(0, 255, 200, 0.05)";
-        }
-        row.setAttribute('data-ip-row', device.ip);
-
-        // Auto-check agents if they are new
-        const autoCheck = isAgent ? 'checked' : '';
-        if (isAgent && !selectedIPs.has(device.ip)) {
-            // We can auto-select, but let's just make it visually distinct for now
-            // to avoid accidental bulk adds. Or maybe we SHOULD auto-select?
-            // User said "detect then i can go", implying manual action but easier.
-            // We'll leave it unchecked by default but highly visible.
-        }
-
-        const agentBadge = isAgent ? '<span class="badge bg-info text-dark ms-2"><i class="fas fa-robot"></i> AGENT</span>' : '';
-
-        row.innerHTML = `
-            <td>
-                <div class="form-check">
-                    <input class="form-check-input device-checkbox" type="checkbox" value="${device.ip}" ${autoCheck}>
-                </div>
-            </td>
-            <td>
-                <code class="text-primary fw-bold" style="font-size: 0.95rem;">${device.ip}</code>
-                ${agentBadge}
-            </td>
-            <td class="text-light">${device.hostname || 'Unknown'}</td>
-            <td><small class="text-secondary font-monospace">${device.mac || 'N/A'}</small></td>
-            <td class="text-light">${device.manufacturer || 'Unknown'}</td>
-            <td>
-                <span class="badge bg-${statusClass}">
-                    <i class="fas ${statusIcon}"></i> ${device.status}
-                </span>
-            </td>
-            <td class="text-light"><small>${latencyText}</small></td>
-            <td>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button class="btn btn-outline-primary add-to-inventory-btn" 
-                            data-ip="${device.ip}" 
-                            data-hostname="${device.hostname || 'Unknown'}" 
-                            data-mac="${device.mac || 'N/A'}" 
-                            title="Add to Inventory">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button class="btn btn-outline-info scan-ports-btn" data-ip="${device.ip}" 
-                            title="Scan Ports" ${device.status !== 'Online' ? 'disabled' : ''}>
-                        <i class="fas fa-search"></i>
-                    </button>
-                    <button class="btn btn-outline-success ping-device-btn" data-ip="${device.ip}" 
-                            title="Ping Device">
-                        <i class="fas fa-network-wired"></i>
-                    </button>
-                </div>
-            </td>
-        `;
-
-        // If auto-checked, add to selected set immediately
-        if (autoCheck) {
-            selectedIPs.add(device.ip);
-            // Defer UI update slightly to allow DOM to settle
-            setTimeout(updateBulkUI, 100);
-        }
-
-        return row;
-    }
-
-    function attachEventListeners() {
-        document.querySelectorAll('.scan-ports-btn').forEach(button => {
-            button.removeEventListener('click', scanPortsListener);
-            button.addEventListener('click', scanPortsListener);
-        });
-
-        document.querySelectorAll('.ping-device-btn').forEach(button => {
-            button.removeEventListener('click', pingDeviceListener);
-            button.addEventListener('click', pingDeviceListener);
-        });
-
-        document.querySelectorAll('.add-to-inventory-btn').forEach(button => {
-            button.removeEventListener('click', addToInventoryListener);
-            button.addEventListener('click', addToInventoryListener);
-        });
-
-        document.querySelectorAll('.device-checkbox').forEach(cb => {
-            cb.addEventListener('change', (e) => {
-                const ip = e.target.value;
-                if (e.target.checked) selectedIPs.add(ip);
-                else selectedIPs.delete(ip);
-                updateBulkUI();
-            });
-        });
     }
 
     function updateBulkUI() {
@@ -521,30 +556,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 selectAll.checked = false;
             }
         }
-    }
-
-    function scanPortsListener(e) {
-        // Find closest button in case click target is icon
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        const ip = btn.getAttribute('data-ip');
-        scanPorts(ip);
-    }
-
-    function pingDeviceListener(e) {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        const ip = btn.getAttribute('data-ip');
-        pingDevice(ip, btn);
-    }
-
-    function addToInventoryListener(e) {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        const ip = btn.getAttribute('data-ip');
-        const hostname = btn.getAttribute('data-hostname');
-        const mac = btn.getAttribute('data-mac');
-        addDeviceToInventory(ip, hostname, mac);
     }
 
     function stopCurrentScan() {
@@ -629,56 +640,6 @@ document.addEventListener('DOMContentLoaded', function () {
         showToast('Scan error: ' + message, 'danger', 4000);
     }
 
-    function buildConnectionButtons(device) {
-        if (device.status !== 'Online') {
-            return '<span class="text-muted"><small>Device Offline</small></span>';
-        }
-
-        let buttons = '<div class="connection-buttons-group" style="display: flex; gap: 5px; flex-wrap: wrap;">';
-        const openPortNumbers = device.open_ports ? device.open_ports.map(p => p.port) : [];
-
-        if (openPortNumbers.includes(80)) {
-            buttons += `
-                <button class="btn btn-sm btn-outline-primary" onclick="window.openHTTP('${device.ip}')" title="Open HTTP">
-                    <i class="fas fa-globe"></i>
-                </button>
-            `;
-        }
-
-        if (openPortNumbers.includes(443)) {
-            buttons += `
-                <button class="btn btn-sm btn-outline-success" onclick="window.openHTTPS('${device.ip}')" title="Open HTTPS">
-                    <i class="fas fa-lock"></i>
-                </button>
-            `;
-        }
-
-        if (openPortNumbers.includes(3389)) {
-            buttons += `
-                <button class="btn btn-sm btn-outline-warning" onclick="window.openRDP('${device.ip}')" title="Connect via RDP">
-                    <i class="fas fa-desktop"></i>
-                </button>
-            `;
-        }
-
-        if (openPortNumbers.includes(22)) {
-            buttons += `
-                <button class="btn btn-sm btn-outline-info" onclick="window.openSSH('${device.ip}')" title="SSH Info">
-                    <i class="fas fa-terminal"></i>
-                </button>
-            `;
-        }
-
-        buttons += `
-            <button class="btn btn-sm btn-outline-secondary" onclick="window.openCustomPort('${device.ip}', ${JSON.stringify(openPortNumbers).replace(/"/g, '&quot;')})" title="Custom Port">
-                <i class="fas fa-cog"></i>
-            </button>
-        `;
-
-        buttons += '</div>';
-        return buttons;
-    }
-
     function initializePage() {
         // 1. Auto-populate IP range on page load
         fetch('/api/get_local_ip_range')
@@ -709,8 +670,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     startScanBtn.classList.add('btn-danger');
                     isScanning = true;
 
+                    if (data.scan_mode) {
+                        currentScanMode = data.scan_mode;
+                        applyScanModeUI();
+                    }
+
                     // Initialize table with existing results
                     initializeResultsTable();
+
                     if (data.devices && data.devices.length > 0) {
                         data.devices.forEach(d => {
                             if (!discoveredDevices.has(d.ip)) {
@@ -747,7 +714,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     ip: device.ip,
                     hostname: device.hostname,
                     mac: device.mac,
-                    manufacturer: device.manufacturer
+                    manufacturer: device.manufacturer,
+                    device_type: device.device_type || device.type,
+                    confidence_score: device.confidence_score,
+                    classification_confidence: device.classification_confidence,
+                    classification_details: device.classification_details
                 });
             }
         });
@@ -787,7 +758,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     updateBulkUI();
 
                 } else {
-                    showToast(`Error: ${data.message || 'Unknown error'}`, 'danger', 5000);
+                    const errorMsg = data.message || data.error || 'Unknown error';
+                    showToast(`Error: ${errorMsg}`, 'danger', 5000);
                 }
             })
             .catch(err => {
@@ -1089,10 +1061,16 @@ kdcproxyname:s:`;
     };
 
     function addDevice(ip, hostname, mac) {
+        const device = discoveredDevices.get(ip) || {};
         const payload = {
             ip_address: ip,
-            hostname: hostname || 'Unknown',
-            mac_address: mac || 'N/A'
+            hostname: device.hostname || hostname || 'Unknown',
+            mac_address: device.mac || mac || 'N/A',
+            manufacturer: device.manufacturer,
+            device_type: device.device_type || device.type,
+            confidence_score: device.confidence_score,
+            classification_confidence: device.classification_confidence,
+            classification_details: device.classification_details
         };
 
         console.log('Adding device:', payload);

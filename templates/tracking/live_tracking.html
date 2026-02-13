@@ -78,6 +78,92 @@
                         <i class="fas fa-microchip fa-2x"></i>
                     </div>
                 </div>
+                <div class="mt-2 cpu-sparkline">
+                    <canvas id="cpuHeatmapSparkline" height="40"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Productivity & Security Insights -->
+<div class="row mt-4">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card bg-purple text-white h-100" style="background-color: #6f42c1; cursor: pointer;"
+            onclick="showMetricDetails('productivity')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title" id="avgFocusScore">--</h4>
+                        <p class="card-text">Avg Focus Score</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-brain fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card bg-teal text-white h-100" style="background-color: #20c997; cursor: pointer;"
+            onclick="showMetricDetails('productivity')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title" id="totalProductiveTime">--</h4>
+                        <p class="card-text">Productive Time</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card bg-danger text-white h-100" style="cursor: pointer;" onclick="showMetricDetails('security')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title" id="highRiskCount">--</h4>
+                        <p class="card-text">Risk Score</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-shield-alt fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card bg-dark text-white border-secondary h-100" style="cursor: pointer;"
+            onclick="showMetricDetails('network')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title" id="totalNetworkUsage">--</h4>
+                        <p class="card-text">Network (Up/Down)</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-network-wired fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card bg-secondary text-white h-100" style="cursor: pointer;"
+            onclick="showMetricDetails('productivity')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title" id="longestIdle">--</h4>
+                        <p class="card-text">Longest Idle</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-hourglass-half fa-2x"></i>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -160,6 +246,7 @@
                                     </td>
                                     <td>
                                         <span class="badge bg-secondary status-badge">Offline</span>
+                                        <span class="badge bg-danger risk-badge">Risk</span>
                                         <br><small class="text-muted device-ip">{{ device.ip_address or 'N/A' }}</small>
                                     </td>
                                     <td>
@@ -256,6 +343,10 @@
                                     <li class="nav-item">
                                         <a class="nav-link text-white" data-bs-toggle="tab"
                                             href="#liveCameraTab">Camera</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link text-white" data-bs-toggle="tab"
+                                            href="#liveAudioTab">Audio</a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link text-white" data-bs-toggle="tab"
@@ -399,6 +490,53 @@
                                         </div>
                                     </div>
 
+                                    <!-- Audio Tab -->
+                                    <div class="tab-pane fade" id="liveAudioTab" role="tabpanel">
+                                        <div class="row justify-content-center">
+                                            <div class="col-md-8">
+                                                <div class="card bg-dark border-secondary text-white mt-4">
+                                                    <div class="card-header border-secondary">
+                                                        <h5 class="mb-0"><i class="fas fa-microphone"></i> Live Audio
+                                                            Stream</h5>
+                                                    </div>
+                                                    <div class="card-body text-center">
+                                                        <div class="py-5">
+                                                            <div id="audioVisualizer"
+                                                                class="mb-4 d-flex justify-content-center align-items-center"
+                                                                style="height: 100px;">
+                                                                <i class="fas fa-microphone-slash fa-4x text-muted"
+                                                                    id="micIcon"></i>
+                                                                <div id="recordingIndicator" style="display: none;">
+                                                                    <div class="spinner-grow text-danger" role="status">
+                                                                    </div>
+                                                                    <span class="ms-2 text-danger fw-bold">LIVE</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <audio id="liveAudioPlayer" controls
+                                                                style="width: 100%; display: none;"></audio>
+
+                                                            <div class="d-grid gap-2 col-6 mx-auto">
+                                                                <button class="btn btn-lg btn-success"
+                                                                    id="startAudioBtn">
+                                                                    <i class="fas fa-play"></i> Start Listening
+                                                                </button>
+                                                                <button class="btn btn-lg btn-danger" id="stopAudioBtn"
+                                                                    style="display: none;">
+                                                                    <i class="fas fa-stop"></i> Stop Listening
+                                                                </button>
+                                                            </div>
+
+                                                            <div class="mt-3 text-muted">
+                                                                <small>Stream is 16kHz Mono. Latency may vary.</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- Alerts Tab -->
                                     <div class="tab-pane fade" id="liveAlertsTab">
                                         <div id="modalAlertsContainer" class="py-2 text-white">
@@ -438,6 +576,29 @@
         </div>
     </div>
 </div>
+
+<!-- Metric Details Modal -->
+<div class="modal fade" id="metricDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="metricModalTitle"><i class="fas fa-chart-bar"></i> Metric Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="metricModalContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary"></div>
+                        <p class="mt-2">Loading details...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -456,6 +617,11 @@
     let autoRefreshEnabled = true;
     let cameraEnabled = true;   // NEW: track camera state
     let currentCapturedImage = null;
+    let cpuHeatmapChart = null;
+    const liveStatusState = {};
+    const liveRequestInFlight = {};
+    const OFFLINE_GRACE_MS = 15000;
+    const OFFLINE_FAILS = 3;
 
     // Initialize when DOM is loaded
     document.addEventListener('DOMContentLoaded', function () {
@@ -478,9 +644,9 @@
     // Live tracking initialization
     function initLiveTracking() {
         // Start periodic updates
-        updateAllLiveDevices();
+        updateAllLiveDevices(true);
         if (autoRefreshEnabled) {
-            liveInterval = setInterval(updateAllLiveDevices, 2000); // Update every 2 seconds
+            liveInterval = setInterval(updateAllLiveDevices, 3000); // Update every 3 seconds
         }
 
         // Update dashboard stats
@@ -488,17 +654,25 @@
 
         // Load live alerts
         loadLiveAlerts();
+
+        // Load Productivity/Security/Performance Metrics (Initial + intervals)
+        loadProductivityMetrics(true);
+        loadSecurityMetrics(true);
+        loadPerformanceMetrics(true);
+        setInterval(() => loadProductivityMetrics(false), 30000);
+        setInterval(() => loadSecurityMetrics(false), 30000);
+        setInterval(() => loadPerformanceMetrics(false), 60000);
     }
 
     // Update all devices in real-time
-    function updateAllLiveDevices() {
-        if (!autoRefreshEnabled) return;
+    function updateAllLiveDevices(forceRefresh = false) {
+        if (!autoRefreshEnabled && !forceRefresh) return;
 
         const deviceRows = document.querySelectorAll('#realTimeDevices tr');
 
         deviceRows.forEach(row => {
             const macAddress = row.id.replace('device-', '').replace(/(.{2})(?!$)/g, '$1:');
-            updateLiveDeviceStatus(macAddress, row);
+            updateLiveDeviceStatus(macAddress, row, forceRefresh);
         });
 
         // Update last update time
@@ -509,20 +683,106 @@
     }
 
     // Update individual device status
-    function updateLiveDeviceStatus(macAddress, row) {
-        fetch(`/api/tracking/real-time/${macAddress}`)
+    function updateLiveDeviceStatus(macAddress, row, forceRefresh = false) {
+        if (liveRequestInFlight[macAddress]) {
+            return;
+        }
+        liveRequestInFlight[macAddress] = true;
+
+        const url = forceRefresh
+            ? `/api/tracking/real-time/${macAddress}?force=1`
+            : `/api/tracking/real-time/${macAddress}`;
+        fetch(url)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     updateLiveDeviceRow(row, data.tracking_data, data.device_info);
+                    liveStatusState[macAddress] = {
+                        lastSuccessTs: Date.now(),
+                        consecutiveFailures: 0,
+                        lastTrackingData: data.tracking_data,
+                        lastDeviceInfo: data.device_info
+                    };
                 } else {
-                    setLiveDeviceOffline(row);
+                    const state = liveStatusState[macAddress] || {
+                        lastSuccessTs: 0,
+                        consecutiveFailures: 0,
+                        lastTrackingData: null,
+                        lastDeviceInfo: null
+                    };
+                    state.consecutiveFailures += 1;
+                    liveStatusState[macAddress] = state;
+
+                    const ageMs = Date.now() - state.lastSuccessTs;
+                    if (state.lastSuccessTs > 0 && (ageMs < OFFLINE_GRACE_MS || state.consecutiveFailures < OFFLINE_FAILS)) {
+                        // Keep last known data to avoid UI flapping
+                        if (state.lastTrackingData && state.lastDeviceInfo) {
+                            updateLiveDeviceRow(row, state.lastTrackingData, state.lastDeviceInfo);
+                        }
+                        const lastSeenSeconds = Math.floor(ageMs / 1000);
+                        updateTextIfChanged(row.querySelector('.last-seen'), `Last seen ${lastSeenSeconds}s ago`);
+                    } else {
+                        setLiveDeviceOffline(row);
+                    }
                 }
             })
             .catch(error => {
                 console.error('Error updating device:', error);
-                setLiveDeviceOffline(row);
+                const state = liveStatusState[macAddress] || {
+                    lastSuccessTs: 0,
+                    consecutiveFailures: 0,
+                    lastTrackingData: null,
+                    lastDeviceInfo: null
+                };
+                state.consecutiveFailures += 1;
+                liveStatusState[macAddress] = state;
+
+                const ageMs = Date.now() - state.lastSuccessTs;
+                if (state.lastSuccessTs > 0 && (ageMs < OFFLINE_GRACE_MS || state.consecutiveFailures < OFFLINE_FAILS)) {
+                    if (state.lastTrackingData && state.lastDeviceInfo) {
+                        updateLiveDeviceRow(row, state.lastTrackingData, state.lastDeviceInfo);
+                    }
+                    const lastSeenSeconds = Math.floor(ageMs / 1000);
+                    updateTextIfChanged(row.querySelector('.last-seen'), `Last seen ${lastSeenSeconds}s ago`);
+                } else {
+                    setLiveDeviceOffline(row);
+                }
+            })
+            .finally(() => {
+                liveRequestInFlight[macAddress] = false;
             });
+    }
+
+    function getNetworkMetrics(trackingData) {
+        if (!trackingData) return {};
+        if (trackingData.network) return trackingData.network;
+        const systemMetrics = trackingData.system_metrics || {};
+        return systemMetrics.network_speed || {};
+    }
+
+    function calculateLiveRiskScore(systemMetrics, networkMetrics) {
+        let riskScore = 0;
+        const cpu = systemMetrics.cpu_percent || 0;
+        const memory = systemMetrics.memory_percent || 0;
+        const upload = networkMetrics.upload_speed_kbps || 0;
+        const download = networkMetrics.download_speed_kbps || 0;
+
+        if (cpu > 90) riskScore += 40;
+        if (memory > 90) riskScore += 20;
+        if (upload > 1024 && download > 0 && upload > download * 1.5) riskScore += 40;
+        if (upload > 2048 && download === 0) riskScore += 40;
+
+        return Math.min(100, riskScore);
+    }
+
+    function formatMemoryUsage(systemMetrics) {
+        const percent = systemMetrics.memory_percent || 0;
+        const used = systemMetrics.used_gb ?? systemMetrics.memory_used_gb;
+        const total = systemMetrics.total_gb ?? systemMetrics.memory_total_gb;
+        if (used !== undefined && total !== undefined && Number(total) > 0) {
+            return `${percent}% (${used} GB / ${total} GB)`;
+        }
+        return `${percent}%`;
     }
 
     // Update device row with live data
@@ -530,6 +790,7 @@
         const activity = trackingData.current_activity || {};
         const todayStats = trackingData.today_stats || {};
         const systemMetrics = trackingData.system_metrics || {};
+        const networkMetrics = getNetworkMetrics(trackingData);
 
         // Update status
         const statusBadge = row.querySelector('.status-badge');
@@ -546,8 +807,16 @@
 
         // Update resources
         updateTextIfChanged(row.querySelector('.cpu-usage'), `${systemMetrics.cpu_percent || 0}%`);
-        updateTextIfChanged(row.querySelector('.memory-usage'), `${systemMetrics.memory_percent || 0}%`);
+        updateTextIfChanged(row.querySelector('.memory-usage'), formatMemoryUsage(systemMetrics));
         updateTextIfChanged(row.querySelector('.disk-usage'), `${systemMetrics.disk_usage || 0}%`);
+
+        // Update risk badge
+        const riskBadge = row.querySelector('.risk-badge');
+        if (riskBadge) {
+            const riskScore = calculateLiveRiskScore(systemMetrics, networkMetrics);
+            riskBadge.style.display = riskScore > 70 ? 'inline-block' : 'none';
+            riskBadge.title = `Risk Score: ${riskScore}`;
+        }
 
         // Update applications
         const apps = todayStats.applications_used || [];
@@ -572,6 +841,12 @@
             statusBadge.className = 'badge bg-secondary status-badge';
         }
         updateTextIfChanged(statusBadge, 'Offline');
+
+        const riskBadge = row.querySelector('.risk-badge');
+        if (riskBadge) {
+            riskBadge.style.display = 'none';
+            riskBadge.title = '';
+        }
 
         updateTextIfChanged(row.querySelector('.last-seen'), 'Offline');
     }
@@ -620,6 +895,126 @@
             .catch(error => console.error('Error loading alerts:', error));
     }
 
+    // Load Productivity Metrics
+    function loadProductivityMetrics(forceRefresh = false) {
+        const url = forceRefresh
+            ? '/api/tracking/metrics/productivity?refresh=1'
+            : '/api/tracking/metrics/productivity';
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) return;
+
+                // Update Focus Score
+                document.getElementById('avgFocusScore').textContent = `${data.productivity.focus_score}%`;
+
+                // Update Productive Time
+                const prodSeconds = data.productivity.productive_seconds || 0;
+                const prodHours = Math.floor(prodSeconds / 3600);
+                const prodMinutes = Math.floor((prodSeconds % 3600) / 60);
+                document.getElementById('totalProductiveTime').textContent = `${prodHours}h ${prodMinutes}m`;
+
+                // Update Longest Idle
+                const idleSeconds = data.productivity.longest_idle_seconds || 0;
+                const idleHours = Math.floor(idleSeconds / 3600);
+                const idleMinutes = Math.floor((idleSeconds % 3600) / 60);
+                const idleLabel = idleHours > 0
+                    ? `${idleHours}h ${idleMinutes}m`
+                    : idleMinutes > 0
+                        ? `${idleMinutes}m`
+                        : `${idleSeconds}s`;
+                document.getElementById('longestIdle').textContent = idleLabel;
+            })
+            .catch(error => console.error('Error loading productivity metrics:', error));
+    }
+
+    // Load Security Metrics
+    function loadSecurityMetrics(forceRefresh = false) {
+        const url = forceRefresh
+            ? '/api/tracking/metrics/security?refresh=1'
+            : '/api/tracking/metrics/security';
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) return;
+
+                const riskScore = data.security.highest_risk_score || 0;
+                document.getElementById('highRiskCount').textContent = riskScore;
+
+                const riskCard = document.getElementById('highRiskCount')?.closest('.card');
+                if (riskCard) {
+                    if (riskScore >= 70) {
+                        riskCard.className = 'card bg-danger text-white h-100';
+                    } else if (riskScore >= 40) {
+                        riskCard.className = 'card bg-warning text-white h-100';
+                    } else {
+                        riskCard.className = 'card bg-success text-white h-100';
+                    }
+                }
+
+                const up = data.security.network_upload_mb || 0;
+                const down = data.security.network_download_mb || 0;
+                document.getElementById('totalNetworkUsage').textContent = `${up} / ${down} MB`;
+            })
+            .catch(error => console.error('Error loading security metrics:', error));
+    }
+
+    // Load Performance Metrics (CPU heatmap sparkline)
+    function loadPerformanceMetrics(forceRefresh = false) {
+        const url = forceRefresh
+            ? '/api/tracking/metrics/performance?refresh=1'
+            : '/api/tracking/metrics/performance';
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) return;
+                renderCpuHeatmap(data.cpu_heatmap || []);
+            })
+            .catch(error => console.error('Error loading performance metrics:', error));
+    }
+
+    function renderCpuHeatmap(heatmap) {
+        const ctx = document.getElementById('cpuHeatmapSparkline');
+        if (!ctx || !window.Chart) return;
+
+        const labels = heatmap.map(entry => entry.hour.toString().padStart(2, '0'));
+        const values = heatmap.map(entry => entry.avg_cpu);
+
+        if (!cpuHeatmapChart) {
+            cpuHeatmapChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        borderColor: '#ffffff',
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        tension: 0.35,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false, suggestedMin: 0, suggestedMax: 100 }
+                    }
+                }
+            });
+        } else {
+            cpuHeatmapChart.data.labels = labels;
+            cpuHeatmapChart.data.datasets[0].data = values;
+            cpuHeatmapChart.update();
+        }
+    }
+
     // Display live alerts
     function displayLiveAlerts(alerts) {
         const container = document.getElementById('liveAlertsContainer');
@@ -629,22 +1024,163 @@
         alerts.forEach(alert => {
             const severityClass = alert.severity === 'warning' ? 'alert-warning' :
                 alert.severity === 'danger' ? 'alert-danger' : 'alert-info';
+            const iconClass = alert.type === 'high_cpu' ? 'fa-microchip' :
+                alert.type === 'high_memory' ? 'fa-memory' : 'fa-clock';
+
             html += `
-            <div class="alert ${severityClass} alert-dismissible fade show mb-2" role="alert">
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-exclamation-circle me-2"></i>
+                <div class="alert ${severityClass} d-flex align-items-center mb-2">
+                    <i class="fas ${iconClass} me-2"></i>
                     <div>
                         <strong>${alert.device_name}</strong>: ${alert.message}
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
+            `;
         });
         html += '</div>';
 
         container.innerHTML = html;
         section.style.display = 'block';
+
+        // Auto-dismiss (optional)
+    }
+
+    // Initialize Global Modal for Details
+    let metricDetailsModalInstance = null;
+
+    function showMetricDetails(type) {
+        if (!metricDetailsModalInstance) {
+            metricDetailsModalInstance = new bootstrap.Modal(document.getElementById('metricDetailsModal'));
+        }
+
+        const titleMap = {
+            'productivity': 'Top Applications & Productivity',
+            'security': 'Security Risk Analysis',
+            'network': 'Top Network Consumers'
+        };
+
+        document.getElementById('metricModalTitle').innerHTML = `<i class="fas fa-chart-bar"></i> ${titleMap[type] || 'Metric Details'}`;
+        document.getElementById('metricModalContent').innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2">Loading details...</p>
+            </div>
+        `;
+
+        metricDetailsModalInstance.show();
+
+        fetch(`/api/tracking/metrics/details/${type}?refresh=1`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    renderMetricDetails(type, data.data);
+                } else {
+                    document.getElementById('metricModalContent').innerHTML = `
+                        <div class="alert alert-danger">Error: ${data.error}</div>
+                    `;
+                }
+            })
+            .catch(err => {
+                document.getElementById('metricModalContent').innerHTML = `
+                    <div class="alert alert-danger">Error: ${err}</div>
+                `;
+            });
+    }
+
+    function renderMetricDetails(type, data) {
+        let html = '<div class="table-responsive"><table class="table table-dark table-hover table-striped">';
+
+        if (type === 'productivity') {
+            html += `
+                <thead>
+                    <tr>
+                        <th>Application</th>
+                        <th>Category</th>
+                        <th>Duration</th>
+                        <th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            // Calculate total relative to the TOP LIST to show relative bar, or just sum of list
+            // API returns top 20, let's sum them for bar percentage or use max
+            const maxVal = data.length > 0 ? data[0].duration_seconds : 1;
+
+            data.forEach(item => {
+                const percent = Math.round((item.duration_seconds / maxVal) * 100);
+                const badge = item.category === 'Productive' ? 'bg-success' :
+                    item.category === 'Distracting' ? 'bg-danger' : 'bg-secondary';
+
+                html += `
+                    <tr>
+                        <td>${item.name}</td>
+                        <td><span class="badge ${badge}">${item.category}</span></td>
+                        <td>${item.duration_formatted}</td>
+                        <td>
+                            <div class="progress" style="height: 6px; width: 100px;">
+                                <div class="progress-bar ${badge}" role="progressbar" style="width: ${percent}%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        } else if (type === 'security') {
+            html += `
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Risk</th>
+                        <th>CPU Events</th>
+                        <th>RAM Events</th>
+                        <th>Upload</th>
+                        <th>Download</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            data.forEach(item => {
+                const danger = (item.risk_score || 0) >= 70;
+                html += `
+                    <tr class="${danger ? 'text-danger fw-bold' : ''}">
+                        <td>${item.device_name}</td>
+                        <td>${item.risk_score || 0}</td>
+                        <td>${item.high_cpu_events}</td>
+                        <td>${item.high_mem_events}</td>
+                        <td>${item.upload_mb} MB</td>
+                        <td>${item.download_mb} MB</td>
+                    </tr>
+                `;
+            });
+        } else if (type === 'network') {
+            html += `
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Upload</th>
+                        <th>Download</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            data.forEach(item => {
+                html += `
+                    <tr>
+                        <td>${item.device_name}</td>
+                        <td>${item.upload_mb} MB</td>
+                        <td>${item.download_mb} MB</td>
+                        <td><strong>${item.total_mb} MB</strong></td>
+                    </tr>
+                `;
+            });
+        }
+
+        html += '</tbody></table></div>';
+
+        if (data.length === 0) {
+            html = '<div class="text-center py-4 text-muted"><p>No data available for today.</p></div>';
+        }
+
+        document.getElementById('metricModalContent').innerHTML = html;
     }
 
     // Enhanced live tracking
@@ -659,12 +1195,12 @@
         }
 
         // Load initial data
-        loadLiveTrackingData(macAddress, deviceId);
+        loadLiveTrackingData(macAddress, deviceId, true);
 
         // Start real-time updates for this device
         const trackingInterval = setInterval(() => {
             if (currentTrackingMac === macAddress && autoRefreshEnabled) {
-                loadLiveTrackingData(macAddress, deviceId);
+                loadLiveTrackingData(macAddress, deviceId, false);
             } else {
                 clearInterval(trackingInterval);
             }
@@ -681,12 +1217,20 @@
                 cameraImg.src = '';
                 cameraImg.alt = 'Stream stopped';
             }
+
+            // Stop audio stream if active
+            if (typeof stopAudioStream === 'function' && audioStreamActive) {
+                stopAudioStream();
+            }
         }, { once: true });
     }
 
     // Load live tracking data
-    function loadLiveTrackingData(macAddress, deviceId) {
-        fetch(`/api/tracking/real-time/${macAddress}`)
+    function loadLiveTrackingData(macAddress, deviceId, forceRefresh = false) {
+        const url = forceRefresh
+            ? `/api/tracking/real-time/${macAddress}?force=1`
+            : `/api/tracking/real-time/${macAddress}`;
+        fetch(url)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -877,6 +1421,7 @@
     function updateLiveResourceUsageCard(systemMetrics) {
         const cpuUsage = systemMetrics.cpu_percent || 0;
         const memoryUsage = systemMetrics.memory_percent || 0;
+        const memoryUsageLabel = formatMemoryUsage(systemMetrics);
         const diskUsage = systemMetrics.disk_usage || 0;
         const netSpeed = systemMetrics.network_speed; // Maybe null
 
@@ -894,7 +1439,7 @@
         <div class="mb-3">
             <div class="d-flex justify-content-between">
                 <span>Memory Usage:</span>
-                <span>${memoryUsage}%</span>
+                <span>${memoryUsageLabel}</span>
             </div>
             <div class="progress" style="height: 10px;">
                 <div class="progress-bar ${memoryUsage > 80 ? 'bg-danger' : memoryUsage > 60 ? 'bg-warning' : 'bg-info'}" 
@@ -1089,6 +1634,11 @@
     function toggleCamera(macAddress) {
         if (!currentTrackingMac) return;
 
+        const btn = document.getElementById('toggleCameraBtn');
+        const originalContent = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+
         fetch(`/api/tracking/toggle-camera/${macAddress}`, {
             method: 'POST',
             headers: {
@@ -1097,6 +1647,9 @@
         })
             .then(response => response.json())
             .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+
                 if (data.success) {
                     console.log('Camera toggled:', data.action);
 
@@ -1143,6 +1696,8 @@
                 }
             })
             .catch(error => {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
                 console.error('Error toggling camera:', error);
                 alert('Error toggling camera. Please check the connection.');
             });
@@ -1184,8 +1739,97 @@
         });
     }
 
+    // Audio Streaming Logic
+    const audioPlayer = document.getElementById('liveAudioPlayer');
+    const startAudioBtn = document.getElementById('startAudioBtn');
+    const stopAudioBtn = document.getElementById('stopAudioBtn');
+    const micIcon = document.getElementById('micIcon');
+    const recordingIndicator = document.getElementById('recordingIndicator');
+    let audioStreamActive = false;
+
+    function initAudioControls() {
+        if (startAudioBtn) {
+            startAudioBtn.addEventListener('click', startAudioStream);
+        }
+        if (stopAudioBtn) {
+            stopAudioBtn.addEventListener('click', stopAudioStream);
+        }
+    }
+
+    function startAudioStream() {
+        if (!currentTrackingMac) return;
+
+        // Reset UI
+        audioPlayer.style.display = 'block';
+        startAudioBtn.style.display = 'none';
+        stopAudioBtn.style.display = 'block';
+        micIcon.className = 'fas fa-microphone fa-4x text-danger';
+        recordingIndicator.style.display = 'block';
+        audioStreamActive = true;
+
+        // Start stream
+        // We use a timestamp to prevent caching
+        const streamUrl = `/api/tracking/stream/audio/${currentTrackingMac}?t=${Date.now()}`;
+        audioPlayer.src = streamUrl;
+
+        const playPromise = audioPlayer.play();
+
+        if (playPromise !== undefined) {
+            playPromise.catch(e => {
+                console.error("Audio play error:", e);
+                // Handle auto-play policies or network errors
+
+                // Show retry button
+                startAudioBtn.style.display = 'block';
+                startAudioBtn.innerHTML = '<i class="fas fa-redo"></i> Retry Playback';
+                startAudioBtn.classList.remove('btn-success');
+                startAudioBtn.classList.add('btn-warning');
+
+                stopAudioBtn.style.display = 'none';
+                audioPlayer.style.display = 'none';
+                micIcon.className = 'fas fa-microphone-slash fa-4x text-warning';
+                recordingIndicator.style.display = 'none';
+
+                // Add temporary listener to reset button style on click
+                startAudioBtn.onclick = function () {
+                    startAudioBtn.innerHTML = '<i class="fas fa-play"></i> Start Listening';
+                    startAudioBtn.classList.remove('btn-warning');
+                    startAudioBtn.classList.add('btn-success');
+                    startAudioBtn.onclick = null; // Remove this handler
+                    startAudioStream(); // Try again
+                };
+            });
+        }
+
+        // Also ensure Mic is "started" on backend if needed (though stream access usually does it)
+        // We can call toggle to ensure it's in correct state or just rely on stream.
+    }
+
+    function stopAudioStream() {
+        audioPlayer.pause();
+        audioPlayer.src = "";
+        audioPlayer.load(); // Release resource
+
+        audioPlayer.style.display = 'none';
+        startAudioBtn.style.display = 'block';
+        stopAudioBtn.style.display = 'none';
+        micIcon.className = 'fas fa-microphone-slash fa-4x text-muted';
+        recordingIndicator.style.display = 'none';
+        audioStreamActive = false;
+
+        if (currentTrackingMac) {
+            // Explicitly tell backend to stop mic logic
+            fetch(`/api/tracking/toggle-mic/${currentTrackingMac}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => console.log("Mic stopped:", data))
+                .catch(e => console.error("Error stopping mic:", e));
+        }
+    }
+
     // Attach live event listeners
     function attachLiveEventListeners() {
+        initAudioControls();
+
         // Live tracking buttons
         document.querySelectorAll('.track-live').forEach(btn => {
             btn.addEventListener('click', function () {
@@ -1217,9 +1861,12 @@
 
         // Refresh all button
         document.getElementById('refreshAllBtn').addEventListener('click', function () {
-            updateAllLiveDevices();
+            updateAllLiveDevices(true);
             updateLiveDashboardStats();
             loadLiveAlerts();
+            loadProductivityMetrics(true);
+            loadSecurityMetrics(true);
+            loadPerformanceMetrics(true);
         });
 
         // Toggle auto-refresh
@@ -1237,7 +1884,15 @@
                 this.classList.add('btn-outline-success');
                 icon.className = 'fas fa-play';
                 text.textContent = ' Auto';
-                liveInterval = setInterval(updateAllLiveDevices, 5000);
+                // Use a slightly longer interval to reduce load (3s instead of 2s)
+                if (liveInterval) clearInterval(liveInterval);
+                liveInterval = setInterval(updateAllLiveDevices, 3000);
+                updateAllLiveDevices(true);
+                updateLiveDashboardStats();
+                loadLiveAlerts();
+                loadProductivityMetrics(true);
+                loadSecurityMetrics(true);
+                loadPerformanceMetrics(true);
             } else {
                 this.classList.remove('btn-outline-success');
                 this.classList.add('btn-outline-danger');
@@ -1269,19 +1924,66 @@
                 if ((href === '#liveScreensTab' || href === '#liveCameraTab') && currentTrackingMac) {
                     updateLiveScreens(currentTrackingMac);
                 }
+
+                // Stop audio if leaving audio tab? Maybe user wants to listen while viewing screens?
+                // Let's keep audio playing if user switches tabs within the modal.
+                // But if they close modal, we stop it.
             });
 
             // Stop stream when switching away from camera tab
             tab.addEventListener('hidden.bs.tab', function (event) {
                 const href = event.target.getAttribute('href');
+
+                // Stop Camera when leaving Camera tab
                 if (href === '#liveCameraTab') {
                     const cameraImg = document.getElementById('liveCameraStream');
                     if (cameraImg) {
                         cameraImg.src = '';
                         cameraImg.alt = 'Stream stopped';
+                        cameraImg.style.opacity = '0.5';
+                    }
+                }
+
+                // Stop Audio when leaving Audio tab
+                if (href === '#liveAudioTab') {
+                    if (audioStreamActive) {
+                        stopAudioStream();
+                        // Show toast or message?
+                        console.log("Audio stopped due to tab switch");
                     }
                 }
             });
+        });
+
+        // Handle Browser Tab Visibility Change
+        document.addEventListener("visibilitychange", function () {
+            if (document.hidden) {
+                // User switched browser tabs - stop bandwidth intensive streams
+
+                // Stop Camera
+                const cameraImg = document.getElementById('liveCameraStream');
+                if (cameraImg && cameraImg.src) {
+                    cameraImg.src = ''; // Will need to reload when visible again? 
+                    // Actually, let's just let the auto-refresh or user interaction handle restart
+                    // or maybe we leave it if user wants background monitoring? 
+                    // User said "move away from that dedicated tab" -> likely referring to UI tabs.
+                    // But saving bandwidth is good.
+                }
+
+                // Stop Audio? User might want background audio.
+                // "make sure the webcam dont get trigger when i move away"
+                // Let's stop camera but keep audio if active (unless user explicitly stops).
+            } else {
+                // Tab visible again
+                if (currentTrackingMac) {
+                    // Check which tab is active and restart stream if needed
+                    const activeTab = document.querySelector('#liveTrackingTabs .nav-link.active');
+                    if (activeTab && activeTab.getAttribute('href') === '#liveCameraTab' && cameraEnabled) {
+                        const cameraImg = document.getElementById('liveCameraStream');
+                        if (cameraImg) cameraImg.src = `/api/tracking/stream/camera/${currentTrackingMac}?t=${Date.now()}`;
+                    }
+                }
+            }
         });
 
         // Refresh screenshot button
@@ -1339,8 +2041,23 @@
         padding: 0.25em 0.5em;
     }
 
+    .risk-badge {
+        display: none;
+        font-size: 0.7em;
+        margin-left: 0.35rem;
+    }
+
     .resource-usage small {
         font-size: 0.85em;
+    }
+
+    .cpu-sparkline {
+        height: 40px;
+    }
+
+    .cpu-sparkline canvas {
+        width: 100% !important;
+        height: 40px !important;
     }
 
     .activity-indicators .badge {

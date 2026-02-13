@@ -92,6 +92,11 @@ function connect() {
             resetHeartbeatTimeout();
         });
 
+        // Handle heartbeat keep-alive
+        eventSource.addEventListener('heartbeat', () => {
+            resetHeartbeatTimeout();
+        });
+
         // Handle device status events
         eventSource.addEventListener('device_status', (event) => {
             handleEvent('device_status', event);

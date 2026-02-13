@@ -72,3 +72,55 @@ def get_device_history():
     } for scan in scans]
     
     return jsonify(history_data)
+
+@reports_bp.route('/api/reports/executive')
+def get_executive_report():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    from services.reporting_service import ReportingService
+    service = ReportingService()
+    
+    range_type = request.args.get('range', '30d')
+    end_date = datetime.utcnow()
+    
+    if range_type == '24h':
+        start_date = end_date - timedelta(hours=24)
+    elif range_type == '7d':
+        start_date = end_date - timedelta(days=7)
+    elif range_type == '30d':
+        start_date = end_date - timedelta(days=30)
+    elif range_type == 'mtd':
+        start_date = end_date.replace(day=1)
+    else:
+        # Default 30d
+        start_date = end_date - timedelta(days=30)
+        
+    report = service.get_executive_fleet_health(start_date, end_date)
+    return jsonify(report)
+
+@reports_bp.route('/api/reports/operational')
+def get_operational_report():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    from services.reporting_service import ReportingService
+    service = ReportingService()
+    
+    # Same date logic as executive for now, can be factorized
+    range_type = request.args.get('range', '30d')
+    end_date = datetime.utcnow()
+    
+    if range_type == '24h':
+        start_date = end_date - timedelta(hours=24)
+    elif range_type == '7d':
+        start_date = end_date - timedelta(days=7)
+    elif range_type == '30d':
+        start_date = end_date - timedelta(days=30)
+    elif range_type == 'mtd':
+        start_date = end_date.replace(day=1)
+    else:
+        start_date = end_date - timedelta(days=30)
+        
+    report = service.get_operational_report(start_date, end_date)
+    return jsonify(report)

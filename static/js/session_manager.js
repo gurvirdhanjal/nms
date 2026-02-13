@@ -114,6 +114,15 @@ class SessionManager {
         `;
         
         document.body.appendChild(warningDiv);
+
+        const dismissOnActivity = () => {
+            if (!this.warningShown) return;
+            this.extendSession();
+            document.removeEventListener('click', dismissOnActivity, true);
+            document.removeEventListener('keypress', dismissOnActivity, true);
+        };
+        document.addEventListener('click', dismissOnActivity, true);
+        document.addEventListener('keypress', dismissOnActivity, true);
         
         // Start countdown
         this.startCountdown(secondsRemaining);

@@ -36,6 +36,40 @@ class Device(db.Model):
     
     # Intelligence & Classification
     cos_tier = db.Column(db.String(20), default='Standard') # Critical, Standard, Low
+
+    # Maintenance & Health Alert Tracking
+    maintenance_mode = db.Column(db.Boolean, default=False)  # Suppress alerts when True
+    health_alert_strikes = db.Column(db.Integer, default=0)   # Consecutive health threshold breaches
+    offline_strikes = db.Column(db.Integer, default=0)        # Consecutive offline checks (for 3-strike rule)
+    
+    # Enhanced Identity
+    location = db.Column(db.String(100), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    
+    # Monitoring Configuration
+    monitoring_mode = db.Column(db.String(20), default='ping') # ping, snmp, agent, wmi
+    
+    # SNMP Configuration
+    snmp_version = db.Column(db.String(10), default='v2c') # v2c, v3
+    snmp_port = db.Column(db.Integer, default=161)
+    snmp_timeout = db.Column(db.Integer, default=2)
+    snmp_retries = db.Column(db.Integer, default=1)
+    snmp_community = db.Column(db.String(100), nullable=True) # v2c
+    snmp_username = db.Column(db.String(100), nullable=True) # v3
+    snmp_auth_proto = db.Column(db.String(10), nullable=True) # SHA, MD5
+    snmp_auth_password = db.Column(db.String(100), nullable=True)
+    snmp_priv_proto = db.Column(db.String(10), nullable=True) # AES, DES
+    snmp_priv_password = db.Column(db.String(100), nullable=True)
+    
+    # Agent Configuration
+    agent_token = db.Column(db.String(100), nullable=True)
+    agent_interval = db.Column(db.Integer, default=300) # seconds
+    agent_os_type = db.Column(db.String(20), nullable=True) # windows, linux
+    
+    # WMI Configuration
+    wmi_username = db.Column(db.String(100), nullable=True)
+    wmi_password = db.Column(db.String(100), nullable=True)
+    wmi_domain = db.Column(db.String(100), nullable=True)
     
     # Relationships
     # ssh_profile = db.relationship('SSHProfile', backref=db.backref('devices', lazy=True))
@@ -52,6 +86,12 @@ class Device(db.Model):
         'DeviceInterface',
         foreign_keys=[parent_port_id],
         backref=db.backref('connected_downstream_devices', lazy=True)
+    )
+
+    server_health_logs = db.relationship(
+        'ServerHealthLog',
+        backref=db.backref('device', lazy=True),
+        cascade='all, delete-orphan'
     )
 
     def __repr__(self):
@@ -74,5 +114,7 @@ class Device(db.Model):
             'switch_brand': self.switch_brand,
             'cos_tier': self.cos_tier,
             'parent_switch_id': self.parent_switch_id,
-            'parent_port_id': self.parent_port_id
+            'parent_port_id': self.parent_port_id,
+            'maintenance_mode': self.maintenance_mode,
+            'health_alert_strikes': self.health_alert_strikes
         }

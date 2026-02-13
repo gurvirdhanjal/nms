@@ -25,6 +25,11 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 os.makedirs(snapshots_dir, exist_ok=True)
 os.makedirs(recordings_dir, exist_ok=True)
 
+CAMERA_DEVICE_TYPES = {'camera', 'camera/iot', 'camera_iot'}
+
+def is_camera_type(value: str) -> bool:
+    return (value or '').strip().lower() in CAMERA_DEVICE_TYPES
+
 class CameraStream:
     def __init__(self, device_id, rtsp_link):
         self.device_id = device_id
@@ -335,7 +340,7 @@ def camera_dashboard():
         return redirect(url_for('auth_bp.login'))
     
     # Get all camera devices
-    cameras = Device.query.filter_by(device_type='camera').all()
+    cameras = Device.query.filter(Device.device_type.in_(CAMERA_DEVICE_TYPES)).all()
     print(f"Loaded {len(cameras)} cameras for dashboard")
     
     return render_template('cameras/camera_dashboard.html', cameras=cameras)
@@ -347,7 +352,7 @@ def video_feed(device_id):
         return "Unauthorized", 401
     
     camera = Device.query.get(device_id)
-    if not camera or camera.device_type != 'camera':
+    if not camera or not is_camera_type(camera.device_type):
         print(f"Camera {device_id} not found or not a camera device")
         return "Camera not found", 404
     
@@ -375,7 +380,7 @@ def take_snapshot(device_id):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     camera = Device.query.get(device_id)
-    if not camera or camera.device_type != 'camera':
+    if not camera or not is_camera_type(camera.device_type):
         return jsonify({'success': False, 'error': 'Camera not found'}), 404
     
     try:
@@ -451,7 +456,7 @@ def start_recording(device_id):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     camera = Device.query.get(device_id)
-    if not camera or camera.device_type != 'camera':
+    if not camera or not is_camera_type(camera.device_type):
         return jsonify({'success': False, 'error': 'Camera not found'}), 404
     
     try:
@@ -520,7 +525,7 @@ def get_camera_status():
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
-        cameras = Device.query.filter_by(device_type='camera').all()
+        cameras = Device.query.filter(Device.device_type.in_(CAMERA_DEVICE_TYPES)).all()
         camera_status = []
         
         for camera in cameras:
@@ -582,7 +587,7 @@ def camera_control():
         
         for camera_id in camera_ids:
             camera = Device.query.get(camera_id)
-            if not camera or camera.device_type != 'camera':
+            if not camera or not is_camera_type(camera.device_type):
                 results.append({
                     'camera_id': camera_id,
                     'success': False,
@@ -637,7 +642,7 @@ def test_camera_connection(device_id):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     camera = Device.query.get(device_id)
-    if not camera or camera.device_type != 'camera':
+    if not camera or not is_camera_type(camera.device_type):
         return jsonify({'success': False, 'error': 'Camera not found'}), 404
     
     try:

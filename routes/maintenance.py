@@ -1,11 +1,24 @@
+"""Maintenance API routes for Network Monitoring System.
+Provides endpoints to trigger and monitor database maintenance tasks
+and manage device maintenance windows.
 """
-Maintenance API routes for Network Monitoring System.
-Provides endpoints to trigger and monitor database maintenance tasks.
-"""
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, render_template
 from datetime import datetime, date
+from extensions import db
 
 maintenance_bp = Blueprint('maintenance_bp', __name__, url_prefix='/api/maintenance')
+
+
+# ============================================================
+# Page route — Maintenance Window UI
+# ============================================================
+@maintenance_bp.route('/window')
+def maintenance_page():
+    """Render the maintenance window management page."""
+    if 'logged_in' not in session:
+        from flask import redirect, url_for
+        return redirect(url_for('auth_bp.login'))
+    return render_template('maintenance_window.html')
 
 
 # ============================================================
@@ -177,4 +190,85 @@ def get_maintenance_status():
         return jsonify(status)
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# GET /api/maintenance/devices  — List devices with maintenance status
+# ============================================================
+@maintenance_bp.route('/devices')
+def get_maintenance_devices():
+    """Return all devices with their maintenance mode status."""
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        from models.device import Device
+        devices = Device.query.order_by(Device.device_name).all()
+
+        result = []
+        for d in devices:
+            result.append({
+                'device_id': d.device_id,
+                'device_name': d.device_name,
+                'device_ip': d.device_ip,
+                'device_type': d.device_type,
+                'is_active': d.is_active,
+                'is_monitored': d.is_monitored,
+                'maintenance_mode': getattr(d, 'maintenance_mode', False) or False,
+                'health_alert_strikes': getattr(d, 'health_alert_strikes', 0) or 0,
+            })
+
+        return jsonify({'devices': result})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# POST /api/maintenance/toggle  — Toggle maintenance mode
+# ============================================================
+@maintenance_bp.route('/toggle', methods=['POST'])
+def toggle_maintenance():
+    """Toggle maintenance_mode for a device.
+    Body: { "device_id": int }
+    """
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        from models.device import Device
+
+        data = request.get_json() or {}
+        device_id = data.get('device_id')
+        if not device_id:
+            return jsonify({'error': 'device_id is required'}), 400
+
+        device = Device.query.get(device_id)
+        if not device:
+            return jsonify({'error': 'Device not found'}), 404
+
+        device.maintenance_mode = not (device.maintenance_mode or False)
+
+        # Reset strikes when toggling maintenance off
+        if not device.maintenance_mode:
+            device.health_alert_strikes = 0
+
+        db.session.commit()
+
+        action = 'enabled' if device.maintenance_mode else 'disabled'
+        print(f"[MAINTENANCE] {action} for {device.device_name} ({device.device_ip})")
+
+        return jsonify({
+            'success': True,
+            'device_id': device.device_id,
+            'maintenance_mode': device.maintenance_mode,
+            'message': f"Maintenance mode {action} for {device.device_name}"
+        })
+
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500

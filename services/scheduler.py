@@ -19,6 +19,9 @@ class MonitoringScheduler:
         schedule.every(5).minutes.do(self.run_monitoring_task)
         schedule.every(5).minutes.do(self.check_snmp_health)
         
+        # Auto-discovery check every 1 minute (actual scan fires only when interval elapsed)
+        schedule.every(1).minutes.do(self.maybe_run_auto_discovery)
+        
         # Daily report at 23:59
         schedule.every().day.at("23:59").do(self.generate_daily_report)
         
@@ -57,6 +60,37 @@ class MonitoringScheduler:
                 # Ensure session is cleaned up after background task
                 db.session.remove()
     
+    def maybe_run_auto_discovery(self):
+        """Check if auto-discovery should run, and fire light sweep if interval elapsed."""
+        with self.app.app_context():
+            try:
+                from models.discovery_config import get_config
+                cfg = get_config()
+                if not cfg.enabled:
+                    return
+
+                from datetime import datetime, timedelta
+                now = datetime.utcnow()
+
+                # Light sweep check
+                interval = timedelta(minutes=cfg.light_interval_min or 30)
+                if cfg.last_light_scan is None or (now - cfg.last_light_scan) >= interval:
+                    from services.auto_discovery_service import get_auto_discovery_service
+                    svc = get_auto_discovery_service()
+                    svc.trigger_light_sweep(self.app)
+
+                # Heavy scan check
+                heavy_interval = timedelta(minutes=cfg.heavy_interval_min or 1440)
+                if cfg.last_heavy_scan is None or (now - cfg.last_heavy_scan) >= heavy_interval:
+                    from services.auto_discovery_service import get_auto_discovery_service
+                    svc = get_auto_discovery_service()
+                    svc.trigger_heavy_scan(self.app)
+
+            except Exception as e:
+                print(f"Error in auto-discovery check: {e}")
+            finally:
+                db.session.remove()
+
     def generate_daily_report(self):
         """Generate daily report"""
         with self.app.app_context():

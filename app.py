@@ -103,10 +103,18 @@ def create_app(test_config=None):
             SwitchTopology, TrackedDevice,
             DeviceScanHistory, NetworkScan, PortScanResult
         )
+        from models.discovery_config import DiscoveryConfig
         from utils.db_migrations import ensure_server_health_columns
 
         db.create_all()
         ensure_server_health_columns()
+
+        # ---------------------------
+        # Prime Discovery Service (Singleton)
+        # ---------------------------
+        from services.discovery_service import get_discovery_service
+        ds = get_discovery_service()
+        print(f"[OK] Discovery Service primed: {id(ds)}")
 
         # ---------------------------
         # Safe admin creation
@@ -157,10 +165,10 @@ def create_app(test_config=None):
     from routes.snmp import snmp_bp
     from routes.service_checks import service_checks_bp
     from routes.maintenance import maintenance_bp
-    from routes.sse import sse_bp
     from routes.switch_discovery import switch_discovery_bp
     from routes.agent import agent_bp
     from routes.server_metrics import server_metrics_bp
+    from routes.discovery_settings import discovery_settings_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -177,10 +185,10 @@ def create_app(test_config=None):
         snmp_bp,
         service_checks_bp,
         maintenance_bp,
-        sse_bp,
         switch_discovery_bp,
         agent_bp,
         server_metrics_bp,
+        discovery_settings_bp,
     ]
 
     for bp in protected_blueprints:

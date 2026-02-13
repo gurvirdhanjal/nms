@@ -185,7 +185,7 @@ class SnmpDiscoveryService:
                     if dev.get("interface"):
                         existing.port = dev.get("interface")
                     if not existing.device_type:
-                        existing.device_type = "Network Device"
+                        existing.device_type = "switch"
                     if not existing.device_name or existing.device_name.startswith("Device-"):
                         existing.device_name = f"Device-{existing.device_ip}"
                     updated += 1
@@ -196,7 +196,7 @@ class SnmpDiscoveryService:
                     device = Device(
                         device_name=f"Device-{ip}",
                         device_ip=ip,
-                        device_type="Network Device",
+                        device_type="switch",
                         port=dev.get("interface") or "",
                         macaddress=mac or "N/A",
                         hostname="Unknown",

@@ -55,6 +55,9 @@ def get_monitoring_status():
 
     
     from models.device import Device
+    from models.scan_history import DeviceScanHistory
+    from sqlalchemy import func
+    from datetime import datetime
     device_type = request.args.get('device_type')
     status_filter = request.args.get('status')
     
@@ -65,9 +68,145 @@ def get_monitoring_status():
         query = query.filter_by(device_ip=device_ip)
     
     if device_type and device_type != 'all':
-        query = query.filter_by(device_type=device_type)
+        dtype = (device_type or '').strip().lower()
+        if dtype in ('camera', 'camera/iot', 'camera_iot', 'iot'):
+            query = query.filter(Device.device_type.in_(['camera', 'camera/iot', 'camera_iot', 'iot']))
+        else:
+            query = query.filter_by(device_type=device_type)
     
     devices = query.all()
+    mode = (request.args.get('mode') or '').lower()
+    fallback_live = (request.args.get('fallback') or '').lower() in ('1', 'true', 'yes', 'live', 'ping')
+
+    def normalize_status(value):
+        if value is None:
+            return "Unknown"
+        val = str(value).strip().lower()
+        if val in ("online", "up"):
+            return "Online"
+        if val in ("offline", "down"):
+            return "Offline"
+        if val in ("maintenance", "maintaince"):
+            return "Maintenance"
+        if val in ("unknown", "n/a", "na", "none", "null", ""):
+            return "Unknown"
+        return val.capitalize()
+
+    def save_scan_history(history_entries):
+        if not history_entries:
+            return
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                db.session.add_all(history_entries)
+                db.session.commit()
+                print(f"DEBUG: Saved {len(history_entries)} scan records to history")
+                break
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    print(f"DEBUG: DB locked, retrying ({attempt+1}/{max_retries})...")
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                raise e
+
+    if mode in ('latest', 'cached'):
+        # Fast path: use latest scan history instead of live ping
+        latest_subq = db.session.query(
+            DeviceScanHistory.device_ip,
+            func.max(DeviceScanHistory.scan_id).label('max_id')
+        ).group_by(DeviceScanHistory.device_ip).subquery()
+
+        latest_rows = db.session.query(DeviceScanHistory, Device).join(
+            latest_subq,
+            (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
+            (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+        ).join(
+            Device,
+            Device.device_ip == DeviceScanHistory.device_ip
+        ).all()
+
+        latest_map = {row[1].device_id: row[0] for row in latest_rows}
+        devices_list = []
+        device_index = {}
+        unknown_devices = []
+
+        for device in devices:
+            scan = latest_map.get(device.device_id)
+            if getattr(device, 'maintenance_mode', False):
+                status = "Maintenance"
+            else:
+                status = normalize_status(scan.status if scan else None)
+
+            entry = {
+                "device_id": device.device_id,
+                "device_name": device.device_name,
+                "device_ip": device.device_ip,
+                "device_type": device.device_type,
+                "status": status,
+                "latency": scan.ping_time_ms if scan else None,
+                "packet_loss": scan.packet_loss if scan else None,
+                "maintenance_mode": getattr(device, 'maintenance_mode', False)
+            }
+            devices_list.append(entry)
+            device_index[device.device_id] = entry
+
+            if status == "Unknown" and fallback_live and not getattr(device, 'maintenance_mode', False) and device.device_ip:
+                unknown_devices.append(device)
+
+        if fallback_live and unknown_devices:
+            async def ping_unknown_devices():
+                tasks = [
+                    monitor.scanner.ping_device(d.device_ip, count=1, timeout=1.5)
+                    for d in unknown_devices
+                ]
+                return await asyncio.gather(*tasks, return_exceptions=True)
+
+            try:
+                ping_results = asyncio.run(ping_unknown_devices())
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                ping_results = loop.run_until_complete(ping_unknown_devices())
+                loop.close()
+
+            history_entries = []
+            for device, result in zip(unknown_devices, ping_results):
+                status = "Unknown"
+                latency = None
+                packet_loss = None
+
+                if isinstance(result, tuple) and len(result) >= 2:
+                    status, latency, packet_loss = result
+                    status = normalize_status(status)
+
+                entry = device_index.get(device.device_id)
+                if entry:
+                    entry["status"] = status
+                    entry["latency"] = latency
+                    entry["packet_loss"] = packet_loss
+
+                if status in ("Online", "Offline"):
+                    pkt_loss = packet_loss if packet_loss is not None else 0
+                    history_entries.append(DeviceScanHistory(
+                        device_ip=device.device_ip,
+                        device_name=device.device_name,
+                        status=status,
+                        ping_time_ms=latency,
+                        packet_loss=pkt_loss,
+                        scan_timestamp=datetime.utcnow(),
+                        scan_type='live_check'
+                    ))
+
+            try:
+                save_scan_history(history_entries)
+            except Exception as db_e:
+                print(f"DEBUG: Error saving fallback history: {db_e}")
+                db.session.rollback()
+
+        if status_filter and status_filter != 'all':
+            devices_list = [device for device in devices_list if device['status'].lower() == status_filter.lower()]
+
+        return jsonify({"devices": devices_list})
     
     # NO FILTERING - SHOW ALL DEVICES
     # try:
@@ -76,18 +215,33 @@ def get_monitoring_status():
     #     ...
     # except Exception as e: ...
     
-    # Just use the query result directly
-    pass
-    
     print(f"DEBUG: Status endpoint - Found {len(devices)} devices in local network") 
     
     devices_list = []
 
     async def fetch_device_status(device):
-        # ... existing fetch_device_status logic ...
+        # CHECK MAINTENANCE MODE FIRST
+        if getattr(device, 'maintenance_mode', False):
+             return {
+                "device_id": device.device_id,
+                "device_name": device.device_name,
+                "device_ip": device.device_ip,
+                "device_type": device.device_type,
+                "macaddress": device.macaddress,
+                "hostname": device.hostname,
+                "manufacturer": device.manufacturer,
+                "rstp_link": device.rstplink,
+                "port": device.port,
+                "is_monitored": device.is_monitored,
+                "status": "Maintenance",
+                "latency": None,
+                "packet_loss": 0,
+            }
+
         try:
             # Optimization: Single ping for dashboard speed
             status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
+            status = normalize_status(status)
             
             # Fallback: Check Tactical Agent Port (5002) if Ping fails
             if status == 'Offline': 
@@ -143,55 +297,35 @@ def get_monitoring_status():
         
         # SAVE HISTORY TO DB (Synchronize Live View with Dashboard Stats)
         try:
-            from extensions import db
-            from models.scan_history import DeviceScanHistory
-            from datetime import datetime
-
             history_entries = []
             for d in devices_data:
-                # Basic validation
-                if not d.get('device_ip'): continue
-                
-                # Determine packet loss safely
+                if not d.get('device_ip'):
+                    continue
+
                 pkt_loss = d.get('packet_loss', 0)
-                if pkt_loss is None: pkt_loss = 0
-                
-                # Create history record
+                if pkt_loss is None:
+                    pkt_loss = 0
+
                 entry = DeviceScanHistory(
                     device_ip=d['device_ip'],
                     device_name=d.get('device_name'),
-                    status=d.get('status', 'Unknown'),
+                    status=normalize_status(d.get('status')),
                     ping_time_ms=d.get('latency'),
                     packet_loss=pkt_loss,
                     scan_timestamp=datetime.utcnow(),
                     scan_type='live_check'
                 )
                 history_entries.append(entry)
-            
-            if history_entries:
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        db.session.add_all(history_entries)
-                        db.session.commit()
-                        print(f"DEBUG: Saved {len(history_entries)} scan records to history")
-                        break
-                    except OperationalError as e:
-                        if "database is locked" in str(e) and attempt < max_retries - 1:
-                            print(f"DEBUG: DB locked, retrying ({attempt+1}/{max_retries})...")
-                            time.sleep(0.1 * (attempt + 1))
-                            continue
-                        else:
-                            raise e
 
-
+            save_scan_history(history_entries)
         except Exception as db_e:
             print(f"DEBUG: Error saving history in monitoring endpoint: {db_e}")
             db.session.rollback()
 
         # Apply status filter if provided
         if status_filter and status_filter != 'all':
-            devices_data = [device for device in devices_data if device['status'] == status_filter]
+            target = normalize_status(status_filter)
+            devices_data = [device for device in devices_data if normalize_status(device.get('status')) == target]
         
         online_count = len([d for d in devices_data if d['status'] == 'Online'])
         print(f"DEBUG: Status endpoint - Returning {len(devices_data)} devices, {online_count} online")

@@ -113,8 +113,8 @@
 body.tactical-theme {
     background: var(--tactical-bg-darkest) !important;
     background-image:
-        linear-gradient(rgba(0, 212, 170, 0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 212, 170, 0.02) 1px, transparent 1px) !important;
+        linear-gradient(rgba(0, 212, 170, 0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 170, 0.01) 1px, transparent 1px) !important;
     background-size: 50px 50px !important;
     color: var(--tactical-text-primary);
     font-family: 'Rajdhani', 'Segoe UI', sans-serif;
@@ -771,6 +771,21 @@ body.tactical-theme {
     padding: 1rem 1.5rem;
 }
 
+/* Fix for modal scrolling */
+.modal-dialog-scrollable .modal-content {
+    max-height: 85vh;
+    /* Ensure it fits within viewport */
+    overflow: hidden;
+    /* Prevent double scrollbars */
+}
+
+.modal-dialog-scrollable .modal-body {
+    overflow-y: auto !important;
+    /* Force scroll */
+    max-height: calc(85vh - 120px);
+    /* Subtract header/footer height approximate */
+}
+
 /* Fullscreen modal adjustments */
 .tactical-modal.modal-fullscreen .modal-content {
     background: var(--tactical-bg-darkest);
@@ -1069,6 +1084,47 @@ body.tactical-theme {
     animation: heartbeat 3s infinite ease-in-out;
 }
 
+.metric-status {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--tactical-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--tactical-text-dim);
+    white-space: nowrap;
+}
+
+.metric-status.status-healthy {
+    color: var(--tactical-success);
+    border-color: rgba(0, 255, 136, 0.4);
+    background: rgba(0, 255, 136, 0.12);
+}
+
+.metric-status.status-warning {
+    color: var(--tactical-warning);
+    border-color: rgba(255, 170, 0, 0.5);
+    background: rgba(255, 170, 0, 0.12);
+}
+
+.metric-status.status-critical {
+    color: var(--tactical-danger);
+    border-color: rgba(255, 59, 92, 0.5);
+    background: rgba(255, 59, 92, 0.12);
+}
+
+.status-maintenance {
+    background-color: #ffc107;
+    box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+    animation: heartbeat 2.5s infinite ease-in-out;
+}
+
+.status-unknown {
+    background-color: #6c757d;
+    box-shadow: 0 0 10px rgba(108, 117, 125, 0.5);
+}
+
 .status-checking {
     background-color: #6c757d;
     width: 10px;
@@ -1177,3 +1233,734 @@ html {
 .main-content {
     will-change: scroll-position;
 }
+
+/* ============================================================
+   TACTICAL DROPDOWNS (Bootstrap Overrides)
+   ============================================================ */
+.tactical-dropdown {
+    background: #11151c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    margin-top: 4px;
+    /* Slight offset */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.tactical-dropdown .dropdown-item {
+    color: #cfe7f3;
+    font-size: 0.85rem;
+    padding: 0.6rem 1rem;
+    transition: all 0.15s ease;
+}
+
+.tactical-dropdown .dropdown-item:hover {
+    background: rgba(32, 201, 151, 0.1);
+    color: #20c997;
+}
+
+.tactical-dropdown .dropdown-item.active {
+    background: rgba(32, 201, 151, 0.15);
+    color: #20c997;
+    font-weight: 600;
+}
+
+/* ============================================================
+   ALERTS FILTERS (Layout Fixes)
+   ============================================================ */
+.alerts-filters {
+    margin-top: 22px;
+    /* Increased top margin for rhythm */
+    margin-bottom: 22px;
+    padding: 16px;
+    border-radius: 16px;
+    /* Visual Hierarchy Refinement */
+    background: linear-gradient(to bottom,
+            rgba(18, 22, 32, 0.85),
+            rgba(12, 16, 24, 0.85));
+    border: 1px solid rgba(32, 201, 151, 0.15);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+
+    position: relative;
+    box-sizing: border-box;
+    overflow: visible;
+    /* Ensure dropdowns don't clip */
+}
+
+/* Remove horizontal bleed if using row */
+.alerts-filters.row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Normalize all filter controls */
+.alerts-filters select,
+.alerts-filters input,
+.alerts-filters .dropdown-toggle {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    border-radius: 10px;
+    color: #cfe7f3;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    width: 100%;
+    /* Ensure full width */
+}
+
+/* Dropdown toggle specific */
+.alerts-filters .dropdown-toggle {
+    justify-content: space-between;
+}
+
+.alerts-filters .dropdown-toggle::after {
+    margin-left: 0.6em;
+    vertical-align: middle;
+}
+
+/* Focus states */
+.alerts-filters select:focus,
+.alerts-filters input:focus,
+.alerts-filters .dropdown-toggle:focus,
+.alerts-filters .dropdown-toggle.show {
+    border-color: rgba(32, 201, 151, 0.6);
+    box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.15);
+    /* Focus Glow */
+    outline: none;
+}
+
+/* Dropdown Menu Width & Position */
+.alerts-filters .dropdown-menu {
+    width: 100%;
+    min-width: 100%;
+    margin-top: 4px;
+}
+
+/* Placeholder styling */
+.alerts-filters input::placeholder {
+    color: rgba(139, 148, 158, 0.6);
+}
+
+/* ============================================================
+   ALERTS VISUAL REFINEMENT
+   ============================================================ */
+
+/* KPI Grid Layout (Restored) */
+.alerts-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 20px;
+}
+
+.alerts-kpi-left {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(110px, 1fr));
+    gap: 24px;
+}
+
+.alerts-kpi .stat-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8b949e;
+}
+
+.alerts-kpi .stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.alerts-kpi.critical .stat-value {
+    color: #dc3545;
+}
+
+.alerts-kpi.warning .stat-value {
+    color: #ffc107;
+}
+
+.alerts-kpi.info .stat-value {
+    color: #0dcaf0;
+}
+
+/* KPI Row Visually Connected (Legacy override/merged) */
+/* .alerts-kpi-grid rule above handles this now */
+
+/* Table Header Tactical Style */
+.alert-panel .tactical-table th,
+.alert-panel .tactical-table thead th {
+    color: #6be6d3;
+    background: linear-gradient(to bottom,
+            rgba(15, 18, 26, 0.95),
+            rgba(12, 15, 22, 0.95));
+    border-bottom: 1px solid rgba(32, 201, 151, 0.2);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+/* Simplified Severity Columns (Left Border Strip) */
+.alert-row-critical,
+.alert-row-warning,
+.alert-row-info,
+.alert-row-informational {
+    background: transparent;
+    /* Reset gradient */
+    box-shadow: none;
+    /* Reset shadow */
+}
+
+.alert-row-critical {
+    border-left: 3px solid #dc3545;
+    background: rgba(220, 53, 69, 0.08);
+    /* Careful with opacity */
+}
+
+.alert-row-warning {
+    border-left: 3px solid #ffc107;
+    background: rgba(255, 193, 7, 0.04);
+}
+
+.alert-row-info,
+.alert-row-informational {
+    border-left: 3px solid #0dcaf0;
+    background: rgba(13, 202, 240, 0.04);
+}
+
+/* Alternating Row Subtle Contrast */
+.alert-panel tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.015);
+}
+
+/* Time Column Hierarchy */
+.alert-panel td:last-child {
+    opacity: 0.55;
+    font-size: 0.72rem;
+}
+
+/* Tighten Column Widths */
+.alert-panel td:first-child {
+    width: 100px;
+}
+
+
+/* Hover Effect */
+.alert-panel tbody tr:hover {
+    background: rgba(32, 201, 151, 0.06);
+    transform: translateX(4px);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+/* Agent Row (Scanning) */
+.tactical-agent-row {
+    box-shadow: inset 4px 0 0 #00ffc8 !important;
+    background: rgba(0, 255, 200, 0.05) !important;
+}
+
+/* Responsive adjustments for Alerts KPI */
+@media (max-width: 768px) {
+    .alerts-kpi-left {
+        grid-template-columns: 1fr 1fr;
+        row-gap: 16px;
+    }
+}
+
+/* ============================================================
+   ALERTS TACTICAL CONTAINER REFINEMENT
+   ============================================================ */
+
+.alerts-container {
+    padding: 28px 28px 20px;
+    border-radius: var(--tactical-radius-lg);
+    background: linear-gradient(to bottom,
+            rgba(18, 22, 32, 0.85),
+            rgba(12, 16, 24, 0.9));
+    border: 1px solid rgba(32, 201, 151, 0.12);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    margin-top: 24px;
+    position: relative;
+    /* Needed for ::before */
+}
+
+.alerts-container::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+            transparent,
+            var(--tactical-accent),
+            transparent);
+    opacity: 0.6;
+}
+
+.alerts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.alerts-title {
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--tactical-accent-bright);
+    /* Ensure this var exists or fallback */
+    color: #00ffc8;
+    /* Fallback based on typical tactical bright accent */
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.alerts-subtitle {
+    font-size: 0.85rem;
+    color: var(--tactical-text-dim);
+    /* Ensure this var exists or fallback */
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.alerts-header-right {
+    text-align: right;
+    font-size: 0.75rem;
+    color: var(--tactical-text-dim);
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.5;
+}
+
+.alerts-kpi-row {
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ============================================================
+   ENTERPRISE NOC DESIGN SYSTEM
+   Extends existing tactical classes — does NOT remove them.
+   ============================================================ */
+
+/* ---------- Global Status Strip (Layer 1) ---------- */
+.enterprise-header-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+    background: rgba(14, 15, 22, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    margin-bottom: 48px;
+    min-height: 50px;
+    flex-wrap: wrap;
+}
+
+.enterprise-strip-left {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    flex-wrap: wrap;
+}
+
+.enterprise-strip-right {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+    color: #8b949e;
+}
+
+.enterprise-strip-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+    color: #c9d1d9;
+    white-space: nowrap;
+}
+
+.enterprise-strip-item .strip-label {
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.enterprise-strip-item .strip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.enterprise-strip-item .strip-dot.green {
+    background: #3fb950;
+}
+
+.enterprise-strip-item .strip-dot.yellow {
+    background: #d29922;
+}
+
+.enterprise-strip-item .strip-dot.red {
+    background: #f85149;
+}
+
+.enterprise-strip-item .strip-dot.gray {
+    background: #6e7681;
+}
+
+/* ---------- Enterprise Card (Base) ---------- */
+.enterprise-card {
+    background: rgba(22, 24, 33, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: border-color 150ms ease;
+    overflow: hidden;
+}
+
+.enterprise-card:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.enterprise-card .card-header {
+    background: rgba(0, 0, 0, 0.18);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 16px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #c9d1d9;
+}
+
+.enterprise-card .card-body {
+    padding: 16px;
+}
+
+/* ---------- Enterprise KPI Cards (Layer 2) ---------- */
+.enterprise-kpi {
+    position: relative;
+    min-height: 110px;
+    padding: 18px 20px;
+    background: rgba(22, 24, 33, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: border-color 150ms ease, transform 150ms ease;
+    cursor: pointer;
+}
+
+.enterprise-kpi:hover {
+    border-color: rgba(63, 185, 80, 0.4);
+    transform: translateY(-1px);
+}
+
+.enterprise-kpi .stat-label {
+    font-size: 0.7rem !important;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8b949e !important;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.enterprise-kpi .stat-value {
+    font-size: 1.8rem !important;
+    font-weight: 700;
+    font-family: 'Rajdhani', sans-serif;
+    color: #e6edf3;
+    line-height: 1.1;
+}
+
+.enterprise-kpi .metric-sub {
+    font-size: 0.72rem !important;
+    color: #8b949e !important;
+    opacity: 1 !important;
+    margin-top: 6px;
+    display: block !important;
+}
+
+.enterprise-kpi .kpi-view-icon {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.2);
+    transition: color 150ms ease;
+    pointer-events: none;
+}
+
+.enterprise-kpi:hover .kpi-view-icon {
+    color: #3fb950;
+}
+
+/* ---------- Enterprise Panel (Layer 3) ---------- */
+.enterprise-panel {
+    background: rgba(22, 24, 33, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.enterprise-panel .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.enterprise-panel .panel-header h5 {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #c9d1d9;
+    margin: 0;
+    font-weight: 700;
+}
+
+.enterprise-panel .panel-header .panel-meta {
+    font-size: 0.7rem;
+    color: #8b949e;
+}
+
+.enterprise-panel .panel-body {
+    padding: 16px;
+}
+
+.enterprise-panel .panel-body.p-0 {
+    padding: 0;
+}
+
+/* Scrollable table body inside panels */
+.enterprise-panel .table-scroll {
+    max-height: 380px;
+    overflow-y: auto;
+}
+
+.enterprise-panel .table-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.enterprise-panel .table-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+}
+
+/* ---------- Enterprise Section Divider ---------- */
+.enterprise-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 32px 0;
+    border: none;
+}
+
+/* ---------- Enterprise Alert Table (Layer 4) ---------- */
+.enterprise-alert-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.enterprise-alert-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(15, 17, 24, 0.98);
+    padding: 8px 12px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b949e;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.enterprise-alert-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    transition: background 150ms ease;
+}
+
+.enterprise-alert-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.enterprise-alert-table tbody td {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    color: #c9d1d9;
+    vertical-align: middle;
+}
+
+/* Severity color bar at left edge of row */
+.enterprise-alert-table tbody tr td:first-child {
+    position: relative;
+    padding-left: 18px;
+}
+
+.enterprise-alert-table tbody tr td:first-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 2px;
+    background: #6e7681;
+}
+
+.enterprise-alert-table tbody tr.severity-critical td:first-child::before {
+    background: #f85149;
+}
+
+.enterprise-alert-table tbody tr.severity-warning td:first-child::before {
+    background: #d29922;
+}
+
+.enterprise-alert-table tbody tr.severity-info td:first-child::before {
+    background: #58a6ff;
+}
+
+/* ---------- Enterprise Overrides (Muting Neon) ---------- */
+
+/* Flatten glowing shadows globally on dashboard */
+.tactical-theme .tactical-card {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.tactical-theme .tactical-card:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transform: translateY(-1px);
+}
+
+.tactical-theme .tactical-stat-card {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.tactical-theme .tactical-stat-card:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Consistent 8px radius everywhere */
+.tactical-theme .tactical-card,
+.tactical-theme .breakdown-panel,
+.tactical-theme .breakdown-subcard,
+.tactical-theme .alerts-container,
+.tactical-theme .alerts-filters {
+    border-radius: 8px;
+}
+
+/* Section separation */
+.tactical-theme .section-block {
+    margin-top: 32px;
+}
+
+/* Enterprise typography standardization */
+.enterprise-section-title {
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #c9d1d9;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.enterprise-section-sub {
+    font-size: 0.72rem;
+    color: #8b949e;
+}
+
+/* Chart containers — consistent padding and height */
+.enterprise-chart-wrap {
+    padding: 12px;
+    position: relative;
+}
+
+.enterprise-chart-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b949e;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 992px) {
+    .enterprise-header-strip {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px 14px;
+    }
+
+    .enterprise-strip-right {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+/* Auth Layout */
+.auth-wrapper {
+    min-height: calc(100vh - 100px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.auth-card {
+    width: 100%;
+    max-width: 480px;
+}
+
+/* ============================================================
+   TACTICAL ALERTS OVERRIDES (Bootstrap Interop)
+   ============================================================ */
+.alert {
+    border: 1px solid var(--tactical-border-accent) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    background: var(--tactical-bg-elevated) !important;
+    color: var(--tactical-text-primary) !important;
+    opacity: 0.98 !important; /* Ensure visibility */
+    backdrop-filter: blur(10px);
+}
+
+.alert-success {
+    background: rgba(14, 25, 20, 0.95) !important;
+    border-color: var(--tactical-success) !important;
+    color: var(--tactical-success) !important;
+}
+
+.alert-danger {
+    background: rgba(25, 12, 16, 0.95) !important;
+    border-color: var(--tactical-danger) !important;
+    color: #ffadb8 !important;
+}
+
+.alert-warning {
+    background: rgba(25, 20, 10, 0.95) !important;
+    border-color: var(--tactical-warning) !important;
+    color: #ffdca8 !important;
+}
+
+.alert-info {
+    background: rgba(12, 20, 25, 0.95) !important;
+    border-color: var(--tactical-info) !important;
+    color: #a8eeff !important;
+}
+
+.alert .btn-close {
+    filter: invert(1);
+    opacity: 0.8;
+}
+

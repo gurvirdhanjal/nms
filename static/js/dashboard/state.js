@@ -12,14 +12,15 @@ const dashboardState = {
     isLoading: false,
     error: null,
     // Real-time connection state
-    connectionStatus: 'disconnected', // 'connected' | 'connecting' | 'disconnected'
+    connectionStatus: 'polling',
     lastEventId: null,
     realtimeEvents: []  // Buffer for real-time events (max 50)
     ,
     // Real-time metrics data
     realtimeInterfaces: null,
     networkIOTrend: null,
-    serverHealth: null
+    serverHealth: null,
+    fleetMetrics: null
 };
 
 const listeners = [];
@@ -53,7 +54,8 @@ function saveToCache() {
                 alerts: dashboardState.alerts,
                 realtimeInterfaces: dashboardState.realtimeInterfaces,
                 networkIOTrend: dashboardState.networkIOTrend,
-                serverHealth: dashboardState.serverHealth
+                serverHealth: dashboardState.serverHealth,
+                fleetMetrics: dashboardState.fleetMetrics
             }
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cacheData));
@@ -78,6 +80,7 @@ export function loadFromCache() {
         if (data.realtimeInterfaces) dashboardState.realtimeInterfaces = data.realtimeInterfaces;
         if (data.networkIOTrend) dashboardState.networkIOTrend = data.networkIOTrend;
         if (data.serverHealth) dashboardState.serverHealth = data.serverHealth;
+        if (data.fleetMetrics) dashboardState.fleetMetrics = data.fleetMetrics;
 
         dashboardState.lastUpdated = new Date(cache.timestamp);
         console.log('[State] Hydrated from cache');
@@ -120,7 +123,10 @@ export function mergeRealtimeUpdate(eventType, payload) {
     if (dashboardState.realtimeEvents.length > 50) {
         dashboardState.realtimeEvents.pop();
     }
-
+    dashboardState.summary = { ...dashboardState.summary };
+    dashboardState.topProblems = { ...dashboardState.topProblems };
+    dashboardState.alerts = { ...dashboardState.alerts };
+    dashboardState.lastUpdated = new Date();
     // Update summary based on event type
     if (dashboardState.summary) {
         switch (eventType) {
@@ -201,6 +207,7 @@ export function mergeRealtimeUpdate(eventType, payload) {
         dashboardState.topProblems.recent_alerts = dashboardState.topProblems.recent_alerts.slice(0, 10);
     }
 
-    dashboardState.lastUpdated = new Date();
+    // dashboardState.lastUpdated = new Date(); // Don't update timestamp on realtime events (causes clock-like ticking)
     notifyListeners();
+    saveToCache();
 }

@@ -3,45 +3,69 @@
 {% block title %}Login - Device Monitoring{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h4 class="mb-0"><i class="fas fa-sign-in-alt"></i> Login</h4>
+<div class="container-fluid tactical-theme">
+    <div class="auth-wrapper">
+
+        <div class="card enterprise-card auth-card">
+            <div class="card-header border-0 pb-0 bg-transparent">
+                <h5 class="enterprise-section-title text-center mb-0 mt-3">
+                    <i class="fas fa-sign-in-alt me-2"></i> Network Operations Center
+                </h5>
+                <div class="enterprise-section-sub text-center mb-3">Authorized Access Only</div>
             </div>
-            <div class="card-body">
+
+            <div class="card-body p-4">
+
                 {% if error %}
-                <div class="alert alert-danger">{{ error }}</div>
+                <div class="alert alert-danger small">{{ error }}</div>
                 {% endif %}
-                
+
                 {% if message %}
-                <div class="alert alert-info">{{ message }}</div>
+                <div class="alert alert-info small">{{ message }}</div>
                 {% endif %}
-                
+
                 <form method="POST" action="{{ url_for('auth_bp.login') }}">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
+
+                    <div class="mb-4">
+                        <label for="username" class="form-label small text-secondary text-uppercase fw-bold"
+                            style="letter-spacing: 0.08em;">Username</label>
+                        <input type="text" class="form-control tactical-input" id="username" name="username" required
+                            autocomplete="username">
                     </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
+
+                    <div class="mb-4">
+                        <label for="password" class="form-label small text-secondary text-uppercase fw-bold"
+                            style="letter-spacing: 0.08em;">Password</label>
+                        <input type="password" class="form-control tactical-input" id="password" name="password"
+                            required autocomplete="current-password">
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
+
+                    <button type="submit" class="btn btn-primary w-100 py-2 text-uppercase fw-bold"
+                        style="letter-spacing: 0.15em; height: 44px;">
+                        Login
+                    </button>
                 </form>
-                
-                <div class="text-center mt-3">
-                    <a href="{{ url_for('auth_bp.forgot_password') }}">Forgot Password?</a>
+
+                <div class="text-center mt-4 small">
+                    <a href="{{ url_for('auth_bp.forgot_password') }}"
+                        class="text-decoration-none text-secondary hover-text-primary">
+                        Forgot Password?
+                    </a>
                 </div>
-                
+
                 {% if allow_registration %}
-                <hr>
-                <div class="text-center">
-                    <p>No account? <a href="{{ url_for('auth_bp.register') }}">Register as admin</a></p>
+                <hr class="enterprise-divider my-4">
+                <div class="text-center small text-secondary">
+                    No account?
+                    <a href="{{ url_for('auth_bp.register') }}" class="text-info text-decoration-none ms-1">
+                        Register as admin
+                    </a>
                 </div>
                 {% endif %}
+
             </div>
         </div>
+
     </div>
 </div>
 {% endblock %}

@@ -1,9 +1,15 @@
 import { openServerModal } from '../modals/serverDetailModal.js';
+import { setupTacticalDropdown } from '../utils.js';
 
 let currentAlerts = [];
 let handlers = {
     onDeviceBreakdown: null,
 };
+
+// Dropdown instances
+let severityDropdown = null;
+let scopeDropdown = null;
+let deviceTypeDropdown = null;
 
 const networkTypes = new Set(['router', 'switch', 'firewall', 'access_point', 'network device']);
 
@@ -45,15 +51,13 @@ function matchesFilter(alert, filters) {
 export function initAlertCenter(options = {}) {
     handlers = { ...handlers, ...options };
 
-    const sevFilter = document.getElementById('filter-alert-severity');
-    const scopeFilter = document.getElementById('filter-alert-scope');
-    const typeFilter = document.getElementById('filter-alert-device-type');
-    const queryInput = document.getElementById('filter-alert-device');
-
     const onChange = () => renderAlertTable(currentAlerts);
-    if (sevFilter) sevFilter.addEventListener('change', onChange);
-    if (scopeFilter) scopeFilter.addEventListener('change', onChange);
-    if (typeFilter) typeFilter.addEventListener('change', onChange);
+
+    severityDropdown = setupTacticalDropdown('filter-severity-container', onChange);
+    scopeDropdown = setupTacticalDropdown('filter-scope-container', onChange);
+    deviceTypeDropdown = setupTacticalDropdown('filter-device-type-container', onChange);
+
+    const queryInput = document.getElementById('filter-alert-device');
     if (queryInput) queryInput.addEventListener('input', onChange);
 }
 
@@ -91,16 +95,16 @@ function renderAlertSummary(alerts) {
     }
 
     // Populate device type filter options
-    const typeFilter = document.getElementById('filter-alert-device-type');
-    if (typeFilter) {
-        const current = typeFilter.value || 'all';
+    if (deviceTypeDropdown) {
+        const current = deviceTypeDropdown.getValue();
         const types = Array.from(new Set(alerts.map(a => (a.device_type || '').toLowerCase()).filter(Boolean))).sort();
-        const options = ['all', ...types];
-        typeFilter.innerHTML = options.map(t => {
-            const label = t === 'all' ? 'All Device Types' : t;
-            const selected = t === current ? 'selected' : '';
-            return `<option value="${t}" ${selected}>${label === 'All Device Types' ? label : titleCase(label)}</option>`;
-        }).join('');
+
+        const options = [{ value: 'all', label: 'All Device Types' }];
+        types.forEach(t => {
+            options.push({ value: t, label: titleCase(t) });
+        });
+
+        deviceTypeDropdown.updateOptions(options);
     }
 }
 
@@ -108,15 +112,12 @@ function renderAlertTable(alerts) {
     const tbody = document.getElementById('table-alerts-body');
     if (!tbody) return;
 
-    const sevFilter = document.getElementById('filter-alert-severity');
-    const scopeFilter = document.getElementById('filter-alert-scope');
-    const typeFilter = document.getElementById('filter-alert-device-type');
     const queryInput = document.getElementById('filter-alert-device');
 
     const filters = {
-        severity: sevFilter?.value || 'all',
-        scope: scopeFilter?.value || 'all',
-        deviceType: typeFilter?.value || 'all',
+        severity: severityDropdown ? severityDropdown.getValue() : 'all',
+        scope: scopeDropdown ? scopeDropdown.getValue() : 'all',
+        deviceType: deviceTypeDropdown ? deviceTypeDropdown.getValue() : 'all',
         query: queryInput?.value?.trim() || ''
     };
 
@@ -135,37 +136,40 @@ function renderAlertTable(alerts) {
         return;
     }
 
-    tbody.innerHTML = filtered.map(a => {
+    tbody.innerHTML = '';
+    filtered.forEach(a => {
         const sev = normalizeSeverity(a.severity);
         const scope = classifyScope(a);
         const time = a.timestamp ? new Date(a.timestamp).toLocaleString() : '-';
         const deviceLabel = a.device_name || a.device_ip || 'Unknown';
         const deviceType = a.device_type || '-';
         const sevClass = sev === 'Critical' ? 'tactical-badge-danger' : sev === 'Warning' ? 'tactical-badge-warning' : 'tactical-badge-info';
+        const severityClass = `alert-row-${(a.severity || 'info').toLowerCase()}`;
 
-        return `
-            <tr class="alert-row" data-scope="${scope}" data-device-id="${a.device_id || ''}">
-                <td><span class="badge ${sevClass}">${sev}</span></td>
-                <td>${scope}</td>
-                <td>
-                    <div class="fw-bold">${deviceLabel}</div>
-                    <div class="small text-secondary">${deviceType}</div>
-                </td>
-                <td>${a.message || '-'}</td>
-                <td class="text-secondary">${time}</td>
-            </tr>
+        const row = document.createElement('tr');
+        row.classList.add('alert-row');
+        row.classList.add(severityClass);
+        row.dataset.scope = scope;
+        row.dataset.deviceId = a.device_id || '';
+        row.innerHTML = `
+            <td><span class="badge ${sevClass}">${sev}</span></td>
+            <td>${scope}</td>
+            <td>
+                <div class="fw-bold">${deviceLabel}</div>
+                <div class="small text-secondary">${deviceType}</div>
+            </td>
+            <td>${a.message || '-'}</td>
+            <td class="text-secondary">${time}</td>
         `;
-    }).join('');
-
-    tbody.querySelectorAll('tr.alert-row').forEach(row => {
         row.addEventListener('click', () => {
-            const scope = row.dataset.scope;
+            const rowScope = row.dataset.scope;
             const deviceId = row.dataset.deviceId;
-            if (scope === 'Server' && deviceId) {
+            if (rowScope === 'Server' && deviceId) {
                 openServerModal(deviceId);
             } else if (handlers.onDeviceBreakdown) {
                 handlers.onDeviceBreakdown();
             }
         });
+        tbody.appendChild(row);
     });
 }

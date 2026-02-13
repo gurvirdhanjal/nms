@@ -17,12 +17,31 @@
         margin-bottom: 0.5rem;
     }
 
+    .table {
+        font-size: 0.85rem;
+    }
+
+    .table th {
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+
     /* Scan Input Group */
     .scan-input-group {
         display: flex;
         gap: 1rem;
         margin-bottom: 1.5rem;
     }
+
+    .input-group .btn {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+    }
+
 
     .scan-input-group .input-wrapper {
         flex: 1;
@@ -33,6 +52,103 @@
     .scan-input-group .tactical-input {
         flex: 1;
     }
+
+
+    /* ============================= */
+    /* SAFE ICON NORMALIZATION PATCH */
+    /* ============================= */
+
+    /* Reset FontAwesome to default behavior */
+    i.fas,
+    i.far,
+    i.fab {
+        font-size: 1em;
+        vertical-align: -0.125em;
+        /* default FA alignment */
+        color: inherit;
+    }
+
+    /* Smaller icons only inside buttons */
+    .btn i {
+        font-size: 0.8rem;
+        margin-right: 4px;
+    }
+
+    /* Smaller header icons */
+    .card-header i {
+        font-size: 0.85rem;
+        opacity: 0.85;
+    }
+
+    .table thead th {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: rgba(255, 255, 255, 0.6);
+        font-weight: 500;
+    }
+
+    .table tbody td {
+        font-size: 0.85rem;
+    }
+
+    .table td {
+        vertical-align: middle;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+
+    /* Table action icons */
+    .table td i:not(.fa-plus):not(.fa-satellite-dish):not(.fa-search) {
+        font-size: 0.85rem;
+    }
+
+    .action-scan {
+        color: #38bdf8;
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .action-scan i {
+        color: #38bdf8;
+    }
+
+
+    /* ============================= */
+    /* DARK DROPDOWN FIX */
+    /* ============================= */
+
+    .dropdown-menu {
+        background-color: #111827;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.25rem 0;
+    }
+
+    .dropdown-item {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.85rem;
+    }
+
+    .dropdown-item:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+    }
+
+    .dropdown-item i {
+        color: rgba(255, 255, 255, 0.7);
+        margin-right: 6px;
+    }
+
+
+
+
+    .tactical-card .card-header {
+        background: transparent;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 0.75rem 1rem;
+    }
+
+
 
     /* Progress Bar Enhancements */
     .tactical-progress {
@@ -73,6 +189,17 @@
         display: flex;
         gap: 0.5rem;
     }
+
+    .btn-primary {
+        background-color: #1f2937;
+        border-color: #1f2937;
+    }
+
+    .btn-primary:hover {
+        background-color: #111827;
+        border-color: #111827;
+    }
+
 
     .result-actions .tactical-btn-sm {
         padding: 0.35rem 0.75rem;
@@ -142,6 +269,35 @@
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+
+    /* ===== Ultra Minimal Action Icons ===== */
+    .device-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        justify-content: center;
+    }
+
+    .action-icon {
+        font-size: 0.85rem;
+        cursor: pointer;
+        opacity: 0.65;
+        transition: all 0.2s ease;
+    }
+
+    .action-icon:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    /* Individual subtle colors */
+    .action-add {
+        color: #00d4aa;
+    }
+
+    .action-scan {
+        color: #38bdf8;
+    }
 </style>
 {% endblock %}
 
@@ -152,9 +308,29 @@
         <div class="col-md-12">
             <div class="tactical-card">
                 <div class="card-header">
-                    <h4><i class="fas fa-radar"></i> Network Scanner</h4>
+                    <h6 class="mb-0 text-uppercase text-muted">Network Scanner</h6>
                 </div>
                 <div class="card-body">
+                    <div class="row mb-3 text-start">
+                        <div class="col-md-12 d-flex gap-4 ms-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scanMode" id="scanModeHeavy"
+                                    value="heavy" checked>
+                                <label class="form-check-label text-white" for="scanModeHeavy">
+                                    <i class="fas fa-server text-warning"></i> Heavy <span
+                                        class="text-muted small ms-1">(Ports + SNMP)</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scanMode" id="scanModeLight"
+                                    value="light">
+                                <label class="form-check-label text-white" for="scanModeLight">
+                                    <i class="fas fa-bolt text-info"></i> Light <span
+                                        class="text-muted small ms-1">(Ping Only)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="row mb-3">
                         <div class="col-md-8">
                             <div class="input-group">
@@ -205,6 +381,136 @@
             </div>
         </div>
     </div>
+
+    <!-- SNMP Discovery Toggle Button -->
+    <div class="row mt-3">
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <h6 class="text-muted mb-0">SNMP Discovery</h6>
+            <button class="btn btn-sm btn-outline-secondary" id="toggleDiscoveryPanel">
+                Configure
+            </button>
+        </div>
+
+    </div>
+
+    <!-- SNMP Discovery Panel (Hidden by default) -->
+    <div class="row mt-3" id="discoveryPanel" style="display: none;">
+        <div class="col-md-12">
+            <div class="tactical-card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <h4><i class="fas fa-project-diagram"></i> SNMP Network Discovery</h4>
+                    <span class="badge bg-info">CDP / LLDP</span>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        <i class="fas fa-info-circle"></i>
+                        Enter a seed switch IP and its SNMP community string. The system will use CDP/LLDP to
+                        recursively discover neighboring switches and their connected devices via MAC/ARP tables.
+                    </p>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Seed Switch IP</label>
+                            <input type="text" class="form-control" id="seed-ip" placeholder="e.g., 192.168.1.1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Community String</label>
+                            <input type="text" class="form-control" id="snmp-community" placeholder="public"
+                                value="public">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted">SNMP Version</label>
+                            <select class="form-select" id="snmp-version">
+                                <option value="2c" selected>v2c</option>
+                                <option value="1">v1</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-info w-100" id="btn-start-discovery">
+                                <i class="fas fa-satellite-dish"></i> Start Mapping
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Options (collapsible) -->
+                    <div class="mb-3">
+                        <a class="small text-muted" data-bs-toggle="collapse" href="#snmpAdvancedOptions" role="button">
+                            <i class="fas fa-sliders-h"></i> Advanced Options
+                        </a>
+                        <div class="collapse mt-2" id="snmpAdvancedOptions">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Max Depth</label>
+                                    <input type="number" class="form-control form-control-sm" id="snmp-max-depth"
+                                        value="3" min="1" max="10">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Max Switches</label>
+                                    <input type="number" class="form-control form-control-sm" id="snmp-max-switches"
+                                        value="50" min="1" max="200">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Timeout (sec)</label>
+                                    <input type="number" class="form-control form-control-sm" id="snmp-timeout"
+                                        value="2" min="1" max="10">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted">Retries</label>
+                                    <input type="number" class="form-control form-control-sm" id="snmp-retries"
+                                        value="1" min="0" max="5">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Discovery Status -->
+                    <div id="discovery-status" class="small mt-2 p-2 rounded" style="display: none;"></div>
+
+                    <!-- Discovery Results (Hidden until results arrive) -->
+                    <div id="discovery-results" style="display: none;" class="mt-3">
+                        <h6 class="text-info"><i class="fas fa-network-wired"></i> Discovered Switches</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-hover table-sm align-middle">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Switch IP</th>
+                                        <th>Neighbors</th>
+                                        <th>Connected Devices</th>
+                                        <th>Errors</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="discovery-switches-body">
+                                    <tr>
+                                        <td colspan="4" class="text-center p-3 text-muted">No results yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h6 class="text-info"><i class="fas fa-desktop"></i> Discovered Devices</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm align-middle">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Switch</th>
+                                        <th>Device IP</th>
+                                        <th>MAC Address</th>
+                                        <th>Port / Interface</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="discovery-devices-body">
+                                    <tr>
+                                        <td colspan="4" class="text-center p-3 text-muted">No results yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Port Scan Modal -->
@@ -230,4 +536,208 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/scanning.js') }}"></script>
+<script>
+    // ============================================================================
+    // SNMP DISCOVERY PANEL LOGIC
+    // ============================================================================
+    document.addEventListener('DOMContentLoaded', function () {
+        // Toggle panel visibility
+        const toggleBtn = document.getElementById('toggleDiscoveryPanel');
+        const panel = document.getElementById('discoveryPanel');
+        const chevron = document.getElementById('discoveryChevron');
+
+        if (toggleBtn && panel) {
+            toggleBtn.addEventListener('click', function () {
+                const isVisible = panel.style.display !== 'none';
+                panel.style.display = isVisible ? 'none' : 'block';
+                chevron.classList.toggle('fa-chevron-down', isVisible);
+                chevron.classList.toggle('fa-chevron-up', !isVisible);
+                toggleBtn.classList.toggle('active', !isVisible);
+            });
+        }
+
+        // Start Discovery
+        const startBtn = document.getElementById('btn-start-discovery');
+        const seedInput = document.getElementById('seed-ip');
+        const communityInput = document.getElementById('snmp-community');
+        const versionSelect = document.getElementById('snmp-version');
+        const statusEl = document.getElementById('discovery-status');
+
+        if (!startBtn || !seedInput) return;
+
+        startBtn.addEventListener('click', async function () {
+            const seedIp = seedInput.value.trim();
+            if (!seedIp) {
+                showDiscoveryStatus('Please enter a seed switch IP address', 'text-danger');
+                return;
+            }
+
+            resetDiscoveryResults();
+
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Discovering...';
+            showDiscoveryStatus('Discovery started. Scanning seed switch via SNMP...', 'text-info');
+
+            try {
+                const payload = {
+                    seed_ip: seedIp,
+                    community: communityInput ? communityInput.value.trim() || 'public' : 'public',
+                    version: versionSelect ? versionSelect.value : '2c',
+                    max_depth: parseInt(document.getElementById('snmp-max-depth')?.value || '3'),
+                    max_switches: parseInt(document.getElementById('snmp-max-switches')?.value || '50'),
+                    timeout: parseInt(document.getElementById('snmp-timeout')?.value || '2'),
+                    retries: parseInt(document.getElementById('snmp-retries')?.value || '1'),
+                    persist: true
+                };
+
+                const response = await fetch('/api/discovery/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                if (data.success && data.job_id) {
+                    showDiscoveryStatus('Discovery running. This can take a few minutes...', 'text-info');
+                    pollDiscoveryStatus(data.job_id);
+                } else {
+                    showDiscoveryStatus('Error: ' + (data.error || 'Unknown error'), 'text-danger');
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> Start Mapping';
+                }
+            } catch (err) {
+                console.error('Discovery Error:', err);
+                showDiscoveryStatus('Failed to start discovery: ' + err.message, 'text-danger');
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> Start Mapping';
+            }
+        });
+
+        function pollDiscoveryStatus(jobId) {
+            const maxPolls = 60;
+            let count = 0;
+            const interval = setInterval(async function () {
+                count++;
+                if (count > maxPolls) {
+                    clearInterval(interval);
+                    showDiscoveryStatus('Discovery still running in background. Refresh later to check.', 'text-warning');
+                    resetDiscoveryButton();
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/discovery/status/' + jobId);
+                    const job = await res.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(interval);
+                        showDiscoveryStatus('Discovery error: ' + (job.error || 'Unknown'), 'text-danger');
+                        resetDiscoveryButton();
+                        return;
+                    }
+
+                    if (job.status === 'completed') {
+                        clearInterval(interval);
+                        const msg = 'Completed! Switches: ' + (job.switch_count || 0) +
+                            ', Devices: ' + (job.device_count || 0) +
+                            (job.persisted_inserted ? ', Added: ' + job.persisted_inserted : '') +
+                            (job.persisted_updated ? ', Updated: ' + job.persisted_updated : '');
+                        showDiscoveryStatus(msg, 'text-success');
+                        if (job.switches) {
+                            renderDiscoveryResults(job.switches);
+                        }
+                        resetDiscoveryButton();
+                        return;
+                    }
+
+                    if (job.status === 'running') {
+                        showDiscoveryStatus('Scanning... Switches found: ' + (job.switch_count || 0) +
+                            (job.last_switch ? ' (latest: ' + job.last_switch + ')' : ''), 'text-info');
+                    }
+                } catch (e) {
+                    clearInterval(interval);
+                    showDiscoveryStatus('Status check failed.', 'text-danger');
+                    resetDiscoveryButton();
+                }
+            }, 3000);
+        }
+
+        function renderDiscoveryResults(switches) {
+            const resultsEl = document.getElementById('discovery-results');
+            const switchesBody = document.getElementById('discovery-switches-body');
+            const devicesBody = document.getElementById('discovery-devices-body');
+
+            if (!resultsEl || !switchesBody || !devicesBody) return;
+
+            if (!switches || switches.length === 0) {
+                switchesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No switches discovered.</td></tr>';
+                devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No devices discovered.</td></tr>';
+                resultsEl.style.display = 'block';
+                return;
+            }
+
+            switchesBody.innerHTML = switches.map(function (sw) {
+                const neighbors = (sw.neighbors || []).length;
+                const devices = (sw.devices || []).length;
+                const errors = (sw.errors || []).length;
+                const ip = sw.ip || 'Unknown';
+                return '<tr>' +
+                    '<td>' + ip + '</td>' +
+                    '<td>' + neighbors + '</td>' +
+                    '<td>' + devices + '</td>' +
+                    '<td>' + (errors > 0 ? '<span class="text-warning">' + errors + '</span>' : '0') + '</td>' +
+                    '</tr>';
+            }).join('');
+
+            var deviceRows = [];
+            switches.forEach(function (sw) {
+                var swIp = sw.ip || 'Unknown';
+                (sw.devices || []).forEach(function (dev) {
+                    deviceRows.push({
+                        switch_ip: swIp,
+                        ip: dev.ip || '',
+                        mac: dev.mac || '',
+                        port: dev.interface || ''
+                    });
+                });
+            });
+
+            if (deviceRows.length === 0) {
+                devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No end devices discovered.</td></tr>';
+            } else {
+                devicesBody.innerHTML = deviceRows.map(function (d) {
+                    return '<tr>' +
+                        '<td>' + d.switch_ip + '</td>' +
+                        '<td>' + (d.ip || '-') + '</td>' +
+                        '<td><code>' + (d.mac || '-') + '</code></td>' +
+                        '<td>' + (d.port || '-') + '</td>' +
+                        '</tr>';
+                }).join('');
+            }
+
+            resultsEl.style.display = 'block';
+        }
+
+        function resetDiscoveryResults() {
+            const resultsEl = document.getElementById('discovery-results');
+            const switchesBody = document.getElementById('discovery-switches-body');
+            const devicesBody = document.getElementById('discovery-devices-body');
+            if (resultsEl) resultsEl.style.display = 'none';
+            if (switchesBody) switchesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No results yet.</td></tr>';
+            if (devicesBody) devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No results yet.</td></tr>';
+        }
+
+        function showDiscoveryStatus(msg, className) {
+            if (!statusEl) return;
+            statusEl.textContent = msg;
+            statusEl.className = 'small mt-2 p-2 rounded ' + className;
+            statusEl.style.display = 'block';
+            statusEl.style.background = 'rgba(255,255,255,0.05)';
+        }
+
+        function resetDiscoveryButton() {
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> Start Mapping';
+        }
+    });
+</script>
 {% endblock %}

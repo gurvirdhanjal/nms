@@ -17,7 +17,7 @@ export function renderInventoryChart(data) {
     if (inventoryChartInstance) {
         inventoryChartInstance.data.labels = labels;
         inventoryChartInstance.data.datasets[0].data = values;
-        inventoryChartInstance.update();
+        inventoryChartInstance.update('none');
         return;
     }
 
@@ -37,6 +37,7 @@ export function renderInventoryChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             plugins: {
                 legend: { position: 'right', labels: { color: '#8b949e' } }
             },

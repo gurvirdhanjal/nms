@@ -57,23 +57,27 @@ class DeviceClassifier:
     """
     Enterprise device classification engine using weighted multi-signal analysis.
     
-    Signal Weights:
-    - SNMP: 60
-    - MAC OUI: 25
-    - Ports: 15
-    - Hostname: 10
+    Signal Weights (evidence points):
+    - MAC OUI: 45
+    - Hostname: 35
+    - Ports: 10
+    - SNMP: +10 bonus (optional)
     - Behavior: 8 (Reserved for future traffic analysis)
     """
     
     # Weight constants
-    WEIGHT_SNMP = 60
-    WEIGHT_MAC = 25
-    WEIGHT_PORT = 15
-    WEIGHT_HOSTNAME = 10
+    WEIGHT_SNMP = 10
+    WEIGHT_MAC = 45
+    WEIGHT_PORT = 10
+    WEIGHT_HOSTNAME = 35
+
+    # Score normalization (maps evidence to a 50–100 confidence band)
+    SCORE_BASE = 50
+    SCORE_SCALE = 0.6
     
     # Confidence thresholds
-    THRESHOLD_HIGH = 50
-    THRESHOLD_MEDIUM = 25
+    THRESHOLD_HIGH = 85
+    THRESHOLD_MEDIUM = 70
     
     # MAC OUI / Manufacturer Database (Partial - relies more on scanner's MacLookup)
     # This map is used if MacLookup returns a raw vendor string we recognize
@@ -156,6 +160,38 @@ class DeviceClassifier:
         DeviceType.CAMERA_IOT: [r"^(cam|camera|ipc|dvr|nvr)[\-_]?"],
         DeviceType.MOBILE: [r"^(iphone|ipad|android|galaxy)"]
     }
+
+    CANONICAL_MAP = {
+        "firewall": "firewall",
+        "router": "router",
+        "switch": "switch",
+        "access point": "access_point",
+        "access_point": "access_point",
+        "server": "server",
+        "workstation": "workstation",
+        "printer": "printer",
+        "camera/iot": "camera",
+        "camera": "camera",
+        "iot": "iot",
+        "mobile device": "mobile",
+        "mobile": "mobile",
+        "unknown": "unknown",
+        "network device": "unknown",
+        "network-device": "unknown",
+        "network_device": "unknown",
+    }
+
+    @staticmethod
+    def normalize_device_type(value) -> str:
+        if value is None:
+            return "unknown"
+        if isinstance(value, DeviceType):
+            value = value.value
+        raw = str(value).strip()
+        if not raw:
+            return "unknown"
+        key = raw.lower().replace("-", " ").replace("_", " ").strip()
+        return DeviceClassifier.CANONICAL_MAP.get(key, key.replace(" ", "_"))
     
     def classify(self, signals: DeviceSignals) -> ClassificationResult:
         """
@@ -239,12 +275,12 @@ class DeviceClassifier:
         if (not ports) and (DeviceType.MOBILE in scores) and (scores[DeviceType.MOBILE] >= self.WEIGHT_MAC):
              add_score(DeviceType.MOBILE, 10, "No open ports typical for mobile")
         
-        # If no scores yet, return Unknown
+        # If no scores yet, return Unknown (baseline confidence)
         if not scores:
             return ClassificationResult(
                 device_type=DeviceType.UNKNOWN,
                 confidence=ConfidenceLevel.LOW,
-                score=0,
+                score=self.SCORE_BASE,
                 signals_used=[],
                 reasoning="Insufficient signals for classification.",
                 alternative_types=[]
@@ -253,17 +289,16 @@ class DeviceClassifier:
         # Get best match
         sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         best_type, best_score = sorted_types[0]
+        # Normalize evidence score to 50–100 range; SNMP is a bonus only.
+        final_score = int(round(min(100, self.SCORE_BASE + (best_score * self.SCORE_SCALE))))
         
         # Determine confidence
-        if best_score >= self.THRESHOLD_HIGH:
+        if final_score >= self.THRESHOLD_HIGH:
             confidence = ConfidenceLevel.HIGH
-        elif best_score >= self.THRESHOLD_MEDIUM:
+        elif final_score >= self.THRESHOLD_MEDIUM:
             confidence = ConfidenceLevel.MEDIUM
         else:
             confidence = ConfidenceLevel.LOW
-            # If score is very low, maybe default to Unknown?
-            if best_score < 10:
-                best_type = DeviceType.UNKNOWN
         
         # Format reasoning
         reasoning_list = reasoning_map.get(best_type, [])
@@ -283,7 +318,7 @@ class DeviceClassifier:
         return ClassificationResult(
             device_type=best_type,
             confidence=confidence,
-            score=best_score,
+            score=final_score,
             signals_used=signals_summary,
             reasoning=reasoning_str,
             alternative_types=alternatives

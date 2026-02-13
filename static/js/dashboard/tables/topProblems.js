@@ -5,14 +5,18 @@ export function renderTopLatencyTable(data) {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No high latency devices</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No high latency devices</td></tr>';
         return;
     }
 
     tbody.innerHTML = data.map(device => `
         <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View View Device Details">
             <td>${device.device_name || device.ip}</td>
-            <td class="tactical-text-danger">${device.value} ms</td>
+            <td class="tactical-text-danger">
+                ${formatLatencyTriple(device.latency_avg, device.latency_min, device.latency_max)}
+            </td>
+            <td class="tactical-text-muted d-none d-lg-table-cell">${formatPercent(device.loss_avg)}</td>
+            <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
             <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         </tr>
@@ -24,14 +28,16 @@ export function renderTopPacketLossTable(data) {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center tactical-text-muted">No packet loss detected</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center tactical-text-muted">No packet loss detected</td></tr>';
         return;
     }
 
     tbody.innerHTML = data.map(device => `
         <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View Device Details">
             <td>${device.device_name || device.ip}</td>
-            <td class="tactical-text-danger">${device.value}%</td>
+            <td class="tactical-text-danger">${formatLossPair(device.loss_avg, device.loss_max)}</td>
+            <td class="tactical-text-muted d-none d-lg-table-cell">${formatLatencyPair(device.latency_avg, device.latency_max)}</td>
+            <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
             <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         </tr>
@@ -89,6 +95,38 @@ function getSeverityClass(severity) {
         case 'WARNING': return 'tactical-badge-warning';
         default: return 'tactical-badge-info';
     }
+}
+
+function formatMs(value) {
+    if (value === null || value === undefined) return '—';
+    return `${Number(value).toFixed(1)} ms`;
+}
+
+function formatPercent(value) {
+    if (value === null || value === undefined) return '—';
+    return `${Number(value).toFixed(2)}%`;
+}
+
+function formatLatencyTriple(avg, min, max) {
+    if (avg === null || avg === undefined) return '—';
+    const a = Number(avg).toFixed(1);
+    const mi = min === null || min === undefined ? '—' : Number(min).toFixed(1);
+    const ma = max === null || max === undefined ? '—' : Number(max).toFixed(1);
+    return `${a}/${mi}/${ma} ms`;
+}
+
+function formatLatencyPair(avg, max) {
+    if (avg === null || avg === undefined) return '—';
+    const a = Number(avg).toFixed(1);
+    const ma = max === null || max === undefined ? '—' : Number(max).toFixed(1);
+    return `${a}/${ma} ms`;
+}
+
+function formatLossPair(avg, max) {
+    if (avg === null || avg === undefined) return '—';
+    const a = Number(avg).toFixed(2);
+    const ma = max === null || max === undefined ? '—' : Number(max).toFixed(2);
+    return `${a}/${ma}%`;
 }
 
 // Global function for onclick handler

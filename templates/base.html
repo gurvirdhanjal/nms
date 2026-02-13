@@ -34,11 +34,10 @@
             height: 100%;
             margin: 0;
             font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+            overflow: hidden;
         }
 
         body {
-            display: flex;
-            flex-direction: column;
             background: #0a0a0f !important;
             background-image:
                 linear-gradient(rgba(0, 212, 170, 0.02) 1px, transparent 1px),
@@ -49,24 +48,32 @@
             transition: background-color 0.4s ease-in-out, color 0.4s ease-in-out, background-image 0.4s ease-in-out !important;
         }
 
-        .main-content {
-            flex: 1 0 auto;
-            padding: 20px 0;
-        }
-
         /* ============================================================
-   TACTICAL NAVBAR
+   APP LAYOUT SYSTEM
    ============================================================ */
-        .navbar {
-            background: linear-gradient(180deg, #12121a 0%, #0d0d14 100%) !important;
-            border-bottom: 1px solid rgba(0, 212, 170, 0.3);
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 212, 170, 0.1);
-            padding: 0.5rem 1rem;
-            position: relative;
-            transition: background 0.4s ease-in-out, border-color 0.4s ease-in-out, box-shadow 0.4s ease-in-out;
+        .app-layout {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .navbar::after {
+        /* ---- APP HEADER ---- */
+        .app-header {
+            height: 52px;
+            min-height: 52px;
+            background: linear-gradient(180deg, #12121a 0%, #0d0d14 100%);
+            border-bottom: 1px solid rgba(0, 212, 170, 0.3);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 212, 170, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 16px;
+            position: relative;
+            z-index: 100;
+        }
+
+        .app-header::after {
             content: '';
             position: absolute;
             bottom: 0;
@@ -76,50 +83,100 @@
             background: linear-gradient(90deg, transparent, #00d4aa, transparent);
         }
 
-        .navbar-brand {
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-toggle {
+            background: none;
+            border: 1px solid rgba(0, 212, 170, 0.2);
+            color: #00d4aa;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-toggle:hover {
+            background: rgba(0, 212, 170, 0.1);
+            border-color: rgba(0, 212, 170, 0.4);
+            box-shadow: 0 0 12px rgba(0, 212, 170, 0.2);
+        }
+
+        .header-brand {
             color: #00ffc8 !important;
             font-family: 'Orbitron', monospace;
             font-weight: 700;
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             letter-spacing: 2px;
             text-transform: uppercase;
             text-shadow: 0 0 10px rgba(0, 212, 170, 0.4);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .navbar-brand i {
+        .header-brand:hover {
+            color: #00ffc8 !important;
+            text-shadow: 0 0 16px rgba(0, 212, 170, 0.6);
+        }
+
+        .header-brand i {
             color: #00d4aa;
-            margin-right: 0.5rem;
+            font-size: 1.1rem;
         }
 
-        .navbar-nav .nav-link {
-            color: #ffffff !important;
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-user-btn {
+            background: rgba(0, 212, 170, 0.08);
+            border: 1px solid rgba(0, 212, 170, 0.2);
+            color: #ffffff;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
             font-size: 0.85rem;
             letter-spacing: 0.5px;
-            text-transform: uppercase;
-            padding: 0.6rem 1rem !important;
-            margin: 0 2px;
-            border-radius: 4px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
         }
 
-        .navbar-nav .nav-link:hover {
-            color: #00ffc8 !important;
-            background: rgba(0, 212, 170, 0.1);
-            text-shadow: 0 0 8px rgba(0, 212, 170, 0.4);
+        .header-user-btn::after {
+            font-size: 0.7rem;
         }
 
-        .navbar-nav .nav-link.active {
-            color: #00ffc8 !important;
+        .header-user-btn:hover {
             background: rgba(0, 212, 170, 0.15);
-            border: 1px solid rgba(0, 212, 170, 0.3);
+            border-color: rgba(0, 212, 170, 0.4);
+            color: #00ffc8;
         }
 
-        .navbar-nav .nav-link i {
-            margin-right: 0.4rem;
+        .header-user-btn i {
+            color: #00d4aa;
+            font-size: 1rem;
         }
 
-        .navbar-nav .dropdown-menu {
+        .header-username {
+            text-transform: uppercase;
+        }
+
+        .header-right .dropdown-menu {
             background: #252532;
             border: 1px solid rgba(0, 212, 170, 0.3);
             border-radius: 8px;
@@ -127,7 +184,7 @@
             padding: 0.5rem;
         }
 
-        .navbar-nav .dropdown-item {
+        .header-right .dropdown-item {
             color: #ffffff;
             font-weight: 500;
             padding: 0.6rem 1rem;
@@ -135,27 +192,186 @@
             transition: all 0.15s ease;
         }
 
-        .navbar-nav .dropdown-item:hover {
+        .header-right .dropdown-item:hover {
             background: rgba(0, 212, 170, 0.1);
             color: #00ffc8;
         }
 
-        .navbar-nav .dropdown-item i {
+        .header-right .dropdown-item i {
             margin-right: 0.5rem;
             width: 18px;
         }
 
-        .navbar-nav .dropdown-divider {
+        .header-right .dropdown-divider {
             border-color: rgba(255, 255, 255, 0.08);
             margin: 0.4rem 0;
         }
 
-        .navbar-toggler {
-            border: 1px solid rgba(0, 212, 170, 0.3);
+        /* ---- APP BODY ---- */
+        .app-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
         }
 
-        .navbar-toggler-icon {
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='%2300d4aa' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        /* ---- APP SIDEBAR ---- */
+        .app-sidebar {
+            width: 240px;
+            min-width: 240px;
+            background: linear-gradient(180deg, #0d0d14 0%, #0a0a0f 100%);
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            position: relative;
+            z-index: 90;
+        }
+
+        .app-sidebar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0, 212, 170, 0.3), transparent 30%, transparent 70%, rgba(0, 212, 170, 0.15));
+            pointer-events: none;
+        }
+
+        .app-sidebar.collapsed {
+            width: 64px;
+            min-width: 64px;
+        }
+
+        .app-sidebar.collapsed .link-text {
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .app-sidebar.collapsed .sidebar-footer {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .app-sidebar.collapsed:hover {
+            width: 240px;
+            min-width: 240px;
+            box-shadow: 4px 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .app-sidebar.collapsed:hover .link-text {
+            opacity: 1;
+            width: auto;
+        }
+
+        .app-sidebar.collapsed:hover .sidebar-footer {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .sidebar-nav {
+            display: flex;
+            flex-direction: column;
+            padding: 12px 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 11px 20px;
+            color: rgba(255, 255, 255, 0.55);
+            text-decoration: none !important;
+            font-weight: 600;
+            font-size: 0.88rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            white-space: nowrap;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            text-align: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+            transition: color 0.2s ease;
+        }
+
+        .sidebar-link .link-text {
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-link:hover {
+            color: #00ffc8;
+            background: rgba(0, 212, 170, 0.06);
+            border-left-color: rgba(0, 212, 170, 0.3);
+            text-decoration: none !important;
+        }
+
+        .sidebar-link:hover i {
+            color: #00d4aa;
+            text-shadow: 0 0 8px rgba(0, 212, 170, 0.4);
+        }
+
+        .sidebar-link.active {
+            color: #00ffc8;
+            background: rgba(0, 212, 170, 0.1);
+            border-left-color: #00d4aa;
+        }
+
+        .sidebar-link.active i {
+            color: #00d4aa;
+        }
+
+        .sidebar-footer {
+            padding: 12px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-version {
+            font-size: 0.7rem;
+            color: rgba(0, 212, 170, 0.5);
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-copyright {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.25);
+            margin-top: 2px;
+        }
+
+        /* ---- APP CONTENT ---- */
+        .app-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 24px 28px;
+        }
+
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 52px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 89;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-backdrop.show {
+            display: block;
         }
 
         /* ============================================================
@@ -780,29 +996,7 @@
             background: #00d4aa !important;
         }
 
-        /* ============================================================
-   TACTICAL FOOTER
-   ============================================================ */
-        footer,
-        .footer {
-            background: linear-gradient(180deg, #0d0d14 0%, #0a0a0f 100%) !important;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 1rem 0;
-            color: #00ffc8;
-            font-size: 0.85rem;
-            position: relative;
-        }
-
-        footer::before,
-        .footer::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #00a080, transparent);
-        }
+        /* Footer styles removed - using sidebar-footer instead */
 
         /* ============================================================
    TACTICAL PROFILE MODAL
@@ -1040,11 +1234,67 @@
         /* ============================================================
    RESPONSIVE DESIGN
    ============================================================ */
-        @media (max-width: 768px) {
-            .navbar-nav .nav-link {
-                padding: 0.75rem 1rem !important;
+        @media (max-width: 992px) {
+            .app-sidebar {
+                position: fixed;
+                left: -240px;
+                top: 52px;
+                height: calc(100% - 52px);
+                z-index: 1000;
+                box-shadow: 4px 0 30px rgba(0, 0, 0, 0.5);
             }
 
+            .app-sidebar.open {
+                left: 0;
+            }
+
+            .app-sidebar.collapsed {
+                left: -240px;
+                width: 240px;
+                min-width: 240px;
+            }
+
+            .app-sidebar.collapsed.open {
+                left: 0;
+            }
+
+            .app-content {
+                padding: 20px 16px;
+            }
+
+            .header-username {
+                display: none;
+            }
+
+            .tactical-clock {
+                font-family: 'Rajdhani', sans-serif;
+                background: rgba(0, 212, 170, 0.05);
+                padding: 4px 8px;
+                border: 1px solid rgba(0, 212, 170, 0.18);
+                border-radius: 6px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                min-width: 90px;
+                line-height: 1.1;
+            }
+
+            .tactical-clock #clock-date {
+                font-size: 0.6rem;
+                letter-spacing: 0.06em;
+                color: rgba(0, 212, 170, 0.65);
+            }
+
+            .tactical-clock #clock-time {
+                font-size: 0.85rem;
+                font-weight: 600;
+                color: #00ffc8;
+            }
+
+
+        }
+
+        @media (max-width: 768px) {
             .container-fluid {
                 padding-left: 1rem;
                 padding-right: 1rem;
@@ -1059,93 +1309,154 @@
             .profile-username {
                 font-size: 1.25rem;
             }
+
+            .app-content {
+                padding: 16px 12px;
+            }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 
 <body class="tactical-theme">
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('monitoring_bp.dashboard') }}">
-                <i class="fas fa-network-wired"></i>NMS
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
+    <div class="app-layout">
+
+        <!-- ============================================================
+             TOP HEADER
+             ============================================================ -->
+        <header class="app-header">
+            <div class="header-left">
                 {% if session.logged_in %}
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('devices_bp.device_management') }}">
-                            <i class="fas fa-server"></i> Devices
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('scanning_bp.scanner_page') }}">
-                            <i class="fas fa-search"></i> Scanner
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('reports_bp.reports_page') }}">
-                            <i class="fas fa-chart-bar"></i> Reports
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('monitoring_bp.monitoring_page') }}">
-                            <i class="fas fa-eye"></i> Network
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('tracking_bp.device_tracking') }}">
-                            <i class="fas fa-laptop-house"></i> Tracking
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('camera_bp.camera_dashboard') }}">
-                            <i class="fas fa-video"></i> E-NVR
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('file_transfer_bp.file_transfer_dashboard') }}">
-                            <i class="fas fa-exchange-alt"></i> Files
-                        </a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
-                            data-bs-toggle="dropdown">
-                            <i class="fas fa-user"></i> {{ session.username }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal">
-                                    <i class="fas fa-user-circle"></i> My Profile
-                                </a></li>
-                            {% if session.role == 'admin' %}
-                            <li><a class="dropdown-item" href="{{ url_for('user_management_bp.user_management') }}">
-                                    <i class="fas fa-users-cog"></i> Users
-                                </a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            {% endif %}
-                            <li><a class="dropdown-item" href="{{ url_for('auth_bp.logout') }}">
-                                    <i class="fas fa-sign-out-alt"></i> Logout
-                                </a></li>
-                        </ul>
-                    </li>
-                </ul>
+                <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                {% endif %}
+
+                <a class="header-brand" href="{{ url_for('monitoring_bp.dashboard') }}">
+                    <i class="fas fa-network-wired"></i><span>NMS</span>
+                </a>
+            </div>
+            <div class="header-right">
+                <div class="tactical-clock">
+                    <div id="clock-date">--</div>
+                    <div id="clock-time">--:--:--</div>
+                </div>
+                {% if session.logged_in %}
+                <div class="dropdown">
+                    <button class="header-user-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-circle"></i>
+                        <span class="header-username">{{ session.username }}</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal">
+                                <i class="fas fa-user-circle"></i> My Profile
+                            </a></li>
+                        {% if session.role == 'admin' %}
+                        <li><a class="dropdown-item" href="{{ url_for('user_management_bp.user_management') }}">
+                                <i class="fas fa-users-cog"></i> Users
+                            </a></li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        {% endif %}
+                        <li><a class="dropdown-item" href="{{ url_for('auth_bp.logout') }}">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a></li>
+                    </ul>
+                </div>
                 {% else %}
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('auth_bp.login') }}">Login</a>
-                    </li>
-                </ul>
+                <a class="btn btn-sm btn-primary" href="{{ url_for('auth_bp.login') }}">Login</a>
                 {% endif %}
             </div>
+        </header>
+
+        <!-- ============================================================
+             APP BODY (Sidebar + Content)
+             ============================================================ -->
+        <div class="app-body">
+
+            {% if session.logged_in %}
+            <aside class="app-sidebar" id="app-sidebar">
+                <nav class="sidebar-nav">
+                    <a href="{{ url_for('monitoring_bp.dashboard') }}"
+                        class="sidebar-link {% if request.endpoint == 'monitoring_bp.dashboard' %}active{% endif %}">
+                        <i class="fas fa-chart-line"></i><span class="link-text">Dashboard</span>
+                    </a>
+                    <a href="{{ url_for('devices_bp.device_management') }}"
+                        class="sidebar-link {% if request.endpoint and 'devices_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-server"></i><span class="link-text">Devices</span>
+                    </a>
+                    <a href="{{ url_for('scanning_bp.scanner_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'scanning_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-search"></i><span class="link-text">Scanner</span>
+                    </a>
+                    <a href="{{ url_for('reports_bp.reports_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'reports_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-chart-bar"></i><span class="link-text">Reports</span>
+                    </a>
+                    <a href="{{ url_for('monitoring_bp.monitoring_page') }}"
+                        class="sidebar-link {% if request.endpoint == 'monitoring_bp.monitoring_page' %}active{% endif %}">
+                        <i class="fas fa-eye"></i><span class="link-text">Network</span>
+                    </a>
+                    <a href="{{ url_for('tracking_bp.device_tracking') }}"
+                        class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-laptop-house"></i><span class="link-text">Tracking</span>
+                    </a>
+                    <a href="{{ url_for('camera_bp.camera_dashboard') }}"
+                        class="sidebar-link {% if request.endpoint and 'camera_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-video"></i><span class="link-text">E-NVR</span>
+                    </a>
+                    <a href="{{ url_for('file_transfer_bp.file_transfer_dashboard') }}"
+                        class="sidebar-link {% if request.endpoint and 'file_transfer_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-exchange-alt"></i><span class="link-text">Files</span>
+                    </a>
+                    <a href="{{ url_for('maintenance_bp.maintenance_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'maintenance_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-tools"></i><span class="link-text">Maintenance</span>
+                    </a>
+                    <a href="{{ url_for('discovery_settings_bp.settings_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'discovery_settings_bp' in request.endpoint %}active{% endif %}">
+                        <i class="fas fa-satellite-dish"></i><span class="link-text">Discovery</span>
+                    </a>
+                </nav>
+                <div class="sidebar-footer">
+                    <div class="sidebar-version">v1.1.3</div>
+                    <div class="sidebar-copyright">&copy; 2026-27 APL Techno</div>
+                </div>
+            </aside>
+            {% endif %}
+
+            <main class="app-content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ error }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+
+                {% block content %}{% endblock %}
+
+                <div id="global-modals">
+                    {% block modals %}{% endblock %}
+                </div>
+            </main>
+
         </div>
-    </nav>
+    </div>
+
+    <!-- Sidebar mobile backdrop -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <!-- User Profile Modal -->
     <div class="modal fade profile-modal" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel"
@@ -1168,9 +1479,7 @@
                     <div class="row">
                         <div class="col-md-12">
                             <div class="profile-info-item">
-                                <div class="profile-info-label">
-                                    <i class="fas fa-user"></i> Username
-                                </div>
+                                <div class="profile-info-label"><i class="fas fa-user"></i> Username</div>
                                 <div class="profile-info-value">{{ session.username }}</div>
                             </div>
                         </div>
@@ -1178,9 +1487,7 @@
                     <div class="row">
                         <div class="col-md-12">
                             <div class="profile-info-item">
-                                <div class="profile-info-label">
-                                    <i class="fas fa-shield-alt"></i> Role
-                                </div>
+                                <div class="profile-info-label"><i class="fas fa-shield-alt"></i> Role</div>
                                 <div class="profile-info-value">
                                     <span
                                         class="badge badge-role {% if session.role == 'admin' %}bg-danger{% else %}bg-primary{% endif %}">
@@ -1197,21 +1504,15 @@
                     <div class="row">
                         <div class="col-md-12">
                             <div class="profile-info-item">
-                                <div class="profile-info-label">
-                                    <i class="fas fa-key"></i> User ID
-                                </div>
-                                <div class="profile-info-value">
-                                    <code>#{{ session.user_id }}</code>
-                                </div>
+                                <div class="profile-info-label"><i class="fas fa-key"></i> User ID</div>
+                                <div class="profile-info-value"><code>#{{ session.user_id }}</code></div>
                             </div>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-12">
                             <div class="profile-info-item">
-                                <div class="profile-info-label">
-                                    <i class="fas fa-clock"></i> Last Activity
-                                </div>
+                                <div class="profile-info-label"><i class="fas fa-clock"></i> Last Activity</div>
                                 <div class="profile-info-value">{{ session.last_activity }}</div>
                             </div>
                         </div>
@@ -1219,12 +1520,8 @@
                     <div class="row">
                         <div class="col-md-12">
                             <div class="profile-info-item">
-                                <div class="profile-info-label">
-                                    <i class="fas fa-network-wired"></i> Current IP Address
-                                </div>
-                                <div class="profile-info-value">
-                                    <code>{{ request.remote_addr }}</code>
-                                </div>
+                                <div class="profile-info-label"><i class="fas fa-network-wired"></i> Current IP</div>
+                                <div class="profile-info-value"><code>{{ request.remote_addr }}</code></div>
                             </div>
                         </div>
                     </div>
@@ -1238,47 +1535,160 @@
         </div>
     </div>
 
-    <div class="container-fluid mt-4 main-content">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
-
-        {% if error %}
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            {{ error }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endif %}
-
-        {% block content %}{% endblock %}
-    </div>
-
-    <footer>
-        <div class="container-fluid">
-            <div class="row">
-                <div class="col-md-6">
-                    <p>&copy; 2026-27 APL Techno. All rights reserved.</p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p>Version 1.1.3 | <span style="color: #00d4aa;">NMS</span></p>
-                </div>
-            </div>
-        </div>
-    </footer>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     {% if session.logged_in %}
     <script src="{{ url_for('static', filename='js/session_manager.js') }}"></script>
     {% endif %}
     {% block extra_js %}{% endblock %}
+    <script>
+        // ============================================================
+        // SIDEBAR TOGGLE + LIVE CLOCK
+        // ============================================================
+        (function () {
+            const sidebar = document.getElementById('app-sidebar');
+            const toggle = document.getElementById('sidebar-toggle');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            const STORAGE_KEY = 'nms-sidebar-collapsed';
+
+            function isMobile() {
+                return window.innerWidth <= 992;
+            }
+
+            // Restore saved state on load
+            if (sidebar) {
+                if (!isMobile() && localStorage.getItem(STORAGE_KEY) === 'true') {
+                    sidebar.classList.add('collapsed');
+                }
+            }
+
+            if (toggle && sidebar) {
+                toggle.addEventListener('click', function () {
+                    if (isMobile()) {
+                        sidebar.classList.toggle('open');
+                        if (backdrop) backdrop.classList.toggle('show', sidebar.classList.contains('open'));
+                    } else {
+                        sidebar.classList.toggle('collapsed');
+                        localStorage.setItem(STORAGE_KEY, sidebar.classList.contains('collapsed'));
+                    }
+                });
+            }
+
+            // Close sidebar on backdrop click (mobile)
+            if (backdrop && sidebar) {
+                backdrop.addEventListener('click', function () {
+                    sidebar.classList.remove('open');
+                    backdrop.classList.remove('show');
+                });
+            }
+
+            // Close mobile sidebar on resize to desktop
+            window.addEventListener('resize', function () {
+                if (!isMobile() && sidebar) {
+                    sidebar.classList.remove('open');
+                    if (backdrop) backdrop.classList.remove('show');
+                }
+            });
+
+            // Live clock
+            function updateClock() {
+                const now = new Date();
+                const dateEl = document.getElementById('clock-date');
+                const timeEl = document.getElementById('clock-time');
+                if (dateEl) {
+                    dateEl.textContent = now.toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric'
+                    }).toUpperCase();
+                }
+                if (timeEl) {
+                    timeEl.textContent = now.toLocaleTimeString('en-US', {
+                        hour12: false, hour: '2-digit', minute: '2-digit', second: undefined
+                    });
+                }
+            }
+            updateClock();
+
+            if (!window.nmsClockInterval) {
+                window.nmsClockInterval = setInterval(updateClock, 1000);
+            }
+
+        })();
+
+        // ============================================================
+        // MODAL MANAGEMENT
+        // ============================================================
+        (function () {
+            function cleanupBootstrapModal() {
+                document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = 'auto';
+            }
+
+            function cleanModalArtifacts() {
+                cleanupBootstrapModal();
+                document.body.style.paddingRight = '';
+            }
+
+            function forceClearModalLocks() {
+                const hasOpenModal = !!document.querySelector('.modal.show');
+                const hasBackdrop = !!document.querySelector('.modal-backdrop');
+                if (!hasOpenModal && (hasBackdrop || document.body.classList.contains('modal-open'))) {
+                    cleanModalArtifacts();
+                }
+            }
+
+            function closeAllModals() {
+                const openModals = document.querySelectorAll('.modal.show');
+                openModals.forEach(modal => {
+                    if (window.bootstrap && window.bootstrap.Modal) {
+                        const instance = window.bootstrap.Modal.getInstance(modal);
+                        if (instance) instance.hide();
+                    }
+                });
+            }
+
+            function hoistModalsToBody() {
+                document.querySelectorAll('.app-content .modal').forEach(modal => {
+                    if (modal.parentElement !== document.body) {
+                        document.body.appendChild(modal);
+                    }
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                if (!document.querySelector('.modal.show')) {
+                    cleanModalArtifacts();
+                }
+            });
+
+            document.addEventListener('hidden.bs.modal', () => {
+                cleanupBootstrapModal();
+                if (!document.querySelector('.modal.show')) {
+                    cleanModalArtifacts();
+                }
+            });
+
+            document.addEventListener('DOMContentLoaded', hoistModalsToBody);
+            document.addEventListener('shown.bs.modal', hoistModalsToBody);
+
+            // Safety net: remove stuck backdrops or body locks
+            setInterval(() => {
+                forceClearModalLocks();
+            }, 2000);
+
+            // If user clicks a stray backdrop, clear it
+            document.addEventListener('click', (e) => {
+                if (e.target && e.target.classList && e.target.classList.contains('modal-backdrop')) {
+                    cleanModalArtifacts();
+                }
+            }, true);
+
+            window.cleanupBootstrapModal = cleanupBootstrapModal;
+            window.closeAllModals = closeAllModals;
+            window.forceClearModalLocks = forceClearModalLocks;
+            window.hoistModalsToBody = hoistModalsToBody;
+        })();
+    </script>
     <!-- ============================================================
          HEARTBEAT REMOVED (Reverted)
          ============================================================ -->
