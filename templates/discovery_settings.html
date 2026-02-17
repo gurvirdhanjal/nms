@@ -3,48 +3,76 @@
 {% block title %}Discovery Settings - Device Monitoring{% endblock %}
 {% block extra_css %}
 <style>
+    .discovery-settings-page {
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: rgba(232, 236, 244, 0.92);
+    }
+
+    .discovery-layout {
+        align-items: flex-start;
+    }
+
+    .settings-main .tactical-card,
+    .settings-side .tactical-card {
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+    }
+
+    .settings-side {
+        position: sticky;
+        top: 88px;
+    }
+
     .settings-section {
         margin-bottom: 2rem;
+        padding: 1rem 1.1rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.02);
     }
 
     .settings-section h5 {
-        font-family: 'Orbitron', monospace;
-        color: var(--tactical-accent-bright, #00ffc8);
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-size: 0.9rem;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: rgba(226, 232, 240, 0.96);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 1rem;
+        font-weight: 600;
         margin-bottom: 1rem;
         padding-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(0, 212, 170, 0.2);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .stat-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
     }
 
     .stat-item {
-        background: rgba(0, 212, 170, 0.05);
-        border-left: 3px solid #00d4aa;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 2px solid rgba(32, 201, 151, 0.65);
         padding: 1rem;
         border-radius: 4px;
     }
 
     .stat-item .stat-label {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #6a6a80;
+        letter-spacing: 0.06em;
+        color: rgba(148, 163, 184, 0.95);
         margin-bottom: 4px;
     }
 
     .stat-item .stat-value {
-        font-size: 1.25rem;
-        font-weight: 700;
-        font-family: 'Orbitron', monospace;
-        color: #00ffc8;
+        font-size: 1.02rem;
+        font-weight: 600;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: rgba(226, 232, 240, 0.96);
+        line-height: 1.35;
+        letter-spacing: 0.01em;
     }
 
     .subnet-list {
@@ -62,7 +90,7 @@
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 4px;
         margin-bottom: 0.5rem;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
         font-size: 0.9rem;
         color: #e8e8f0;
     }
@@ -81,17 +109,39 @@
         align-items: center;
         gap: 1rem;
         padding: 1rem 1.25rem;
-        background: rgba(0, 212, 170, 0.08);
-        border: 1px solid rgba(0, 212, 170, 0.2);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.11);
         border-radius: 8px;
         margin-bottom: 1.5rem;
     }
 
     .master-toggle label {
-        font-weight: 700;
-        font-size: 1rem;
-        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: rgba(226, 232, 240, 0.98);
         margin: 0;
+    }
+
+    .tactical-card .card-header h4 {
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        font-size: 1.05rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: rgba(226, 232, 240, 0.98);
+        margin: 0;
+        text-transform: none;
+    }
+
+    .tactical-card .card-header h4 i {
+        font-size: 0.9rem;
+        opacity: 0.85;
+        margin-right: 0.35rem;
+    }
+
+    .form-label.small {
+        font-size: 0.78rem;
+        color: rgba(148, 163, 184, 0.95);
+        letter-spacing: 0.02em;
     }
 
     .form-switch .form-check-input {
@@ -108,19 +158,30 @@
     .save-bar {
         position: sticky;
         bottom: 0;
-        background: linear-gradient(180deg, transparent, #0d0d14 30%);
-        padding: 1.5rem 0 0.5rem;
+        background: linear-gradient(180deg, rgba(13, 13, 20, 0), rgba(13, 13, 20, 0.92) 28%);
+        padding: 1.25rem 0 0.35rem;
         display: flex;
         justify-content: flex-end;
         gap: 0.75rem;
+    }
+
+    @media (max-width: 991.98px) {
+        .settings-side {
+            position: static;
+            top: auto;
+        }
+
+        .settings-section {
+            padding: 0.9rem 0.9rem;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-lg-8">
+<div class="container-fluid mt-4 discovery-settings-page">
+    <div class="row g-4 discovery-layout">
+        <div class="col-xl-8 col-lg-7 settings-main">
             <div class="tactical-card">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <h4><i class="fas fa-satellite-dish"></i> Auto-Discovery Settings</h4>
@@ -196,7 +257,7 @@
                             <div class="col-md-3 d-flex align-items-end">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="autoMonitor">
-                                    <label class="form-check-label small" for="autoMonitor">Monitor new devices</label>
+                                    <label class="form-check-label small" for="autoMonitor">Monitor New Devices</label>
                                 </div>
                             </div>
                         </div>
@@ -212,10 +273,8 @@
             </div>
         </div>
 
-    </div>
-
     <!-- Right Column: Stats + Triggers -->
-    <div class="col-lg-4">
+    <div class="col-xl-4 col-lg-5 settings-side">
         <!-- Stats -->
         <div class="tactical-card mb-3">
             <div class="card-header">
@@ -225,15 +284,15 @@
                 <div class="stat-grid">
                     <div class="stat-item">
                         <div class="stat-label">Last Light Scan</div>
-                        <div class="stat-value" id="statLightScan">—</div>
+                        <div class="stat-value" id="statLightScan">-</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Last Heavy Scan</div>
-                        <div class="stat-value" id="statHeavyScan">—</div>
+                        <div class="stat-value" id="statHeavyScan">-</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Duration</div>
-                        <div class="stat-value" id="statDuration">—</div>
+                        <div class="stat-value" id="statDuration">-</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">New Devices</div>
@@ -287,6 +346,34 @@
             }
         }
 
+        function parseApiTimestamp(value) {
+            if (!value) return null;
+            const str = String(value).trim();
+            if (!str) return null;
+
+            // Discovery timestamps are stored in UTC but may arrive without timezone.
+            // If timezone is missing, force UTC parsing to avoid local-time mismatch.
+            const hasTimezone = /[zZ]$|[+\-]\d{2}:\d{2}$/.test(str);
+            const iso = hasTimezone ? str : str + 'Z';
+            const dt = new Date(iso);
+            return Number.isNaN(dt.getTime()) ? null : dt;
+        }
+
+        function formatScanTimestamp(value) {
+            const dt = parseApiTimestamp(value);
+            if (!dt) return '-';
+            return dt.toLocaleString([], {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true,
+                timeZoneName: 'short'
+            });
+        }
+
         function populateForm(cfg) {
             document.getElementById('enabledToggle').checked = cfg.enabled;
             document.getElementById('lightInterval').value = cfg.light_interval_min;
@@ -311,11 +398,11 @@
             }
 
             document.getElementById('statLightScan').textContent =
-                cfg.last_light_scan ? new Date(cfg.last_light_scan).toLocaleString() : '—';
+                formatScanTimestamp(cfg.last_light_scan);
             document.getElementById('statHeavyScan').textContent =
-                cfg.last_heavy_scan ? new Date(cfg.last_heavy_scan).toLocaleString() : '—';
+                formatScanTimestamp(cfg.last_heavy_scan);
             document.getElementById('statDuration').textContent =
-                cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '—';
+                cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '-';
             document.getElementById('statNew').textContent = cfg.last_new_count || 0;
             document.getElementById('statUpdated').textContent = cfg.last_updated_count || 0;
 

@@ -47,6 +47,8 @@ export function openServerModal(deviceId) {
     document.getElementById('server-modal-uptime').textContent = '-';
     const osEl = document.getElementById('server-modal-os');
     if (osEl) osEl.textContent = '-';
+    const hardwareEl = document.getElementById('server-modal-hardware');
+    if (hardwareEl) hardwareEl.textContent = '-';
     const lastSeenEl = document.getElementById('server-modal-last-seen');
     if (lastSeenEl) lastSeenEl.textContent = '-';
 
@@ -101,6 +103,10 @@ async function loadServerMetrics(deviceId, range) {
         if (osEl) {
             const osParts = [data.os?.name, data.os?.version, data.os?.arch].filter(Boolean);
             osEl.textContent = osParts.length ? osParts.join(' ') : '-';
+        }
+        const hardwareEl = document.getElementById('server-modal-hardware');
+        if (hardwareEl) {
+            hardwareEl.textContent = formatHardwareSpecs(data.hardware_specs || {});
         }
 
         // Last seen
@@ -461,6 +467,41 @@ function formatUptime(uptime) {
         return `${days}d ${hours}h`;
     }
     return uptime;
+}
+
+function toFiniteNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function formatHardwareSpecs(specs) {
+    if (!specs || typeof specs !== 'object') return '-';
+
+    const cpuModel = typeof specs.cpu_model === 'string' ? specs.cpu_model.trim() : '';
+    const physicalCores = toFiniteNumber(specs.cpu_physical_cores);
+    const logicalCores = toFiniteNumber(specs.cpu_logical_cores);
+    const memoryGb = toFiniteNumber(specs.memory_total_gb);
+    const diskGb = toFiniteNumber(specs.disk_total_gb);
+    const parts = [];
+
+    if (cpuModel) {
+        let cpuText = cpuModel;
+        if (physicalCores !== null && logicalCores !== null && physicalCores !== logicalCores) {
+            cpuText += ` (${physicalCores}C/${logicalCores}T)`;
+        } else if (logicalCores !== null) {
+            cpuText += ` (${logicalCores} cores)`;
+        }
+        parts.push(cpuText);
+    }
+
+    if (memoryGb !== null) {
+        parts.push(`${memoryGb.toFixed(memoryGb >= 100 ? 0 : 1)} GB RAM`);
+    }
+    if (diskGb !== null) {
+        parts.push(`${diskGb.toFixed(diskGb >= 100 ? 0 : 1)} GB Disk`);
+    }
+
+    return parts.length ? parts.join(' | ') : '-';
 }
 
 // ============ Enhanced Metrics Rendering Functions ============

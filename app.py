@@ -30,6 +30,15 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
 
+    # Optional hard-enforcement for production deployments.
+    if app.config.get('REQUIRE_POSTGRES'):
+        backend = make_url(app.config.get('SQLALCHEMY_DATABASE_URI', '')).get_backend_name()
+        if backend != 'postgresql':
+            raise RuntimeError(
+                f"REQUIRE_POSTGRES is enabled, but backend is '{backend}'. "
+                "Set DATABASE_URL to a PostgreSQL DSN."
+            )
+
     # ---------------------------
     # Session configuration
     # ---------------------------
@@ -74,11 +83,17 @@ def create_app(test_config=None):
     with app.app_context():
         @event.listens_for(db.engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
-            if app.config['SQLALCHEMY_DATABASE_URI'].startswith("sqlite"):
+            backend = db.engine.url.get_backend_name()
+            if backend == "sqlite":
                 cursor = dbapi_connection.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL")
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.execute("PRAGMA busy_timeout=30000") # 30s timeout
+                cursor.close()
+            elif backend == "postgresql":
+                # Force UTC boundaries for date_trunc/day rollups.
+                cursor = dbapi_connection.cursor()
+                cursor.execute("SET TIME ZONE 'UTC'")
                 cursor.close()
 
         # One-time connectivity check to confirm DB backend is reachable.
@@ -101,7 +116,8 @@ def create_app(test_config=None):
             User, Device, DashboardEvent, DailyDeviceStats, 
             DeviceInterface, InterfaceTrafficHistory, DeviceSnmpConfig,
             SwitchTopology, TrackedDevice,
-            DeviceScanHistory, NetworkScan, PortScanResult
+            DeviceScanHistory, NetworkScan, PortScanResult,
+            ServerHealthLog, ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState
         )
         from models.discovery_config import DiscoveryConfig
         from utils.db_migrations import ensure_server_health_columns
@@ -169,6 +185,7 @@ def create_app(test_config=None):
     from routes.agent import agent_bp
     from routes.server_metrics import server_metrics_bp
     from routes.discovery_settings import discovery_settings_bp
+    from routes.sse import sse_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -189,6 +206,7 @@ def create_app(test_config=None):
         agent_bp,
         server_metrics_bp,
         discovery_settings_bp,
+        sse_bp,
     ]
 
     for bp in protected_blueprints:

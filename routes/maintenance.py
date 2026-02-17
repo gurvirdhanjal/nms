@@ -28,7 +28,15 @@ def maintenance_page():
 def run_cleanup():
     """
     Run database cleanup tasks.
-    Body (optional): { scan_days, metrics_days, events_days }
+    Body (optional):
+    {
+      scan_days,
+      metrics_days,
+      events_days,
+      server_health_raw_days,
+      server_health_hourly_days,
+      server_health_daily_days
+    }
     """
     if 'logged_in' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -58,6 +66,14 @@ def run_cleanup():
         # Cleanup events
         events_days = data.get('events_days', 30)
         results['tasks']['events'] = maintenance_service.cleanup_old_events(events_days)
+
+        # Server health retention cleanup (raw/hourly/daily)
+        server_health_raw_days = data.get('server_health_raw_days', 7)
+        server_health_hourly_days = data.get('server_health_hourly_days', 30)
+        server_health_daily_days = data.get('server_health_daily_days', 365)
+        results['tasks']['server_health_raw'] = maintenance_service.cleanup_old_server_health_logs(server_health_raw_days)
+        results['tasks']['server_health_hourly'] = maintenance_service.cleanup_old_server_health_hourly_rollups(server_health_hourly_days)
+        results['tasks']['server_health_daily'] = maintenance_service.cleanup_old_server_health_daily_rollups(server_health_daily_days)
         
         return jsonify(results)
         
@@ -138,7 +154,12 @@ def get_maintenance_status():
         from models.scan_history import DeviceScanHistory
         from models.interfaces import InterfaceTrafficHistory
         from models.dashboard import DashboardEvent, DailyDeviceStats
-        from sqlalchemy import func
+        from models.server_health import ServerHealthLog
+        from models.server_health_rollups import (
+            ServerHealthHourlyRollup,
+            ServerHealthDailyRollup,
+            ServerHealthRollupState
+        )
         
         status = {
             'timestamp': datetime.utcnow().isoformat(),
@@ -165,6 +186,49 @@ def get_maintenance_status():
         status['tables']['interface_metrics'] = {
             'count': metrics_count,
             'oldest_record': oldest_metric.timestamp.isoformat() if oldest_metric and oldest_metric.timestamp else None
+        }
+
+        # Server health raw logs
+        server_health_count = ServerHealthLog.query.count()
+        oldest_server_health = ServerHealthLog.query.order_by(
+            ServerHealthLog.timestamp
+        ).first()
+        status['tables']['server_health_logs'] = {
+            'count': server_health_count,
+            'oldest_record': oldest_server_health.timestamp.isoformat() if oldest_server_health and oldest_server_health.timestamp else None
+        }
+
+        # Server health hourly rollups
+        hourly_rollup_count = ServerHealthHourlyRollup.query.count()
+        oldest_hourly_rollup = ServerHealthHourlyRollup.query.order_by(
+            ServerHealthHourlyRollup.bucket_hour
+        ).first()
+        status['tables']['server_health_hourly_rollups'] = {
+            'count': hourly_rollup_count,
+            'oldest_record': oldest_hourly_rollup.bucket_hour.isoformat() if oldest_hourly_rollup and oldest_hourly_rollup.bucket_hour else None
+        }
+
+        # Server health daily rollups
+        daily_rollup_count = ServerHealthDailyRollup.query.count()
+        oldest_daily_rollup = ServerHealthDailyRollup.query.order_by(
+            ServerHealthDailyRollup.bucket_day
+        ).first()
+        status['tables']['server_health_daily_rollups'] = {
+            'count': daily_rollup_count,
+            'oldest_record': oldest_daily_rollup.bucket_day.isoformat() if oldest_daily_rollup and oldest_daily_rollup.bucket_day else None
+        }
+
+        # Rollup checkpoints
+        rollup_states = ServerHealthRollupState.query.order_by(ServerHealthRollupState.name).all()
+        status['tables']['server_health_rollup_state'] = {
+            'count': len(rollup_states),
+            'states': [
+                {
+                    'name': state.name,
+                    'rolled_until': state.rolled_until.isoformat() if state.rolled_until else None
+                }
+                for state in rollup_states
+            ]
         }
         
         # Events stats

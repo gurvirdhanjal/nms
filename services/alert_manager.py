@@ -19,9 +19,9 @@ class AlertManager:
         Devices with maintenance_mode=True are silently skipped.
     """
 
-    # ICMP Thresholds (low priority - informational only)
-    LATENCY_THRESHOLD_MS = 100
-    PACKET_LOSS_THRESHOLD_PCT = 5.0
+    # ICMP Thresholds (escalated — 3 consecutive scans required)
+    LATENCY_THRESHOLD_MS = 200
+    PACKET_LOSS_THRESHOLD_PCT = 10.0
 
     # Server Health Thresholds
     RAM_WARNING_PCT = 60.0
@@ -40,6 +40,8 @@ class AlertManager:
     # In-memory recovery tracking to prevent alert flapping
     _status_recovery = {}
     _health_recovery = {}
+    _latency_recovery = {}
+    _packet_loss_recovery = {}
 
     # ─────────────────────────────────────────────
     # Public: ICMP Ping Scan Results
@@ -112,38 +114,63 @@ class AlertManager:
              cls._status_recovery.pop((device.device_id, 'status'), None)
              cls._resolve_alert(device, metric='status', commit=commit)
 
-        # --- ICMP PERFORMANCE ALERTS (Informational) ---
+        # --- ICMP PERFORMANCE (Consecutive-Scan Escalation) ---
+        # Transient spikes are NOISE. Only escalate after N consecutive breaches.
+        # Below-threshold: reset strikes, resolve via recovery logic.
         if is_online:
+            # --- Latency Escalation ---
             if latency_ms is not None and latency_ms >= cls.LATENCY_THRESHOLD_MS:
-                cls._trigger_alert(
-                    device,
-                    event_type='PING',
-                    severity='INFO',
-                    metric='latency',
-                    message=f"Ping latency high: {latency_ms:.1f}ms (Threshold >= {cls.LATENCY_THRESHOLD_MS}ms)",
-                    value=latency_ms,
-                    commit=commit,
-                    send_email=False
-                )
-            else:
-                cls._resolve_alert(device, metric='latency', commit=commit)
+                device.latency_strikes = (getattr(device, 'latency_strikes', None) or 0) + 1
+                cls._latency_recovery.pop((device.device_id, 'latency'), None)
 
-            if packet_loss_pct is not None and packet_loss_pct >= cls.PACKET_LOSS_THRESHOLD_PCT:
-                cls._trigger_alert(
-                    device,
-                    event_type='PING',
-                    severity='INFO',
-                    metric='packet_loss',
-                    message=f"Packet loss high: {packet_loss_pct:.1f}% (Threshold >= {cls.PACKET_LOSS_THRESHOLD_PCT}%)",
-                    value=packet_loss_pct,
-                    commit=commit,
-                    send_email=False
-                )
+                if device.latency_strikes >= cls.STRIKES_REQUIRED:
+                    cls._trigger_alert(
+                        device,
+                        event_type='PING',
+                        severity='WARNING',
+                        metric='latency',
+                        message=f"Sustained high latency: {latency_ms:.1f}ms ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.LATENCY_THRESHOLD_MS}ms)",
+                        value=latency_ms,
+                        commit=commit,
+                        send_email=True
+                    )
+                else:
+                    print(f"[ALERT MANAGER] Latency strike {device.latency_strikes}/{cls.STRIKES_REQUIRED} for {device.device_ip} ({latency_ms:.1f}ms). Suppressing.")
             else:
-                cls._resolve_alert(device, metric='packet_loss', commit=commit)
+                if getattr(device, 'latency_strikes', 0) > 0:
+                    device.latency_strikes = 0
+                cls._handle_icmp_recovery(device, 'latency', commit=commit)
+
+            # --- Packet Loss Escalation ---
+            if packet_loss_pct is not None and packet_loss_pct >= cls.PACKET_LOSS_THRESHOLD_PCT:
+                device.packet_loss_strikes = (getattr(device, 'packet_loss_strikes', None) or 0) + 1
+                cls._packet_loss_recovery.pop((device.device_id, 'packet_loss'), None)
+
+                if device.packet_loss_strikes >= cls.STRIKES_REQUIRED:
+                    cls._trigger_alert(
+                        device,
+                        event_type='PING',
+                        severity='WARNING',
+                        metric='packet_loss',
+                        message=f"Sustained packet loss: {packet_loss_pct:.1f}% ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.PACKET_LOSS_THRESHOLD_PCT}%)",
+                        value=packet_loss_pct,
+                        commit=commit,
+                        send_email=True
+                    )
+                else:
+                    print(f"[ALERT MANAGER] Packet loss strike {device.packet_loss_strikes}/{cls.STRIKES_REQUIRED} for {device.device_ip} ({packet_loss_pct:.1f}%). Suppressing.")
+            else:
+                if getattr(device, 'packet_loss_strikes', 0) > 0:
+                    device.packet_loss_strikes = 0
+                cls._handle_icmp_recovery(device, 'packet_loss', commit=commit)
         else:
-            cls._resolve_alert(device, metric='latency', commit=commit)
-            cls._resolve_alert(device, metric='packet_loss', commit=commit)
+            # Device offline — reset ICMP strikes (offline has its own handler)
+            if getattr(device, 'latency_strikes', 0) > 0:
+                device.latency_strikes = 0
+            if getattr(device, 'packet_loss_strikes', 0) > 0:
+                device.packet_loss_strikes = 0
+            cls._handle_icmp_recovery(device, 'latency', commit=commit)
+            cls._handle_icmp_recovery(device, 'packet_loss', commit=commit)
 
 
     # ─────────────────────────────────────────────
@@ -319,5 +346,20 @@ class AlertManager:
         if recovery >= cls.RESOLVE_STRIKES_REQUIRED:
             cls._resolve_alert(device, metric=metric, commit=commit)
             cls._health_recovery.pop(key, None)
+
+    @classmethod
+    def _handle_icmp_recovery(cls, device, metric, commit=True):
+        """Handle recovery for ICMP metrics (latency/packet_loss) with recovery strikes."""
+        recovery_dict = cls._latency_recovery if metric == 'latency' else cls._packet_loss_recovery
+        key = (device.device_id, metric)
+        if not cls._has_active_alert(device, metric):
+            recovery_dict.pop(key, None)
+            return
+
+        recovery = recovery_dict.get(key, 0) + 1
+        recovery_dict[key] = recovery
+        if recovery >= cls.RESOLVE_STRIKES_REQUIRED:
+            cls._resolve_alert(device, metric=metric, commit=commit)
+            recovery_dict.pop(key, None)
 
 # Singleton not needed, using class methods

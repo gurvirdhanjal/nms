@@ -22,3 +22,9 @@ pyasn1==0.4.8
 
 # PostgreSQL Driver
 psycopg2-binary==2.9.9
+
+# Reporting / Export
+openpyxl>=3.1.0
+
+# LDAP / Active Directory
+ldap3>=2.9

@@ -17,13 +17,17 @@ class MonitoringScheduler:
         """Start the scheduled monitoring tasks"""
         # Monitor every 5 minutes
         schedule.every(5).minutes.do(self.run_monitoring_task)
-        schedule.every(5).minutes.do(self.check_snmp_health)
+        schedule.every(5).minutes.do(self.enqueue_snmp_tasks)
         
         # Auto-discovery check every 1 minute (actual scan fires only when interval elapsed)
         schedule.every(1).minutes.do(self.maybe_run_auto_discovery)
         
         # Daily report at 23:59
         schedule.every().day.at("23:59").do(self.generate_daily_report)
+
+        # Server metrics retention + rollups
+        retention_time = self.app.config.get('SERVER_HEALTH_RETENTION_SCHEDULE', '02:00')
+        schedule.every().day.at(retention_time).do(self.run_metrics_retention)
         
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self.run_scheduler)
@@ -101,61 +105,84 @@ class MonitoringScheduler:
             except Exception as e:
                 print(f"Error generating daily report: {e}")
 
+    def run_metrics_retention(self):
+        """Run server health rollups and retention cleanup."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.run_server_health_retention(
+                    raw_days=self.app.config.get('SERVER_HEALTH_RAW_RETENTION_DAYS', 7),
+                    hourly_days=self.app.config.get('SERVER_HEALTH_HOURLY_RETENTION_DAYS', 30),
+                    daily_days=self.app.config.get('SERVER_HEALTH_DAILY_RETENTION_DAYS', 365),
+                )
+                print(f"Server health retention completed: success={result.get('success')}")
+            except Exception as e:
+                print(f"Error running metrics retention: {e}")
+            finally:
+                db.session.remove()
+
     def check_snmp_health(self):
-        """Check server health (CPU, RAM, Disk) via SNMP for configured devices."""
+        """
+        Backward-compatible alias.
+        Legacy code may still call this method name.
+        """
+        self.enqueue_snmp_tasks()
+
+    def enqueue_snmp_tasks(self):
+        """Enqueue SNMP health poll tasks for all enabled devices.
+        
+        RULE: Scheduler performs ZERO network I/O.
+        This method only INSERTs PollTask rows with status='pending'.
+        Actual SNMP execution happens in workers/snmp_worker.py.
+        
+        Duplicate protection: skips devices that already have a
+        pending or running task for the same task_type.
+        """
         with self.app.app_context():
             try:
                 from models.device import Device
                 from models.snmp_config import DeviceSnmpConfig
-                from models.server_health import ServerHealthLog
-                from services.snmp_service import snmp_service
+                from models.poll_task import PollTask
 
                 # Find devices with SNMP enabled
                 configs = DeviceSnmpConfig.query.filter_by(is_enabled=True).all()
-                if not configs: return
+                if not configs:
+                    return
 
-                print(f"Running SNMP Health Check for {len(configs)} devices...")
-                
+                enqueued = 0
+                skipped = 0
+
                 for config in configs:
                     device = Device.query.get(config.device_id)
-                    if not device: continue
-                    
-                    # Skip if device is not monitored globally
-                    if not device.is_monitored: continue
-                    
-                    metrics = snmp_service.get_server_health_snmp(
-                        device.device_ip, 
-                        config.community_string or 'public', 
-                        config.snmp_version or '2c', 
-                        config.snmp_port or 161
-                    )
-                    
-                    if metrics:
-                        # Fetch uptime if possible to complete the log
-                        sys_info = snmp_service.get_system_info(
-                            device.device_ip, 
-                            config.community_string or 'public', 
-                            config.snmp_version or '2c', 
-                            config.snmp_port or 161
-                        )
-                        uptime = str(sys_info.get('sys_uptime_seconds', ''))
+                    if not device or not device.is_monitored:
+                        continue
 
-                        log = ServerHealthLog(
-                            device_id=device.device_id,
-                            cpu_usage=metrics.get('cpu_usage'),
-                            memory_usage=metrics.get('memory_usage'),
-                            disk_usage=metrics.get('disk_usage'),
-                            uptime=uptime,
-                            source='snmp'
-                        )
-                        db.session.add(log) # Add log only if metrics exist
-                        config.last_successful_poll = datetime.utcnow()
-                        config.last_poll_error = None
+                    # Map device criticality to priority
+                    tier = getattr(device, 'cos_tier', 'Standard') or 'Standard'
+                    priority_map = {'Critical': 1, 'Standard': 5, 'Low': 9}
+                    priority = priority_map.get(tier, 5)
+
+                    # Enqueue with duplicate protection
+                    task = PollTask.enqueue(
+                        device_id=device.device_id,
+                        task_type='snmp_health',
+                        priority=priority
+                    )
+
+                    if task:
+                        enqueued += 1
                     else:
-                        print(f"No metrics for {device.device_ip}")
-                
-                db.session.commit()
-                print("SNMP Health Check Completed.")
+                        skipped += 1
+
+                if enqueued > 0:
+                    db.session.commit()
+
+                if enqueued > 0 or skipped > 0:
+                    print(f"[SCHEDULER] SNMP tasks: {enqueued} enqueued, {skipped} skipped (already pending)")
 
             except Exception as e:
-                print(f"Error in check_snmp_health: {e}")
+                db.session.rollback()
+                print(f"[SCHEDULER] Error enqueuing SNMP tasks: {e}")
+            finally:
+                db.session.remove()

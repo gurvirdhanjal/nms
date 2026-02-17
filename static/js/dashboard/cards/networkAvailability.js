@@ -11,10 +11,12 @@ export function renderNetworkAvailability(data, trendsData) {
     const container = document.getElementById(cardId);
     if (!container) return;
 
+    let percentValue = 0;
+
     // 1. Update Metrics
     if (data && data.devices) {
         const { online_percent, up_percent } = data.devices;
-        const percentValue = online_percent ?? up_percent ?? 0;
+        percentValue = Number(online_percent ?? up_percent ?? 0);
         const valueEl = document.getElementById('val-availability');
         if (valueEl) valueEl.textContent = formatPercent(percentValue);
 
@@ -27,6 +29,8 @@ export function renderNetworkAvailability(data, trendsData) {
         if (breakdownVal) breakdownVal.textContent = formatPercent(percentValue);
     }
 
+    renderAvailabilityTrendSummary(percentValue, trendsData);
+
     if (data && data.availability) {
         const hist = data.availability.history_24h_pct ?? 0;
         const histEl = document.getElementById('val-availability-24h');
@@ -38,6 +42,71 @@ export function renderNetworkAvailability(data, trendsData) {
         renderSparkline(trendsData.availability_trend);
         renderBreakdownTrend(trendsData.availability_trend);
     }
+
+    checkStale(data?.timestamp, cardId);
+}
+
+function getRangeLabel(range) {
+    switch ((range || '').toLowerCase()) {
+        case '7d':
+            return 'last 7d';
+        case '30d':
+            return 'last 30d';
+        case '1h':
+            return 'last 1h';
+        case '24h':
+        default:
+            return 'last 24h';
+    }
+}
+
+function getFirstTrendPoint(trendData = []) {
+    if (!Array.isArray(trendData) || trendData.length === 0) return null;
+
+    // Prefer first bucket with actual data when backend provides `total`
+    const withData = trendData.find(p => typeof p?.total === 'number' && p.total > 0);
+    if (withData) return withData;
+
+    // Fallback for older cached payloads without totals
+    const nonZero = trendData.find(p => typeof p?.value === 'number' && p.value > 0);
+    if (nonZero) return nonZero;
+    return trendData.find(p => typeof p?.value === 'number') || null;
+}
+
+function formatDelta(deltaValue) {
+    const rounded = Math.abs(Number(deltaValue || 0));
+    if (rounded >= 10) return Math.round(rounded).toString();
+    const oneDecimal = Math.round(rounded * 10) / 10;
+    return Number.isInteger(oneDecimal) ? oneDecimal.toFixed(0) : oneDecimal.toFixed(1);
+}
+
+function renderAvailabilityTrendSummary(currentPercent, trendsData) {
+    const subEl = document.getElementById('sub-availability-trend');
+    if (!subEl) return;
+
+    const trend = trendsData?.availability_trend;
+    const firstPoint = getFirstTrendPoint(trend);
+    const rangeLabel = getRangeLabel(trendsData?.range);
+
+    if (!firstPoint || typeof firstPoint.value !== 'number') {
+        subEl.innerHTML = `<span class="text-secondary">Availability: ${formatPercent(currentPercent)} (${rangeLabel})</span>`;
+        return;
+    }
+
+    const delta = Number(currentPercent) - Number(firstPoint.value);
+    const deltaText = formatDelta(delta);
+
+    let arrow = '&rarr;';
+    let deltaClass = 'text-secondary';
+    if (delta > 0.05) {
+        arrow = '&uarr;';
+        deltaClass = 'text-success';
+    } else if (delta < -0.05) {
+        arrow = '&darr;';
+        deltaClass = 'text-danger';
+    }
+
+    subEl.innerHTML = `Availability: ${formatPercent(currentPercent)} <span class="${deltaClass} fw-semibold">${arrow} ${deltaText}%</span> <span class="text-secondary">(${rangeLabel})</span>`;
 }
 
 function renderSparkline(trendData) {

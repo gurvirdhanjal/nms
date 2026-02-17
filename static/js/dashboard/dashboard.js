@@ -139,7 +139,7 @@ function initDashboard() {
 
         // 12. Init Alert Center
         initAlertCenter({
-            onDeviceBreakdown: () => toggleDeviceBreakdown()
+            onDeviceBreakdown: () => openDeviceBreakdown()
         });
 
         // 13. Init KPI interactions
@@ -260,6 +260,7 @@ function renderSecondary(state) {
         // 3. Network Availability (Sparkline Chart)
         if (state.summary) {
             safeRender('Network Availability', () => renderNetworkAvailability(state.summary, state.trends));
+            safeRender('Device Status Trend Meta', () => renderDeviceStatusCards(state.summary, ts, state.trends));
         }
 
         // 4. Top Problems Tables
@@ -405,6 +406,7 @@ function setupTabs() {
 
 
 let breakdownLiveInFlight = false;
+let activeBreakdownCardId = null;
 async function triggerLiveBreakdownRefresh() {
     if (breakdownLiveInFlight) return;
     const state = getState();
@@ -424,43 +426,85 @@ async function triggerLiveBreakdownRefresh() {
     refreshAll({ forceFreshTopProblems: true }).catch(() => { });
 }
 
-function toggleDeviceBreakdown() {
-    const el = document.getElementById('device-breakdown');
-    if (!el) return;
+function setBreakdownActiveCard(card = null) {
+    const cards = document.querySelectorAll('.device-kpi-card');
+    cards.forEach(c => c.classList.remove('breakdown-active'));
+    activeBreakdownCardId = null;
 
-    // Toggle active class
-    if (el.classList.contains('is-active')) {
-        el.classList.remove('is-active');
-    } else {
-        el.classList.add('is-active');
-        triggerLiveBreakdownRefresh();
-
-        // Ensure visible before scrolling
-        // requestAnimationFrame to allow display transition (if any pure CSS) or just scroll
-        requestAnimationFrame(() => {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-
-        // Trigger resize for charts
-        setTimeout(() => {
-            window.dispatchEvent(new Event('resize'));
-            renderAll(getState());
-        }, 150);
+    if (card && card.id) {
+        card.classList.add('breakdown-active');
+        activeBreakdownCardId = card.id;
     }
 }
 
-function openDeviceBreakdown() {
+function focusBreakdownPanel() {
     const el = document.getElementById('device-breakdown');
     if (!el) return;
-    if (!el.classList.contains('is-active')) {
-        toggleDeviceBreakdown();
+    const panel = el.querySelector('.breakdown-panel');
+
+    if (panel) {
+        panel.classList.remove('scroll-focus');
+        // Force reflow so animation retriggers on repeated opens
+        void panel.offsetWidth;
+        panel.classList.add('scroll-focus');
+        setTimeout(() => panel.classList.remove('scroll-focus'), 800);
     }
+
+    const headerOffset = 88;
+    const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+    window.scrollTo({
+        top: Math.max(top, 0),
+        behavior: 'smooth'
+    });
+}
+
+function toggleDeviceBreakdown(sourceCard = null) {
+    const el = document.getElementById('device-breakdown');
+    if (!el) return;
+
+    const isActive = el.classList.contains('is-active');
+    if (!isActive) {
+        openDeviceBreakdown(sourceCard);
+        return;
+    }
+
+    if (sourceCard && sourceCard.id && sourceCard.id !== activeBreakdownCardId) {
+        openDeviceBreakdown(sourceCard);
+        return;
+    }
+
+    closeDeviceBreakdown();
+}
+
+function openDeviceBreakdown(sourceCard = null) {
+    const el = document.getElementById('device-breakdown');
+    if (!el) return;
+
+    const wasActive = el.classList.contains('is-active');
+    el.classList.add('is-active');
+
+    if (sourceCard) {
+        setBreakdownActiveCard(sourceCard);
+    } else if (!activeBreakdownCardId) {
+        const defaultCard = document.getElementById('card-devices-online');
+        if (defaultCard) setBreakdownActiveCard(defaultCard);
+    }
+
+    triggerLiveBreakdownRefresh();
+    requestAnimationFrame(() => focusBreakdownPanel());
+
+    // Trigger resize/repaint for charts and table layout
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        renderAll(getState());
+    }, wasActive ? 120 : 180);
 }
 
 function closeDeviceBreakdown() {
     const el = document.getElementById('device-breakdown');
     if (!el) return;
     el.classList.remove('is-active');
+    setBreakdownActiveCard(null);
 }
 
 function initDeviceBreakdown() {
@@ -473,7 +517,7 @@ function initDeviceBreakdown() {
             } else if (card.id === 'card-network-avail') {
                 openAvailabilityModal();
             } else {
-                toggleDeviceBreakdown();
+                toggleDeviceBreakdown(card);
             }
         }
 

@@ -1,13 +1,16 @@
 # file name: routes/auth.py (updated)
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, current_app
 from extensions import db, bcrypt
 from datetime import datetime, timedelta
 import random
+import logging
 from services.email_service import send_otp_email_async
 from middleware.session_middleware import update_last_activity,check_session_timeout
 import time
 from sqlalchemy.exc import OperationalError
 
+
+log = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth_bp', __name__, url_prefix='')
 
@@ -21,34 +24,93 @@ def login():
     if request.method == 'GET' and session.get('logged_in'):
         session.clear()
     
+    ldap_enabled = current_app.config.get('LDAP_ENABLED', False)
+
     if request.method == 'POST':
         from models.user import User
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
         
-        if user and bcrypt.check_password_hash(user.password, password):
-            # Clear existing session and create fresh one
+        authenticated_user = None
+
+        # ── LDAP Authentication (primary when enabled) ──────────
+        if ldap_enabled:
+            try:
+                from services.ldap_service import LDAPService, LDAPConnectionError
+                try:
+                    ldap_result = LDAPService.authenticate(username, password)
+                    if ldap_result:
+                        # Upsert user in local DB
+                        authenticated_user = _upsert_ldap_user(username, ldap_result)
+                except LDAPConnectionError as e:
+                    log.warning(f"[AUTH] LDAP connection failed: {e}. Falling back to local auth.")
+            except ImportError:
+                log.warning("[AUTH] ldap3 not installed. Skipping LDAP auth.")
+
+        # ── Local DB Authentication (fallback) ──────────────────
+        if authenticated_user is None:
+            user = User.query.filter_by(username=username).first()
+            if user and user.password and bcrypt.check_password_hash(user.password, password):
+                if not user.is_active:
+                    return render_template('auth/login.html', error="Account is deactivated.", ldap_enabled=ldap_enabled)
+                authenticated_user = user
+
+        # ── Session creation ────────────────────────────────────
+        if authenticated_user:
             session.clear()
-            
             session['logged_in'] = True
-            session['username'] = username
-            session['user_id'] = user.id
-            session['role'] = user.role
-            session['session_id'] = f"{user.id}_{datetime.utcnow().timestamp()}"
+            session['username'] = authenticated_user.username
+            session['user_id'] = authenticated_user.id
+            session['role'] = authenticated_user.role
+            session['auth_source'] = authenticated_user.auth_source
+            session['session_id'] = f"{authenticated_user.id}_{datetime.utcnow().timestamp()}"
             session['last_activity'] = datetime.utcnow().isoformat()
             session['login_time'] = datetime.utcnow().isoformat()
-            
-            # Set session as non-permanent
             session.permanent = False
-            
             update_last_activity()
-            
             return redirect(url_for('monitoring_bp.dashboard'))
-        return render_template('auth/login.html', error="Invalid credentials!")
+
+        return render_template('auth/login.html', error="Invalid credentials!", ldap_enabled=ldap_enabled)
     else:
         message = request.args.get('message')
-        return render_template('auth/login.html', message=message)
+        return render_template('auth/login.html', message=message, ldap_enabled=ldap_enabled)
+
+
+def _upsert_ldap_user(username, ldap_result):
+    """Find or create a local User record for an LDAP-authenticated user."""
+    from models.user import User
+
+    user = User.query.filter_by(username=username).first()
+
+    if user:
+        # Update existing user with latest LDAP data
+        user.auth_source = 'ldap'
+        user.display_name = ldap_result.get('display_name') or user.display_name
+        user.email = ldap_result.get('email') or user.email
+        user.external_id = ldap_result.get('external_id') or user.external_id
+        user.role = ldap_result.get('role', user.role)
+        user.is_active = True
+    else:
+        # Create new user from LDAP data
+        user = User(
+            username=username,
+            password=None,      # No local password for LDAP users
+            auth_source='ldap',
+            role=ldap_result.get('role', 'user'),
+            email=ldap_result.get('email'),
+            display_name=ldap_result.get('display_name'),
+            external_id=ldap_result.get('external_id'),
+            is_active=True,
+        )
+        db.session.add(user)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error(f"[AUTH] Failed to upsert LDAP user '{username}': {e}")
+
+    return user
 
 @auth_bp.route('/logout')
 def logout():

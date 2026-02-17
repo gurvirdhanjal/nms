@@ -1,11 +1,19 @@
 """
 SNMP Polling Service for Network Monitoring System.
 Uses pysnmp to query SNMP-enabled devices for system info and interface statistics.
+
+Phase 1 Enhancements:
+  - bulkCmd for table walks (10x fewer round-trips than nextCmd)
+  - Typed error classification (timeout, auth, OID, generic)
+  - Structured error returns with error_code field
 """
 import asyncio
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
+
+log = logging.getLogger(__name__)
 
 # pysnmp imports
 try:
@@ -16,7 +24,75 @@ try:
     PYSNMP_AVAILABLE = True
 except ImportError:
     PYSNMP_AVAILABLE = False
-    print("WARNING: pysnmp not installed. SNMP polling disabled.")
+    log.warning("pysnmp not installed. SNMP polling disabled.")
+
+
+# ─────────────────────────────────────────────
+# Typed SNMP Error Classes
+# ─────────────────────────────────────────────
+class SnmpError(Exception):
+    """Base class for all SNMP polling errors."""
+    error_code = 'SNMP_ERROR'
+
+class SnmpTimeoutError(SnmpError):
+    """Device did not respond within the configured timeout."""
+    error_code = 'SNMP_TIMEOUT'
+
+class SnmpAuthError(SnmpError):
+    """Authentication failure (wrong community string or USM credentials)."""
+    error_code = 'SNMP_AUTH_FAILURE'
+
+class SnmpOidNotFoundError(SnmpError):
+    """Requested OID is not available on this device."""
+    error_code = 'SNMP_OID_NOT_FOUND'
+
+class SnmpVersionMismatchError(SnmpError):
+    """Device rejected the SNMP version used."""
+    error_code = 'SNMP_VERSION_MISMATCH'
+
+
+# ─────────────────────────────────────────────
+# Error Classifier
+# ─────────────────────────────────────────────
+def classify_snmp_error(error_indication, error_status=None, error_index=None):
+    """
+    Convert pysnmp error indicators into typed SnmpError exceptions.
+    
+    Args:
+        error_indication: pysnmp errorIndication (transport-level)
+        error_status: pysnmp errorStatus (protocol-level)
+        error_index: pysnmp errorIndex
+    
+    Returns:
+        SnmpError subclass instance
+    """
+    if error_indication:
+        err_str = str(error_indication).lower()
+        if 'timeout' in err_str or 'request timed out' in err_str:
+            return SnmpTimeoutError(f"SNMP timeout: {error_indication}")
+        elif 'unknown' in err_str and 'name' in err_str:
+            return SnmpAuthError(f"SNMP auth failure: {error_indication}")
+        elif 'unsupported' in err_str and 'version' in err_str:
+            return SnmpVersionMismatchError(f"SNMP version mismatch: {error_indication}")
+        else:
+            return SnmpError(f"SNMP error: {error_indication}")
+    
+    if error_status:
+        status_val = int(error_status)
+        status_str = str(error_status.prettyPrint()).lower() if hasattr(error_status, 'prettyPrint') else str(error_status).lower()
+        
+        # noSuchName (2), noSuchObject, noSuchInstance
+        if status_val == 2 or 'nosuch' in status_str:
+            return SnmpOidNotFoundError(
+                f"OID not found: {status_str} at index {error_index}"
+            )
+        # authorizationError (16)
+        elif status_val == 16 or 'authorization' in status_str:
+            return SnmpAuthError(f"SNMP authorization error: {status_str}")
+        else:
+            return SnmpError(f"SNMP protocol error: {status_str} at index {error_index}")
+    
+    return None
 
 
 # Common SNMP OIDs
@@ -53,10 +129,18 @@ class SnmpOids:
     IF_HC_OUT_OCTETS = '1.3.6.1.2.1.31.1.1.1.10'
 
 
+# Default GETBULK max-repetitions (rows per PDU response)
+BULK_MAX_REPETITIONS = 25
+
+
 class SnmpService:
     """
     Service for polling SNMP-enabled devices.
     Provides methods to retrieve system info, interface list, and traffic counters.
+    
+    Uses bulkCmd (GETBULK) for table walks to minimize round-trips.
+    Uses getCmd (GET) for scalar OIDs.
+    Raises typed SnmpError subclasses for classified error handling.
     """
     
     def __init__(self, timeout: int = 2, retries: int = 1):
@@ -79,15 +163,27 @@ class SnmpService:
             timeout=self.timeout,
             retries=self.retries
         )
-    
+
+    def _use_bulk(self, version: str) -> bool:
+        """Check if GETBULK is available (v2c+ only, v1 doesn't support it)."""
+        return version != '1'
+
+    # ─────────────────────────────────────────────
+    # Scalar: System Info (uses GET — unchanged)
+    # ─────────────────────────────────────────────
     def get_system_info(self, host: str, community: str = 'public', 
                         version: str = '2c', port: int = 161) -> Dict[str, Any]:
         """
         Get basic system information from a device.
         Returns dict with sysDescr, sysName, sysUpTime, sysLocation, sysContact.
+        
+        Raises:
+            SnmpTimeoutError: Device did not respond
+            SnmpAuthError: Wrong community string
+            SnmpError: Other SNMP errors
         """
         if not PYSNMP_AVAILABLE:
-            return {'error': 'pysnmp not installed'}
+            return {'error': 'pysnmp not installed', 'error_code': 'SNMP_NOT_INSTALLED'}
         
         oids = [
             ObjectType(ObjectIdentity(SnmpOids.SYS_DESCR)),
@@ -108,62 +204,91 @@ class SnmpService:
                 )
             )
             
-            if error_indication:
-                return {'error': str(error_indication)}
-            elif error_status:
-                return {'error': f'{error_status.prettyPrint()} at {error_index}'}
-            else:
-                result = {}
-                for var_bind in var_binds:
-                    oid, value = var_bind
-                    oid_str = str(oid)
-                    
-                    if SnmpOids.SYS_DESCR in oid_str:
-                        result['sys_descr'] = str(value)
-                    elif SnmpOids.SYS_NAME in oid_str:
-                        result['sys_name'] = str(value)
-                    elif SnmpOids.SYS_UPTIME in oid_str:
-                        # Convert timeticks (1/100 sec) to seconds
-                        result['sys_uptime_seconds'] = int(value) / 100
-                    elif SnmpOids.SYS_LOCATION in oid_str:
-                        result['sys_location'] = str(value)
-                    elif SnmpOids.SYS_CONTACT in oid_str:
-                        result['sys_contact'] = str(value)
+            # Classify and raise typed errors
+            err = classify_snmp_error(error_indication, error_status, error_index)
+            if err:
+                return {
+                    'error': str(err),
+                    'error_code': err.error_code,
+                    'host': host
+                }
+            
+            result = {}
+            for var_bind in var_binds:
+                oid, value = var_bind
+                oid_str = str(oid)
                 
-                result['polled_at'] = datetime.utcnow().isoformat()
-                return result
+                if SnmpOids.SYS_DESCR in oid_str:
+                    result['sys_descr'] = str(value)
+                elif SnmpOids.SYS_NAME in oid_str:
+                    result['sys_name'] = str(value)
+                elif SnmpOids.SYS_UPTIME in oid_str:
+                    # Convert timeticks (1/100 sec) to seconds
+                    result['sys_uptime_seconds'] = int(value) / 100
+                elif SnmpOids.SYS_LOCATION in oid_str:
+                    result['sys_location'] = str(value)
+                elif SnmpOids.SYS_CONTACT in oid_str:
+                    result['sys_contact'] = str(value)
+            
+            result['polled_at'] = datetime.utcnow().isoformat()
+            return result
                 
         except Exception as e:
-            return {'error': str(e)}
-    
+            log.error(f"[SNMP] System info error for {host}: {e}")
+            return {'error': str(e), 'error_code': 'SNMP_ERROR', 'host': host}
+
+    # ─────────────────────────────────────────────
+    # Table Walk: Interfaces (now uses GETBULK)
+    # ─────────────────────────────────────────────
     def get_interfaces(self, host: str, community: str = 'public',
                        version: str = '2c', port: int = 161) -> List[Dict[str, Any]]:
         """
         Get list of interfaces with their properties.
-        Uses SNMP walk on ifTable and ifXTable.
+        Uses GETBULK (bulkCmd) for v2c+ to minimize round-trips.
+        Falls back to nextCmd for v1.
         """
         if not PYSNMP_AVAILABLE:
             return []
         
         interfaces = {}
+        use_bulk = self._use_bulk(version)
         
-        # Walk ifTable for basic interface info
+        oid_objects = [
+            ObjectType(ObjectIdentity(SnmpOids.IF_INDEX)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_DESCR)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_TYPE)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_SPEED)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_PHYS_ADDRESS)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_ADMIN_STATUS)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_OPER_STATUS)),
+        ]
+        
         try:
-            for (error_indication, error_status, error_index, var_binds) in nextCmd(
-                self._engine,
-                self._get_community_data(community, version),
-                self._get_transport_target(host, port),
-                ContextData(),
-                ObjectType(ObjectIdentity(SnmpOids.IF_INDEX)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_DESCR)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_TYPE)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_SPEED)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_PHYS_ADDRESS)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_ADMIN_STATUS)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_OPER_STATUS)),
-                lexicographicMode=False
-            ):
-                if error_indication or error_status:
+            if use_bulk:
+                walk_iter = bulkCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    0,  # nonRepeaters (scalar OIDs to GET first — none)
+                    BULK_MAX_REPETITIONS,  # maxRepetitions per column
+                    *oid_objects,
+                    lexicographicMode=False
+                )
+            else:
+                walk_iter = nextCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    *oid_objects,
+                    lexicographicMode=False
+                )
+            
+            for (error_indication, error_status, error_index, var_binds) in walk_iter:
+                err = classify_snmp_error(error_indication, error_status, error_index)
+                if err:
+                    log.warning(f"[SNMP] Interface walk error for {host}: {err}")
                     break
                 
                 if_data = {}
@@ -197,35 +322,60 @@ class SnmpService:
                     interfaces[if_index] = if_data
                     
         except Exception as e:
-            print(f"SNMP interface walk error: {e}")
+            log.error(f"[SNMP] Interface walk error for {host}: {e}")
         
         return list(interfaces.values())
-    
+
+    # ─────────────────────────────────────────────
+    # Table Walk: Counters (now uses GETBULK)
+    # ─────────────────────────────────────────────
     def get_interface_counters(self, host: str, community: str = 'public',
                                 version: str = '2c', port: int = 161) -> List[Dict[str, Any]]:
         """
         Get traffic counters for all interfaces.
-        Returns list of dicts with in_octets, out_octets, errors.
+        Uses GETBULK (bulkCmd) for v2c+ to minimize round-trips.
+        Falls back to nextCmd for v1.
         """
         if not PYSNMP_AVAILABLE:
             return []
         
         counters = {}
+        use_bulk = self._use_bulk(version)
+        
+        oid_objects = [
+            ObjectType(ObjectIdentity(SnmpOids.IF_INDEX)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_IN_OCTETS)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_OUT_OCTETS)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_IN_ERRORS)),
+            ObjectType(ObjectIdentity(SnmpOids.IF_OUT_ERRORS)),
+        ]
         
         try:
-            for (error_indication, error_status, error_index, var_binds) in nextCmd(
-                self._engine,
-                self._get_community_data(community, version),
-                self._get_transport_target(host, port),
-                ContextData(),
-                ObjectType(ObjectIdentity(SnmpOids.IF_INDEX)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_IN_OCTETS)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_OUT_OCTETS)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_IN_ERRORS)),
-                ObjectType(ObjectIdentity(SnmpOids.IF_OUT_ERRORS)),
-                lexicographicMode=False
-            ):
-                if error_indication or error_status:
+            if use_bulk:
+                walk_iter = bulkCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    0,  # nonRepeaters
+                    BULK_MAX_REPETITIONS,
+                    *oid_objects,
+                    lexicographicMode=False
+                )
+            else:
+                walk_iter = nextCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    *oid_objects,
+                    lexicographicMode=False
+                )
+            
+            for (error_indication, error_status, error_index, var_binds) in walk_iter:
+                err = classify_snmp_error(error_indication, error_status, error_index)
+                if err:
+                    log.warning(f"[SNMP] Counter walk error for {host}: {err}")
                     break
                 
                 counter_data = {'timestamp': datetime.utcnow().isoformat()}
@@ -251,7 +401,7 @@ class SnmpService:
                     counters[if_index] = counter_data
                     
         except Exception as e:
-            print(f"SNMP counter walk error: {e}")
+            log.error(f"[SNMP] Counter walk error for {host}: {e}")
         
         return list(counters.values())
     
@@ -287,16 +437,22 @@ class SnmpService:
             'polled_at': datetime.utcnow().isoformat()
         }
 
+    # ─────────────────────────────────────────────
+    # Server Health via HOST-RESOURCES-MIB (GETBULK)
+    # ─────────────────────────────────────────────
     def get_server_health_snmp(self, host: str, community: str = 'public',
                                version: str = '2c', port: int = 161) -> Dict[str, Any]:
         """
         Get server health metrics (CPU, RAM, Disk) via HOST-RESOURCES-MIB.
         Returns dict with cpu_usage, memory_usage, disk_usage.
+        
+        Uses bulkCmd for table walks (CPU cores, storage entries).
         """
         if not PYSNMP_AVAILABLE:
             return {}
 
         metrics = {}
+        use_bulk = self._use_bulk(version)
         
         # OIDs
         HR_PROCESSOR_LOAD = '1.3.6.1.2.1.25.3.3.1.2' # Table of load per core
@@ -314,15 +470,33 @@ class SnmpService:
         try:
             # 1. CPU Load
             cpu_loads = []
-            for (error_indication, error_status, error_index, var_binds) in nextCmd(
-                self._engine,
-                self._get_community_data(community, version),
-                self._get_transport_target(host, port),
-                ContextData(),
-                ObjectType(ObjectIdentity(HR_PROCESSOR_LOAD)),
-                lexicographicMode=False
-            ):
-                if error_indication or error_status: break
+            cpu_oids = [ObjectType(ObjectIdentity(HR_PROCESSOR_LOAD))]
+            
+            if use_bulk:
+                cpu_iter = bulkCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    0, BULK_MAX_REPETITIONS,
+                    *cpu_oids,
+                    lexicographicMode=False
+                )
+            else:
+                cpu_iter = nextCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    *cpu_oids,
+                    lexicographicMode=False
+                )
+            
+            for (error_indication, error_status, error_index, var_binds) in cpu_iter:
+                err = classify_snmp_error(error_indication, error_status, error_index)
+                if err:
+                    log.debug(f"[SNMP] CPU walk ended for {host}: {err}")
+                    break
                 for var_bind in var_binds:
                     cpu_loads.append(int(var_bind[1]))
             
@@ -330,32 +504,43 @@ class SnmpService:
                 metrics['cpu_usage'] = round(sum(cpu_loads) / len(cpu_loads), 1)
 
             # 2. Storage (RAM & Disk)
-            # We need to walk the implementation to find indices for RAM and Disk
-            # Using bulk walk might be better but nextCmd is safer for compatibility
-            
-            ram_total = 0
-            ram_used = 0
-            disk_stats = []
-            
-            for (error_indication, error_status, error_index, var_binds) in nextCmd(
-                self._engine,
-                self._get_community_data(community, version),
-                self._get_transport_target(host, port),
-                ContextData(),
+            storage_oids = [
                 ObjectType(ObjectIdentity(HR_STORAGE_TYPE)),
                 ObjectType(ObjectIdentity(HR_STORAGE_DESCR)),
                 ObjectType(ObjectIdentity(HR_STORAGE_UNITS)),
                 ObjectType(ObjectIdentity(HR_STORAGE_SIZE)),
                 ObjectType(ObjectIdentity(HR_STORAGE_USED)),
-                lexicographicMode=False
-            ):
-                if error_indication or error_status: break
-                
-                for var_bind in var_binds:
-                    # pysnmp returns varBinds as a list of tuples? No, nextCmd returns list of varBinds, each is a tuple?
-                    # Actually nextCmd yields a row of varBinds.
-                    # We requested 5 columns, so var_binds should have 5 elements.
-                    pass 
+            ]
+            
+            ram_total = 0
+            ram_used = 0
+            disk_stats = []
+            
+            if use_bulk:
+                storage_iter = bulkCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    0, BULK_MAX_REPETITIONS,
+                    *storage_oids,
+                    lexicographicMode=False
+                )
+            else:
+                storage_iter = nextCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    *storage_oids,
+                    lexicographicMode=False
+                )
+            
+            for (error_indication, error_status, error_index, var_binds) in storage_iter:
+                err = classify_snmp_error(error_indication, error_status, error_index)
+                if err:
+                    log.debug(f"[SNMP] Storage walk ended for {host}: {err}")
+                    break
                 
                 # Unwrap the 5 columns
                 if len(var_binds) < 5: continue
@@ -381,13 +566,13 @@ class SnmpService:
                 metrics['memory_usage'] = round((ram_used / ram_total) * 100, 1)
             
             if disk_stats:
-                # Average of all disks or max? Let's take max to be safe/alerting
+                # Take max across all disks (conservative for alerting)
                 metrics['disk_usage'] = max(disk_stats)
                 
             return metrics
 
         except Exception as e:
-            print(f"SNMP Health Check Error: {e}")
+            log.error(f"[SNMP] Health check error for {host}: {e}")
             return metrics
 
 

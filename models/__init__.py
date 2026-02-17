@@ -8,9 +8,15 @@ from .snmp_config import DeviceSnmpConfig
 from .topology import SwitchTopology
 from .tracked_device import TrackedDevice
 from .server_health import ServerHealthLog
+from .server_health_rollups import (
+    ServerHealthHourlyRollup,
+    ServerHealthDailyRollup,
+    ServerHealthRollupState,
+)
 
 __all__ = [
     'User', 'Device', 'DeviceScanHistory', 'NetworkScan', 'PortScanResult',
     'DashboardEvent', 'DailyDeviceStats', 'DeviceInterface', 'InterfaceTrafficHistory',
-    'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice', 'ServerHealthLog'
+    'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice', 'ServerHealthLog',
+    'ServerHealthHourlyRollup', 'ServerHealthDailyRollup', 'ServerHealthRollupState'
 ]

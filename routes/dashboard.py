@@ -614,7 +614,12 @@ def get_trends():
                  avail = 0 
                  avg_lat = 0
             
-            availability_trend.append({'time': time_key, 'value': avail})
+            availability_trend.append({
+                'time': time_key,
+                'value': avail,
+                'online': int(b['online']),
+                'total': int(b['total'])
+            })
             latency_trend.append({'time': time_key, 'value': avg_lat})
         
         result = {
@@ -950,8 +955,8 @@ def get_network_io_trend():
         # Last hour
         cutoff = datetime.utcnow() - timedelta(hours=1)
         
-        # Bucket to 1 minute to avoid excessive points and jitter
-        bucket = func.strftime('%Y-%m-%d %H:%M:00', InterfaceTrafficHistory.timestamp)
+        # Bucket to 1 minute (PostgreSQL date_trunc).
+        bucket = func.date_trunc('minute', InterfaceTrafficHistory.timestamp)
         data = db.session.query(
             bucket.label('bucket'),
             func.sum(InterfaceTrafficHistory.rx_bps).label('total_rx'),
@@ -970,8 +975,9 @@ def get_network_io_trend():
         
         for bucket_ts, rx, tx in data:
             # Convert bps to Mbps
-            # bucket_ts is a string like "YYYY-MM-DD HH:MM:00"
-            label = f"{bucket_ts}".replace(" ", "T") + "Z"
+            if bucket_ts and getattr(bucket_ts, 'tzinfo', None) is None:
+                bucket_ts = bucket_ts.replace(tzinfo=timezone.utc)
+            label = bucket_ts.isoformat().replace("+00:00", "Z") if bucket_ts else None
             labels.append(label)
             in_data.append(round((rx or 0) / 1_000_000, 2))
             out_data.append(round((tx or 0) / 1_000_000, 2))

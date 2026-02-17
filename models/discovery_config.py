@@ -1,5 +1,5 @@
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 
@@ -57,6 +57,14 @@ class DiscoveryConfig(db.Model):
         else:
             self._subnets = value
 
+    @staticmethod
+    def _iso_utc(dt):
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc).isoformat()
+        return dt.astimezone(timezone.utc).isoformat()
+
     def to_dict(self):
         return {
             "enabled": self.enabled,
@@ -68,8 +76,8 @@ class DiscoveryConfig(db.Model):
             "auto_add_policy": self.auto_add_policy,
             "auto_add_after_n": self.auto_add_after_n,
             "auto_monitor_new": self.auto_monitor_new,
-            "last_light_scan": self.last_light_scan.isoformat() if self.last_light_scan else None,
-            "last_heavy_scan": self.last_heavy_scan.isoformat() if self.last_heavy_scan else None,
+            "last_light_scan": self._iso_utc(self.last_light_scan),
+            "last_heavy_scan": self._iso_utc(self.last_heavy_scan),
             "last_scan_duration": self.last_scan_duration,
             "last_new_count": self.last_new_count,
             "last_updated_count": self.last_updated_count,

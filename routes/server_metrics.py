@@ -117,15 +117,17 @@ def get_fleet_metrics():
         p95_mem = calc_p95(mem_values)
 
         # 3. Trends (24h Aggregate Sparklines)
-        # Group by hour and take average of all servers
+        # Group by hour and take average of all servers.
+        # DB session timezone is forced to UTC at connection time.
+        hour_bucket = func.date_trunc('hour', ServerHealthLog.timestamp).label('hour')
         trend_query = db.session.query(
-            func.date_trunc('hour', ServerHealthLog.timestamp).label('hour'),
+            hour_bucket,
             func.avg(ServerHealthLog.cpu_usage).label('avg_cpu'),
             func.avg(ServerHealthLog.memory_usage).label('avg_mem')
         ).filter(
             ServerHealthLog.source == 'agent',
             ServerHealthLog.timestamp >= cutoff
-        ).group_by('hour').order_by('hour').all()
+        ).group_by(hour_bucket).order_by(hour_bucket).all()
 
         trend_labels = [_iso_utc(row.hour) for row in trend_query]
         trend_cpu = [float(row.avg_cpu) if row.avg_cpu else 0 for row in trend_query]
@@ -301,6 +303,13 @@ def get_server_metrics(device_id):
         logs.reverse()
 
         last_log = logs[-1] if logs else None
+        hardware_specs = device.hardware_specs if isinstance(device.hardware_specs, dict) else {}
+        if not hardware_specs and last_log:
+            hardware_specs = {
+                'memory_total_gb': last_log.memory_total_gb,
+                'disk_total_gb': last_log.disk_total_gb,
+                'architecture': last_log.os_arch
+            }
 
         buckets = _downsample_logs(logs, max_points)
         for bucket in buckets:
@@ -337,7 +346,10 @@ def get_server_metrics(device_id):
                 'version': last_log.os_version if last_log else None,
                 'arch': last_log.os_arch if last_log else None
             },
+            'hardware_specs': hardware_specs,
             'health': health,
+            'cpu_iowait_percent': last_log.cpu_iowait_percent if last_log else None,
+            'cpu_steal_percent': last_log.cpu_steal_percent if last_log else None,
             # Enhanced metrics (latest values)
             'load_average': {
                 '1min': last_log.load_avg_1min if last_log else None,
@@ -351,7 +363,8 @@ def get_server_metrics(device_id):
             },
             'memory_detail': {
                 'used_gb': last_log.memory_used_gb if last_log else None,
-                'total_gb': last_log.memory_total_gb if last_log else None
+                'total_gb': last_log.memory_total_gb if last_log else None,
+                'page_faults_per_sec': last_log.page_faults_per_sec if last_log else None
             },
             'disk_detail': {
                 'used_gb': last_log.disk_used_gb if last_log else None,
@@ -362,17 +375,27 @@ def get_server_metrics(device_id):
                 'read_bytes': last_log.disk_read_bytes if last_log else None,
                 'write_bytes': last_log.disk_write_bytes if last_log else None,
                 'read_count': last_log.disk_read_count if last_log else None,
-                'write_count': last_log.disk_write_count if last_log else None
+                'write_count': last_log.disk_write_count if last_log else None,
+                'read_latency_ms': last_log.disk_read_latency_ms if last_log else None,
+                'write_latency_ms': last_log.disk_write_latency_ms if last_log else None,
+                'busy_percent': last_log.disk_busy_percent if last_log else None
             },
             'network_connections': {
                 'total': last_log.network_connections_total if last_log else None,
-                'established': last_log.network_connections_established if last_log else None
+                'established': last_log.network_connections_established if last_log else None,
+                'tcp_retransmits_delta': last_log.tcp_retransmits_delta if last_log else None
             },
+            'network_per_interface': last_log.network_per_interface if last_log and last_log.network_per_interface else {},
             'processes': {
                 'total': last_log.process_count if last_log else None,
-                'zombie': last_log.zombie_count if last_log else None
+                'zombie': last_log.zombie_count if last_log else None,
+                'context_switches_per_sec': last_log.context_switches_per_sec if last_log else None,
+                'open_fds': last_log.open_fds if last_log else None,
+                'fd_limit': last_log.fd_limit if last_log else None,
+                'fd_percent': last_log.fd_percent if last_log else None
             },
             'top_processes': last_log.top_processes if last_log and last_log.top_processes else [],
+            'top_processes_cpu': last_log.top_processes_cpu if last_log and last_log.top_processes_cpu else [],
             'alerts': last_log.alerts if last_log and last_log.alerts else []
         })
 

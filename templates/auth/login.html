@@ -11,7 +11,15 @@
                 <h5 class="enterprise-section-title text-center mb-0 mt-3">
                     <i class="fas fa-sign-in-alt me-2"></i> Network Operations Center
                 </h5>
-                <div class="enterprise-section-sub text-center mb-3">Authorized Access Only</div>
+                <div class="enterprise-section-sub text-center mb-2">Authorized Access Only</div>
+                {% if ldap_enabled %}
+                <div class="text-center mb-2">
+                    <span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 px-3 py-1"
+                        style="font-size: 0.7rem; letter-spacing: 0.06em;">
+                        <i class="fas fa-sitemap me-1"></i> CORPORATE DIRECTORY
+                    </span>
+                </div>
+                {% endif %}
             </div>
 
             <div class="card-body p-4">

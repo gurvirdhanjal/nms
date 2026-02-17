@@ -8,6 +8,30 @@ from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
 agent_bp = Blueprint('agent_bp', __name__)
 
+_ALLOWED_HARDWARE_SPEC_KEYS = {
+    'cpu_model',
+    'cpu_physical_cores',
+    'cpu_logical_cores',
+    'memory_total_gb',
+    'disk_total_gb',
+    'architecture'
+}
+
+
+def _extract_hardware_specs(payload):
+    raw_specs = payload.get('hardware_specs')
+    if not isinstance(raw_specs, dict):
+        return None
+
+    specs = {}
+    for key in _ALLOWED_HARDWARE_SPEC_KEYS:
+        value = raw_specs.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            specs[key] = value
+    return specs or None
+
 @agent_bp.route('/api/agent/metrics', methods=['POST'])
 def receive_metrics():
     # 1. Verify Token
@@ -72,7 +96,18 @@ def receive_metrics():
             return jsonify({'error': f'Device was deleted: id={device.device_id}'}), 404
 
         # Basic metrics
-        cpu = data.get('cpu', {}).get('cpu_percent')
+        cpu_data = data.get('cpu', {}) if isinstance(data.get('cpu', {}), dict) else {}
+        cpu = cpu_data.get('cpu_percent')
+        cpu_iowait = cpu_data.get('cpu_iowait_percent')
+        cpu_steal = cpu_data.get('cpu_steal_percent')
+        try:
+            cpu_iowait = float(cpu_iowait) if cpu_iowait is not None else None
+        except (TypeError, ValueError):
+            cpu_iowait = None
+        try:
+            cpu_steal = float(cpu_steal) if cpu_steal is not None else None
+        except (TypeError, ValueError):
+            cpu_steal = None
         memory_data = data.get('memory', {}) if isinstance(data.get('memory', {}), dict) else {}
         memory = memory_data.get('percent')
         disk = data.get('disk', {}).get('percent')
@@ -89,6 +124,14 @@ def receive_metrics():
             net_in = net.get('bytes_recv')
         if net_out is None and isinstance(net, dict):
             net_out = net.get('bytes_sent')
+        tcp_retransmits_delta = net.get('tcp_retransmits_delta') if isinstance(net, dict) else None
+        network_per_interface = net.get('per_interface_throughput') if isinstance(net, dict) else None
+        try:
+            tcp_retransmits_delta = int(tcp_retransmits_delta) if tcp_retransmits_delta is not None else None
+        except (TypeError, ValueError):
+            tcp_retransmits_delta = None
+        if not isinstance(network_per_interface, dict):
+            network_per_interface = None
 
         # OS Info
         os_info = data.get('os_info', {}) if isinstance(data.get('os_info', {}), dict) else {}
@@ -106,6 +149,11 @@ def receive_metrics():
         swap_total_mb = memory_data.get('swap_total_mb')
         swap_used_mb = memory_data.get('swap_used_mb')
         swap_percent = memory_data.get('swap_percent')
+        page_faults_per_sec = memory_data.get('page_faults_per_sec')
+        try:
+            page_faults_per_sec = float(page_faults_per_sec) if page_faults_per_sec is not None else None
+        except (TypeError, ValueError):
+            page_faults_per_sec = None
 
         # Memory details (GB)
         memory_used_gb = memory_data.get('used_gb')
@@ -123,6 +171,21 @@ def receive_metrics():
         disk_write_bytes = disk_io.get('write_bytes') if isinstance(disk_io, dict) else None
         disk_read_count = disk_io.get('read_count') if isinstance(disk_io, dict) else None
         disk_write_count = disk_io.get('write_count') if isinstance(disk_io, dict) else None
+        disk_read_latency_ms = disk_io.get('read_latency_ms') if isinstance(disk_io, dict) else None
+        disk_write_latency_ms = disk_io.get('write_latency_ms') if isinstance(disk_io, dict) else None
+        disk_busy_percent = disk_io.get('busy_percent') if isinstance(disk_io, dict) else None
+        try:
+            disk_read_latency_ms = float(disk_read_latency_ms) if disk_read_latency_ms is not None else None
+        except (TypeError, ValueError):
+            disk_read_latency_ms = None
+        try:
+            disk_write_latency_ms = float(disk_write_latency_ms) if disk_write_latency_ms is not None else None
+        except (TypeError, ValueError):
+            disk_write_latency_ms = None
+        try:
+            disk_busy_percent = float(disk_busy_percent) if disk_busy_percent is not None else None
+        except (TypeError, ValueError):
+            disk_busy_percent = None
 
         # Network Connections
         net_conns = data.get('network_connections', {})
@@ -133,21 +196,48 @@ def receive_metrics():
         processes = data.get('processes', {})
         process_count = processes.get('total_processes') if isinstance(processes, dict) else None
         zombie_count = processes.get('zombie_processes') if isinstance(processes, dict) else None
+        context_switches_per_sec = processes.get('context_switches_per_sec') if isinstance(processes, dict) else None
+        open_fds = processes.get('open_fds') if isinstance(processes, dict) else None
+        fd_limit = processes.get('fd_limit') if isinstance(processes, dict) else None
+        fd_percent = processes.get('fd_percent') if isinstance(processes, dict) else None
+        try:
+            context_switches_per_sec = float(context_switches_per_sec) if context_switches_per_sec is not None else None
+        except (TypeError, ValueError):
+            context_switches_per_sec = None
+        try:
+            open_fds = int(open_fds) if open_fds is not None else None
+        except (TypeError, ValueError):
+            open_fds = None
+        try:
+            fd_limit = int(fd_limit) if fd_limit is not None else None
+        except (TypeError, ValueError):
+            fd_limit = None
+        try:
+            fd_percent = float(fd_percent) if fd_percent is not None else None
+        except (TypeError, ValueError):
+            fd_percent = None
 
         # Top Processes (JSON)
         top_processes = data.get('top_processes', [])
         if not isinstance(top_processes, list):
             top_processes = None
+        top_processes_cpu = data.get('top_processes_cpu', [])
+        if not isinstance(top_processes_cpu, list):
+            top_processes_cpu = None
 
         # Alerts (JSON)
         alerts = data.get('alerts', [])
         if not isinstance(alerts, list):
             alerts = None
 
+        hardware_specs = _extract_hardware_specs(data)
+
         disk_data = data.get('disk', {}) if isinstance(data.get('disk', {}), dict) else {}
         log = ServerHealthLog(
             device_id=device.device_id,
             cpu_usage=cpu,
+            cpu_iowait_percent=cpu_iowait,
+            cpu_steal_percent=cpu_steal,
             memory_usage=memory,
             memory_used_gb=memory_used_gb,
             memory_total_gb=memory_total_gb,
@@ -157,6 +247,8 @@ def receive_metrics():
             disk_total_gb=disk_data.get('total_gb'),
             network_in_bps=net_in,
             network_out_bps=net_out,
+            tcp_retransmits_delta=tcp_retransmits_delta,
+            network_per_interface=network_per_interface,
             uptime=str(uptime),
             source='agent',
             os_name=os_name,
@@ -168,15 +260,24 @@ def receive_metrics():
             swap_total_mb=swap_total_mb,
             swap_used_mb=swap_used_mb,
             swap_percent=swap_percent,
+            page_faults_per_sec=page_faults_per_sec,
             disk_read_bytes=disk_read_bytes,
             disk_write_bytes=disk_write_bytes,
             disk_read_count=disk_read_count,
             disk_write_count=disk_write_count,
+            disk_read_latency_ms=disk_read_latency_ms,
+            disk_write_latency_ms=disk_write_latency_ms,
+            disk_busy_percent=disk_busy_percent,
             network_connections_total=network_connections_total,
             network_connections_established=network_connections_established,
             process_count=process_count,
             zombie_count=zombie_count,
+            context_switches_per_sec=context_switches_per_sec,
+            open_fds=open_fds,
+            fd_limit=fd_limit,
+            fd_percent=fd_percent,
             top_processes=top_processes,
+            top_processes_cpu=top_processes_cpu,
             alerts=alerts,
             timestamp=datetime.utcnow()
         )
@@ -184,6 +285,8 @@ def receive_metrics():
 
         # 5. Update Device Status
         device.is_active = True
+        if hardware_specs:
+            device.hardware_specs = hardware_specs
         # Update specific fields if they are missing
         if device.hostname == 'Unknown' and hostname:
             device.hostname = hostname

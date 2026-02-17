@@ -1,8 +1,6 @@
 /**
  * Device Inventory Table Component
  */
-import { openServerModal } from '../modals/serverDetailModal.js';
-
 export function renderInventoryTable(devices) {
     const tableBody = document.getElementById('table-inventory-body');
     if (!tableBody) return;
@@ -53,7 +51,7 @@ export function renderInventoryTable(devices) {
         }
 
         return `
-            <tr data-id="${device.device_id}" data-ip="${device.device_ip}" class="${isServer ? 'server-row' : ''}" style="${isServer ? 'cursor: pointer;' : ''}">
+            <tr data-id="${device.device_id}" data-ip="${device.device_ip}" class="inventory-row" style="cursor: pointer;">
                 <td>
                     <div class="form-check d-flex justify-content-center">
                         <input class="form-check-input inventory-checkbox" type="checkbox" value="${device.device_id}">
@@ -162,10 +160,16 @@ export function initInventoryInteractions() {
             return;
         }
 
-        // Handle row click for servers (drill-down)
-        const row = e.target.closest('tr.server-row');
-        if (row && !e.target.closest('td:first-child') && !e.target.closest('td:last-child') && !e.target.closest('select')) {
-            openServerModal(row.dataset.id);
+        // Navigate to full device detail page from expanded panel rows
+        const row = e.target.closest('tr.inventory-row');
+        if (row &&
+            !e.target.closest('td:first-child') &&
+            !e.target.closest('td:last-child') &&
+            !e.target.closest('select') &&
+            !e.target.closest('input') &&
+            row.dataset.id
+        ) {
+            window.location.href = `/devices?edit_id=${row.dataset.id}`;
         }
     });
 }

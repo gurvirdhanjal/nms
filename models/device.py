@@ -41,6 +41,8 @@ class Device(db.Model):
     maintenance_mode = db.Column(db.Boolean, default=False)  # Suppress alerts when True
     health_alert_strikes = db.Column(db.Integer, default=0)   # Consecutive health threshold breaches
     offline_strikes = db.Column(db.Integer, default=0)        # Consecutive offline checks (for 3-strike rule)
+    latency_strikes = db.Column(db.Integer, default=0)        # Consecutive high-latency scans
+    packet_loss_strikes = db.Column(db.Integer, default=0)    # Consecutive high-packet-loss scans
     
     # Enhanced Identity
     location = db.Column(db.String(100), nullable=True)
@@ -65,6 +67,7 @@ class Device(db.Model):
     agent_token = db.Column(db.String(100), nullable=True)
     agent_interval = db.Column(db.Integer, default=300) # seconds
     agent_os_type = db.Column(db.String(20), nullable=True) # windows, linux
+    hardware_specs = db.Column(db.JSON, nullable=True)
     
     # WMI Configuration
     wmi_username = db.Column(db.String(100), nullable=True)
@@ -116,5 +119,8 @@ class Device(db.Model):
             'parent_switch_id': self.parent_switch_id,
             'parent_port_id': self.parent_port_id,
             'maintenance_mode': self.maintenance_mode,
-            'health_alert_strikes': self.health_alert_strikes
+            'health_alert_strikes': self.health_alert_strikes,
+            'latency_strikes': self.latency_strikes,
+            'packet_loss_strikes': self.packet_loss_strikes,
+            'hardware_specs': self.hardware_specs
         }

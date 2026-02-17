@@ -43,6 +43,7 @@ class DeviceInterface(db.Model):
     
     __table_args__ = (
         db.UniqueConstraint('device_id', 'if_index', name='uq_device_interface'),
+        db.Index('idx_device_interfaces_device_id', 'device_id'),
     )
 
     def __repr__(self):
@@ -62,6 +63,10 @@ class InterfaceTrafficHistory(db.Model):
     
     rx_utilization_pct = db.Column(db.Float, nullable=True)
     tx_utilization_pct = db.Column(db.Float, nullable=True)
+
+    __table_args__ = (
+        db.Index('idx_interface_traffic_interface_timestamp', 'interface_id', 'timestamp'),
+    )
     
     def __repr__(self):
         return f'<TrafficHistory IF-{self.interface_id} @ {self.timestamp}>'
