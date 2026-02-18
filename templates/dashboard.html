@@ -187,14 +187,17 @@
 
     .overall-health-card.health-healthy {
         border-color: rgba(32, 201, 151, 0.35);
+        background: linear-gradient(90deg, rgba(32, 201, 151, 0.10), transparent 40%);
     }
 
     .overall-health-card.health-degraded {
         border-color: rgba(255, 193, 7, 0.3);
+        background: linear-gradient(90deg, rgba(255, 193, 7, 0.10), transparent 40%);
     }
 
     .overall-health-card.health-critical {
         border-color: rgba(220, 53, 69, 0.35);
+        background: linear-gradient(90deg, rgba(220, 53, 69, 0.10), transparent 40%);
     }
 
     .overall-health-card.health-healthy .overall-health-dot {
@@ -589,11 +592,26 @@
     #device-kpi-row,
     #fleet-overview-row {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(188px, 1fr));
         gap: var(--e-space-2);
         --bs-gutter-x: 0;
         --bs-gutter-y: 0;
         margin-bottom: var(--e-space-3) !important;
+    }
+
+    #device-kpi-row {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    #device-kpi-row>.col:nth-child(-n+3) {
+        grid-column: span 2;
+    }
+
+    #device-kpi-row>.col:nth-child(n+4) {
+        grid-column: span 3;
+    }
+
+    #fleet-overview-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     #device-kpi-row>.col,
@@ -606,7 +624,7 @@
 
     #device-kpi-row .tactical-stat-card,
     #fleet-overview-row .tactical-stat-card {
-        min-height: 96px;
+        min-height: 108px;
         padding: 0.74rem 0.82rem 0.72rem;
     }
 
@@ -619,6 +637,37 @@
         text-transform: uppercase;
         font-weight: 700;
         margin-bottom: 0.2rem;
+    }
+
+    .dashboard-enterprise .enterprise-kpi .stat-label::before {
+        content: '';
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        margin-right: 0.42rem;
+        vertical-align: middle;
+        background: color-mix(in srgb, var(--e-text-muted) 70%, transparent);
+    }
+
+    #card-devices-online .stat-label::before {
+        background: color-mix(in srgb, var(--ui-info) 76%, transparent);
+    }
+
+    #card-devices-healthy .stat-label::before {
+        background: color-mix(in srgb, var(--ui-success) 78%, transparent);
+    }
+
+    #card-devices-maintenance .stat-label::before {
+        background: color-mix(in srgb, var(--ui-warning) 76%, transparent);
+    }
+
+    #card-devices-offline .stat-label::before {
+        background: color-mix(in srgb, var(--ui-danger) 72%, transparent);
+    }
+
+    #card-network-avail .stat-label::before {
+        background: color-mix(in srgb, var(--ui-accent) 75%, transparent);
     }
 
     .dashboard-enterprise .enterprise-kpi .stat-value,
@@ -637,6 +686,31 @@
         font-size: 0.69rem !important;
         line-height: 1.25;
         color: var(--e-text-muted) !important;
+    }
+
+    #val-devices-online .anim-online {
+        font-size: 1.56rem;
+        font-weight: 700;
+        color: var(--e-text-primary);
+    }
+
+    #val-devices-online .anim-total {
+        font-size: 1.05rem;
+        font-weight: 500;
+        color: var(--e-text-muted);
+        margin-left: 2px;
+    }
+
+    .freshness-ok {
+        color: var(--e-text-muted) !important;
+    }
+
+    .freshness-warn {
+        color: #c08f34 !important;
+    }
+
+    .freshness-stale {
+        color: #b34a54 !important;
     }
 
     .dashboard-enterprise .kpi-view-icon {
@@ -1124,6 +1198,16 @@
         .dashboard-enterprise .alerts-kpi-left {
             grid-template-columns: repeat(2, minmax(100px, 1fr));
         }
+
+        #device-kpi-row,
+        #fleet-overview-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #device-kpi-row>.col:nth-child(-n+3),
+        #device-kpi-row>.col:nth-child(n+4) {
+            grid-column: auto;
+        }
     }
 
     @media (max-width: 992px) {
@@ -1339,6 +1423,247 @@
             opacity: 1;
             transform: translateY(0);
         }
+    }
+
+    /* Light theme compatibility layer (dashboard only, non-invasive) */
+    html[data-theme="light"] .dashboard-enterprise {
+        --e-bg-base: var(--ui-bg);
+        --e-bg-panel: color-mix(in srgb, var(--ui-surface-1) 96%, var(--ui-surface-2) 4%);
+        --e-bg-panel-soft: color-mix(in srgb, var(--ui-surface-1) 88%, var(--ui-surface-2) 12%);
+        --e-bg-row-alt: color-mix(in srgb, var(--ui-text) 2%, transparent);
+        --e-bg-row-hover: color-mix(in srgb, var(--ui-text) 6%, transparent);
+        --e-border: var(--ui-border);
+        --e-border-strong: var(--ui-border-strong);
+        --e-border-panel: var(--ui-border-strong);
+        --e-text-primary: var(--ui-text);
+        --e-text-secondary: color-mix(in srgb, var(--ui-text) 88%, var(--ui-text-muted) 12%);
+        --e-text-muted: var(--ui-text-muted);
+        --e-text-dim: color-mix(in srgb, var(--ui-text-muted) 78%, transparent);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise.tactical-theme {
+        background: var(--ui-bg) !important;
+        background-image:
+            linear-gradient(var(--ui-bg-grid) 1px, transparent 1px),
+            linear-gradient(90deg, var(--ui-bg-grid) 1px, transparent 1px) !important;
+        background-size: 50px 50px !important;
+        color: var(--ui-text) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise {
+        color: var(--ui-text);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .enterprise-divider,
+    html[data-theme="light"] .dashboard-enterprise .enterprise-divider-fade {
+        border-color: color-mix(in srgb, var(--ui-text) 10%, transparent);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-table thead th {
+        background: var(--ui-surface-4) !important;
+        color: var(--ui-text) !important;
+        border-bottom-color: var(--ui-border-strong);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr {
+        background: color-mix(in srgb, var(--ui-text) 1%, transparent);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
+        background: color-mix(in srgb, var(--ui-text) 2.5%, transparent);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-select,
+    html[data-theme="light"] .dashboard-enterprise .tactical-input,
+    html[data-theme="light"] .dash-modal-body input,
+    html[data-theme="light"] .dash-modal-body select,
+    html[data-theme="light"] .dash-modal-body textarea {
+        background: var(--ui-surface-1) !important;
+        color: var(--ui-text) !important;
+        border-color: var(--ui-border-strong) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .enterprise-section-title {
+        color: var(--ui-text);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .enterprise-section-sub {
+        color: color-mix(in srgb, var(--ui-text) 72%, var(--ui-text-muted) 28%);
+        font-size: 0.9rem;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-card,
+    html[data-theme="light"] .dashboard-enterprise .tactical-stat-card,
+    html[data-theme="light"] .dashboard-enterprise .breakdown-panel,
+    html[data-theme="light"] .dashboard-enterprise .breakdown-subcard,
+    html[data-theme="light"] .dashboard-enterprise .alerts-container,
+    html[data-theme="light"] .dashboard-enterprise .fleet-table-card,
+    html[data-theme="light"] .dashboard-enterprise .enterprise-panel,
+    html[data-theme="light"] .dashboard-enterprise .overall-health-card {
+        background: linear-gradient(180deg, var(--ui-surface-1) 0%, var(--ui-surface-2) 100%) !important;
+        border-color: var(--ui-border-soft) !important;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-card:hover,
+    html[data-theme="light"] .dashboard-enterprise .tactical-stat-card:hover,
+    html[data-theme="light"] .dashboard-enterprise .breakdown-subcard:hover,
+    html[data-theme="light"] .dashboard-enterprise .alerts-container:hover {
+        border-color: var(--ui-border-strong) !important;
+        box-shadow: var(--ui-shadow) !important;
+    }
+
+    /* Premium light depth for KPI cards (avoid flat white blocks) */
+    html[data-theme="light"] .dashboard-enterprise .tactical-stat-card {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--ui-accent-soft) 26%, var(--ui-surface-1) 74%) 0%, var(--ui-surface-2) 100%) !important;
+        border-color: var(--ui-border-soft) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-healthy {
+        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-success) 14%, white), var(--ui-surface-1) 42%) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-degraded {
+        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-warning) 16%, white), var(--ui-surface-1) 42%) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-critical {
+        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-danger) 14%, white), var(--ui-surface-1) 42%) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-value,
+    html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .stat-value {
+        color: var(--ui-text) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-label,
+    html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .stat-label,
+    html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .metric-sub,
+    html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .metric-sub {
+        color: var(--ui-text-muted) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .text-white,
+    html[data-theme="light"] .dashboard-enterprise .text-light {
+        color: color-mix(in srgb, var(--ui-text) 90%, var(--ui-text-muted) 10%) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .alerts-filters {
+        background: color-mix(in srgb, var(--ui-text) 3%, transparent);
+        border-color: var(--ui-border);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-select,
+    html[data-theme="light"] .dashboard-enterprise .tactical-btn-outline,
+    html[data-theme="light"] .dashboard-enterprise .btn-outline-secondary,
+    html[data-theme="light"] .dashboard-enterprise .btn-dark.border-secondary {
+        background: var(--ui-surface-1) !important;
+        color: var(--ui-text-muted) !important;
+        border-color: var(--ui-border-strong) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-select:hover,
+    html[data-theme="light"] .dashboard-enterprise .tactical-select:focus,
+    html[data-theme="light"] .dashboard-enterprise .tactical-btn-outline:hover,
+    html[data-theme="light"] .dashboard-enterprise .btn-outline-secondary:hover,
+    html[data-theme="light"] .dashboard-enterprise .btn-dark.border-secondary:hover {
+        color: var(--ui-text) !important;
+        border-color: var(--ui-border-strong) !important;
+        background: var(--ui-surface-2) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-table tbody td {
+        color: color-mix(in srgb, var(--ui-text) 92%, var(--ui-text-muted) 8%);
+        border-bottom-color: var(--ui-border);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr:hover {
+        background: color-mix(in srgb, var(--ui-text) 5%, transparent);
+    }
+
+    /* Force all dashboard tables to light surfaces (header/body/cells) */
+    html[data-theme="light"] .dashboard-enterprise .table,
+    html[data-theme="light"] .dashboard-enterprise .table td,
+    html[data-theme="light"] .dashboard-enterprise .table th {
+        color: #1e293b !important;
+        border-color: rgba(15, 23, 42, 0.1) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .table-dark,
+    html[data-theme="light"] .dashboard-enterprise .table-dark thead,
+    html[data-theme="light"] .dashboard-enterprise .table-dark tbody,
+    html[data-theme="light"] .dashboard-enterprise .table-dark tr {
+        background-color: #f7fafd !important;
+        color: #1e293b !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .table-dark th {
+        background: #edf2f8 !important;
+        color: #0f172a !important;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.14) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .table-dark td {
+        background: #ffffff !important;
+        color: #1e293b !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .table-hover tbody tr:hover td {
+        background: #f4f8fc !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .kpi-view-icon {
+        color: rgba(15, 23, 42, 0.24);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tactical-stat-card:hover .kpi-view-icon {
+        color: rgba(15, 23, 42, 0.45);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tabs button {
+        background: rgba(15, 23, 42, 0.04);
+        color: #475569;
+        border-color: rgba(15, 23, 42, 0.12);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .tabs button.active {
+        background: rgba(15, 23, 42, 0.08);
+        color: #0f172a;
+        border-color: rgba(15, 23, 42, 0.24);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .text-secondary,
+    html[data-theme="light"] .dashboard-enterprise .tactical-text-muted,
+    html[data-theme="light"] .dashboard-enterprise .text-muted {
+        color: #64748b !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .dash-config-btn {
+        background: #ffffff;
+        color: #334155;
+        border-color: rgba(15, 23, 42, 0.2);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .dash-config-btn:hover {
+        background: #f8fafc;
+        color: #0f172a;
+        border-color: rgba(15, 23, 42, 0.3);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise #global-error {
+        color: #b42332 !important;
+        background: rgba(220, 53, 69, 0.08) !important;
+        border-color: rgba(220, 53, 69, 0.24) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .dash-modal-overlay {
+        background: rgba(15, 23, 42, 0.32);
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .dash-modal-card {
+        background: #ffffff;
+        border-color: rgba(15, 23, 42, 0.14);
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
     }
 </style>
 {% endblock %}
