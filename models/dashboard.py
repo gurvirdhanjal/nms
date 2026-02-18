@@ -13,7 +13,7 @@ class DashboardEvent(db.Model):
     __tablename__ = 'dashboard_events'
     
     event_id = db.Column(db.String(36), primary_key=True)  # UUID
-    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='CASCADE'), nullable=True)
     device_ip = db.Column(db.String(50), nullable=True)  # For quick lookups
     event_type = db.Column(db.String(50), default='THRESHOLD')  # STATUS_CHANGE, THRESHOLD, SYSTEM
     severity = db.Column(db.String(20), default='INFO')  # CRITICAL, WARNING, INFO, OK
@@ -58,7 +58,7 @@ class DailyDeviceStats(db.Model):
     __tablename__ = 'daily_device_stats'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='CASCADE'), nullable=False)
     date = db.Column(db.Date, nullable=False, index=True)
     
     # Aggregated metrics

@@ -105,9 +105,7 @@ class DeviceClassifier:
         "Samsung": DeviceType.MOBILE,
         "Dell": DeviceType.WORKSTATION,
         "Lenovo": DeviceType.WORKSTATION,
-        "Synology": DeviceType.SERVER,
-        "Qunap": DeviceType.SERVER,
-        "VMware": DeviceType.SERVER
+        # NOTE: Synology, QNAP, VMware removed — servers must be manually classified
     }
     
     # SNMP Pattern Database (sysDescr)
@@ -127,10 +125,7 @@ class DeviceClassifier:
             r"ubiquiti", r"unifi", r"cisco.*aironet", r"aruba.*ap", 
             r"access point", r"lap11", r"lap12"
         ],
-        DeviceType.SERVER: [
-            r"linux.*server", r"ubuntu.*server", r"centos", r"windows.*server",
-            r"esxi", r"proxmox", r"synology", r"nas"
-        ],
+        # NOTE: SERVER SNMP patterns removed — servers must be manually classified
         DeviceType.PRINTER: [
             r"printer", r"laserjet", r"inkjet", r"canon", r"epson", r"xerox"
         ],
@@ -142,7 +137,7 @@ class DeviceClassifier:
         DeviceType.ROUTER: [179, 520], # BGP, RIP
         DeviceType.SWITCH: [161], # SNMP is key for switches usually
         DeviceType.ACCESS_POINT: [8080, 8443], # Unifi inform/admin
-        DeviceType.SERVER: [3306, 5432, 27017, 6379, 1433], # Databases
+        # NOTE: SERVER port fingerprints removed — servers must be manually classified
         DeviceType.WORKSTATION: [445, 139], # SMB
         DeviceType.PRINTER: [9100, 631, 515],
         DeviceType.CAMERA_IOT: [554], # RTSP
@@ -154,7 +149,7 @@ class DeviceClassifier:
         DeviceType.ROUTER: [r"^(router|rtr|gw|gateway)[\-_]?"],
         DeviceType.SWITCH: [r"^(switch|sw|core|dist|access)[\-_]?"],
         DeviceType.ACCESS_POINT: [r"^(ap|wifi|wlan)[\-_]?"],
-        DeviceType.SERVER: [r"^(server|srv|db|web|app|mail|esx|vcenter)[\-_]?"],
+        # NOTE: SERVER hostname patterns removed — servers must be manually classified
         DeviceType.WORKSTATION: [r"^(pc|ws|desktop|laptop)[\-_]?"],
         DeviceType.PRINTER: [r"^(printer|print|hp|canon|epson)[\-_]?"],
         DeviceType.CAMERA_IOT: [r"^(cam|camera|ipc|dvr|nvr)[\-_]?"],
@@ -236,9 +231,7 @@ class DeviceClassifier:
         # ----------------------------
         ports = set(signals.open_ports)
         if ports:
-            # Databases -> Server
-            if any(p in ports for p in self.PORT_FINGERPRINTS[DeviceType.SERVER]):
-                add_score(DeviceType.SERVER, self.WEIGHT_PORT, "Open database ports")
+            # NOTE: Database port → Server scoring removed — servers must be manually classified
             
             # Printer ports
             if any(p in ports for p in self.PORT_FINGERPRINTS[DeviceType.PRINTER]):
@@ -248,12 +241,9 @@ class DeviceClassifier:
             if 554 in ports:
                 add_score(DeviceType.CAMERA_IOT, self.WEIGHT_PORT, "RTSP port 554 open")
             
-            # Windows SMB -> Workstation (or Server)
+            # Windows SMB -> Workstation only (server scoring removed)
             if 445 in ports:
-                # Weak signal, could be server or workstation. Check hostname or OS if available.
-                # Default to workstation if no other strong server signals
                 add_score(DeviceType.WORKSTATION, 10, "SMB port 445 open")
-                add_score(DeviceType.SERVER, 5, "SMB port 445 open")
             
             # Routing protocols -> Router
             if 179 in ports or 520 in ports:

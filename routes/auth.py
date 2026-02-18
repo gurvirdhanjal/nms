@@ -31,10 +31,13 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         
+        print(f"DEBUG: Login attempt for username='{username}'")
+
         authenticated_user = None
 
         # ── LDAP Authentication (primary when enabled) ──────────
         if ldap_enabled:
+            print("DEBUG: LDAP is enabled, attempting LDAP auth...")
             try:
                 from services.ldap_service import LDAPService, LDAPConnectionError
                 try:
@@ -42,6 +45,9 @@ def login():
                     if ldap_result:
                         # Upsert user in local DB
                         authenticated_user = _upsert_ldap_user(username, ldap_result)
+                        print("DEBUG: LDAP auth successful")
+                    else:
+                        print("DEBUG: LDAP auth failed")
                 except LDAPConnectionError as e:
                     log.warning(f"[AUTH] LDAP connection failed: {e}. Falling back to local auth.")
             except ImportError:
@@ -49,11 +55,28 @@ def login():
 
         # ── Local DB Authentication (fallback) ──────────────────
         if authenticated_user is None:
+            print("DEBUG: Attempting Local DB auth...")
             user = User.query.filter_by(username=username).first()
-            if user and user.password and bcrypt.check_password_hash(user.password, password):
-                if not user.is_active:
-                    return render_template('auth/login.html', error="Account is deactivated.", ldap_enabled=ldap_enabled)
-                authenticated_user = user
+            if user:
+                print(f"[AUTH DEBUG] User found: ID={user.id}, Username='{user.username}', Active={user.is_active}")
+                if user.password:
+                    # Debug: Print first few chars of hash (safe) to verify we are checking against something real
+                    hash_preview = user.password[:10] + "..." if len(user.password) > 10 else "SHORT"
+                    print(f"[AUTH DEBUG] Stored hash: {hash_preview}")
+                    
+                    is_valid = bcrypt.check_password_hash(user.password, password)
+                    if is_valid:
+                        print("[AUTH DEBUG] Password MATCH! Authentication successful.")
+                        if not user.is_active:
+                            print("[AUTH DEBUG] User inactive. Denying login.")
+                            return render_template('auth/login.html', error="Account is deactivated.", ldap_enabled=ldap_enabled)
+                        authenticated_user = user
+                    else:
+                        print(f"[AUTH DEBUG] Password MISMATCH. Input length: {len(password)}")
+                else:
+                    print("[AUTH DEBUG] User has NO password set.")
+            else:
+                print(f"[AUTH DEBUG] User '{username}' NOT found in DB search.")
 
         # ── Session creation ────────────────────────────────────
         if authenticated_user:
@@ -70,6 +93,7 @@ def login():
             update_last_activity()
             return redirect(url_for('monitoring_bp.dashboard'))
 
+        print("DEBUG: Returning Invalid Credentials error.")
         return render_template('auth/login.html', error="Invalid credentials!", ldap_enabled=ldap_enabled)
     else:
         message = request.args.get('message')

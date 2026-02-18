@@ -18,6 +18,18 @@ else:
 load_dotenv(os.path.join(EXEC_DIR, '.env'))
 
 class Config:
+    # Runtime environment
+    APP_ENV = os.environ.get('APP_ENV', os.environ.get('FLASK_ENV', 'development')).lower()
+    DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    IS_PRODUCTION = APP_ENV == 'production' and not DEBUG
+
+    # Template rendering
+    # Disable template auto-reload in production by default.
+    TEMPLATES_AUTO_RELOAD = os.environ.get(
+        'TEMPLATES_AUTO_RELOAD',
+        'false' if IS_PRODUCTION else 'true'
+    ).lower() == 'true'
+
     # Security
     SECRET_KEY = os.environ.get('SECRET_KEY', 'change-this-secret-key-in-production')
     
@@ -66,6 +78,29 @@ class Config:
             }
         })
 
+    # Compression (Flask-Compress)
+    COMPRESS_ENABLED = os.environ.get('COMPRESS_ENABLED', 'true').lower() == 'true'
+    COMPRESS_LEVEL = int(os.environ.get('COMPRESS_LEVEL', 6))
+    COMPRESS_MIN_SIZE = int(os.environ.get('COMPRESS_MIN_SIZE', 512))
+    COMPRESS_MIMETYPES = [
+        'text/html',
+        'text/css',
+        'text/xml',
+        'text/plain',
+        'application/json',
+        'application/javascript',
+        'text/javascript',
+        'image/svg+xml'
+    ]
+
+    # Static caching defaults.
+    # JS/CSS with version query (?v=...) are upgraded to immutable in app.py.
+    STATIC_MAX_AGE_SECONDS = int(os.environ.get('STATIC_MAX_AGE_SECONDS', 3600))
+    STATIC_IMMUTABLE_MAX_AGE_SECONDS = int(
+        os.environ.get('STATIC_IMMUTABLE_MAX_AGE_SECONDS', 31536000)
+    )
+    SEND_FILE_MAX_AGE_DEFAULT = STATIC_MAX_AGE_SECONDS
+
     # Interface polling interval (seconds)
     INTERFACE_POLL_INTERVAL = int(os.environ.get('INTERFACE_POLL_INTERVAL', 30))
     
@@ -104,6 +139,36 @@ class Config:
     SERVER_HEALTH_HOURLY_RETENTION_DAYS = int(os.environ.get('SERVER_HEALTH_HOURLY_RETENTION_DAYS', 30))
     SERVER_HEALTH_DAILY_RETENTION_DAYS = int(os.environ.get('SERVER_HEALTH_DAILY_RETENTION_DAYS', 365))
     SERVER_HEALTH_RETENTION_SCHEDULE = os.environ.get('SERVER_HEALTH_RETENTION_SCHEDULE', '02:00')
+    SERVER_HEALTH_ROLLUP_INTEGRITY_SCHEDULE = os.environ.get(
+        'SERVER_HEALTH_ROLLUP_INTEGRITY_SCHEDULE',
+        '03:00'
+    )
+    SERVER_HEALTH_ROLLUP_INTEGRITY_LOOKBACK_DAYS = int(
+        os.environ.get('SERVER_HEALTH_ROLLUP_INTEGRITY_LOOKBACK_DAYS', 45)
+    )
+
+    # Feature flags
+    ENABLE_PRODUCTIVITY_REPORT = os.environ.get('ENABLE_PRODUCTIVITY_REPORT', 'false').lower() == 'true'
+
+    # Report safety and performance controls
+    MAX_REPORT_RANGE_DAYS = int(os.environ.get('MAX_REPORT_RANGE_DAYS', 90))
+    MAX_NETWORK_REPORT_RANGE_DAYS = int(os.environ.get('MAX_NETWORK_REPORT_RANGE_DAYS', 30))
+    MAX_PRODUCTIVITY_REPORT_RANGE_DAYS = int(os.environ.get('MAX_PRODUCTIVITY_REPORT_RANGE_DAYS', 30))
+    MAX_REPORT_ROWS = int(os.environ.get('MAX_REPORT_ROWS', 50000))
+    MAX_EXPORT_ROWS = int(os.environ.get('MAX_EXPORT_ROWS', 50000))
+    REPORT_CACHE_TTL_SECONDS = int(os.environ.get('REPORT_CACHE_TTL_SECONDS', 180))
+    REPORT_STATEMENT_TIMEOUT_MS = int(os.environ.get('REPORT_STATEMENT_TIMEOUT_MS', 5000))
+    REPORT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('REPORT_RATE_LIMIT_PER_MINUTE', 5))
+    REPORT_EXPORT_RATE_LIMIT_PER_MINUTE = int(
+        os.environ.get('REPORT_EXPORT_RATE_LIMIT_PER_MINUTE', 3)
+    )
+    REPORT_ASYNC_JOB_TTL_SECONDS = int(os.environ.get('REPORT_ASYNC_JOB_TTL_SECONDS', 3600))
+    REPORT_MAX_CONCURRENT_EXPORT_JOBS = int(
+        os.environ.get('REPORT_MAX_CONCURRENT_EXPORT_JOBS', 2)
+    )
+    REPORT_ESTIMATED_INTERFACES_PER_DEVICE = int(
+        os.environ.get('REPORT_ESTIMATED_INTERFACES_PER_DEVICE', 4)
+    )
 
     # ─── LDAP / Active Directory ───────────────────────────
     LDAP_ENABLED = os.environ.get('LDAP_ENABLED', 'false').lower() == 'true'
@@ -127,6 +192,11 @@ class Config:
     LDAP_ATTR_EMAIL = os.environ.get('LDAP_ATTR_EMAIL', 'mail')
     LDAP_ATTR_DISPLAY_NAME = os.environ.get('LDAP_ATTR_DISPLAY_NAME', 'displayName')
     LDAP_ATTR_GUID = os.environ.get('LDAP_ATTR_GUID', 'objectGUID')
+    LDAP_GROUP_SEARCH_BASE = os.environ.get('LDAP_GROUP_SEARCH_BASE', '')
+    LDAP_GROUP_SEARCH_FILTER = os.environ.get(
+        'LDAP_GROUP_SEARCH_FILTER',
+        '(|(member={user_dn})(uniqueMember={user_dn})(memberUid={username}))'
+    )
 
     # Role mapping
     LDAP_DEFAULT_ROLE = os.environ.get('LDAP_DEFAULT_ROLE', 'user')

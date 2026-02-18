@@ -86,7 +86,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const bulkAddBtn = document.getElementById('bulkAddBtn');
 
     let currentScanId = null;
-    let currentScanMode = 'heavy';
     let progressInterval = null;
     let isScanning = false;
     let totalDevicesFound = 0;
@@ -196,9 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
 
-        const scanMode = document.querySelector('input[name="scanMode"]:checked').value;
-
-        currentScanMode = scanMode;
+        const scanMode = 'heavy';
         applyScanModeUI();
 
         fetch('/api/scan_network', {
@@ -208,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             body: JSON.stringify({
                 ip_range: ipRange,
-                scan_mode: scanMode
+                scan_mode: 'heavy'
             })
         })
             .then(response => response.json())
@@ -240,10 +237,6 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch(`/api/scan_progress/${currentScanId}`)
             .then(response => response.json())
             .then(data => {
-                if (data.scan_mode) {
-                    currentScanMode = data.scan_mode;
-                    applyScanModeUI();
-                }
                 updateScanProgress(data);
 
                 if (data.status === 'completed' || data.status === 'error' || data.status === 'stopped') {
@@ -305,27 +298,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function isLightScan() {
-        return (currentScanMode || '').toLowerCase() === 'light';
-    }
-
     function applyScanModeUI() {
         if (!bulkActions || !bulkAddBtn) return;
-        if (isLightScan()) {
-            bulkActions.style.display = 'none';
-            bulkAddBtn.disabled = true;
-            selectedIPs.clear();
-            updateBulkUI();
-        } else {
-            bulkAddBtn.disabled = false;
-        }
+        bulkAddBtn.disabled = false;
     }
 
 
     function initializeResultsTable() {
-        const checkboxHeader = isLightScan()
-            ? ''
-            : `
+        const checkboxHeader = `
                             <th style="width: 40px;">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
@@ -434,16 +414,12 @@ document.addEventListener('DOMContentLoaded', function () {
         // Latency
         const latency = device.latency ? `${Math.round(device.latency)} ms` : '-';
 
-        const actionIcons = isLightScan()
-            ? ''
-            : `
+        const actionIcons = `
                 <i class="fas fa-plus action-icon action-add" title="Add to Inventory" data-ip="${device.ip}"></i>
                 <i class="fas fa-search action-icon action-scan" title="Port Scan" data-ip="${device.ip}"></i>
             `;
 
-        const checkboxCell = isLightScan()
-            ? ''
-            : `
+        const checkboxCell = `
             <td>
                 <div class="form-check">
                     <input class="form-check-input device-checkbox" type="checkbox" value="${device.ip}">
@@ -670,11 +646,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     startScanBtn.classList.add('btn-danger');
                     isScanning = true;
 
-                    if (data.scan_mode) {
-                        currentScanMode = data.scan_mode;
-                        applyScanModeUI();
-                    }
-
                     // Initialize table with existing results
                     initializeResultsTable();
 
@@ -718,7 +689,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     device_type: device.device_type || device.type,
                     confidence_score: device.confidence_score,
                     classification_confidence: device.classification_confidence,
-                    classification_details: device.classification_details
+                    classification_details: device.classification_details,
+                    snmp_working: Boolean(device.snmp_working || device.snmp_ok),
+                    snmp_community: device.snmp_community || device.community || '',
+                    snmp_version: device.snmp_version || device.version || '',
+                    snmp_port: device.snmp_port || 161
                 });
             }
         });
@@ -1070,7 +1045,11 @@ kdcproxyname:s:`;
             device_type: device.device_type || device.type,
             confidence_score: device.confidence_score,
             classification_confidence: device.classification_confidence,
-            classification_details: device.classification_details
+            classification_details: device.classification_details,
+            snmp_working: Boolean(device.snmp_working || device.snmp_ok),
+            snmp_community: device.snmp_community || device.community || '',
+            snmp_version: device.snmp_version || device.version || '',
+            snmp_port: device.snmp_port || 161
         };
 
         console.log('Adding device:', payload);

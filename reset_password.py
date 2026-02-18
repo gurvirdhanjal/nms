@@ -1,19 +1,28 @@
-# Change the import to get the existing 'app' instance
-from app import app, db 
+from app import create_app
+from extensions import db, bcrypt
 from models.user import User
-from extensions import bcrypt
+import getpass
 
-# Do NOT call create_app() again. Use the imported 'app'.
+def reset_password():
+    app = create_app()
+    with app.app_context():
+        username = input("Enter username to reset [admin]: ").strip() or "admin"
+        new_password = getpass.getpass(f"Enter new password for '{username}': ")
+        confirm_password = getpass.getpass("Confirm new password: ")
+        
+        if new_password != confirm_password:
+            print("❌ Passwords do not match!")
+            return
 
-with app.app_context():
-    # Find the admin user
-    user = User.query.filter_by(username='admin').first()
-    
-    if user:
-        # Force set the new password
-        hashed_password = bcrypt.generate_password_hash("admin123").decode('utf-8')
-        user.password = hashed_password
-        db.session.commit()
-        print("Success! Password reset to: admin123")
-    else:
-        print("Error: User 'admin' not found in database.")
+        user = User.query.filter_by(username=username).first()
+        if user:
+            # Force update password hash
+            user.password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+            db.session.commit()
+            print(f"✅ Success! Password for user '{username}' has been updated.")
+        else:
+            print(f"❌ Error: User '{username}' not found.")
+
+if __name__ == "__main__":
+    reset_password()
+

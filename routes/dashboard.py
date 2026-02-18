@@ -4,11 +4,17 @@ Provides aggregated health, trends, and problem detection.
 """
 from flask import Blueprint, jsonify, request, session
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import func, desc, case
+from sqlalchemy import func, desc, case, or_
 from utils.server_health import compute_server_health, is_server_device
 from extensions import db
+from middleware.rbac import require_login
 
 dashboard_bp = Blueprint('dashboard_bp', __name__, url_prefix='/api/dashboard')
+
+@dashboard_bp.before_request
+@require_login
+def _dashboard_auth_guard():
+    return None
 
 # ============================================================
 # In-memory cache (simple TTL-based, no Redis required)
@@ -29,6 +35,222 @@ def set_cached(key, value, ttl_seconds=30):
     _cache_ttl[key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
 
 
+def _extract_json_payload(result):
+    """Normalize Flask view return values into (payload, status_code)."""
+    status_code = 200
+    response_obj = result
+
+    if isinstance(result, tuple):
+        response_obj = result[0]
+        if len(result) > 1 and isinstance(result[1], int):
+            status_code = result[1]
+
+    if hasattr(response_obj, 'status_code'):
+        status_code = getattr(response_obj, 'status_code', status_code)
+
+    if hasattr(response_obj, 'get_json'):
+        payload = response_obj.get_json(silent=True)
+    else:
+        payload = response_obj
+
+    return payload, status_code
+
+
+def _collect_section(section_name, builder):
+    """Execute a section builder and return (payload, error_message)."""
+    try:
+        payload, status_code = _extract_json_payload(builder())
+        if status_code >= 400:
+            if isinstance(payload, dict) and payload.get('error'):
+                return None, payload.get('error')
+            return None, f'{section_name} returned HTTP {status_code}'
+        if isinstance(payload, dict) and payload.get('error'):
+            return None, payload.get('error')
+        return payload, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _build_subnet_health(all_devices, latest_scans, ip_to_subnet):
+    """Build per-subnet online/offline breakdown.
+
+    Uses the SAME status logic as the main KPI cards:
+    - 'online' status → online
+    - everything else → offline
+    - devices with no scan → counted in total but not online
+
+    Returns a list sorted by subnet name.
+    """
+    from collections import defaultdict
+
+    # Count totals per subnet from Device table
+    subnet_totals = defaultdict(int)
+    for dev in all_devices:
+        sn = dev.subnet_cidr or 'Unassigned'
+        subnet_totals[sn] += 1
+
+    # Count online per subnet from latest scans
+    subnet_online = defaultdict(int)
+    for scan in latest_scans:
+        status = (scan.status or '').lower()
+        if status == 'online':
+            sn = ip_to_subnet.get(scan.device_ip, 'Unassigned')
+            subnet_online[sn] += 1
+
+    # Build result
+    result = []
+    for sn in sorted(subnet_totals.keys()):
+        total = subnet_totals[sn]
+        online = subnet_online.get(sn, 0)
+        result.append({
+            'subnet': sn,
+            'total': total,
+            'online': online,
+            'offline': total - online
+        })
+    return result
+
+
+@dashboard_bp.route('/subnet-details')
+def get_subnet_details():
+    """
+    Lightweight subnet details payload for the subnet modal.
+    Query params:
+    - subnet: required subnet cidr or "Unassigned"
+    - limit: optional max devices returned (default 500, max 2000)
+    """
+
+    subnet_value = (request.args.get('subnet') or '').strip()
+    if not subnet_value:
+        return jsonify({'error': 'Missing required query param: subnet'}), 400
+
+    try:
+        requested_limit = int(request.args.get('limit', 500))
+    except Exception:
+        requested_limit = 500
+    limit = max(1, min(requested_limit, 2000))
+
+    def _normalize_subnet(value):
+        cleaned = (value or '').strip()
+        return cleaned if cleaned else 'Unassigned'
+
+    def _iso_utc(ts):
+        if not ts:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.isoformat()
+
+    def _normalize_device_type(value):
+        raw = (value or '').strip().lower()
+        if not raw:
+            return 'Unknown'
+        return raw.replace('_', ' ').title()
+
+    try:
+        from models.device import Device
+        from models.scan_history import DeviceScanHistory
+
+        normalized_subnet = _normalize_subnet(subnet_value)
+
+        base_query = Device.query
+        if normalized_subnet.lower() == 'unassigned':
+            base_query = base_query.filter(
+                or_(
+                    Device.subnet_cidr.is_(None),
+                    Device.subnet_cidr == '',
+                    Device.subnet_cidr == 'Unassigned'
+                )
+            )
+        else:
+            base_query = base_query.filter(Device.subnet_cidr == normalized_subnet)
+
+        total_matching = base_query.count()
+        devices = base_query.order_by(Device.device_ip.asc()).limit(limit).all()
+
+        device_ips = [d.device_ip for d in devices if d.device_ip]
+        latest_scan_map = {}
+        if device_ips:
+            latest_subq = db.session.query(
+                DeviceScanHistory.device_ip,
+                func.max(DeviceScanHistory.scan_id).label('max_id')
+            ).filter(
+                DeviceScanHistory.device_ip.in_(device_ips)
+            ).group_by(
+                DeviceScanHistory.device_ip
+            ).subquery()
+
+            latest_scans = db.session.query(DeviceScanHistory).join(
+                latest_subq,
+                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
+                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+            ).all()
+            latest_scan_map = {scan.device_ip: scan for scan in latest_scans}
+
+        rows = []
+        online_count = 0
+        monitored_count = 0
+        server_count = 0
+        type_counts = {}
+        vendor_counts = {}
+
+        for device in devices:
+            scan = latest_scan_map.get(device.device_ip)
+            scan_status = (scan.status or '').strip().lower() if scan else ''
+            status = 'online' if scan_status == 'online' else 'offline'
+            if status == 'online':
+                online_count += 1
+
+            if device.is_monitored:
+                monitored_count += 1
+
+            device_type = _normalize_device_type(device.device_type)
+            vendor = (device.manufacturer or 'Unknown').strip() or 'Unknown'
+            is_server = (device.device_type or '').strip().lower() == 'server'
+            if is_server:
+                server_count += 1
+
+            type_counts[device_type] = type_counts.get(device_type, 0) + 1
+            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
+
+            rows.append({
+                'device_id': device.device_id,
+                'device_name': device.device_name,
+                'hostname': device.hostname,
+                'device_ip': device.device_ip,
+                'device_type': device_type,
+                'manufacturer': vendor,
+                'is_monitored': bool(device.is_monitored),
+                'status': status,
+                'last_seen': _iso_utc(scan.scan_timestamp) if scan else None
+            })
+
+        offline_count = max(len(rows) - online_count, 0)
+        health_pct = round((online_count / len(rows)) * 100, 1) if rows else 0.0
+        top_types = sorted(type_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+        top_vendors = sorted(vendor_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+
+        return jsonify({
+            'generated_at': _iso_utc(datetime.utcnow()),
+            'subnet': normalized_subnet,
+            'summary': {
+                'total': len(rows),
+                'online': online_count,
+                'offline': offline_count,
+                'health_pct': health_pct,
+                'monitored': monitored_count,
+                'servers': server_count
+            },
+            'top_types': [{'name': name, 'count': count} for name, count in top_types],
+            'top_vendors': [{'name': name, 'count': count} for name, count in top_vendors],
+            'devices': rows,
+            'is_truncated': total_matching > len(rows),
+            'total_matching': total_matching
+        })
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
 # ============================================================
 # GET /api/dashboard/summary
 # ============================================================
@@ -41,8 +263,6 @@ def get_summary():
     - Active alerts by severity
     Cache: 30s
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
     
     # Check cache
     cached = get_cached('summary')
@@ -135,6 +355,9 @@ def get_summary():
         # Get all device IPs from Device table
         all_devices = Device.query.all()
         all_device_ips = set([d.device_ip for d in all_devices])
+        
+        # Build device_ip → subnet_cidr map for subnet grouping
+        ip_to_subnet = {d.device_ip: (d.subnet_cidr or 'Unassigned') for d in all_devices}
         
         # Devices without any scan history are truly "Unknown"
         devices_without_scans = all_device_ips - scanned_ips
@@ -237,7 +460,8 @@ def get_summary():
                     'avg_latency_ms': 'Average pong latency of currently online devices.',
                     'network_health': 'General health based on latency and packet loss.'
                 }
-            }
+            },
+            'subnet_health': _build_subnet_health(all_devices, latest_scans, ip_to_subnet)
         }
         
         set_cached('summary', result, ttl_seconds=30)
@@ -246,6 +470,72 @@ def get_summary():
     except Exception as e:
         print(f"Dashboard summary error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# GET /api/dashboard/full_snapshot
+# ============================================================
+@dashboard_bp.route('/full_snapshot')
+def get_full_snapshot():
+    """
+    Consolidated dashboard payload for a single network request and single render cycle.
+    Query params:
+    - range: trends range (24h|7d|30d)
+    - fresh: top-problems cache bypass (1|true|yes)
+    - status: alerts status (active|resolved|all)
+    - limit: alerts limit
+    """
+
+    time_range = request.args.get('range', '24h')
+    alerts_status = request.args.get('status', 'active')
+    alerts_limit = request.args.get('limit', '200')
+    fresh_top_problems = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    snapshot_cache_key = f'full_snapshot_{time_range}_{alerts_status}_{alerts_limit}'
+
+    if not fresh_top_problems:
+        cached_snapshot = get_cached(snapshot_cache_key, ttl_seconds=10)
+        if cached_snapshot:
+            return jsonify(cached_snapshot)
+
+    # Existing endpoint handlers read request.args directly.
+    # We keep arg names identical so behavior remains consistent.
+    from routes.server_metrics import get_server_health_summary, get_fleet_metrics
+
+    sections = {
+        'summary': get_summary,
+        'fleetMetrics': get_fleet_metrics,
+        'topProblems': get_top_problems,
+        'trends': get_trends,
+        'inventory': get_inventory_stats,
+        'serverHealth': get_server_health_summary,
+        'alerts': get_all_alerts
+    }
+
+    payload = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'summary': None,
+        'fleetMetrics': None,
+        'topProblems': None,
+        'trends': None,
+        'inventory': None,
+        'serverHealth': None,
+        'alerts': None
+    }
+    errors = {}
+
+    for key, handler in sections.items():
+        section_payload, section_error = _collect_section(key, handler)
+        payload[key] = section_payload
+        if section_error:
+            errors[key] = section_error
+
+    if errors:
+        payload['errors'] = errors
+
+    if not errors and not fresh_top_problems:
+        set_cached(snapshot_cache_key, payload, ttl_seconds=10)
+
+    return jsonify(payload)
 
 
 # ============================================================
@@ -261,8 +551,6 @@ def get_top_problems():
     - Recently down devices
     Cache: 60s
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
     
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
     if not force_fresh:
@@ -405,8 +693,6 @@ def get_all_alerts():
     Get all alerts with filtering capabilities.
     Query params: status=active|resolved|all, limit=100
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         from models.dashboard import DashboardEvent
@@ -470,8 +756,6 @@ def get_all_alerts():
 # ============================================================
 @dashboard_bp.route('/alerts/<event_id>/acknowledge', methods=['POST'])
 def acknowledge_alert(event_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         from models.dashboard import DashboardEvent
@@ -495,8 +779,6 @@ def acknowledge_alert(event_id):
 # ============================================================
 @dashboard_bp.route('/alerts/<event_id>/resolve', methods=['POST'])
 def resolve_alert(event_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         from models.dashboard import DashboardEvent
@@ -527,8 +809,6 @@ def get_trends():
     Query params: range=1h|24h|7d
     Cache: 5min
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
     
     time_range = request.args.get('range', '24h')
     cache_key = f'trends_{time_range}'
@@ -648,8 +928,6 @@ def get_availability_details():
     - Top 5 worst availability
     Cache: 60s (unless fresh=1)
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
     if not force_fresh:
@@ -769,8 +1047,6 @@ def get_inventory_stats():
     - Device Type distribution
     - SNMP adoption rate
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
     
     try:
         from models.device import Device
@@ -869,8 +1145,6 @@ def get_top_interfaces():
     Returns top 5 interfaces by utilization (RX + TX).
     Lookback: last 2 minutes to ensure recent data.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         from models.interfaces import DeviceInterface, InterfaceTrafficHistory
@@ -946,8 +1220,6 @@ def get_network_io_trend():
     """
     Returns aggregated Network I/O (Sum of all interfaces) for the last hour.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         from models.interfaces import InterfaceTrafficHistory

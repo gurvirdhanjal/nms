@@ -21,7 +21,7 @@ from models.tracked_device import (
     DeviceApplicationLog,
 )
 from models.interfaces import DeviceInterface, InterfaceTrafficHistory
-from sqlalchemy import func, case, desc, and_, extract
+from sqlalchemy import func, case, desc, and_
 from datetime import datetime, timedelta
 
 
@@ -193,25 +193,18 @@ class ReportingService:
             start_date = end_date - timedelta(days=30)
 
         # 1. Activity Heatmap
-        heatmap_data = db.session.query(
-            extract('dow', ServerHealthLog.timestamp).label('day_of_week'),
-            extract('hour', ServerHealthLog.timestamp).label('hour_of_day'),
-            func.count(ServerHealthLog.id).label('activity_count')
-        ).filter(
-            ServerHealthLog.timestamp >= start_date,
-            ServerHealthLog.timestamp <= end_date
-        ).group_by(
-            'day_of_week', 'hour_of_day'
-        ).all()
-
-        formatted_heatmap = []
-        for row in heatmap_data:
-            if row.day_of_week is not None and row.hour_of_day is not None:
-                formatted_heatmap.append([
-                    int(row.day_of_week),
-                    int(row.hour_of_day),
-                    row.activity_count
-                ])
+        span = end_date - start_date
+        if span <= timedelta(hours=24):
+            formatted_heatmap = self._operational_heatmap_from_raw(start_date, end_date)
+            heatmap_granularity = 'raw'
+        elif span <= timedelta(days=30):
+            formatted_heatmap = self._operational_heatmap_from_hourly(start_date, end_date)
+            heatmap_granularity = 'hourly'
+        else:
+            # Daily rollups do not preserve hour-level distribution.
+            # We project daily activity to a single noon bucket for compatibility.
+            formatted_heatmap = self._operational_heatmap_from_daily(start_date, end_date)
+            heatmap_granularity = 'daily'
 
         # 2. Audit Log
         audit_logs = DashboardEvent.query.filter(
@@ -232,9 +225,83 @@ class ReportingService:
                 'end': end_date.isoformat()
             },
             'heatmap': formatted_heatmap,
+            'heatmap_granularity': heatmap_granularity,
             'audit_log': [e.to_dict() for e in audit_logs],
             'new_devices': [d.to_dict() for d in new_devices]
         }
+
+    @staticmethod
+    def _heatmap_day_index(ts):
+        """Convert Python weekday (Mon=0..Sun=6) to heatmap weekday (Sun=0..Sat=6)."""
+        return (ts.weekday() + 1) % 7
+
+    def _operational_heatmap_from_raw(self, start_date, end_date):
+        rows = db.session.query(
+            ServerHealthLog.timestamp
+        ).filter(
+            ServerHealthLog.timestamp >= start_date,
+            ServerHealthLog.timestamp <= end_date
+        ).all()
+
+        buckets = {}
+        for row in rows:
+            ts = row.timestamp
+            if not ts:
+                continue
+            key = (self._heatmap_day_index(ts), ts.hour)
+            buckets[key] = buckets.get(key, 0) + 1
+
+        return [
+            [int(day), int(hour), int(count)]
+            for (day, hour), count in sorted(buckets.items(), key=lambda item: (item[0][0], item[0][1]))
+        ]
+
+    def _operational_heatmap_from_hourly(self, start_date, end_date):
+        rows = db.session.query(
+            ServerHealthHourlyRollup.bucket_hour.label('bucket_hour'),
+            func.sum(ServerHealthHourlyRollup.sample_count).label('activity_count')
+        ).filter(
+            ServerHealthHourlyRollup.bucket_hour >= start_date,
+            ServerHealthHourlyRollup.bucket_hour <= end_date
+        ).group_by(
+            ServerHealthHourlyRollup.bucket_hour
+        ).order_by(
+            ServerHealthHourlyRollup.bucket_hour.asc()
+        ).all()
+
+        return [
+            [
+                int(self._heatmap_day_index(row.bucket_hour)),
+                int(row.bucket_hour.hour),
+                int(row.activity_count or 0)
+            ]
+            for row in rows
+            if row.bucket_hour is not None
+        ]
+
+    def _operational_heatmap_from_daily(self, start_date, end_date):
+        rows = db.session.query(
+            ServerHealthDailyRollup.bucket_day.label('bucket_day'),
+            func.sum(ServerHealthDailyRollup.sample_count).label('activity_count')
+        ).filter(
+            ServerHealthDailyRollup.bucket_day >= start_date.date(),
+            ServerHealthDailyRollup.bucket_day <= end_date.date()
+        ).group_by(
+            ServerHealthDailyRollup.bucket_day
+        ).order_by(
+            ServerHealthDailyRollup.bucket_day.asc()
+        ).all()
+
+        noon_bucket = 12
+        return [
+            [
+                int(self._heatmap_day_index(datetime.combine(row.bucket_day, datetime.min.time()))),
+                noon_bucket,
+                int(row.activity_count or 0)
+            ]
+            for row in rows
+            if row.bucket_day is not None
+        ]
 
     # ─────────────────────────────────────────────────────────────
     # NEW: 1. Device Health Report

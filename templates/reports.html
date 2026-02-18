@@ -798,12 +798,14 @@
                 <i class="fas fa-heartbeat me-2"></i> Device Health
             </button>
         </li>
+        {% if productivity_report_enabled %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="productivity-tab" data-bs-toggle="pill" data-bs-target="#productivity"
                 type="button" role="tab">
                 <i class="fas fa-user-clock me-2"></i> Productivity
             </button>
         </li>
+        {% endif %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="network-tab" data-bs-toggle="pill" data-bs-target="#network" type="button"
                 role="tab">
@@ -1130,6 +1132,7 @@
             </div>
         </div>
 
+        {% if productivity_report_enabled %}
         <!-- Tab 5: Employee Productivity -->
         <div class="tab-pane fade" id="productivity" role="tabpanel">
             <div class="card mb-4">
@@ -1199,6 +1202,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- Tab 6: Network Performance -->
         <div class="tab-pane fade" id="network" role="tabpanel">
@@ -1387,6 +1391,67 @@
     document.addEventListener('DOMContentLoaded', function () {
         // Initialization happens after function definitions below.
 
+        function setTableStatusRow(tbody, colSpan, message, className = 'text-center text-muted p-4') {
+            if (!tbody) return;
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = colSpan;
+            cell.className = className;
+            cell.innerHTML = message;
+            row.appendChild(cell);
+            tbody.textContent = '';
+            tbody.appendChild(row);
+        }
+
+        function patchTableRows(tbody, rows, options = {}) {
+            if (!tbody) return;
+            const data = Array.isArray(rows) ? rows : [];
+            const {
+                getKey = (_, index) => index,
+                renderCells = () => '',
+                applyRow = null,
+                emptyColSpan = null,
+                emptyMessage = '',
+                emptyClassName = 'text-center text-muted p-4'
+            } = options;
+
+            if (!data.length) {
+                if (typeof emptyColSpan === 'number') {
+                    setTableStatusRow(tbody, emptyColSpan, emptyMessage, emptyClassName);
+                } else {
+                    tbody.textContent = '';
+                }
+                return;
+            }
+
+            Array.from(tbody.querySelectorAll('tr:not([data-row-key])')).forEach((row) => row.remove());
+
+            const existing = new Map();
+            Array.from(tbody.querySelectorAll('tr[data-row-key]')).forEach((row) => {
+                existing.set(row.dataset.rowKey, row);
+            });
+
+            data.forEach((item, index) => {
+                const key = String(getKey(item, index));
+                let row = existing.get(key);
+                if (!row) {
+                    row = document.createElement('tr');
+                    row.dataset.rowKey = key;
+                } else {
+                    existing.delete(key);
+                }
+
+                const html = renderCells(item, index);
+                if (row.innerHTML !== html) {
+                    row.innerHTML = html;
+                }
+                if (applyRow) applyRow(row, item, index);
+                tbody.appendChild(row);
+            });
+
+            existing.forEach((staleRow) => staleRow.remove());
+        }
+
         // ==========================================
         // Operational Report Logic
         // ==========================================
@@ -1397,9 +1462,9 @@
             const newDevicesBody = document.querySelector('#newDevicesTable tbody');
 
             // Show Loading
-            heatmapDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading Heatmap...</p></div>';
-            auditTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
-            newDevicesBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
+            heatmapDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading Heatmap...</p><small class="text-muted">Heatmap Source: calculating...</small></div>';
+            setTableStatusRow(auditTableBody, 3, 'Loading...');
+            setTableStatusRow(newDevicesBody, 3, 'Loading...');
 
             fetch(`/api/reports/operational?range=${range}`)
                 .then(res => res.json())
@@ -1410,45 +1475,45 @@
                     }
 
                     // 1. Render Heatmap
-                    renderHeatmap(data.heatmap, heatmapDiv);
+                    renderHeatmap(data.heatmap, heatmapDiv, data.heatmap_granularity || 'raw');
 
                     // 2. Render Audit Log
-                    if (data.audit_log && data.audit_log.length > 0) {
-                        auditTableBody.innerHTML = data.audit_log.map(e => `
-                            <tr>
-                                <td class="nowrap-cell">
-                                    <small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small>
-                                </td>
-                                <td>
-                                    <span class="badge bg-secondary">${e.event_type}</span>
-                                </td>
-                                <td>
-                                    <div class="small">${e.message || 'No details'}</div>
-                                    ${e.device_ip ? `<small class="text-muted monospace">${e.device_ip}</small>` : ''}
-                                </td>
-                            </tr>
-                        `).join('');
-                    } else {
-                        auditTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No recent audit events found.</td></tr>';
-                    }
+                    patchTableRows(auditTableBody, data.audit_log || [], {
+                        getKey: (event, index) => event.id || `${event.timestamp || 'audit'}-${index}`,
+                        emptyColSpan: 3,
+                        emptyMessage: 'No recent audit events found.',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (event) => `
+                            <td class="nowrap-cell">
+                                <small class="text-muted">${new Date(event.timestamp).toLocaleString()}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">${event.event_type}</span>
+                            </td>
+                            <td>
+                                <div class="small">${event.message || 'No details'}</div>
+                                ${event.device_ip ? `<small class="text-muted monospace">${event.device_ip}</small>` : ''}
+                            </td>
+                        `
+                    });
 
                     // 3. Render New Devices
-                    if (data.new_devices && data.new_devices.length > 0) {
-                        newDevicesBody.innerHTML = data.new_devices.map(d => `
-                            <tr>
-                                <td>
-                                    <div class="fw-bold text-white">${d.device_name}</div>
-                                    <small class="text-muted monospace">${d.device_ip}</small>
-                                </td>
-                                <td><span class="badge bg-dark border border-secondary">${d.device_type}</span></td>
-                                <td>
-                                    <small class="text-muted">${d.created_at ? new Date(d.created_at).toLocaleDateString() : 'Unknown'}</small>
-                                </td>
-                            </tr>
-                        `).join('');
-                    } else {
-                        newDevicesBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No new devices added in this period.</td></tr>';
-                    }
+                    patchTableRows(newDevicesBody, data.new_devices || [], {
+                        getKey: (device, index) => device.device_id || device.device_ip || `new-${index}`,
+                        emptyColSpan: 3,
+                        emptyMessage: 'No new devices added in this period.',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (device) => `
+                            <td>
+                                <div class="fw-bold text-white">${device.device_name}</div>
+                                <small class="text-muted monospace">${device.device_ip}</small>
+                            </td>
+                            <td><span class="badge bg-dark border border-secondary">${device.device_type}</span></td>
+                            <td>
+                                <small class="text-muted">${device.created_at ? new Date(device.created_at).toLocaleDateString() : 'Unknown'}</small>
+                            </td>
+                        `
+                    });
                 })
                 .catch(e => {
                     console.error(e);
@@ -1456,7 +1521,7 @@
                 });
         }
 
-        function renderHeatmap(data, container) {
+        function renderHeatmap(data, container, granularity = 'raw') {
             // Data is [day, hour, count]
             // We need to build a grid: 7 rows (Days), 24 cols (Hours)
             const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1503,6 +1568,10 @@
 
             html += '</div>';
             html += '<div class="d-flex justify-content-end mt-2"><small class="text-muted me-2">Less</small> <div style="width:10px; height:10px; background:rgba(255,255,255,0.05)"></div> <div style="width:10px; height:10px; background:rgba(0, 255, 136, 1)"></div> <small class="text-muted ms-2">More</small></div>';
+            html += `<div class="text-end mt-2"><small class="text-muted">Heatmap Source: ${granularity}</small></div>`;
+            if (granularity === 'daily') {
+                html += '<div class="text-end"><small class="text-warning">Daily projection mode for long-range queries.</small></div>';
+            }
 
             container.innerHTML = html;
         }
@@ -1595,7 +1664,7 @@
 
             // Show Loading
             contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing Fleet Data...</p></div>';
-            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-4">Loading...</td></tr>';
+            setTableStatusRow(tableBody, 3, 'Loading...');
 
             fetch(`/api/reports/executive?range=${range}`)
                 .then(res => res.json())
@@ -1633,22 +1702,22 @@
                     renderHealthChart(data.health_distribution);
 
                     // Render Table
-                    if (data.top_problematic && data.top_problematic.length > 0) {
-                        tableBody.innerHTML = data.top_problematic.map(d => `
-                            <tr>
-                                <td>
-                                    <div class="fw-bold text-white">${d.name}</div>
-                                    <small class="text-muted monospace">${d.ip}</small>
-                                </td>
-                                <td><span class="badge bg-secondary opacity-75">${d.type}</span></td>
-                                <td class="text-end">
-                                    <span class="text-danger fw-bold">${d.uptime}%</span>
-                                </td>
-                            </tr>
-                        `).join('');
-                    } else {
-                        tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4"><i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.</td></tr>';
-                    }
+                    patchTableRows(tableBody, data.top_problematic || [], {
+                        getKey: (device, index) => device.device_id || device.ip || `problematic-${index}`,
+                        emptyColSpan: 3,
+                        emptyMessage: '<i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (device) => `
+                            <td>
+                                <div class="fw-bold text-white">${device.name}</div>
+                                <small class="text-muted monospace">${device.ip}</small>
+                            </td>
+                            <td><span class="badge bg-secondary opacity-75">${device.type}</span></td>
+                            <td class="text-end">
+                                <span class="text-danger fw-bold">${device.uptime}%</span>
+                            </td>
+                        `
+                    });
                 })
                 .catch(e => {
                     console.error(e);
@@ -2063,7 +2132,7 @@
             const summaryCards = document.getElementById('dhSummaryCards');
             const tbody = document.querySelector('#dhSummaryTable tbody');
             summaryCards.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">Loading...</td></tr>';
+            setTableStatusRow(tbody, 7, 'Loading...');
 
             fetch(`/api/reports/device-health?range=${range}`)
                 .then(r => r.json())
@@ -2072,19 +2141,21 @@
 
                     // Summary table
                     const s = data.summary || [];
-                    if (s.length) {
-                        tbody.innerHTML = s.map(d => `<tr>
-                            <td class="fw-bold text-white">${d.device_name}</td>
-                            <td>${d.avg_cpu != null ? d.avg_cpu + '%' : '-'}</td>
-                            <td class="text-warning">${d.max_cpu != null ? d.max_cpu + '%' : '-'}</td>
-                            <td>${d.avg_mem != null ? d.avg_mem + '%' : '-'}</td>
-                            <td class="text-warning">${d.max_mem != null ? d.max_mem + '%' : '-'}</td>
-                            <td>${d.avg_disk != null ? d.avg_disk + '%' : '-'}</td>
-                            <td>${d.samples || 0}</td>
-                        </tr>`).join('');
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">No data for this period</td></tr>';
-                    }
+                    patchTableRows(tbody, s, {
+                        getKey: (device, index) => device.device_id || device.device_name || `health-summary-${index}`,
+                        emptyColSpan: 7,
+                        emptyMessage: 'No data for this period',
+                        emptyClassName: 'text-center text-muted p-4',
+                        renderCells: (device) => `
+                            <td class="fw-bold text-white">${device.device_name}</td>
+                            <td>${device.avg_cpu != null ? device.avg_cpu + '%' : '-'}</td>
+                            <td class="text-warning">${device.max_cpu != null ? device.max_cpu + '%' : '-'}</td>
+                            <td>${device.avg_mem != null ? device.avg_mem + '%' : '-'}</td>
+                            <td class="text-warning">${device.max_mem != null ? device.max_mem + '%' : '-'}</td>
+                            <td>${device.avg_disk != null ? device.avg_disk + '%' : '-'}</td>
+                            <td>${device.samples || 0}</td>
+                        `
+                    });
 
                     // KPI cards
                     const avgCpu = s.length ? (s.reduce((a, x) => a + (x.avg_cpu || 0), 0) / s.length).toFixed(1) : '-';
@@ -2123,14 +2194,16 @@
         // ==========================================
         let prodCatChart = null;
         function loadProductivityReport() {
-            const range = document.getElementById('prodRange').value;
+            const rangeEl = document.getElementById('prodRange');
+            const range = rangeEl ? rangeEl.value : '24h';
             const tbody = document.querySelector('#prodAppTable tbody');
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4">Loading...</td></tr>';
+            if (!rangeEl || !tbody) return;
+            setTableStatusRow(tbody, 5, 'Loading...');
 
             fetch(`/api/reports/productivity?range=${range}`)
                 .then(r => r.json())
                 .then(data => {
-                    if (data.error) { tbody.innerHTML = `<tr><td colspan="5"><div class="alert alert-danger">${data.error}</div></td></tr>`; return; }
+                    if (data.error) { setTableStatusRow(tbody, 5, `<div class="alert alert-danger">${data.error}</div>`, ''); return; }
 
                     // Category pie
                     const cats = data.category_totals || {};
@@ -2151,16 +2224,19 @@
                         });
                     });
                     rows.sort((a, b) => b.dur - a.dur);
-                    if (rows.length) {
-                        tbody.innerHTML = rows.slice(0, 50).map(r => {
-                            const hrs = Math.floor(r.dur / 3600); const mins = Math.floor((r.dur % 3600) / 60);
-                            return `<tr><td>${r.employee}</td><td class="fw-bold">${r.app}</td><td><span class="badge bg-dark border border-secondary">${r.cat}</span></td><td class="text-end">${hrs}h ${mins}m</td><td class="text-end">${r.sessions}</td></tr>`;
-                        }).join('');
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No productivity data for this period</td></tr>';
-                    }
+                    patchTableRows(tbody, rows.slice(0, 50), {
+                        getKey: (row, index) => `${row.employee}-${row.app}-${index}`,
+                        emptyColSpan: 5,
+                        emptyMessage: 'No productivity data for this period',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (row) => {
+                            const hrs = Math.floor(row.dur / 3600);
+                            const mins = Math.floor((row.dur % 3600) / 60);
+                            return `<td>${row.employee}</td><td class="fw-bold">${row.app}</td><td><span class="badge bg-dark border border-secondary">${row.cat}</span></td><td class="text-end">${hrs}h ${mins}m</td><td class="text-end">${row.sessions}</td>`;
+                        }
+                    });
                 })
-                .catch(e => { tbody.innerHTML = `<tr><td colspan="5"><div class="alert alert-danger">${e.message}</div></td></tr>`; });
+                .catch(e => { setTableStatusRow(tbody, 5, `<div class="alert alert-danger">${e.message}</div>`, ''); });
         }
 
         // ==========================================
@@ -2171,7 +2247,7 @@
             const kpi = document.getElementById('netKpiCards');
             const tbody = document.querySelector('#netUptimeTable tbody');
             kpi.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-4">Loading...</td></tr>';
+            setTableStatusRow(tbody, 4, 'Loading...');
 
             fetch(`/api/reports/network?range=${range}`)
                 .then(r => r.json())
@@ -2189,14 +2265,16 @@
 
                     // Uptime table
                     const uptime = data.uptime_summary || [];
-                    if (uptime.length) {
-                        tbody.innerHTML = uptime.map(d => {
-                            const uColor = d.avg_uptime >= 99 ? 'text-success' : d.avg_uptime >= 95 ? 'text-warning' : 'text-danger';
-                            return `<tr><td class="fw-bold text-white">${d.device_name}</td><td class="${uColor} fw-bold">${d.avg_uptime != null ? d.avg_uptime + '%' : '-'}</td><td>${d.avg_latency_ms != null ? d.avg_latency_ms + ' ms' : '-'}</td><td>${d.avg_packet_loss != null ? d.avg_packet_loss + '%' : '-'}</td></tr>`;
-                        }).join('');
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No network data for this period</td></tr>';
-                    }
+                    patchTableRows(tbody, uptime, {
+                        getKey: (device, index) => device.device_id || device.device_name || `uptime-${index}`,
+                        emptyColSpan: 4,
+                        emptyMessage: 'No network data for this period',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (device) => {
+                            const uColor = device.avg_uptime >= 99 ? 'text-success' : device.avg_uptime >= 95 ? 'text-warning' : 'text-danger';
+                            return `<td class="fw-bold text-white">${device.device_name}</td><td class="${uColor} fw-bold">${device.avg_uptime != null ? device.avg_uptime + '%' : '-'}</td><td>${device.avg_latency_ms != null ? device.avg_latency_ms + ' ms' : '-'}</td><td>${device.avg_packet_loss != null ? device.avg_packet_loss + '%' : '-'}</td>`;
+                        }
+                    });
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -2253,22 +2331,85 @@
 
                     // Top alerted devices
                     const top = data.top_alerted_devices || [];
-                    topBody.innerHTML = top.length ? top.map(d => `<tr><td class="fw-bold text-white">${d.device_name}</td><td class="text-end text-danger fw-bold">${d.alert_count}</td></tr>`).join('') : '<tr><td colspan="2" class="text-center text-muted py-4">No data</td></tr>';
+                    patchTableRows(topBody, top, {
+                        getKey: (device, index) => device.device_id || device.device_name || `top-alert-${index}`,
+                        emptyColSpan: 2,
+                        emptyMessage: 'No data',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (device) => `<td class="fw-bold text-white">${device.device_name}</td><td class="text-end text-danger fw-bold">${device.alert_count}</td>`
+                    });
 
                     // Alert list
                     const alerts = (data.alerts || []).slice(0, 50);
-                    listBody.innerHTML = alerts.length ? alerts.map(a => {
-                        const sc = { 'CRITICAL': 'bg-danger', 'WARNING': 'bg-warning text-dark', 'INFO': 'bg-info text-dark' };
-                        return `<tr><td class="nowrap-cell"><small class="text-muted">${new Date(a.timestamp).toLocaleString()}</small></td><td>${a.device_name || ''}</td><td><span class="badge ${sc[a.severity] || 'bg-secondary'}">${a.severity}</span></td><td class="small">${a.message || ''}</td></tr>`;
-                    }).join('') : '<tr><td colspan="4" class="text-center text-muted py-4">No alerts</td></tr>';
+                    patchTableRows(listBody, alerts, {
+                        getKey: (alert, index) => alert.id || `${alert.timestamp || 'alert'}-${index}`,
+                        emptyColSpan: 4,
+                        emptyMessage: 'No alerts',
+                        emptyClassName: 'text-center text-muted py-4',
+                        renderCells: (alert) => {
+                            const sc = { 'CRITICAL': 'bg-danger', 'WARNING': 'bg-warning text-dark', 'INFO': 'bg-info text-dark' };
+                            return `<td class="nowrap-cell"><small class="text-muted">${new Date(alert.timestamp).toLocaleString()}</small></td><td>${alert.device_name || ''}</td><td><span class="badge ${sc[alert.severity] || 'bg-secondary'}">${alert.severity}</span></td><td class="small">${alert.message || ''}</td>`;
+                        }
+                    });
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
 
         // ==========================================
-        // Export (server-side download)
+        // Export (async job + server-side download)
         // ==========================================
-        function exportReport(type, format) {
+        function getOrCreateExportStatusEl() {
+            let el = document.getElementById('reportExportStatus');
+            if (el) return el;
+
+            el = document.createElement('div');
+            el.id = 'reportExportStatus';
+            el.className = 'position-fixed top-0 end-0 p-3';
+            el.style.zIndex = '1080';
+            el.style.maxWidth = '420px';
+            document.body.appendChild(el);
+            return el;
+        }
+
+        function showExportStatus(message, level = 'info') {
+            const el = getOrCreateExportStatusEl();
+            const classes = {
+                info: 'alert alert-info mb-0',
+                success: 'alert alert-success mb-0',
+                warning: 'alert alert-warning mb-0',
+                danger: 'alert alert-danger mb-0'
+            };
+            el.innerHTML = `<div class="${classes[level] || classes.info}" role="status">${message}</div>`;
+            if (level === 'danger' || level === 'warning') return;
+            setTimeout(() => {
+                if (el) el.innerHTML = '';
+            }, 3500);
+        }
+
+        function sleep(ms) {
+            return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
+        async function waitForExportJob(statusUrl, timeoutMs = 300000) {
+            const startedAt = Date.now();
+            while ((Date.now() - startedAt) < timeoutMs) {
+                const response = await fetch(statusUrl, { cache: 'no-store' });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to check export status.');
+                }
+                if (data.status === 'completed') {
+                    return data;
+                }
+                if (data.status === 'failed') {
+                    throw new Error(data.error || 'Export job failed.');
+                }
+                await sleep(1500);
+            }
+            throw new Error('Export job timed out. Please reduce range and try again.');
+        }
+
+        async function exportReport(type, format) {
             const rangeMap = {
                 'device-health': 'dhRange',
                 'productivity': 'prodRange',
@@ -2279,12 +2420,42 @@
             };
             const rangeEl = document.getElementById(rangeMap[type]);
             const range = rangeEl ? rangeEl.value : '24h';
-            let url = `/api/reports/${type}/export?format=${format}&range=${range}`;
+
+            const payload = {
+                format: format,
+                range: range
+            };
             if (type === 'alerts') {
-                const sev = document.getElementById('alertSeverity')?.value;
-                if (sev) url += `&severity=${sev}`;
+                const sev = document.getElementById('alertSeverity')?.value || '';
+                if (sev) payload.severity = sev;
             }
-            window.location.href = url;
+
+            try {
+                showExportStatus('Export queued. Preparing file...', 'info');
+                const response = await fetch(`/api/reports/${type}/export-jobs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create export job.');
+                }
+
+                showExportStatus('Export running. Download will start automatically.', 'info');
+                const statusData = await waitForExportJob(data.status_url);
+                const downloadUrl = statusData.download_url || data.download_url;
+                if (!downloadUrl) {
+                    throw new Error('Export finished but no download URL was returned.');
+                }
+
+                showExportStatus('Export ready. Downloading now...', 'success');
+                window.location.href = downloadUrl;
+            } catch (error) {
+                showExportStatus(error.message || 'Export failed.', 'danger');
+            }
         }
 
         // ==========================================

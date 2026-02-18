@@ -15,6 +15,7 @@ import re
 import threading
 import time
 from datetime import datetime
+from sqlalchemy.orm.exc import StaleDataError, ObjectDeletedError
 
 import psutil
 
@@ -133,12 +134,22 @@ class AutoDiscoveryService:
                 cfg.last_new_count = new_count
                 cfg.last_updated_count = updated_count
                 cfg.last_error = error_msg
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception as commit_error:
+                    db.session.rollback()
+                    print(f"[AutoDiscovery] Light sweep metadata commit failed: {commit_error}")
 
                 print(f"[AutoDiscovery] Light sweep done in {duration}s — "
                       f"new={new_count}, updated={updated_count}")
         finally:
-            _scan_lock.release()
+            try:
+                with app.app_context():
+                    db.session.remove()
+            except Exception as cleanup_error:
+                print(f"[AutoDiscovery] Light sweep cleanup warning: {cleanup_error}")
+            finally:
+                _scan_lock.release()
 
     def _sweep_subnet(self, cfg, subnet_cidr, arp_cache):
         """Ping every host in a /24-ish subnet, reconcile results."""
@@ -206,7 +217,11 @@ class AutoDiscoveryService:
                 _pending_devices.pop(ip, None)
 
         if new_count > 0 or updated_count > 0:
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as commit_error:
+                db.session.rollback()
+                print(f"[AutoDiscovery] Light sweep upsert commit failed: {commit_error}")
 
         return new_count, updated_count
 
@@ -255,6 +270,7 @@ class AutoDiscoveryService:
                 try:
                     updated_count = self._enrich_devices(cfg)
                 except Exception as e:
+                    db.session.rollback()
                     error_msg = str(e)
                     print(f"[AutoDiscovery] Heavy scan error: {e}")
 
@@ -264,23 +280,44 @@ class AutoDiscoveryService:
                 cfg.last_scan_duration = duration
                 cfg.last_updated_count = updated_count
                 cfg.last_error = error_msg
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception as commit_error:
+                    db.session.rollback()
+                    print(f"[AutoDiscovery] Heavy scan metadata commit failed: {commit_error}")
 
                 print(f"[AutoDiscovery] Heavy scan done in {duration}s — updated={updated_count}")
         finally:
-            _scan_lock.release()
+            try:
+                with app.app_context():
+                    db.session.remove()
+            except Exception as cleanup_error:
+                print(f"[AutoDiscovery] Heavy scan cleanup warning: {cleanup_error}")
+            finally:
+                _scan_lock.release()
 
     def _enrich_devices(self, cfg):
         """For each active device, try SNMP enrichment → fallback port scan."""
         from models.device import Device
         from services.snmp_service import snmp_service
 
-        devices = Device.query.filter_by(is_active=True).all()
+        device_ids = [
+            row[0]
+            for row in db.session.query(Device.device_id).filter_by(is_active=True).all()
+        ]
         updated = 0
 
-        for device in devices:
+        for device_id in device_ids:
+            device = db.session.get(Device, device_id)
+            if not device:
+                continue
+
             ip = device.device_ip
+            if not ip:
+                continue
+
             enriched = False
+            changed = False
 
             # ---- Try SNMP first ----
             try:
@@ -303,8 +340,6 @@ class AutoDiscoveryService:
 
                 if sys_info and sys_info.get("sys_name"):
                     # SNMP reachable — enrich
-                    changed = False
-
                     sys_name = sys_info.get("sys_name", "")
                     sys_descr = sys_info.get("sys_descr", "")
 
@@ -319,11 +354,13 @@ class AutoDiscoveryService:
                             device.manufacturer = mfr
                             changed = True
 
-                    if changed:
-                        updated += 1
                     enriched = True
 
-            except Exception as e:
+            except (StaleDataError, ObjectDeletedError) as stale_error:
+                db.session.rollback()
+                print(f"[AutoDiscovery] Device became stale during SNMP enrichment ({ip}): {stale_error}")
+                continue
+            except Exception:
                 # SNMP not available — will fallback
                 pass
 
@@ -343,7 +380,7 @@ class AutoDiscoveryService:
                             )
                             if mfr and (not device.manufacturer or device.manufacturer in ("Unknown", "N/A", "")):
                                 device.manufacturer = mfr
-                                updated += 1
+                                changed = True
                     finally:
                         loop.close()
 
@@ -351,13 +388,21 @@ class AutoDiscoveryService:
                     hostname = self.scanner.get_hostname(ip)
                     if hostname and (not device.hostname or device.hostname in ("Unknown", "N/A", "")):
                         device.hostname = hostname
-                        updated += 1
+                        changed = True
 
                 except Exception:
                     pass
 
-        if updated > 0:
-            db.session.commit()
+            if changed:
+                try:
+                    db.session.commit()
+                    updated += 1
+                except (StaleDataError, ObjectDeletedError) as stale_error:
+                    db.session.rollback()
+                    print(f"[AutoDiscovery] Device disappeared before commit ({ip}): {stale_error}")
+                except Exception as commit_error:
+                    db.session.rollback()
+                    print(f"[AutoDiscovery] Device enrichment commit failed ({ip}): {commit_error}")
 
         return updated
 

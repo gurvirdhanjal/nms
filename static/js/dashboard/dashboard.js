@@ -1,8 +1,8 @@
 /**
  * Dashboard Orchestrator
  */
-import { fetchSummary, fetchTopProblems, fetchTrends, fetchInventory, fetchServerHealth, fetchAlerts, fetchFleetMetrics, fetchAvailabilityDetails } from './api.js';
-import { updateState, getState, subscribe, loadFromCache } from './state.js';
+import { fetchFullSnapshot, fetchAvailabilityDetails, fetchSubnetDetails } from './api.js';
+import { updateState, updateStateBatch, getState, subscribe, loadFromCache, mergeRealtimeUpdate } from './state.js';
 import { renderDevicesOnline } from './cards/devicesOnline.js';
 import { renderDeviceStatusCards } from './cards/deviceStatus.js';
 import { renderNetworkAvailability } from './cards/networkAvailability.js';
@@ -15,6 +15,8 @@ import { renderServerHealthSummary, renderServerHealthTable, initServerHealthTab
 import { initAlertCenter, renderAlertCenter } from './alerts/alertCenter.js';
 import { renderConnectionIndicator, initConnectionIndicator } from './connectionIndicator.js';
 import { timeAgo, setupTacticalDropdown, formatPercent, formatNumber } from './utils.js';
+import { initSSE } from './sseClient.js';
+import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -24,6 +26,11 @@ const dashboardBootKey = '__dashboardBooted';
 // Polling state
 let pollingInterval = null;
 const POLLING_INTERVAL_MS = 30000;
+const SSE_REFRESH_DEBOUNCE_MS = 1200;
+let isSSEConnected = false;
+let sseInitialized = false;
+let sseRefreshTimer = null;
+let sseRefreshForceFreshTopProblems = false;
 
 // Batch DOM updates to the next animation frame
 // Batch DOM updates to the next animation frame
@@ -32,6 +39,11 @@ let latestState = null;
 let booting = true;
 let maintenanceModalInstance = null;
 let availabilityModalInstance = null;
+let subnetModalInstance = null;
+let latestSubnetHealthRows = [];
+let subnetDetailsRequestSeq = 0;
+const SUBNET_DETAILS_CACHE_TTL_MS = 15000;
+const subnetDetailsCache = new Map();
 
 // Init
 if (document.readyState === 'loading') {
@@ -45,7 +57,8 @@ function initDashboard() {
     if (window[dashboardBootKey]) {
         // Page might be restored from cache; just refresh data
         refreshAll().catch(() => { });
-        startPolling();
+        if (!sseInitialized) initRealtimeTransport();
+        if (!isSSEConnected) startPolling('restore');
         return;
     }
     window[dashboardBootKey] = true;
@@ -57,6 +70,7 @@ function initDashboard() {
         // 1. Initialize connection indicator (polling mode)
         console.log('[Dashboard] Setting up connection indicator (polling)...');
         initConnectionIndicator();
+        initRealtimeTransport();
 
         // 2. Initialize Discovery UI
         initDiscovery();
@@ -79,14 +93,15 @@ function initDashboard() {
 
         // Defer the network request slightly to let the UI paint first
         requestAnimationFrame(() => {
-            refreshAll().catch(err => {
+            refreshAll({ source: 'bootstrap-initial', ignoreModalGate: true }).catch(err => {
                 console.error('[Dashboard] Async fetch error:', err);
                 showGlobalError(`Fetch Error: ${err.message}`);
             });
         });
 
-        // 5. Start polling loop (30s)
-        startPolling();
+        // 5. Start polling fallback loop while SSE connects.
+        // Polling auto-stops when SSE is connected.
+        startPolling('bootstrap');
 
         // 5. Setup Manual Refresh Button
         const refreshBtn = document.getElementById('btn-refresh');
@@ -130,6 +145,7 @@ function initDashboard() {
 
         // 9. Init Inventory Interactions
         initInventoryInteractions();
+        initSubnetInteractions();
 
         // 10. Init Server Modal
         initServerModal();
@@ -157,24 +173,133 @@ function initDashboard() {
 /**
  * Start polling loop (always on).
  */
-function startPolling() {
+function startPolling(reason = 'fallback') {
     if (pollingInterval) return;
-    console.log('[Dashboard] Starting polling (30s interval)');
-    pollingInterval = setInterval(refreshAll, POLLING_INTERVAL_MS);
+    console.log(`[Dashboard] Starting polling fallback (${POLLING_INTERVAL_MS / 1000}s interval)`, reason);
+    renderConnectionIndicator('polling_fallback');
+    pollingInterval = setInterval(() => {
+        refreshAll({ source: 'polling' }).catch((err) => {
+            console.error('[Dashboard] Polling refresh failed:', err);
+        });
+    }, POLLING_INTERVAL_MS);
+}
+
+function stopPolling() {
+    if (!pollingInterval) return;
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+}
+
+function initRealtimeTransport() {
+    if (sseInitialized) return;
+    sseInitialized = true;
+
+    initSSE({
+        onConnectionChange: handleSSEConnectionChange,
+        onDeviceStatus: (payload) => handleSSEEvent('device_status', payload),
+        onDeviceUpdate: (payload) => handleSSEEvent('device_update', payload),
+        onAlertCreated: (payload) => handleSSEEvent('alert_created', payload),
+        onLatencySpike: (payload) => handleSSEEvent('latency_spike', payload),
+        onInterfaceThreshold: (payload) => handleSSEEvent('interface_threshold', payload),
+        onClassificationUpdate: (payload) => handleSSEEvent('classification_update', payload)
+    });
+}
+
+function handleSSEConnectionChange(status) {
+    if (status === 'connected') {
+        isSSEConnected = true;
+        stopPolling();
+        renderConnectionIndicator('sse_connected');
+        const state = getState();
+        const lastUpdateTs = state.lastUpdated ? new Date(state.lastUpdated).getTime() : 0;
+        const isStale = !lastUpdateTs || (Date.now() - lastUpdateTs > POLLING_INTERVAL_MS);
+        if (!state.summary || isStale) {
+            refreshAll({ source: 'sse-connect-sync', ignoreModalGate: true }).catch((err) => {
+                console.error('[Dashboard] SSE connect sync refresh failed:', err);
+            });
+        }
+        return;
+    }
+
+    if (status === 'connecting') {
+        renderConnectionIndicator('sse_connecting');
+        return;
+    }
+
+    // disconnected
+    isSSEConnected = false;
+    renderConnectionIndicator('polling_fallback');
+
+    if (document.visibilityState === 'visible') {
+        startPolling('sse-disconnected');
+        refreshAll({ source: 'sse-fallback' }).catch((err) => {
+            console.error('[Dashboard] SSE fallback refresh failed:', err);
+        });
+    }
+}
+
+function handleSSEEvent(eventType, payload) {
+    try {
+        mergeRealtimeUpdate(eventType, payload || {});
+    } catch (err) {
+        console.error('[Dashboard] Failed to merge SSE event:', eventType, err);
+    }
+
+    // Keep full refresh coalesced and limited. Classification updates can be noisy.
+    const shouldRefresh =
+        eventType === 'device_status' ||
+        eventType === 'device_update' ||
+        eventType === 'alert_created' ||
+        eventType === 'latency_spike' ||
+        eventType === 'interface_threshold';
+
+    if (!shouldRefresh) return;
+
+    scheduleSSERefresh({
+        forceFreshTopProblems: eventType === 'alert_created' || eventType === 'latency_spike'
+    });
+}
+
+function scheduleSSERefresh({ forceFreshTopProblems = false } = {}) {
+    if (document.visibilityState === 'hidden') return;
+    if (forceFreshTopProblems) {
+        sseRefreshForceFreshTopProblems = true;
+    }
+
+    if (sseRefreshTimer) return;
+
+    sseRefreshTimer = setTimeout(() => {
+        sseRefreshTimer = null;
+        const refreshOptions = {
+            source: 'sse',
+            forceFreshTopProblems: sseRefreshForceFreshTopProblems
+        };
+        sseRefreshForceFreshTopProblems = false;
+        refreshAll(refreshOptions).catch((err) => {
+            console.error('[Dashboard] SSE refresh failed:', err);
+        });
+    }, SSE_REFRESH_DEBOUNCE_MS);
 }
 
 async function refreshAll(options = {}) {
-    if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
+    const { forceFreshTopProblems = false, source = 'manual', ignoreModalGate = false } = options;
+
+    // SSE primary: skip periodic polling work while SSE is healthy.
+    if (source === 'polling' && isSSEConnected) {
+        return;
+    }
+
+    const hasOpenModal = !!document.querySelector('.modal.show');
+    if (window.cleanupBootstrapModal && !hasOpenModal) {
         window.cleanupBootstrapModal();
     }
-    if (document.querySelector('.modal.show')) {
+    if (hasOpenModal && !ignoreModalGate) {
         console.log('[Dashboard] Modal open; skipping refresh');
         return;
     }
     console.log('[Dashboard] Refreshing data...');
     updateState('isLoading', true);
 
-    const { forceFreshTopProblems = false } = options;
     const timeRange = document.querySelector('#time-range-container .dropdown-toggle')?.dataset.value || '24h';
 
     // Helper for timeout
@@ -183,20 +308,32 @@ async function refreshAll(options = {}) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
     ]);
 
-    // 1. CRITICAL DATA (Summary + Fleet)
-    // These are needed for the top-fold KPIs.
-    const criticalPromises = [
-        fetchWithTimeout(fetchSummary()).then(summary => updateState('summary', summary)),
-        fetchWithTimeout(fetchFleetMetrics()).then(fleetMetrics => updateState('fleetMetrics', fleetMetrics))
-    ];
+    try {
+        const snapshot = await fetchWithTimeout(fetchFullSnapshot({
+            range: timeRange,
+            forceFreshTopProblems,
+            alertsStatus: 'active',
+            alertsLimit: 200
+        }));
 
-    // Wait for critical data
-    await Promise.allSettled(criticalPromises);
+        const sectionErrors = snapshot?.errors || {};
+        const nextState = { isLoading: false };
+        if (!('summary' in sectionErrors) && snapshot.summary !== undefined) nextState.summary = snapshot.summary;
+        if (!('fleetMetrics' in sectionErrors) && snapshot.fleetMetrics !== undefined) nextState.fleetMetrics = snapshot.fleetMetrics;
+        if (!('topProblems' in sectionErrors) && snapshot.topProblems !== undefined) nextState.topProblems = snapshot.topProblems;
+        if (!('trends' in sectionErrors) && snapshot.trends !== undefined) nextState.trends = snapshot.trends;
+        if (!('inventory' in sectionErrors) && snapshot.inventory !== undefined) nextState.inventory = snapshot.inventory;
+        if (!('serverHealth' in sectionErrors) && snapshot.serverHealth !== undefined) nextState.serverHealth = snapshot.serverHealth;
+        if (!('alerts' in sectionErrors) && snapshot.alerts !== undefined) nextState.alerts = snapshot.alerts;
+        updateStateBatch(nextState);
 
-    // Initial critical render is done via updateState -> subscribe -> scheduleRender
-
-    // Stop loading indicator immediately after critical data
-    updateState('isLoading', false);
+        if (Object.keys(sectionErrors).length > 0) {
+            console.warn('[Dashboard] Snapshot returned partial errors:', sectionErrors);
+        }
+    } catch (err) {
+        updateStateBatch({ isLoading: false });
+        throw err;
+    }
 
     // If this was the boot sequence, we can now allow full rendering
     if (booting) {
@@ -205,27 +342,6 @@ async function refreshAll(options = {}) {
             // Force a full re-render state check
             scheduleRender(getState());
         }, 100);
-    }
-
-    // 2. SECONDARY DATA (De-prioritized)
-    // Fetched in idle time so we don't block the UI thread
-    const fetchSecondary = () => {
-        // Top Problems
-        fetchWithTimeout(fetchTopProblems(forceFreshTopProblems)).then(topProblems => updateState('topProblems', topProblems)).catch(console.error);
-        // Trends
-        fetchWithTimeout(fetchTrends(timeRange)).then(trends => updateState('trends', trends)).catch(console.error);
-        // Inventory
-        fetchWithTimeout(fetchInventory()).then(inventory => updateState('inventory', inventory)).catch(console.error);
-        // Server Health
-        fetchWithTimeout(fetchServerHealth()).then(serverHealth => updateState('serverHealth', serverHealth)).catch(console.error);
-        // Alerts
-        fetchWithTimeout(fetchAlerts('active', 200)).then(alerts => updateState('alerts', alerts)).catch(console.error);
-    };
-
-    if ('requestIdleCallback' in window) {
-        requestIdleCallback(fetchSecondary);
-    } else {
-        setTimeout(fetchSecondary, 50);
     }
 }
 
@@ -241,6 +357,7 @@ function renderCritical(state) {
             safeRender('Devices Online', () => renderDevicesOnline(state.summary, ts));
             safeRender('Device Status Cards', () => renderDeviceStatusCards(state.summary, ts));
             safeRender('Overall Health', () => renderOverallHealth(state));
+            safeRender('Subnet Health', () => renderSubnetHealth(state.summary.subnet_health));
         }
 
         // 2. Fleet Overview (KPIs)
@@ -556,7 +673,12 @@ async function renderMaintenanceList() {
     const tbody = document.getElementById('maintenance-list-body');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</td></tr>';
+    setTableMessageRow(
+        tbody,
+        5,
+        '<i class="fas fa-spinner fa-spin me-2"></i>Loading...',
+        'text-center text-secondary py-3'
+    );
     try {
         const res = await fetch('/api/maintenance/devices');
         const data = await res.json();
@@ -565,27 +687,26 @@ async function renderMaintenanceList() {
         }
 
         const maintenanceDevices = (data.devices || []).filter(d => d.maintenance_mode);
-        if (maintenanceDevices.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No devices in maintenance mode.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = maintenanceDevices.map(d => `
-            <tr>
-                <td class="fw-bold text-white">${d.device_name || 'Unknown'}</td>
-                <td><code>${d.device_ip || '-'}</code></td>
-                <td>${d.device_type || 'Unknown'}</td>
+        patchKeyedTableRows(tbody, maintenanceDevices, {
+            getKey: (device, index) => device.device_id || device.device_ip || `maintenance-${index}`,
+            emptyColSpan: 5,
+            emptyMessage: 'No devices in maintenance mode.',
+            emptyClassName: 'text-center text-muted py-3',
+            renderCells: (device) => `
+                <td class="fw-bold text-white">${device.device_name || 'Unknown'}</td>
+                <td><code>${device.device_ip || '-'}</code></td>
+                <td>${device.device_type || 'Unknown'}</td>
                 <td><span class="badge bg-warning text-dark"><i class="fas fa-wrench"></i> Maintenance</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-warning maintenance-toggle-btn" data-device-id="${d.device_id}">
+                    <button class="btn btn-sm btn-outline-warning maintenance-toggle-btn" data-device-id="${device.device_id}">
                         Disable
                     </button>
                 </td>
-            </tr>
-        `).join('');
+            `
+        });
     } catch (err) {
         console.error("Failed to load maintenance devices", err);
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Failed to load data.</td></tr>';
+        setTableMessageRow(tbody, 5, 'Failed to load data.', 'text-center text-danger py-3');
     }
 }
 
@@ -646,8 +767,8 @@ async function renderAvailabilityDetails() {
     const worstBody = document.getElementById('availability-worst-body');
 
     if (heatmapEl) heatmapEl.innerHTML = '<div class="text-secondary">Loading...</div>';
-    if (downtimeBody) downtimeBody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary p-3">Loading...</td></tr>';
-    if (worstBody) worstBody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary p-3">Loading...</td></tr>';
+    if (downtimeBody) setTableMessageRow(downtimeBody, 4, 'Loading...', 'text-center text-secondary p-3');
+    if (worstBody) setTableMessageRow(worstBody, 4, 'Loading...', 'text-center text-secondary p-3');
 
     try {
         const data = await fetchAvailabilityDetails(true);
@@ -661,8 +782,8 @@ async function renderAvailabilityDetails() {
     } catch (err) {
         console.error('[Dashboard] Availability detail error:', err);
         if (heatmapEl) heatmapEl.innerHTML = '<div class="text-danger">Failed to load heatmap.</div>';
-        if (downtimeBody) downtimeBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger p-3">Failed to load data.</td></tr>';
-        if (worstBody) worstBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger p-3">Failed to load data.</td></tr>';
+        if (downtimeBody) setTableMessageRow(downtimeBody, 4, 'Failed to load data.', 'text-center text-danger p-3');
+        if (worstBody) setTableMessageRow(worstBody, 4, 'Failed to load data.', 'text-center text-danger p-3');
     } finally {
         availabilityInFlight = false;
     }
@@ -698,42 +819,44 @@ function renderAvailabilityRows(rows, tbody, mode) {
         const emptyMessage = mode === 'worst'
             ? 'No availability records yet.'
             : 'No downtime recorded in the last 24 hours.';
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-secondary p-3">${emptyMessage}</td></tr>`;
+        setTableMessageRow(tbody, 4, emptyMessage, 'text-center text-secondary p-3');
         return;
     }
 
     if (mode === 'downtime') {
-        tbody.innerHTML = rows.map((row) => {
-            const name = row.device_name || 'Unknown';
-            const ip = row.ip || '-';
-            const offline = formatNumber(row.offline_scans ?? 0);
-            const downtimePct = formatPercent(row.downtime_pct ?? 0);
-            return `
-                <tr>
+        patchKeyedTableRows(tbody, rows, {
+            getKey: (row, index) => row.device_id || row.ip || `downtime-${index}`,
+            renderCells: (row) => {
+                const name = row.device_name || 'Unknown';
+                const ip = row.ip || '-';
+                const offline = formatNumber(row.offline_scans ?? 0);
+                const downtimePct = formatPercent(row.downtime_pct ?? 0);
+                return `
                     <td class="fw-bold text-white">${name}</td>
                     <td><code>${ip}</code></td>
                     <td>${offline}</td>
                     <td>${downtimePct}</td>
-                </tr>
-            `;
-        }).join('');
+                `;
+            }
+        });
         return;
     }
 
-    tbody.innerHTML = rows.map((row) => {
-        const name = row.device_name || 'Unknown';
-        const ip = row.ip || '-';
-        const uptime = formatPercent(row.uptime_pct ?? 0);
-        const offline = formatNumber(row.offline_scans ?? 0);
-        return `
-            <tr>
+    patchKeyedTableRows(tbody, rows, {
+        getKey: (row, index) => row.device_id || row.ip || `worst-${index}`,
+        renderCells: (row) => {
+            const name = row.device_name || 'Unknown';
+            const ip = row.ip || '-';
+            const uptime = formatPercent(row.uptime_pct ?? 0);
+            const offline = formatNumber(row.offline_scans ?? 0);
+            return `
                 <td class="fw-bold text-white">${name}</td>
                 <td><code>${ip}</code></td>
                 <td>${uptime}</td>
                 <td>${offline}</td>
-            </tr>
-        `;
-    }).join('');
+            `;
+        }
+    });
 }
 
 function formatAvailabilityHour(isoString) {
@@ -797,6 +920,279 @@ function isTabVisible(id) {
     return window.getComputedStyle(el).display !== 'none';
 }
 
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizeSubnetValue(value) {
+    const cleaned = String(value ?? '').trim();
+    return cleaned || 'Unassigned';
+}
+
+function formatSubnetHealthLabel(healthPct) {
+    if (healthPct < 50) return 'Critical';
+    if (healthPct < 90) return 'Degraded';
+    return 'Healthy';
+}
+
+function normalizeDeviceTypeLabel(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return 'Unknown';
+    return raw.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatTopBreakdown(items, maxItems = 3) {
+    if (!Array.isArray(items) || items.length === 0) return '-';
+    return items
+        .slice(0, maxItems)
+        .map((item) => `${item.name} (${item.count})`)
+        .join(', ');
+}
+
+function getCachedSubnetDetails(subnetKey) {
+    const cached = subnetDetailsCache.get(subnetKey);
+    if (!cached) return null;
+    if ((Date.now() - cached.at) > SUBNET_DETAILS_CACHE_TTL_MS) {
+        subnetDetailsCache.delete(subnetKey);
+        return null;
+    }
+    return cached.data;
+}
+
+function setCachedSubnetDetails(subnetKey, data) {
+    subnetDetailsCache.set(subnetKey, {
+        data,
+        at: Date.now()
+    });
+}
+
+function buildFallbackSubnetDetails(subnetKey, state, subnetRow) {
+    const allDevices = Array.isArray(state.inventory?.devices) ? state.inventory.devices : [];
+    const devices = allDevices
+        .filter((device) => normalizeSubnetValue(device.subnet_cidr) === subnetKey)
+        .map((device) => ({
+            device_id: device.device_id,
+            device_name: device.device_name || device.hostname || 'Unknown',
+            hostname: device.hostname,
+            device_ip: device.device_ip,
+            device_type: normalizeDeviceTypeLabel(device.device_type),
+            manufacturer: (device.manufacturer || 'Unknown'),
+            is_monitored: !!device.is_monitored,
+            status: 'unknown',
+            last_seen: null
+        }));
+
+    const total = Number(subnetRow?.total) || devices.length || 0;
+    const online = Number(subnetRow?.online) || 0;
+    const offline = Number(subnetRow?.offline) || Math.max(0, total - online);
+    const healthPct = total > 0 ? Math.round((online / total) * 1000) / 10 : 0;
+    const monitored = devices.filter((device) => device.is_monitored).length;
+    const servers = devices.filter(
+        (device) => String(device.device_type || '').toLowerCase() === 'server'
+    ).length;
+
+    const typeCounts = new Map();
+    const vendorCounts = new Map();
+    devices.forEach((device) => {
+        typeCounts.set(device.device_type, (typeCounts.get(device.device_type) || 0) + 1);
+        vendorCounts.set(device.manufacturer, (vendorCounts.get(device.manufacturer) || 0) + 1);
+    });
+
+    const topTypes = Array.from(typeCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+    const topVendors = Array.from(vendorCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+
+    return {
+        generated_at: state.summary?.timestamp || (state.lastUpdated ? new Date(state.lastUpdated).toISOString() : null),
+        subnet: subnetKey,
+        summary: {
+            total,
+            online,
+            offline,
+            health_pct: healthPct,
+            monitored,
+            servers
+        },
+        top_types: topTypes,
+        top_vendors: topVendors,
+        devices
+    };
+}
+
+function renderSubnetModalDetails(details) {
+    const payload = details || {};
+    const summary = payload.summary || {};
+
+    const total = Number(summary.total) || 0;
+    const online = Number(summary.online) || 0;
+    const offline = Number(summary.offline) || Math.max(0, total - online);
+    const monitored = Number(summary.monitored) || 0;
+    const servers = Number(summary.servers) || 0;
+    const healthPctRaw = Number(summary.health_pct);
+    const healthPct = Number.isFinite(healthPctRaw)
+        ? healthPctRaw
+        : (total > 0 ? Math.round((online / total) * 1000) / 10 : 0);
+    const healthLabel = formatSubnetHealthLabel(healthPct);
+    const subnetLabel = normalizeSubnetValue(payload.subnet);
+    const generatedAt = payload.generated_at ? new Date(payload.generated_at).toLocaleString() : '-';
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value ?? '-');
+    };
+
+    setText('subnet-modal-title', `Subnet ${subnetLabel}`);
+    setText('subnet-modal-updated', `Updated: ${generatedAt}`);
+    setText('subnet-modal-total', total);
+    setText('subnet-modal-online', online);
+    setText('subnet-modal-offline', offline);
+    setText('subnet-modal-health', `${healthLabel} (${healthPct}%)`);
+    setText('subnet-modal-monitored', monitored);
+    setText('subnet-modal-servers', servers);
+    setText('subnet-modal-types', formatTopBreakdown(payload.top_types));
+    setText('subnet-modal-vendors', formatTopBreakdown(payload.top_vendors));
+
+    const tbody = document.getElementById('subnet-modal-devices-body');
+    if (!tbody) return;
+
+    patchKeyedTableRows(tbody, Array.isArray(payload.devices) ? payload.devices : [], {
+        getKey: (device, index) => device.device_id || device.device_ip || `subnet-device-${index}`,
+        emptyColSpan: 5,
+        emptyMessage: 'No devices mapped to this subnet yet.',
+        emptyClassName: 'text-center text-secondary p-3',
+        renderCells: (device) => {
+            const name = escapeHtml(device.device_name || device.hostname || 'Unknown');
+            const ip = escapeHtml(device.device_ip || '-');
+            const type = escapeHtml(normalizeDeviceTypeLabel(device.device_type));
+            const vendor = escapeHtml(device.manufacturer || 'Unknown');
+            const monitoredText = device.is_monitored ? 'Yes' : 'No';
+            const statusRaw = String(device.status || 'unknown').toLowerCase();
+            const statusLabel = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+            const statusClass = statusRaw === 'online'
+                ? 'text-success'
+                : (statusRaw === 'offline' ? 'text-danger' : 'text-secondary');
+            const lastSeen = device.last_seen ? timeAgo(device.last_seen) : '-';
+            return `
+                <td>
+                    <div class="fw-bold">${name}</div>
+                    <div class="small ${statusClass}">${statusLabel} • Last seen: ${lastSeen}</div>
+                </td>
+                <td><code>${ip}</code></td>
+                <td>${type}</td>
+                <td>${vendor}</td>
+                <td>${monitoredText}</td>
+            `;
+        }
+    });
+}
+
+function getSubnetModal() {
+    const el = document.getElementById('subnetDetailsModal');
+    if (!el || !window.bootstrap) return null;
+    if (!subnetModalInstance) {
+        subnetModalInstance = new window.bootstrap.Modal(el);
+    }
+    return subnetModalInstance;
+}
+
+function initSubnetInteractions() {
+    document.body.addEventListener('click', (event) => {
+        const row = event.target.closest('#subnet-health-body tr[data-subnet-cidr]');
+        if (!row) return;
+        openSubnetDetails(row.dataset.subnetCidr);
+    });
+
+    document.body.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const row = event.target.closest('#subnet-health-body tr[data-subnet-cidr]');
+        if (!row) return;
+        event.preventDefault();
+        openSubnetDetails(row.dataset.subnetCidr);
+    });
+}
+
+async function openSubnetDetails(subnetCidr) {
+    const modal = getSubnetModal();
+    if (!modal) return;
+
+    const subnetKey = normalizeSubnetValue(subnetCidr);
+    const state = getState();
+    const subnetRow = latestSubnetHealthRows.find(
+        (row) => normalizeSubnetValue(row.subnet) === subnetKey
+    ) || null;
+
+    const fallback = buildFallbackSubnetDetails(subnetKey, state, subnetRow);
+    renderSubnetModalDetails(fallback);
+    modal.show();
+
+    const requestSeq = ++subnetDetailsRequestSeq;
+    try {
+        const cached = getCachedSubnetDetails(subnetKey);
+        const payload = cached || await fetchSubnetDetails(subnetKey, 800);
+        if (!cached) setCachedSubnetDetails(subnetKey, payload);
+        if (requestSeq !== subnetDetailsRequestSeq) return;
+        renderSubnetModalDetails(payload);
+    } catch (error) {
+        if (requestSeq !== subnetDetailsRequestSeq) return;
+        console.warn('[Dashboard] Failed to fetch subnet details, using fallback data:', error);
+    }
+}
+
+function renderSubnetHealth(subnetHealth) {
+    const tbody = document.getElementById('subnet-health-body');
+    if (!tbody) return;
+
+    latestSubnetHealthRows = Array.isArray(subnetHealth) ? subnetHealth : [];
+
+    patchKeyedTableRows(tbody, latestSubnetHealthRows, {
+        getKey: (subnet, index) => normalizeSubnetValue(subnet.subnet) || `subnet-${index}`,
+        emptyColSpan: 5,
+        emptyMessage: 'No subnet data available.',
+        emptyClassName: 'text-center text-secondary p-3',
+        renderCells: (subnet) => {
+            const subnetLabel = escapeHtml(normalizeSubnetValue(subnet.subnet));
+            const total = Number(subnet.total) || 0;
+            const online = Number(subnet.online) || 0;
+            const offline = Number(subnet.offline) || Math.max(0, total - online);
+            const healthPct = total > 0 ? Math.round((online / total) * 100) : 0;
+            const label = formatSubnetHealthLabel(healthPct);
+
+            let badgeClass = 'tactical-badge tactical-badge-success subnet-health-badge';
+            if (healthPct < 50) {
+                badgeClass = 'tactical-badge tactical-badge-danger subnet-health-badge';
+            } else if (healthPct < 90) {
+                badgeClass = 'tactical-badge tactical-badge-warning subnet-health-badge';
+            }
+
+            return `
+                <td class="fw-bold"><code>${subnetLabel}</code><span class="subnet-row-hint">Details</span></td>
+                <td>${total}</td>
+                <td class="text-success fw-bold">${online}</td>
+                <td class="${offline > 0 ? 'text-danger fw-bold' : ''}">${offline}</td>
+                <td><span class="badge ${badgeClass}">${label} (${healthPct}%)</span></td>
+            `;
+        },
+        applyRow: (row, subnet) => {
+            const subnetValue = normalizeSubnetValue(subnet.subnet);
+            row.classList.add('subnet-row-clickable');
+            row.dataset.subnetCidr = subnetValue;
+            row.setAttribute('role', 'button');
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('aria-label', `Open subnet details for ${subnetValue}`);
+        }
+    });
+}
 
 function renderOverallHealth(state) {
     const card = document.getElementById('overall-health-card');
@@ -964,6 +1360,7 @@ function getAlertCounts(alerts, summary) {
 window.addEventListener('pageshow', (evt) => {
     if (evt.persisted) {
         refreshAll().catch(() => { });
+        if (!isSSEConnected) startPolling('pageshow');
     }
 });
 
@@ -984,8 +1381,12 @@ document.addEventListener('visibilitychange', () => {
             console.log('[Dashboard] Data fresh enough, skipping immediate refresh.');
         }
 
-        startPolling();
+        if (!isSSEConnected) {
+            startPolling('tab-visible');
+        } else {
+            stopPolling();
+        }
     } else {
-        // Tab hidden: keep polling; no SSE used
+        stopPolling();
     }
 });

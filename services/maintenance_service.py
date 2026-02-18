@@ -479,6 +479,258 @@ class MaintenanceService:
 
         success = all(task.get('success', False) for task in tasks.values())
         return {'success': success, 'tasks': tasks}
+
+    def validate_and_repair_server_health_rollups(self, lookback_days: int = 45) -> Dict:
+        """
+        Validate rollup completeness and backfill missing hourly/daily buckets.
+        Runs only on PostgreSQL and uses idempotent INSERT ... ON CONFLICT DO NOTHING.
+        """
+        if self._backend_name() != 'postgresql':
+            return self._postgres_required_result('validate_and_repair_server_health_rollups')
+
+        raw_days = self.server_health_raw_retention_days
+        hourly_days = self.server_health_hourly_retention_days
+        lookback_days = max(int(lookback_days or 45), hourly_days + 1)
+        now_utc = datetime.utcnow()
+
+        hourly_start = now_utc - timedelta(days=lookback_days)
+        hourly_end = now_utc - timedelta(days=raw_days)
+        daily_start = now_utc - timedelta(days=lookback_days)
+        daily_end = now_utc - timedelta(days=hourly_days)
+
+        result = {
+            'success': True,
+            'hourly': {'missing': 0, 'repaired': 0, 'window_start': hourly_start.isoformat(), 'window_end': hourly_end.isoformat()},
+            'daily': {'missing': 0, 'repaired': 0, 'window_start': daily_start.isoformat(), 'window_end': daily_end.isoformat()},
+            'lookback_days': lookback_days,
+        }
+
+        try:
+            # Repair missing hourly rollups from raw logs
+            if hourly_start < hourly_end:
+                missing_hourly_stmt = text("""
+                    SELECT COUNT(*) FROM (
+                        SELECT
+                            shl.device_id,
+                            COALESCE(shl.source, 'agent') AS source,
+                            date_trunc('hour', shl.timestamp) AS bucket_hour
+                        FROM server_health_logs shl
+                        LEFT JOIN server_health_hourly_rollups h
+                          ON h.device_id = shl.device_id
+                         AND h.source = COALESCE(shl.source, 'agent')
+                         AND h.bucket_hour = date_trunc('hour', shl.timestamp)
+                        WHERE shl.timestamp >= :window_start
+                          AND shl.timestamp < :window_end
+                          AND h.id IS NULL
+                        GROUP BY
+                            shl.device_id,
+                            COALESCE(shl.source, 'agent'),
+                            date_trunc('hour', shl.timestamp)
+                    ) missing
+                """)
+                missing_hourly = db.session.execute(
+                    missing_hourly_stmt,
+                    {'window_start': hourly_start, 'window_end': hourly_end}
+                ).scalar() or 0
+                result['hourly']['missing'] = int(missing_hourly)
+
+                if missing_hourly > 0:
+                    repair_hourly_stmt = text("""
+                        INSERT INTO server_health_hourly_rollups (
+                            device_id,
+                            source,
+                            bucket_hour,
+                            avg_cpu_usage,
+                            max_cpu_usage,
+                            avg_memory_usage,
+                            max_memory_usage,
+                            avg_disk_usage,
+                            avg_network_in_bps,
+                            avg_network_out_bps,
+                            sample_count,
+                            online_samples,
+                            avg_ping_latency_ms,
+                            max_ping_latency_ms,
+                            avg_packet_loss_pct,
+                            max_packet_loss_pct,
+                            created_at,
+                            updated_at
+                        )
+                        SELECT
+                            shl.device_id,
+                            COALESCE(shl.source, 'agent') AS source,
+                            date_trunc('hour', shl.timestamp) AS bucket_hour,
+                            AVG(shl.cpu_usage) AS avg_cpu_usage,
+                            MAX(shl.cpu_usage) AS max_cpu_usage,
+                            AVG(shl.memory_usage) AS avg_memory_usage,
+                            MAX(shl.memory_usage) AS max_memory_usage,
+                            AVG(shl.disk_usage) AS avg_disk_usage,
+                            AVG(shl.network_in_bps) AS avg_network_in_bps,
+                            AVG(shl.network_out_bps) AS avg_network_out_bps,
+                            COUNT(*)::INTEGER AS sample_count,
+                            COUNT(CASE WHEN shl.cpu_usage IS NOT NULL THEN 1 END)::INTEGER AS online_samples,
+                            AVG(shl.ping_latency_ms) AS avg_ping_latency_ms,
+                            MAX(shl.ping_latency_ms) AS max_ping_latency_ms,
+                            AVG(shl.packet_loss_pct) AS avg_packet_loss_pct,
+                            MAX(shl.packet_loss_pct) AS max_packet_loss_pct,
+                            NOW() AS created_at,
+                            NOW() AS updated_at
+                        FROM server_health_logs shl
+                        LEFT JOIN server_health_hourly_rollups h
+                          ON h.device_id = shl.device_id
+                         AND h.source = COALESCE(shl.source, 'agent')
+                         AND h.bucket_hour = date_trunc('hour', shl.timestamp)
+                        WHERE shl.timestamp >= :window_start
+                          AND shl.timestamp < :window_end
+                          AND h.id IS NULL
+                        GROUP BY
+                            shl.device_id,
+                            COALESCE(shl.source, 'agent'),
+                            date_trunc('hour', shl.timestamp)
+                        ON CONFLICT (device_id, source, bucket_hour) DO NOTHING
+                    """)
+                    db.session.execute(
+                        repair_hourly_stmt,
+                        {'window_start': hourly_start, 'window_end': hourly_end}
+                    )
+                    result['hourly']['repaired'] = int(missing_hourly)
+
+            # Repair missing daily rollups from hourly rollups
+            if daily_start < daily_end:
+                missing_daily_stmt = text("""
+                    SELECT COUNT(*) FROM (
+                        SELECT
+                            h.device_id,
+                            h.source,
+                            date_trunc('day', h.bucket_hour)::date AS bucket_day
+                        FROM server_health_hourly_rollups h
+                        LEFT JOIN server_health_daily_rollups d
+                          ON d.device_id = h.device_id
+                         AND d.source = h.source
+                         AND d.bucket_day = date_trunc('day', h.bucket_hour)::date
+                        WHERE h.bucket_hour >= :window_start
+                          AND h.bucket_hour < :window_end
+                          AND d.id IS NULL
+                        GROUP BY
+                            h.device_id,
+                            h.source,
+                            date_trunc('day', h.bucket_hour)::date
+                    ) missing
+                """)
+                missing_daily = db.session.execute(
+                    missing_daily_stmt,
+                    {'window_start': daily_start, 'window_end': daily_end}
+                ).scalar() or 0
+                result['daily']['missing'] = int(missing_daily)
+
+                if missing_daily > 0:
+                    repair_daily_stmt = text("""
+                        INSERT INTO server_health_daily_rollups (
+                            device_id,
+                            source,
+                            bucket_day,
+                            avg_cpu_usage,
+                            max_cpu_usage,
+                            avg_memory_usage,
+                            max_memory_usage,
+                            avg_disk_usage,
+                            avg_network_in_bps,
+                            avg_network_out_bps,
+                            sample_count,
+                            online_samples,
+                            avg_ping_latency_ms,
+                            max_ping_latency_ms,
+                            avg_packet_loss_pct,
+                            max_packet_loss_pct,
+                            created_at,
+                            updated_at
+                        )
+                        SELECT
+                            h.device_id,
+                            h.source,
+                            date_trunc('day', h.bucket_hour)::date AS bucket_day,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_cpu_usage IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_cpu_usage * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_cpu_usage IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_cpu_usage,
+                            MAX(h.max_cpu_usage) AS max_cpu_usage,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_memory_usage IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_memory_usage * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_memory_usage IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_memory_usage,
+                            MAX(h.max_memory_usage) AS max_memory_usage,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_disk_usage IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_disk_usage * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_disk_usage IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_disk_usage,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_network_in_bps IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_network_in_bps * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_network_in_bps IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_network_in_bps,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_network_out_bps IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_network_out_bps * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_network_out_bps IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_network_out_bps,
+                            SUM(h.sample_count)::INTEGER AS sample_count,
+                            COALESCE(SUM(h.online_samples), 0)::INTEGER AS online_samples,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_ping_latency_ms IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_ping_latency_ms * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_ping_latency_ms IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_ping_latency_ms,
+                            MAX(h.max_ping_latency_ms) AS max_ping_latency_ms,
+                            CASE
+                                WHEN SUM(CASE WHEN h.avg_packet_loss_pct IS NOT NULL THEN h.sample_count ELSE 0 END) > 0
+                                THEN
+                                    SUM(h.avg_packet_loss_pct * h.sample_count)
+                                    / SUM(CASE WHEN h.avg_packet_loss_pct IS NOT NULL THEN h.sample_count ELSE 0 END)
+                                ELSE NULL
+                            END AS avg_packet_loss_pct,
+                            MAX(h.max_packet_loss_pct) AS max_packet_loss_pct,
+                            NOW() AS created_at,
+                            NOW() AS updated_at
+                        FROM server_health_hourly_rollups h
+                        LEFT JOIN server_health_daily_rollups d
+                          ON d.device_id = h.device_id
+                         AND d.source = h.source
+                         AND d.bucket_day = date_trunc('day', h.bucket_hour)::date
+                        WHERE h.bucket_hour >= :window_start
+                          AND h.bucket_hour < :window_end
+                          AND d.id IS NULL
+                        GROUP BY
+                            h.device_id,
+                            h.source,
+                            date_trunc('day', h.bucket_hour)::date
+                        ON CONFLICT (device_id, source, bucket_day) DO NOTHING
+                    """)
+                    db.session.execute(
+                        repair_daily_stmt,
+                        {'window_start': daily_start, 'window_end': daily_end}
+                    )
+                    result['daily']['repaired'] = int(missing_daily)
+
+            db.session.commit()
+            return result
+        except Exception as exc:
+            db.session.rollback()
+            return {'success': False, 'error': str(exc)}
     
     def cleanup_old_scan_history(self, days: int = None) -> Dict:
         """

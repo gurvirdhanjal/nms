@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Device Monitoring System{% endblock %}</title>
 
-    <!-- Google Fonts - Tactical Typography -->
+    <!-- Google Fonts - NMS v5.0 Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap & Icons -->
@@ -1402,10 +1402,6 @@
                         class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint %}active{% endif %}">
                         <i class="fas fa-laptop-house"></i><span class="link-text">Tracking</span>
                     </a>
-                    <a href="{{ url_for('camera_bp.camera_dashboard') }}"
-                        class="sidebar-link {% if request.endpoint and 'camera_bp' in request.endpoint %}active{% endif %}">
-                        <i class="fas fa-video"></i><span class="link-text">E-NVR</span>
-                    </a>
                     <a href="{{ url_for('file_transfer_bp.file_transfer_dashboard') }}"
                         class="sidebar-link {% if request.endpoint and 'file_transfer_bp' in request.endpoint %}active{% endif %}">
                         <i class="fas fa-exchange-alt"></i><span class="link-text">Files</span>
@@ -1671,10 +1667,11 @@
             document.addEventListener('DOMContentLoaded', hoistModalsToBody);
             document.addEventListener('shown.bs.modal', hoistModalsToBody);
 
-            // Safety net: remove stuck backdrops or body locks
-            setInterval(() => {
-                forceClearModalLocks();
-            }, 2000);
+            // Event-driven safety net for stale modal locks
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) forceClearModalLocks();
+            });
+            window.addEventListener('pageshow', forceClearModalLocks);
 
             // If user clicks a stray backdrop, clear it
             document.addEventListener('click', (e) => {

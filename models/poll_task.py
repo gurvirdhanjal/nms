@@ -16,7 +16,7 @@ class PollTask(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_id = db.Column(
         db.Integer,
-        db.ForeignKey('device.device_id'),
+        db.ForeignKey('device.device_id', ondelete='CASCADE'),
         nullable=False,
         index=True
     )

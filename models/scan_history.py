@@ -3,14 +3,19 @@ from datetime import datetime
 
 class DeviceScanHistory(db.Model):
     scan_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_ip = db.Column(db.String(50), nullable=False)
+    device_ip = db.Column(db.String(50), nullable=False, index=True)
     device_name = db.Column(db.String(100), nullable=True)
     ping_time_ms = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), nullable=False)  # online, offline
+    status = db.Column(db.String(20), nullable=False, index=True)  # online, offline
     packet_loss = db.Column(db.Float, default=0.0)
     jitter = db.Column(db.Float, nullable=True)
     scan_timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     scan_type = db.Column(db.String(20), default='scheduled')  # scheduled, manual
+
+    __table_args__ = (
+        db.Index('idx_device_scan_history_status_time', 'status', 'scan_timestamp'),
+        db.Index('idx_device_scan_history_ip_time', 'device_ip', 'scan_timestamp'),
+    )
     
     def __repr__(self):
         return f'<DeviceScanHistory {self.device_ip} - {self.status}>'

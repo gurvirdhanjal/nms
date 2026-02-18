@@ -1,14 +1,20 @@
 import os
+import re
 import threading
 import webbrowser
 from datetime import timedelta
 
-from flask import Flask
+from flask import Flask, request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine.url import make_url
 
 from config import Config
 from extensions import db, bcrypt
+
+try:
+    from flask_compress import Compress
+except Exception:
+    Compress = None
 
 
 def _safe_db_uri(uri: str) -> str:
@@ -29,6 +35,11 @@ def create_app(test_config=None):
 
     if test_config:
         app.config.update(test_config)
+
+    # Ensure production does not pay template reload overhead.
+    if app.config.get('IS_PRODUCTION'):
+        app.config['TEMPLATES_AUTO_RELOAD'] = False
+    app.jinja_env.auto_reload = app.config.get('TEMPLATES_AUTO_RELOAD', False)
 
     # Optional hard-enforcement for production deployments.
     if app.config.get('REQUIRE_POSTGRES'):
@@ -75,6 +86,39 @@ def create_app(test_config=None):
 
     db.init_app(app)
     bcrypt.init_app(app)
+
+    # ---------------------------
+    # Response compression
+    # ---------------------------
+    if app.config.get('COMPRESS_ENABLED'):
+        if Compress is not None:
+            compress = Compress()
+            compress.init_app(app)
+        else:
+            print("[WARN] Flask-Compress is not installed; compression is disabled.")
+
+    # ---------------------------
+    # Static cache headers
+    # ---------------------------
+    @app.after_request
+    def _apply_cache_headers(response):
+        try:
+            if request.endpoint == 'static':
+                path = (request.path or '').lower()
+                is_asset = path.endswith('.js') or path.endswith('.css')
+                if is_asset:
+                    filename = path.rsplit('/', 1)[-1]
+                    is_hashed = bool(re.search(r'\.[0-9a-f]{8,}\.(js|css)$', filename))
+                    versioned = bool(request.args.get('v')) or is_hashed
+                    if versioned:
+                        max_age = int(app.config.get('STATIC_IMMUTABLE_MAX_AGE_SECONDS', 31536000))
+                        response.headers['Cache-Control'] = f'public, max-age={max_age}, immutable'
+                    else:
+                        max_age = int(app.config.get('STATIC_MAX_AGE_SECONDS', 3600))
+                        response.headers['Cache-Control'] = f'public, max-age={max_age}'
+        except Exception:
+            pass
+        return response
 
     # ---------------------------
     # SQLite Performance Tuning (WAL Mode + Busy Timeout)
@@ -175,7 +219,6 @@ def create_app(test_config=None):
     from routes.reports import reports_bp
     from routes.user_management import user_management_bp
     from routes.tracking import tracking_bp
-    from routes.camera_streaming import camera_bp
     from routes.file_transfer import file_transfer_bp
     from routes.dashboard import dashboard_bp
     from routes.snmp import snmp_bp
@@ -196,7 +239,6 @@ def create_app(test_config=None):
         reports_bp,
         user_management_bp,
         tracking_bp,
-        camera_bp,
         file_transfer_bp,
         dashboard_bp,
         snmp_bp,

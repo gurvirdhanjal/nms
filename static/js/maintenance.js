@@ -5,6 +5,73 @@
 
 let allDevices = [];
 
+function setTableMessageRow(tbody, colSpan, message, className, rowStyle = '') {
+    if (!tbody) return;
+    const row = document.createElement('tr');
+    if (rowStyle) row.style.cssText = rowStyle;
+    const cell = document.createElement('td');
+    cell.colSpan = colSpan;
+    cell.className = className;
+    cell.innerHTML = message;
+    row.appendChild(cell);
+    tbody.textContent = '';
+    tbody.appendChild(row);
+}
+
+function patchDeviceRows(tbody, devices) {
+    Array.from(tbody.querySelectorAll('tr:not([data-device-id])')).forEach((row) => row.remove());
+
+    const existing = new Map();
+    Array.from(tbody.querySelectorAll('tr[data-device-id]')).forEach((row) => {
+        existing.set(row.dataset.deviceId, row);
+    });
+
+    devices.forEach((device, index) => {
+        const key = String(device.device_id || `maintenance-${index}`);
+        let row = existing.get(key);
+        if (!row) {
+            row = document.createElement('tr');
+            row.dataset.deviceId = key;
+        } else {
+            existing.delete(key);
+        }
+
+        const statusBadge = device.maintenance_mode
+            ? '<span class="badge bg-warning"><i class="fas fa-wrench"></i> Maintenance</span>'
+            : device.is_active
+                ? '<span class="badge bg-success"><i class="fas fa-circle"></i> Online</span>'
+                : '<span class="badge bg-danger"><i class="fas fa-circle"></i> Offline</span>';
+
+        const strikeDisplay = device.health_alert_strikes > 0
+            ? `<span class="badge bg-danger">${device.health_alert_strikes}/3</span>`
+            : '<span style="color:#6a6a80;">0</span>';
+
+        const toggleChecked = device.maintenance_mode ? 'checked' : '';
+        const toggleId = `toggle_${device.device_id}`;
+        const html = `<td><strong>${escapeHtml(device.device_name)}</strong></td>
+            <td><code>${escapeHtml(device.device_ip)}</code></td>
+            <td>${getTypeIcon(device.device_type)} ${escapeHtml(device.device_type || 'Unknown')}</td>
+            <td>${statusBadge}</td>
+            <td class="text-center">${strikeDisplay}</td>
+            <td class="text-center">
+                <div class="form-check form-switch d-flex justify-content-center">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                        id="${toggleId}" ${toggleChecked}
+                        onchange="toggleMaintenance(${device.device_id}, this)"
+                        style="cursor:pointer; width:3em; height:1.5em;">
+                </div>
+            </td>`;
+
+        if (row.innerHTML !== html) {
+            row.innerHTML = html;
+        }
+
+        tbody.appendChild(row);
+    });
+
+    existing.forEach((staleRow) => staleRow.remove());
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDevices();
 
@@ -16,8 +83,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadDevices() {
     const tbody = document.getElementById('deviceTableBody');
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4" style="color:#6a6a80;">
-        <i class="fas fa-spinner fa-spin"></i> Loading devices...</td></tr>`;
+    setTableMessageRow(
+        tbody,
+        6,
+        '<i class="fas fa-spinner fa-spin"></i> Loading devices...',
+        'text-center py-4',
+        'color:#6a6a80;'
+    );
 
     try {
         const res = await fetch('/api/maintenance/devices');
@@ -28,8 +100,13 @@ async function loadDevices() {
         allDevices = data.devices || [];
         renderDevices(allDevices);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4" style="color:#ff3b5c;">
-            <i class="fas fa-exclamation-triangle"></i> ${err.message}</td></tr>`;
+        setTableMessageRow(
+            tbody,
+            6,
+            `<i class="fas fa-exclamation-triangle"></i> ${err.message}`,
+            'text-center py-4',
+            'color:#ff3b5c;'
+        );
     }
 }
 
@@ -41,41 +118,11 @@ function renderDevices(devices) {
     document.getElementById('mCountVal').textContent = mCount;
 
     if (devices.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4" style="color:#6a6a80;">
-            No devices found.</td></tr>`;
+        setTableMessageRow(tbody, 6, 'No devices found.', 'text-center py-4', 'color:#6a6a80;');
         return;
     }
 
-    tbody.innerHTML = devices.map(d => {
-        const statusBadge = d.maintenance_mode
-            ? '<span class="badge bg-warning"><i class="fas fa-wrench"></i> Maintenance</span>'
-            : d.is_active
-                ? '<span class="badge bg-success"><i class="fas fa-circle"></i> Online</span>'
-                : '<span class="badge bg-danger"><i class="fas fa-circle"></i> Offline</span>';
-
-        const strikeDisplay = d.health_alert_strikes > 0
-            ? `<span class="badge bg-danger">${d.health_alert_strikes}/3</span>`
-            : '<span style="color:#6a6a80;">0</span>';
-
-        const toggleChecked = d.maintenance_mode ? 'checked' : '';
-        const toggleId = `toggle_${d.device_id}`;
-
-        return `<tr>
-            <td><strong>${escapeHtml(d.device_name)}</strong></td>
-            <td><code>${escapeHtml(d.device_ip)}</code></td>
-            <td>${getTypeIcon(d.device_type)} ${escapeHtml(d.device_type || 'Unknown')}</td>
-            <td>${statusBadge}</td>
-            <td class="text-center">${strikeDisplay}</td>
-            <td class="text-center">
-                <div class="form-check form-switch d-flex justify-content-center">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                        id="${toggleId}" ${toggleChecked}
-                        onchange="toggleMaintenance(${d.device_id}, this)"
-                        style="cursor:pointer; width:3em; height:1.5em;">
-                </div>
-            </td>
-        </tr>`;
-    }).join('');
+    patchDeviceRows(tbody, devices);
 }
 
 function filterDevices() {

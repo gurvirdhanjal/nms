@@ -11,11 +11,15 @@ class SwitchTopology(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     
     # Local side
-    local_device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=False)
-    local_interface_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id'), nullable=True)
+    local_device_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='CASCADE'), nullable=False)
+    local_interface_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id', ondelete='CASCADE'), nullable=True)
     
     # Remote side (Neighbor)
-    remote_device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=True) # None if unknown switch
+    remote_device_id = db.Column(
+        db.Integer,
+        db.ForeignKey('device.device_id', ondelete='SET NULL'),
+        nullable=True
+    )  # None if unknown switch
     remote_hostname = db.Column(db.String(100), nullable=True)
     remote_ip = db.Column(db.String(50), nullable=True)
     remote_port_desc = db.Column(db.String(100), nullable=True) # e.g. "GigabitEthernet0/1"

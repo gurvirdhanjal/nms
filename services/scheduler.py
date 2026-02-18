@@ -28,6 +28,10 @@ class MonitoringScheduler:
         # Server metrics retention + rollups
         retention_time = self.app.config.get('SERVER_HEALTH_RETENTION_SCHEDULE', '02:00')
         schedule.every().day.at(retention_time).do(self.run_metrics_retention)
+
+        # Rollup integrity validation + repair
+        integrity_time = self.app.config.get('SERVER_HEALTH_ROLLUP_INTEGRITY_SCHEDULE', '03:00')
+        schedule.every().day.at(integrity_time).do(self.run_rollup_integrity_check)
         
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self.run_scheduler)
@@ -65,7 +69,7 @@ class MonitoringScheduler:
                 db.session.remove()
     
     def maybe_run_auto_discovery(self):
-        """Check if auto-discovery should run, and fire light sweep if interval elapsed."""
+        """Check if auto-discovery should run and fire heavy scan when due."""
         with self.app.app_context():
             try:
                 from models.discovery_config import get_config
@@ -75,13 +79,6 @@ class MonitoringScheduler:
 
                 from datetime import datetime, timedelta
                 now = datetime.utcnow()
-
-                # Light sweep check
-                interval = timedelta(minutes=cfg.light_interval_min or 30)
-                if cfg.last_light_scan is None or (now - cfg.last_light_scan) >= interval:
-                    from services.auto_discovery_service import get_auto_discovery_service
-                    svc = get_auto_discovery_service()
-                    svc.trigger_light_sweep(self.app)
 
                 # Heavy scan check
                 heavy_interval = timedelta(minutes=cfg.heavy_interval_min or 1440)
@@ -119,6 +116,26 @@ class MonitoringScheduler:
                 print(f"Server health retention completed: success={result.get('success')}")
             except Exception as e:
                 print(f"Error running metrics retention: {e}")
+            finally:
+                db.session.remove()
+
+    def run_rollup_integrity_check(self):
+        """Validate and repair missing server health rollup buckets."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.validate_and_repair_server_health_rollups(
+                    lookback_days=self.app.config.get('SERVER_HEALTH_ROLLUP_INTEGRITY_LOOKBACK_DAYS', 45)
+                )
+                print(
+                    "[ROLLUP] Integrity check completed: "
+                    f"success={result.get('success')} "
+                    f"hourly_missing={result.get('hourly', {}).get('missing', 0)} "
+                    f"daily_missing={result.get('daily', {}).get('missing', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running rollup integrity check: {e}")
             finally:
                 db.session.remove()
 

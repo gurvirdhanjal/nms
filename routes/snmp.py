@@ -2,11 +2,18 @@
 SNMP API routes for Network Monitoring System.
 Provides endpoints for SNMP configuration and polling.
 """
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from datetime import datetime
 from extensions import db
+from middleware.rbac import require_login
 
 snmp_bp = Blueprint('snmp_bp', __name__, url_prefix='/api/snmp')
+
+
+@snmp_bp.before_request
+@require_login
+def _snmp_auth_guard():
+    return None
 
 
 # ============================================================
@@ -18,9 +25,6 @@ def poll_device(device_id):
     Poll a specific device for SNMP data.
     Returns system info and interface list.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from models.device import Device
         from models.snmp_config import DeviceSnmpConfig
@@ -105,9 +109,6 @@ def test_snmp():
     Test SNMP connectivity to a device.
     Query params: ip, community, version, port
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     ip = request.args.get('ip')
     if not ip:
         return jsonify({'error': 'Missing ip parameter'}), 400
@@ -151,9 +152,6 @@ def save_snmp_config():
     Save SNMP configuration for a device.
     Body: { device_id, community_string, snmp_version, snmp_port, poll_interval_seconds, is_enabled }
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from models.device import Device
         from models.snmp_config import DeviceSnmpConfig
@@ -205,9 +203,6 @@ def save_snmp_config():
 @snmp_bp.route('/config/<int:device_id>')
 def get_snmp_config(device_id):
     """Get SNMP configuration for a device."""
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from models.snmp_config import DeviceSnmpConfig
         
@@ -243,9 +238,6 @@ def get_device_interfaces(device_id):
     Get stored interfaces for a device.
     Use ?refresh=true to poll live data.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from models.device import Device
         from models.interfaces import DeviceInterface
@@ -322,9 +314,6 @@ def poll_interface_counters(device_id):
     Poll interface traffic counters and store metrics.
     Calculates bandwidth utilization from counter deltas.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from services.interface_poller import interface_poller
         
@@ -345,9 +334,6 @@ def poll_interface_counters(device_id):
 @snmp_bp.route('/poll-all', methods=['POST'])
 def poll_all_devices():
     """Poll all SNMP-enabled devices for interface counters."""
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from services.interface_poller import interface_poller
         
@@ -368,9 +354,6 @@ def get_interface_utilization(interface_id):
     Get bandwidth utilization history for an interface.
     Query params: minutes (default: 60)
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     minutes = request.args.get('minutes', 60, type=int)
     
     try:

@@ -1,5 +1,6 @@
 import { openServerModal } from '../modals/serverDetailModal.js';
 import { timeAgo } from '../utils.js';
+import { patchKeyedTableRows } from '../domPatch.js';
 
 let currentFilter = 'all';
 
@@ -56,25 +57,30 @@ export function renderServerHealthTable(payload) {
         const msg = currentFilter === 'all'
             ? 'No servers found'
             : `No servers match "${currentFilter}"`;
-        tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-secondary p-3">${msg}</td></tr>`;
+        patchKeyedTableRows(tableBody, [], {
+            emptyColSpan: 3,
+            emptyMessage: msg,
+            emptyClassName: 'text-center text-secondary p-3'
+        });
         return;
     }
 
-    tableBody.innerHTML = servers.map(s => {
-        const name = s.hostname || s.device_name || s.ip || 'Unknown';
-        const health = s.health || 'Unknown';
-        const healthClass = statusColors[health] || 'text-muted';
-        const dotClass = statusDot[health] || 'status-dot status-unknown';
-        const badgeClass = statusBadge[health] || 'tactical-badge-secondary';
-        const statusHint = health === 'Offline' ? 'Agent offline' : (health === 'Unknown' ? 'No data yet' : 'Agent reporting');
-        const lastSeenLabel = s.last_seen ? timeAgo(s.last_seen) : 'Never';
-        const lastSeenExact = s.last_seen ? new Date(s.last_seen).toLocaleString() : '-';
+    patchKeyedTableRows(tableBody, servers, {
+        getKey: (server, index) => server.device_id || server.ip || `server-${index}`,
+        renderCells: (server) => {
+            const name = server.hostname || server.device_name || server.ip || 'Unknown';
+            const health = server.health || 'Unknown';
+            const healthClass = statusColors[health] || 'text-muted';
+            const dotClass = statusDot[health] || 'status-dot status-unknown';
+            const badgeClass = statusBadge[health] || 'tactical-badge-secondary';
+            const statusHint = health === 'Offline' ? 'Agent offline' : (health === 'Unknown' ? 'No data yet' : 'Agent reporting');
+            const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
+            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString() : '-';
 
-        return `
-            <tr class="server-health-row" data-id="${s.device_id}">
+            return `
                 <td>
                     <div class="fw-bold">${name}</div>
-                    <div class="small text-secondary font-monospace">${s.ip || '-'}</div>
+                    <div class="small text-secondary font-monospace">${server.ip || '-'}</div>
                 </td>
                 <td>
                     <span class="${dotClass}"></span>
@@ -85,9 +91,13 @@ export function renderServerHealthTable(payload) {
                     <div class="fw-bold">${lastSeenLabel}</div>
                     <div class="small text-secondary">${lastSeenExact}</div>
                 </td>
-            </tr>
-        `;
-    }).join('');
+            `;
+        },
+        applyRow: (row, server) => {
+            row.className = 'server-health-row';
+            row.dataset.id = server.device_id || '';
+        }
+    });
 }
 
 export function initServerHealthTable() {
@@ -154,7 +164,19 @@ function renderSparkline(canvasId, labels, data, color, type) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
 
-    const chartConfig = {
+    const chartRef = type === 'cpu' ? cpuSparkChart : memSparkChart;
+    if (chartRef && chartRef.canvas === ctx) {
+        chartRef.data.labels = labels || [];
+        chartRef.data.datasets[0].data = data || [];
+        chartRef.data.datasets[0].borderColor = color;
+        chartRef.update('none');
+        return;
+    }
+
+    // Canvas might have been re-rendered; recreate only in that case.
+    if (chartRef) chartRef.destroy();
+
+    const nextChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels || [],
@@ -177,14 +199,12 @@ function renderSparkline(canvasId, labels, data, color, type) {
             },
             animation: false
         }
-    };
+    });
 
     if (type === 'cpu') {
-        if (cpuSparkChart) cpuSparkChart.destroy();
-        cpuSparkChart = new Chart(ctx, chartConfig);
+        cpuSparkChart = nextChart;
     } else {
-        if (memSparkChart) memSparkChart.destroy();
-        memSparkChart = new Chart(ctx, chartConfig);
+        memSparkChart = nextChart;
     }
 }
 
@@ -204,35 +224,38 @@ export function renderEnhancedServerTable(payload) {
     }
 
     if (servers.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-secondary p-3">No servers match filter</td></tr>`;
+        patchKeyedTableRows(tableBody, [], {
+            emptyColSpan: 7,
+            emptyMessage: 'No servers match filter',
+            emptyClassName: 'text-center text-secondary p-3'
+        });
         return;
     }
 
-    tableBody.innerHTML = servers.map(s => {
-        const name = s.hostname || s.device_name || s.ip || 'Unknown';
-        const health = s.health || 'Unknown';
+    patchKeyedTableRows(tableBody, servers, {
+        getKey: (server, index) => server.device_id || server.ip || `server-enhanced-${index}`,
+        renderCells: (server) => {
+            const name = server.hostname || server.device_name || server.ip || 'Unknown';
+            const health = server.health || 'Unknown';
 
-        // Status Dot Logic
-        let dotClass = 'bg-secondary';
-        if (health === 'Healthy') dotClass = 'bg-success';
-        else if (health === 'Warning') dotClass = 'bg-warning';
-        else if (health === 'Critical') dotClass = 'bg-danger';
+            let dotClass = 'bg-secondary';
+            if (health === 'Healthy') dotClass = 'bg-success';
+            else if (health === 'Warning') dotClass = 'bg-warning';
+            else if (health === 'Critical') dotClass = 'bg-danger';
 
-        // Resource Usage (with color coding)
-        const cpu = s.cpu_usage ?? 0;
-        const mem = s.memory_usage ?? 0;
-        const disk = s.disk_usage ?? 0;
+            const cpu = server.cpu_usage ?? 0;
+            const mem = server.memory_usage ?? 0;
+            const disk = server.disk_usage ?? 0;
 
-        const getValClass = (val) => val > 90 ? 'text-danger fw-bold' : (val > 75 ? 'text-warning fw-bold' : '');
+            const getValClass = (val) => val > 90 ? 'text-danger fw-bold' : (val > 75 ? 'text-warning fw-bold' : '');
 
-        return `
-            <tr class="server-health-row" data-id="${s.device_id}" style="cursor: pointer;">
+            return `
                 <td>
                     <div class="d-flex align-items-center">
                         <div class="rounded-circle ${dotClass} me-3" style="width: 10px; height: 10px;"></div>
                         <div>
                             <div class="fw-bold text-light">${name}</div>
-                            <div class="small text-secondary" style="font-size: 0.75rem;">${s.ip || ''}</div>
+                            <div class="small text-secondary" style="font-size: 0.75rem;">${server.ip || ''}</div>
                         </div>
                     </div>
                 </td>
@@ -245,12 +268,17 @@ export function renderEnhancedServerTable(payload) {
                 <td class="${getValClass(mem)}">${mem.toFixed(1)}%</td>
                 <td class="${getValClass(disk)}">${disk.toFixed(1)}%</td>
                 <td>
-                    <div class="text-secondary small">${s.last_seen ? timeAgo(s.last_seen) : 'Never'}</div>
+                    <div class="text-secondary small">${server.last_seen ? timeAgo(server.last_seen) : 'Never'}</div>
                 </td>
                 <td>
                     <button class="btn btn-sm btn-dark border-secondary px-3">View</button>
                 </td>
-            </tr>
-        `;
-    }).join('');
+            `;
+        },
+        applyRow: (row, server) => {
+            row.className = 'server-health-row';
+            row.style.cursor = 'pointer';
+            row.dataset.id = server.device_id || '';
+        }
+    });
 }

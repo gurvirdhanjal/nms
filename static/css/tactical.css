@@ -112,12 +112,9 @@
    ============================================================ */
 body.tactical-theme {
     background: var(--tactical-bg-darkest) !important;
-    background-image:
-        linear-gradient(rgba(0, 212, 170, 0.01) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 212, 170, 0.01) 1px, transparent 1px) !important;
-    background-size: 50px 50px !important;
+    background-image: none !important;
     color: var(--tactical-text-primary);
-    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-family: 'IBM Plex Sans', 'Rajdhani', 'Segoe UI', sans-serif;
     min-height: 100vh;
 }
 
@@ -243,8 +240,8 @@ body.tactical-theme {
 
 .tactical-card:hover {
     border-color: var(--tactical-border-accent);
-    box-shadow: var(--tactical-shadow), var(--tactical-shadow-accent);
-    transform: translateY(-2px);
+    box-shadow: var(--tactical-shadow);
+    transform: translateY(-1px);
 }
 
 .tactical-card .card-header {
@@ -648,13 +645,16 @@ body.tactical-theme {
 .tactical-badge {
     display: inline-flex;
     align-items: center;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.75rem;
-    font-weight: 600;
+    gap: 0.3rem;
+    padding: 0.18rem 0.48rem;
+    font-size: 0.60rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-radius: var(--tactical-radius-sm);
-    border: 1px solid;
+    letter-spacing: 0.08em;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1;
 }
 
 .tactical-badge-success {
@@ -687,7 +687,7 @@ body.tactical-theme {
     color: var(--tactical-text-muted);
 }
 
-/* Online/Offline status with pulse */
+/* Online/Offline status — v5.0: no infinite animations */
 .tactical-status {
     display: inline-flex;
     align-items: center;
@@ -696,30 +696,15 @@ body.tactical-theme {
 
 .tactical-status::before {
     content: '';
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: currentColor;
-    animation: tactical-pulse 2s infinite;
+    /* v5.0: no pulse animation — state changes are instant */
 }
 
 .tactical-status.offline::before {
-    animation: none;
     opacity: 0.5;
-}
-
-@keyframes tactical-pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-        box-shadow: 0 0 0 0 currentColor;
-    }
-
-    50% {
-        opacity: 0.7;
-        box-shadow: 0 0 0 4px transparent;
-    }
 }
 
 /* ============================================================
@@ -1910,6 +1895,7 @@ html {
         justify-content: flex-start;
     }
 }
+
 /* Auth Layout */
 .auth-wrapper {
     min-height: calc(100vh - 100px);
@@ -1918,6 +1904,7 @@ html {
     justify-content: center;
     padding: 20px;
 }
+
 .auth-card {
     width: 100%;
     max-width: 480px;
@@ -1931,7 +1918,8 @@ html {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     background: var(--tactical-bg-elevated) !important;
     color: var(--tactical-text-primary) !important;
-    opacity: 0.98 !important; /* Ensure visibility */
+    opacity: 0.98 !important;
+    /* Ensure visibility */
     backdrop-filter: blur(10px);
 }
 
@@ -1964,3 +1952,488 @@ html {
     opacity: 0.8;
 }
 
+/* ============================================================
+   ENTERPRISE OVERRIDE BLOCK — v5.0
+   Paste this at the BOTTOM of tactical.css.
+   All rules are scoped to .dashboard-enterprise so existing
+   tactical pages are completely unaffected.
+   ============================================================ */
+
+/* ── 1. KILL ALL INFINITE ANIMATIONS ─────────────────────────
+   Status dots, progress shimmer, scan lines, heartbeat — all
+   prohibited in enterprise mode. State changes must be instant.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise *,
+.dashboard-enterprise *::before,
+.dashboard-enterprise *::after {
+    animation-iteration-count: 1 !important;
+    animation-duration: 0.001ms !important;
+}
+
+/* Specific infinite offenders — zero them out explicitly */
+.dashboard-enterprise .tactical-status::before,
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .status-checking,
+.dashboard-enterprise .tactical-progress-bar::after,
+.dashboard-enterprise .tactical-scan-effect::after {
+    animation: none !important;
+}
+
+/* ── 2. KILL ALL NEON GLOW SHADOWS ───────────────────────────
+   No glow on cards, buttons, inputs, or any hover state.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-card:hover,
+.dashboard-enterprise .tactical-stat-card,
+.dashboard-enterprise .tactical-stat-card:hover,
+.dashboard-enterprise .tactical-btn,
+.dashboard-enterprise .tactical-btn:hover,
+.dashboard-enterprise .tactical-btn-primary:hover,
+.dashboard-enterprise .tactical-btn-danger:hover,
+.dashboard-enterprise .tactical-btn-success:hover,
+.dashboard-enterprise .tactical-btn-warning:hover,
+.dashboard-enterprise .tactical-btn-info:hover,
+.dashboard-enterprise .tactical-btn-outline:hover,
+.dashboard-enterprise .tactical-btn-outline.active,
+.dashboard-enterprise .tactical-input:focus,
+.dashboard-enterprise .tactical-select:focus,
+.dashboard-enterprise .tactical-clock,
+.dashboard-enterprise .tactical-clock:hover,
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .alerts-container,
+.dashboard-enterprise .breakdown-panel,
+.dashboard-enterprise .breakdown-subcard {
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+/* Permitted shadow — subtle depth only, no color glow */
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-stat-card,
+.dashboard-enterprise .fleet-table-card,
+.dashboard-enterprise .alerts-container,
+.dashboard-enterprise .breakdown-panel {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28) !important;
+}
+
+.dashboard-enterprise .tactical-card:hover,
+.dashboard-enterprise .tactical-stat-card:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ── 3. LOCK HOVER TRANSFORMS TO -1px MAX ────────────────────
+   -2px and above cause visible layout instability under
+   live polling. Hard limit is translateY(-1px).
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-card:hover,
+.dashboard-enterprise .tactical-stat-card:hover,
+.dashboard-enterprise .device-kpi-card:hover,
+.dashboard-enterprise .server-kpi-card:hover,
+.dashboard-enterprise .breakdown-subcard:hover,
+.dashboard-enterprise .enterprise-kpi:hover {
+    transform: translateY(-1px) !important;
+}
+
+/* Buttons — no vertical movement */
+.dashboard-enterprise .tactical-btn:hover,
+.dashboard-enterprise .tactical-btn-primary:hover,
+.dashboard-enterprise .tactical-btn-outline:hover {
+    transform: none !important;
+}
+
+/* Alert rows — no horizontal slide */
+.dashboard-enterprise .alert-panel tbody tr:hover,
+.dashboard-enterprise .alerts-container tbody tr:hover,
+.dashboard-enterprise .tactical-table tbody tr:hover {
+    transform: none !important;
+}
+
+/* ── 4. REMOVE DECORATIVE GRADIENTS FROM SURFACES ────────────
+   Panel backgrounds, card tops, and container top-lines must
+   be flat or use solid tokens. No theatrical light sweeps.
+   ──────────────────────────────────────────────────────────── */
+
+/* Flatten card backgrounds */
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-stat-card {
+    background: var(--e-bg-panel) !important;
+    border: 1px solid var(--e-border-panel) !important;
+    border-radius: 6px !important;
+}
+
+/* Kill the decorative top-gradient ::before lines on cards */
+.dashboard-enterprise .tactical-card::before,
+.dashboard-enterprise .alerts-container::before {
+    display: none !important;
+}
+
+/* Kill the decorative left-border accent on stat cards */
+.dashboard-enterprise .tactical-stat-card::before {
+    display: none !important;
+}
+
+/* Flatten alert/filter container backgrounds */
+.dashboard-enterprise .alerts-container,
+.dashboard-enterprise .alerts-filters {
+    background: var(--e-bg-panel) !important;
+    border: 1px solid var(--e-border-panel) !important;
+}
+
+/* Flatten navbar gradient if visible on dashboard pages */
+.dashboard-enterprise .tactical-navbar {
+    background: var(--e-bg-panel) !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid var(--e-border) !important;
+}
+
+/* ── 5. FIX THE INVERTED TEXT MUTED COLOR ────────────────────
+   --tactical-text-muted is neon teal (#00ffc8) in tactical.css.
+   In enterprise mode, muted text must be dark/neutral — never
+   the brightest color in the palette.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise {
+    --tactical-text-muted: var(--e-text-muted);
+    /* #8a97a6 */
+    --tactical-text-dim: var(--e-text-dim);
+    /* #5e6b78 */
+    --tactical-text-secondary: var(--e-text-secondary);
+    /* #c3cfdb */
+    --tactical-text-primary: var(--e-text-primary);
+    /* #e6edf5 */
+}
+
+/* Override any component that hardcodes the neon muted color */
+.dashboard-enterprise .stat-label,
+.dashboard-enterprise .enterprise-section-sub,
+.dashboard-enterprise .panel-meta,
+.dashboard-enterprise .alerts-subtitle,
+.dashboard-enterprise .kpi-label,
+.dashboard-enterprise .strip-label,
+.dashboard-enterprise .tactical-text-muted {
+    color: var(--e-text-muted) !important;
+}
+
+/* ── 6. NEUTRALISE GREEN ACTIVE TABS ─────────────────────────
+   Green active tabs are explicitly prohibited — they create
+   false positive "healthy" status signals.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-tab.active,
+.dashboard-enterprise .tabs button.active,
+.dashboard-enterprise .nav-link.active {
+    color: var(--e-text-primary) !important;
+    border-color: var(--e-border-strong) !important;
+    background: rgba(148, 163, 184, 0.16) !important;
+    /* Kill the green underline */
+    border-bottom-color: var(--e-border-strong) !important;
+    /* Kill the green background gradient */
+    background-image: none !important;
+    text-shadow: none !important;
+}
+
+.dashboard-enterprise .tactical-tab:hover,
+.dashboard-enterprise .tabs button:hover {
+    color: var(--e-text-primary) !important;
+    background: rgba(148, 163, 184, 0.10) !important;
+    text-shadow: none !important;
+}
+
+/* ── 7. REMOVE BACKDROP BLUR ─────────────────────────────────
+   Blur effects are decorative and degrade rendering performance
+   under live polling. Prohibited entirely.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .alert,
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-modal .modal-content,
+.dashboard-enterprise .breakdown-panel,
+.dashboard-enterprise .alerts-filters,
+.dashboard-enterprise .alerts-container {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ── 8. FLATTEN BOOTSTRAP ALERT OVERRIDES ────────────────────
+   tactical.css uses vivid danger/warning alerts with glow borders.
+   Enterprise mode uses muted token-based backgrounds only.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .alert {
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+.dashboard-enterprise .alert-danger {
+    background: var(--s-critical-bg) !important;
+    border-color: var(--s-critical-bd) !important;
+    color: #f5a0a8 !important;
+    border-left: 3px solid var(--s-critical) !important;
+}
+
+.dashboard-enterprise .alert-warning {
+    background: var(--s-warning-bg) !important;
+    border-color: var(--s-warning-bd) !important;
+    color: #f2d47a !important;
+    border-left: 3px solid var(--s-warning) !important;
+}
+
+.dashboard-enterprise .alert-success {
+    background: var(--s-healthy-bg) !important;
+    border-color: var(--s-healthy-bd) !important;
+    color: #7acfb8 !important;
+    border-left: 3px solid rgba(32, 201, 151, 0.50) !important;
+}
+
+/* ── 9. NORMALISE BUTTON STYLES ──────────────────────────────
+   Remove glow, shimmer sweep (::before), and scale transforms.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-btn::before {
+    display: none !important;
+}
+
+.dashboard-enterprise .tactical-btn-outline,
+.dashboard-enterprise .tactical-btn-outline:hover,
+.dashboard-enterprise .tactical-btn-outline.active {
+    background: rgba(148, 163, 184, 0.06) !important;
+    border-color: var(--e-border) !important;
+    color: var(--e-text-secondary) !important;
+    box-shadow: none !important;
+}
+
+.dashboard-enterprise .tactical-btn-outline:hover,
+.dashboard-enterprise .tactical-btn-outline.active {
+    border-color: var(--e-border-strong) !important;
+    background: rgba(148, 163, 184, 0.14) !important;
+    color: var(--e-text-primary) !important;
+}
+
+/* ── 10. TABLE OVERRIDES ─────────────────────────────────────
+   Enforce right-aligned metrics, remove green header color,
+   enforce tabular-nums on all cells.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-table thead th {
+    color: var(--e-text-secondary) !important;
+    background: rgba(10, 13, 20, 0.96) !important;
+    border-bottom: 1px solid var(--e-border-strong) !important;
+    font-size: var(--t-table-header) !important;
+    letter-spacing: 0.09em !important;
+    box-shadow: none !important;
+    /* kill the 0 2px 10px shadow from tactical */
+}
+
+.dashboard-enterprise .tactical-table tbody td,
+.dashboard-enterprise .tactical-table tbody th {
+    font-variant-numeric: tabular-nums;
+    color: var(--e-text-secondary) !important;
+    border-bottom: 1px solid var(--e-border) !important;
+    padding: 0.42rem 0.64rem !important;
+}
+
+.dashboard-enterprise .tactical-table tbody tr {
+    background: transparent !important;
+}
+
+.dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
+    background: var(--e-bg-row-alt) !important;
+}
+
+.dashboard-enterprise .tactical-table tbody tr:hover {
+    background: var(--e-bg-row-hover) !important;
+    box-shadow: none !important;
+    color: var(--e-text-primary) !important;
+}
+
+/* ── 11. SCROLLBAR REFINEMENT FOR ENTERPRISE ─────────────────
+   Use muted neutral, not teal hover.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.22) !important;
+    border: none !important;
+}
+
+.dashboard-enterprise ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.38) !important;
+}
+
+.dashboard-enterprise ::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+/* ── 12. TRANSITION DURATION CLAMP ──────────────────────────
+   tactical.css uses 0.3s (300ms) as its default transition.
+   Enterprise maximum is 220ms for UI transitions, 400ms for
+   panel expand only. Clamp everything else.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-stat-card,
+.dashboard-enterprise .tactical-btn,
+.dashboard-enterprise .tactical-table tbody tr,
+.dashboard-enterprise .tactical-input,
+.dashboard-enterprise .tactical-select,
+.dashboard-enterprise .tactical-badge,
+.dashboard-enterprise .tabs button,
+.dashboard-enterprise .tactical-tab {
+    transition-duration: 150ms !important;
+    transition-timing-function: ease !important;
+}
+
+/* ── 13. STATUS DOT — STATIC, NO PULSE ───────────────────────
+   Replace animated status indicators with static dots.
+   Size and color only — no glow, no shadow, no animation.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .status-unknown,
+.dashboard-enterprise .status-checking,
+.dashboard-enterprise .status-indicator {
+    animation: none !important;
+    box-shadow: none !important;
+    width: 7px !important;
+    height: 7px !important;
+    border-radius: 50% !important;
+}
+
+.dashboard-enterprise .status-online {
+    background: var(--s-healthy) !important;
+}
+
+.dashboard-enterprise .status-offline {
+    background: var(--s-offline) !important;
+    opacity: 1 !important;
+}
+
+.dashboard-enterprise .status-maintenance {
+    background: var(--s-warning) !important;
+}
+
+.dashboard-enterprise .status-unknown,
+.dashboard-enterprise .status-checking {
+    background: var(--s-unknown) !important;
+}
+
+/* ── 14. FORM INPUT NORMALISATION ────────────────────────────
+   Remove 3px focus glow ring. Border color change only.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-input:focus,
+.dashboard-enterprise .tactical-select:focus {
+    box-shadow: none !important;
+    border-color: var(--e-border-strong) !important;
+    background: rgba(9, 13, 19, 0.88) !important;
+    outline: none !important;
+}
+
+/* ── 15. MODAL CLEANUP ───────────────────────────────────────
+   Remove the green ambient glow from modal content.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-modal .modal-content {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55) !important;
+    border-color: var(--e-border-panel) !important;
+    background: var(--e-bg-panel) !important;
+}
+
+.dashboard-enterprise .tactical-modal .modal-header {
+    background: rgba(10, 13, 20, 0.80) !important;
+    border-bottom: 1px solid var(--e-border) !important;
+}
+
+.dashboard-enterprise .tactical-modal .modal-title {
+    color: var(--e-text-primary) !important;
+    text-shadow: none !important;
+    font-size: 0.88rem !important;
+    letter-spacing: 0.10em;
+}
+
+/* ── 16. BADGE SHAPE CORRECTION ──────────────────────────────
+   tactical.css uses rounded pills. Enterprise uses
+   rectangular badges (border-radius: 3px) — more authoritative
+   in dense operator UIs.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-badge {
+    border-radius: 3px !important;
+    font-family: var(--t-mono) !important;
+    font-size: 0.60rem !important;
+    padding: 0.18rem 0.46rem !important;
+    letter-spacing: 0.08em !important;
+    line-height: 1 !important;
+}
+
+.dashboard-enterprise .tactical-badge-success {
+    background: var(--s-healthy-bg) !important;
+    border-color: var(--s-healthy-bd) !important;
+    color: #7acfb8 !important;
+}
+
+.dashboard-enterprise .tactical-badge-danger {
+    background: var(--s-critical-bg) !important;
+    border-color: var(--s-critical-bd) !important;
+    color: #f5a0a8 !important;
+}
+
+.dashboard-enterprise .tactical-badge-warning {
+    background: var(--s-warning-bg) !important;
+    border-color: var(--s-warning-bd) !important;
+    color: #f2d47a !important;
+}
+
+.dashboard-enterprise .tactical-badge-secondary {
+    background: rgba(148, 163, 184, 0.10) !important;
+    border-color: rgba(148, 163, 184, 0.24) !important;
+    color: var(--e-text-muted) !important;
+}
+
+/* ── 17. PROGRESS BAR CLEANUP ────────────────────────────────
+   Remove shimmer animation. Flatten to simple fill bars.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-progress {
+    background: rgba(148, 163, 184, 0.10) !important;
+    border: none !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+
+.dashboard-enterprise .tactical-progress-bar {
+    border-radius: 2px !important;
+}
+
+.dashboard-enterprise .tactical-progress-bar::after {
+    display: none !important;
+}
+
+.dashboard-enterprise .tactical-progress-bar.success {
+    background: rgba(32, 201, 151, 0.55) !important;
+    /* muted — healthy recedes */
+}
+
+.dashboard-enterprise .tactical-progress-bar.danger {
+    background: var(--s-critical) !important;
+}
+
+.dashboard-enterprise .tactical-progress-bar.warning {
+    background: var(--s-warning) !important;
+}
+
+/* ── 18. SELECTION COLOR ─────────────────────────────────────
+   Neutral selection, not neon.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise ::selection {
+    background: rgba(148, 163, 184, 0.30) !important;
+    color: var(--e-text-primary) !important;
+}
+
+/* ── 19. FOOTER CLEANUP ──────────────────────────────────────
+   Remove decorative gradient top-line.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-footer::before {
+    display: none !important;
+}
+
+.dashboard-enterprise .tactical-footer {
+    background: var(--e-bg-panel) !important;
+    border-top: 1px solid var(--e-border) !important;
+    color: var(--e-text-muted) !important;
+}
+
+/* ── END OF ENTERPRISE OVERRIDE BLOCK ──────────────────────── */

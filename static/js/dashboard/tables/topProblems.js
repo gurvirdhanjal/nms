@@ -1,16 +1,16 @@
 import { timeAgo } from '../utils.js';
+import { patchKeyedTableRows } from '../domPatch.js';
 
 export function renderTopLatencyTable(data) {
     const tbody = document.getElementById('table-top-latency-body');
     if (!tbody) return;
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No high latency devices</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = data.map(device => `
-        <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View View Device Details">
+    patchKeyedTableRows(tbody, data || [], {
+        getKey: (device, index) => device.device_id || device.ip || `latency-${index}`,
+        emptyColSpan: 6,
+        emptyMessage: 'No high latency devices',
+        emptyClassName: 'text-center text-muted',
+        renderCells: (device) => `
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-danger">
                 ${formatLatencyTriple(device.latency_avg, device.latency_min, device.latency_max)}
@@ -19,74 +19,110 @@ export function renderTopLatencyTable(data) {
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
             <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
-        </tr>
-    `).join('');
+        `,
+        applyRow: (row, device) => {
+            if (device.device_id) {
+                row.style.cursor = 'pointer';
+                row.title = 'View Device Details';
+                row.onclick = () => {
+                    window.location.href = `/devices?edit_id=${device.device_id}`;
+                };
+            } else {
+                row.style.cursor = '';
+                row.title = '';
+                row.onclick = null;
+            }
+        }
+    });
 }
 
 export function renderTopPacketLossTable(data) {
     const tbody = document.getElementById('table-top-loss-body');
     if (!tbody) return;
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center tactical-text-muted">No packet loss detected</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = data.map(device => `
-        <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View Device Details">
+    patchKeyedTableRows(tbody, data || [], {
+        getKey: (device, index) => device.device_id || device.ip || `loss-${index}`,
+        emptyColSpan: 6,
+        emptyMessage: 'No packet loss detected',
+        emptyClassName: 'text-center tactical-text-muted',
+        renderCells: (device) => `
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-danger">${formatLossPair(device.loss_avg, device.loss_max)}</td>
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatLatencyPair(device.latency_avg, device.latency_max)}</td>
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
             <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
-        </tr>
-    `).join('');
+        `,
+        applyRow: (row, device) => {
+            if (device.device_id) {
+                row.style.cursor = 'pointer';
+                row.title = 'View Device Details';
+                row.onclick = () => {
+                    window.location.href = `/devices?edit_id=${device.device_id}`;
+                };
+            } else {
+                row.style.cursor = '';
+                row.title = '';
+                row.onclick = null;
+            }
+        }
+    });
 }
 
 export function renderRecentAlertsTable(data) {
     const tbody = document.getElementById('table-recent-alerts-body');
     if (!tbody) return;
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center tactical-text-muted">No recent alerts</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = data.map(alert => `
-        <tr>
+    patchKeyedTableRows(tbody, data || [], {
+        getKey: (alert, index) => alert.id || `${alert.time || 'alert'}-${index}`,
+        emptyColSpan: 3,
+        emptyMessage: 'No recent alerts',
+        emptyClassName: 'text-center tactical-text-muted',
+        renderCells: (alert) => `
             <td><span class="badge ${getSeverityClass(alert.severity)}">${alert.severity}</span></td>
             <td>${alert.message}</td>
             <td class="tactical-text-muted d-none d-md-table-cell" title="${new Date(alert.time).toLocaleString()}">
                 <div style="font-size: 0.9em; font-weight: 600; color: var(--tactical-accent);">${timeAgo(alert.time)}</div>
                 <div style="font-size: 0.75em; opacity: 0.7">${new Date(alert.time).toLocaleTimeString()}</div>
                 ${!alert.is_acknowledged ?
-            `<button class="btn btn-sm btn-link tactical-text-accent p-0 ms-2" onclick="acknowledgeAlert('${alert.id}', event)" title="Acknowledge">
-                        <i class="far fa-check-circle"></i>
-                    </button>` :
-            '<i class="fas fa-check-circle text-success ms-2" title="Acknowledged"></i>'
-        }
+                `<button class="btn btn-sm btn-link tactical-text-accent p-0 ms-2" onclick="acknowledgeAlert('${alert.id}', event)" title="Acknowledge">
+                    <i class="far fa-check-circle"></i>
+                </button>` :
+                '<i class="fas fa-check-circle text-success ms-2" title="Acknowledged"></i>'
+            }
             </td>
-        </tr>
-    `).join('');
+        `
+    });
 }
 
 export function renderTopAffectedDevices(data) {
     const tbody = document.getElementById('table-top-affected-body');
     if (!tbody) return;
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center tactical-text-muted">No affected devices</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = data.map(device => `
-        <tr onclick="window.location.href='/devices?edit_id=${device.device_id}'" style="cursor: pointer;" title="View Device Details">
+    patchKeyedTableRows(tbody, data || [], {
+        getKey: (device, index) => device.device_id || device.ip || `affected-${index}`,
+        emptyColSpan: 3,
+        emptyMessage: 'No affected devices',
+        emptyClassName: 'text-center tactical-text-muted',
+        renderCells: (device) => `
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-muted">${device.ip}</td>
             <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
-        </tr>
-    `).join('');
+        `,
+        applyRow: (row, device) => {
+            if (device.device_id) {
+                row.style.cursor = 'pointer';
+                row.title = 'View Device Details';
+                row.onclick = () => {
+                    window.location.href = `/devices?edit_id=${device.device_id}`;
+                };
+            } else {
+                row.style.cursor = '';
+                row.title = '';
+                row.onclick = null;
+            }
+        }
+    });
 }
 
 function getSeverityClass(severity) {

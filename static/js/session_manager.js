@@ -4,8 +4,11 @@ class SessionManager {
         this.checkInterval = 30000; // Check every 30 seconds
         this.warningTime = 60000; // Warn 1 minute before logout
         this.timeout = 300000; // 5 minutes in milliseconds
+        this.activityPingMinInterval = 60000; // At most 1 activity ping per minute
         this.warningShown = false;
         this.isChecking = false;
+        this.lastActivityPingAt = 0;
+        this.activityPingInFlight = false;
         
         // Check if we're on login page
         if (window.location.pathname === '/login' || 
@@ -29,7 +32,8 @@ class SessionManager {
     }
     
     setupActivityListeners() {
-        const activityEvents = ['click', 'keypress', 'mousemove', 'scroll', 'touchstart'];
+        // Keep this lightweight: only meaningful user intent events.
+        const activityEvents = ['click', 'keydown', 'touchstart'];
         
         activityEvents.forEach(event => {
             document.addEventListener(event, () => {
@@ -78,10 +82,18 @@ class SessionManager {
     }
     
     async sendActivityPing() {
+        const now = Date.now();
+        if (this.activityPingInFlight) return;
+        if (now - this.lastActivityPingAt < this.activityPingMinInterval) return;
+
+        this.activityPingInFlight = true;
+        this.lastActivityPingAt = now;
         try {
-            await fetch('/session-status');
+            await fetch('/session-status', { credentials: 'same-origin' });
         } catch (error) {
             // Silent fail
+        } finally {
+            this.activityPingInFlight = false;
         }
     }
     
@@ -156,7 +168,8 @@ class SessionManager {
     async extendSession() {
         try {
             // Make a request to update session activity
-            await fetch('/session-status');
+            await fetch('/session-status', { credentials: 'same-origin' });
+            this.lastActivityPingAt = Date.now();
             this.warningShown = false;
             this.removeWarning();
         } catch (error) {

@@ -5,7 +5,7 @@ class DeviceInterface(db.Model):
     __tablename__ = 'device_interfaces'
     
     interface_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='CASCADE'), nullable=False)
     
     # SNMP Data
     if_index = db.Column(db.Integer, nullable=False)
@@ -53,7 +53,7 @@ class InterfaceTrafficHistory(db.Model):
     __tablename__ = 'interface_traffic_history'
     
     history_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    interface_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id'), nullable=False)
+    interface_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id', ondelete='CASCADE'), nullable=False)
     
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     

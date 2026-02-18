@@ -4,11 +4,11 @@ import requests
 import shutil
 import tempfile
 import zipfile
-from flask import Blueprint, render_template, request, jsonify, session, flash, send_file,redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, send_file
 from werkzeug.utils import secure_filename
-from functools import wraps
 from datetime import datetime
 import threading
+from middleware.rbac import require_role
 
 file_transfer_bp = Blueprint('file_transfer_bp', __name__)
 
@@ -21,27 +21,10 @@ os.makedirs(CLIENT_FOLDER, exist_ok=True)
 # Store connected clients
 connected_clients = {}
 
-# Authentication decorators
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
-            flash('Please log in first.', 'warning')
-            return redirect(url_for('auth_bp.login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
-            flash('Please log in first.', 'warning')
-            return redirect(url_for('auth_bp.login'))
-        if session.get('role') != 'admin':
-            flash('Admin access required.', 'danger')
-            return redirect(url_for('monitoring_bp.dashboard'))
-        return f(*args, **kwargs)
-    return decorated_function
+# Authentication decorators (centralized RBAC middleware)
+# File transfer operations are admin-only.
+login_required = require_role('admin')
+admin_required = require_role('admin')
 
 def test_client_connection(client_ip, client_port=5002):
     """Test connection to client"""

@@ -2,6 +2,7 @@ import asyncio
 import threading
 import uuid
 import json
+import logging
 from datetime import datetime
 from services.network_scanner import NetworkScanner
 
@@ -12,6 +13,7 @@ except ImportError:
 
 # Global instance fallback
 _discovery_service = None
+logger = logging.getLogger(__name__)
 
 def get_discovery_service():
     # Try to use current_app if available (Flask context)
@@ -30,6 +32,18 @@ def get_discovery_service():
     return _discovery_service
 
 class DiscoveryService:
+    STATUS_SCANNING = 'scanning'
+    STATUS_STOPPED = 'stopped'
+    STATUS_COMPLETED = 'completed'
+    STATUS_ERROR = 'error'
+
+    ALLOWED_STATUS_TRANSITIONS = {
+        STATUS_SCANNING: {STATUS_STOPPED, STATUS_COMPLETED, STATUS_ERROR},
+        STATUS_STOPPED: set(),
+        STATUS_COMPLETED: set(),
+        STATUS_ERROR: set(),
+    }
+
     def __init__(self):
         print(f"[DEBUG] DiscoveryService Initialized: {id(self)}")
         self.scanner = NetworkScanner()
@@ -41,6 +55,9 @@ class DiscoveryService:
         Start a new background scan.
         Returns the scan_id.
         """
+        if (scan_mode or '').strip().lower() != 'heavy':
+            scan_mode = 'heavy'
+
         scan_id = str(uuid.uuid4())
         app_obj = None
         if current_app:
@@ -62,7 +79,7 @@ class DiscoveryService:
                 'id': scan_id,
                 'devices': [],       # List of all found devices (accumulated)
                 'new_devices': [],   # Buffer for polling (cleared on read)
-                'status': 'scanning',
+                'status': self.STATUS_SCANNING,
                 'progress': 0,
                 'total_found': 0,
                 'scanned_hosts': 0,
@@ -75,6 +92,7 @@ class DiscoveryService:
                 'error': None,
                 'saved': False
             }
+        logger.info("Scan started: id=%s user=%s range=%s mode=%s", scan_id, username, ip_range, scan_mode)
 
         # Start background thread
         t = threading.Thread(
@@ -87,13 +105,41 @@ class DiscoveryService:
         return scan_id
 
     def stop_scan(self, scan_id):
-        """Stop a running scan."""
+        """Stop a running scan with idempotent behavior."""
         with self.active_scans_lock:
-            if scan_id in self.active_scans:
-                self.active_scans[scan_id]['stop'] = True
-                # We don't change status immediately; the scanner loop will see the flag and exit
-                return True
-        return False
+            scan = self.active_scans.get(scan_id)
+            if not scan:
+                return {'ok': False, 'state': 'not_found', 'message': 'scan not found'}
+
+            current_status = (scan.get('status') or '').strip().lower()
+            if current_status == self.STATUS_STOPPED:
+                return {'ok': True, 'state': self.STATUS_STOPPED, 'message': 'already stopped', 'already': True}
+
+            if current_status in (self.STATUS_COMPLETED, self.STATUS_ERROR):
+                return {
+                    'ok': True,
+                    'state': current_status,
+                    'message': f'scan already {current_status}; no transition applied',
+                    'already': True
+                }
+
+            scan['stop'] = True
+            transitioned = self._transition_scan_status(scan, self.STATUS_STOPPED)
+            if transitioned:
+                logger.info("Scan stopped: id=%s", scan_id)
+                return {'ok': True, 'state': self.STATUS_STOPPED, 'message': 'stop requested'}
+
+            logger.warning(
+                "Scan stop transition blocked: id=%s current=%s requested=%s",
+                scan_id,
+                current_status or 'unknown',
+                self.STATUS_STOPPED
+            )
+            return {
+                'ok': False,
+                'state': current_status or 'unknown',
+                'message': f'invalid transition {current_status} -> {self.STATUS_STOPPED}'
+            }
 
     def get_scan_status(self, scan_id):
         """
@@ -139,7 +185,7 @@ class DiscoveryService:
         """
         with self.active_scans_lock:
             for scan_id, scan in self.active_scans.items():
-                if scan['status'] == 'scanning' and scan.get('username') == username:
+                if scan['status'] == self.STATUS_SCANNING and scan.get('username') == username:
                     return scan_id
         return None
 
@@ -167,28 +213,39 @@ class DiscoveryService:
             with self.active_scans_lock:
                 if scan_id in self.active_scans:
                     scan = self.active_scans[scan_id]
-                    if scan['status'] != 'error': # Don't overwrite error status
-                         # If stopped, it might already be marked stopped by scanner, but ensure consistency
+                    if scan['status'] != self.STATUS_ERROR:  # Don't overwrite error status
+                        # If stopped, keep stopped; otherwise mark as completed.
                         if scan['stop']:
-                             scan['status'] = 'stopped'
+                            self._transition_scan_status(scan, self.STATUS_STOPPED)
                         else:
-                             scan['status'] = 'completed'
-                        
-                        scan['progress'] = 100
+                            self._transition_scan_status(scan, self.STATUS_COMPLETED)
+                            scan['progress'] = 100
                         # Final sync of devices just in case
-                        scan['devices'] = devices 
-            # Save results even if UI is not polling
-            self._save_scan_results(scan_id, devices, app)
-
+                        scan['devices'] = devices
+                    logger.info("Scan finished: id=%s state=%s total=%s", scan_id, scan.get('status'), len(devices or []))
         except Exception as e:
             import traceback
             traceback.print_exc()
             with self.active_scans_lock:
                 if scan_id in self.active_scans:
-                    self.active_scans[scan_id]['status'] = 'error'
+                    self._transition_scan_status(self.active_scans[scan_id], self.STATUS_ERROR)
                     self.active_scans[scan_id]['error'] = str(e)
+            logger.exception("Scan failed: id=%s", scan_id)
         finally:
             loop.close()
+
+    def _transition_scan_status(self, scan, new_status):
+        """Apply scan status transition if allowed by state machine."""
+        current_status = (scan.get('status') or '').strip().lower()
+        if current_status == new_status:
+            return True
+        allowed = self.ALLOWED_STATUS_TRANSITIONS.get(current_status, set())
+        if new_status not in allowed:
+            return False
+        scan['status'] = new_status
+        if new_status in (self.STATUS_STOPPED, self.STATUS_COMPLETED, self.STATUS_ERROR):
+            scan['end_time'] = datetime.utcnow().isoformat()
+        return True
 
     def _save_scan_results(self, scan_id, devices, app=None):
         if not devices:

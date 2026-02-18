@@ -1,22 +1,154 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
+from werkzeug.security import generate_password_hash
 from extensions import db
 from services.network_scanner import NetworkScanner
-from services.device_identity import upsert_device_from_identity
+from services.device_identity import upsert_device_from_identity, compute_subnet_cidr
+from middleware.rbac import require_login
 import asyncio
 import json
+import logging
+from sqlalchemy import inspect, or_
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
+logger = logging.getLogger(__name__)
+
+
+def _normalize_snmp_version(version):
+    normalized = (version or "2c").strip().lower().replace("v", "")
+    if normalized in ("1", "2c", "3"):
+        return normalized
+    return "2c"
+
+
+def _upsert_device_snmp_config(
+    device_id,
+    monitoring_mode,
+    is_monitored,
+    snmp_version,
+    snmp_port,
+    snmp_community,
+    snmp_username,
+    snmp_auth_proto,
+    snmp_auth_password,
+    snmp_priv_proto,
+    snmp_priv_password,
+):
+    from models.snmp_config import DeviceSnmpConfig
+
+    normalized_version = _normalize_snmp_version(snmp_version)
+    existing = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
+    should_track = bool(existing) or monitoring_mode in ("snmp", "agent") or bool((snmp_community or "").strip())
+    if not should_track:
+        return
+    config = existing or DeviceSnmpConfig(device_id=device_id)
+
+    config.snmp_version = normalized_version
+    config.snmp_port = int(snmp_port or 161)
+    config.community_string = (snmp_community or "public").strip() or "public"
+    config.security_name = (snmp_username or "").strip() or None
+    config.auth_protocol = (snmp_auth_proto or "").strip() or None
+    config.auth_password = (snmp_auth_password or "").strip() or None
+    config.priv_protocol = (snmp_priv_proto or "").strip() or None
+    config.priv_password = (snmp_priv_password or "").strip() or None
+    config.is_enabled = bool(is_monitored and monitoring_mode in ("snmp", "agent"))
+
+    db.session.add(config)
+
+
+@devices_bp.before_request
+@require_login
+def _devices_auth_guard():
+    return None
 
 from services.discovery_service import get_discovery_service
 
+
+def _delete_device_with_dependencies(device, existing_tables=None):
+    """Delete one device and its dependent rows that do not cascade automatically."""
+    from models.device import Device
+    from models.interfaces import DeviceInterface
+    from models.topology import SwitchTopology
+
+    device_id = device.device_id
+    device_ip = device.device_ip
+    if existing_tables is None:
+        existing_tables = set(inspect(db.engine).get_table_names())
+
+    interface_ids = [
+        row[0]
+        for row in db.session.query(DeviceInterface.interface_id).filter_by(device_id=device_id).all()
+    ]
+
+    # Break self/peer FK links first.
+    Device.query.filter(Device.parent_switch_id == device_id).update(
+        {Device.parent_switch_id: None},
+        synchronize_session=False
+    )
+    if interface_ids:
+        Device.query.filter(Device.parent_port_id.in_(interface_ids)).update(
+            {Device.parent_port_id: None},
+            synchronize_session=False
+        )
+
+    # Remove topology rows that point to this device or its interfaces.
+    SwitchTopology.query.filter(
+        or_(
+            SwitchTopology.local_device_id == device_id,
+            SwitchTopology.remote_device_id == device_id
+        )
+    ).delete(synchronize_session=False)
+    if interface_ids:
+        SwitchTopology.query.filter(
+            SwitchTopology.local_interface_id.in_(interface_ids)
+        ).delete(synchronize_session=False)
+
+    # Cleanup tables without guaranteed FK cascade support.
+    if 'device_scan_history' in existing_tables:
+        from models.scan_history import DeviceScanHistory
+        DeviceScanHistory.query.filter_by(device_ip=device_ip).delete(synchronize_session=False)
+
+    if 'dashboard_events' in existing_tables:
+        from models.dashboard import DashboardEvent
+        DashboardEvent.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    if 'daily_device_stats' in existing_tables:
+        from models.dashboard import DailyDeviceStats
+        DailyDeviceStats.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    if 'device_snmp_config' in existing_tables:
+        from models.snmp_config import DeviceSnmpConfig
+        DeviceSnmpConfig.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    if 'poll_tasks' in existing_tables:
+        from models.poll_task import PollTask
+        PollTask.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    if 'server_health_hourly_rollups' in existing_tables:
+        from models.server_health_rollups import ServerHealthHourlyRollup
+        ServerHealthHourlyRollup.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    if 'server_health_daily_rollups' in existing_tables:
+        from models.server_health_rollups import ServerHealthDailyRollup
+        ServerHealthDailyRollup.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+
+    db.session.delete(device)
+
 @devices_bp.route('/devices')
 def device_management():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
-        
     try:
         from models.device import Device
+        from models.snmp_config import DeviceSnmpConfig
         devices = Device.query.order_by(Device.device_ip.asc()).all()
+        device_ids = [d.device_id for d in devices]
+        snmp_by_device_id = {}
+        if device_ids:
+            configs = DeviceSnmpConfig.query.filter(DeviceSnmpConfig.device_id.in_(device_ids)).all()
+            snmp_by_device_id = {cfg.device_id: cfg for cfg in configs}
+        for d in devices:
+            cfg = snmp_by_device_id.get(d.device_id)
+            d.snmp_enabled = bool(cfg.is_enabled) if cfg else False
+            d.snmp_last_poll = cfg.last_successful_poll if cfg else None
+            d.snmp_last_error = cfg.last_poll_error if cfg else None
         print(f"DEBUG: Found {len(devices)} devices in database")  # Debug line
         
         device = None
@@ -36,16 +168,7 @@ def device_management():
         if 'delete_id' in request.args:
             device = Device.query.get(request.args.get('delete_id'))
             if device:
-                # Clean up scan history
-                from models.scan_history import DeviceScanHistory
-                DeviceScanHistory.query.filter_by(device_ip=device.device_ip).delete()
-                
-                # Clean up dashboard events (Fix for FK violation)
-                from models.dashboard import DashboardEvent, DailyDeviceStats
-                DashboardEvent.query.filter_by(device_id=device.device_id).delete()
-                DailyDeviceStats.query.filter_by(device_id=device.device_id).delete()
-                
-                db.session.delete(device)
+                _delete_device_with_dependencies(device)
                 db.session.commit()
                 print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
             return redirect(url_for('devices_bp.device_management'))
@@ -65,7 +188,8 @@ def device_management():
             devices=devices,
             device=device,
             prefill_data=prefill_data,
-            unclassified_count=unclassified_count
+            unclassified_count=unclassified_count,
+            subnets=sorted(set(d.subnet_cidr for d in devices if d.subnet_cidr))
         )
     except Exception as e:
         import traceback
@@ -77,9 +201,6 @@ from services.snmp_service import snmp_service
 
 @devices_bp.route('/api/check_connectivity', methods=['POST'])
 def check_connectivity():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     data = request.get_json()
     ip = data.get('ip')
     mode = data.get('mode', 'ping')
@@ -149,9 +270,6 @@ def check_connectivity():
 
 @devices_bp.route('/devices/save', methods=['POST'])
 def save_device():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
-    
     try:
         from models.device import Device
         device_id = request.form.get('device_id')
@@ -195,31 +313,18 @@ def save_device():
         # Operational
         maintenance_mode = request.form.get('maintenance_mode') == 'on'
 
+        # Device Credentials
+        device_username = request.form.get('device_username', '').strip() or None
+        device_password_raw = request.form.get('device_password', '').strip()
+
         # Legacy fields mapping
-        port = request.form.get('port', str(snmp_port) if monitoring_mode == 'snmp' else '')
-        rstplink = request.form.get('rstplink', '')
-        username = request.form.get('username', '') # Legacy
-        password = request.form.get('password', '') # Legacy
+        port = request.form.get('port', str(snmp_port))
+        rstplink = request.form.get('rstplink')
+        if rstplink is not None:
+            rstplink = rstplink.strip() or None
 
         # Get shared scanner instance
         scanner = get_discovery_service().scanner
-
-        # Generator Smart RTSP link based on brand if not provided
-        if not rstplink and username and password and port and device_type == 'camera':
-            encoded_password = password.replace('@', '%40').replace('#', '%23')
-            brand = request.form.get('brand', '').lower()
-            
-            if brand == 'hikvision':
-                rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/Streaming/Channels/101"
-            elif brand == 'dahua':
-                rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/cam/realmonitor?channel=1&subtype=0"
-            elif brand == 'axis':
-                rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/axis-media/media.amp"
-            elif brand == 'uniview':
-                rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/unicast/c1/s0/live"
-            else:
-                # Generic fallback
-                rstplink = f"rtsp://{username}:{encoded_password}@{device_ip}:{port}/stream"
 
         # Get network information - fast path only
         status, latency, _packet_loss = "Unknown", None, 0.0
@@ -271,11 +376,21 @@ def save_device():
             
             # Legacy & Common
             device.port = port
-            device.rstplink = rstplink
+            if rstplink is not None:
+                device.rstplink = rstplink
             device.macaddress = mac_address
             device.hostname = hostname
             device.manufacturer = manufacturer
             device.is_monitored = is_monitored
+            device.subnet_cidr = compute_subnet_cidr(device_ip)
+            
+            # Credentials
+            device.device_username = device_username
+            # Only update password hash if a new password was provided
+            if device_password_raw:
+                device.device_password_hash = generate_password_hash(
+                    device_password_raw, method='pbkdf2:sha256', salt_length=16
+                )
         else:
             # Create new device
             device = Device(
@@ -285,6 +400,7 @@ def save_device():
                 location=location,
                 description=description,
                 monitoring_mode=monitoring_mode,
+                subnet_cidr=compute_subnet_cidr(device_ip),
                 
                 # SNMP
                 snmp_version=snmp_version,
@@ -315,10 +431,30 @@ def save_device():
                 macaddress=mac_address,
                 hostname=hostname,
                 manufacturer=manufacturer,
-                is_monitored=is_monitored
+                is_monitored=is_monitored,
+                
+                # Credentials
+                device_username=device_username,
+                device_password_hash=generate_password_hash(
+                    device_password_raw, method='pbkdf2:sha256', salt_length=16
+                ) if device_password_raw else None
             )
             db.session.add(device)
-        
+
+        db.session.flush()
+        _upsert_device_snmp_config(
+            device_id=device.device_id,
+            monitoring_mode=monitoring_mode,
+            is_monitored=is_monitored,
+            snmp_version=snmp_version,
+            snmp_port=snmp_port,
+            snmp_community=snmp_community,
+            snmp_username=snmp_username,
+            snmp_auth_proto=snmp_auth_proto,
+            snmp_auth_password=snmp_auth_password,
+            snmp_priv_proto=snmp_priv_proto,
+            snmp_priv_password=snmp_priv_password,
+        )
         db.session.commit()
         return redirect(url_for('devices_bp.device_management'))
     
@@ -327,11 +463,23 @@ def save_device():
         devices = Device.query.all()
         return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}")
 
+@devices_bp.route('/api/devices/subnets')
+def api_device_subnets():
+    """Return sorted list of distinct subnet_cidr values."""
+    from models.device import Device
+    rows = db.session.query(Device.subnet_cidr).distinct().all()
+    subnets = sorted([r[0] for r in rows if r[0]])
+    return jsonify(subnets)
+
 @devices_bp.route('/api/devices')
 def api_devices():
     from models.device import Device
-    devices_query = Device.query.order_by(Device.device_ip.asc()).all()
-    device_dicts = [d.to_dict() for d in devices_query]
+    query = Device.query.order_by(Device.device_ip.asc())
+    # Optional subnet filter (backward-compatible: absent param = all devices)
+    subnet_filter = request.args.get('subnet')
+    if subnet_filter:
+        query = query.filter_by(subnet_cidr=subnet_filter)
+    device_dicts = [d.to_dict() for d in query.all()]
     return jsonify(device_dicts)
 
 @devices_bp.route('/api/devices/<int:device_id>')
@@ -424,6 +572,20 @@ def bulk_add_devices():
                     updated_count += 1
                 else:
                     skipped_count += 1
+
+                _upsert_device_snmp_config(
+                    device_id=device.device_id,
+                    monitoring_mode='snmp' if data.get('snmp_working') else (device.monitoring_mode or 'ping'),
+                    is_monitored=bool(device.is_monitored),
+                    snmp_version=data.get('snmp_version') or device.snmp_version or '2c',
+                    snmp_port=data.get('snmp_port') or device.snmp_port or 161,
+                    snmp_community=data.get('snmp_community') or device.snmp_community or 'public',
+                    snmp_username='',
+                    snmp_auth_proto='',
+                    snmp_auth_password='',
+                    snmp_priv_proto='',
+                    snmp_priv_password='',
+                )
             except Exception as item_error:
                 errors.append(f"Error adding {ip_address}: {str(item_error)}")
 
@@ -456,34 +618,56 @@ def bulk_delete_devices():
         device_ids = data['device_ids']
         if not isinstance(device_ids, list):
              return jsonify({'error': 'device_ids must be a list'}), 400
+        logger.info("Bulk delete requested: count=%s", len(device_ids))
+
+        # Stop active scans so deleted devices are not immediately re-added by scan completion.
+        stopped_scans = 0
+        service = get_discovery_service()
+        with service.active_scans_lock:
+            active_scan_ids = [
+                scan_id for scan_id, scan in service.active_scans.items()
+                if scan.get('status') == service.STATUS_SCANNING
+            ]
+        for scan_id in active_scan_ids:
+            stop_result = service.stop_scan(scan_id)
+            if stop_result.get('ok') and stop_result.get('state') == service.STATUS_STOPPED:
+                stopped_scans += 1
+        if stopped_scans:
+            logger.info("Bulk delete pre-stop scans: stopped=%s", stopped_scans)
 
         deleted_count = 0
         errors = []
+        existing_tables = set(inspect(db.engine).get_table_names())
         
         for dev_id in device_ids:
             try:
-                device = Device.query.get(dev_id)
-                if device:
-                    # Clean up scan history
-                    from models.scan_history import DeviceScanHistory
-                    DeviceScanHistory.query.filter_by(device_ip=device.device_ip).delete()
-                    
-                    # Clean up dashboard events (Fix for FK violation)
-                    from models.dashboard import DashboardEvent, DailyDeviceStats
-                    DashboardEvent.query.filter_by(device_id=device.device_id).delete()
-                    DailyDeviceStats.query.filter_by(device_id=device.device_id).delete()
-                    
-                    db.session.delete(device)
-                    deleted_count += 1
+                with db.session.begin_nested():
+                    device_query = Device.query.filter(Device.device_id == dev_id)
+                    try:
+                        device = device_query.with_for_update().first()
+                    except Exception:
+                        device = device_query.first()
+                    if device:
+                        _delete_device_with_dependencies(device, existing_tables=existing_tables)
+                        deleted_count += 1
             except Exception as e:
+                logger.warning("Bulk delete cleanup failure: device_id=%s error=%s", dev_id, e)
                 errors.append(f"Error deleting ID {dev_id}: {str(e)}")
         
         db.session.commit()
+        logger.info(
+            "Bulk delete completed: requested=%s deleted=%s errors=%s stopped_scans=%s",
+            len(device_ids),
+            deleted_count,
+            len(errors),
+            stopped_scans
+        )
         
         return jsonify({
             'success': True,
             'deleted': deleted_count,
-            'errors': errors
+            'errors': errors,
+            'stopped_scans': stopped_scans
         })
         
     except Exception as e:
@@ -492,9 +676,6 @@ def bulk_delete_devices():
 
 @devices_bp.route('/api/devices/<int:device_id>/update_type', methods=['POST'])
 def update_device_type(device_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         data = request.get_json()
         new_type = data.get('device_type')

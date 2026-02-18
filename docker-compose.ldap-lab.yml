@@ -1,0 +1,29 @@
+services:
+  ldap:
+    image: osixia/openldap:1.5.0
+    container_name: nms-ldap-lab
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: "NMS Lab"
+      LDAP_DOMAIN: "example.local"
+      LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_CONFIG_PASSWORD: "config"
+      LDAP_TLS: "false"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "true"
+    ports:
+      - "389:389"
+    volumes:
+      - ./tools/ldap_lab/bootstrap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+    command: --copy-service
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: nms-phpldapadmin
+    restart: unless-stopped
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: ldap
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8085:80"
+    depends_on:
+      - ldap

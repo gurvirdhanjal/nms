@@ -38,13 +38,13 @@
         right: 14px;
         font-size: 0.75rem;
         color: rgba(255, 255, 255, 0.35);
-        transition: all 0.2s ease;
+        transition: color 130ms ease;
         pointer-events: none;
     }
 
     .tactical-stat-card:hover .kpi-view-icon {
-        color: #20c997;
-        transform: scale(1.1);
+        color: rgba(211, 220, 230, 0.72);
+        /* v5.0: no scale, no green */
     }
 
 
@@ -53,22 +53,23 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         color: #8b949e;
         padding: 4px 10px;
-        border-radius: 999px;
+        border-radius: 4px;
         font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        transition: all 150ms ease;
+        transition: border-color 130ms ease, background 130ms ease;
     }
 
+    /* v5.0: active tabs are NEVER green */
     .tabs button.active {
-        color: #d9f5f0;
-        border-color: rgba(32, 201, 151, 0.7);
-        background: rgba(32, 201, 151, 0.12);
+        color: #e6edf5;
+        border-color: rgba(148, 163, 184, 0.32);
+        background: rgba(148, 163, 184, 0.18);
     }
 
     .tabs button:hover {
-        color: #e6fff8;
-        border-color: rgba(32, 201, 151, 0.5);
+        color: #e6edf5;
+        border-color: rgba(148, 163, 184, 0.32);
     }
 
     /* Global dashboard horizontal breathing space */
@@ -93,8 +94,8 @@
     }
 
     .overall-health-card {
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.20);
+        border-radius: 6px;
         padding: 0;
         background: transparent;
         margin-bottom: 0;
@@ -104,37 +105,55 @@
     .tactical-stat-card {
         min-height: 136px;
         padding: 24px 22px 26px;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        transition: transform 150ms ease, border-color 150ms ease;
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        transition: transform 130ms ease, border-color 130ms ease;
     }
 
+    /* v5.0: max -1px, no glow, no green */
     .tactical-stat-card:hover {
-        border-color: rgba(32, 201, 151, 0.6);
-        transform: translateY(-2px);
+        border-color: rgba(148, 163, 184, 0.32);
+        transform: translateY(-1px);
     }
 
+    /* v5.0: KPI label typography */
     .tactical-stat-card .stat-label {
-        font-size: 0.78rem;
-        letter-spacing: 0.14em;
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.63rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: #8b949e;
+        color: #8a97a6;
     }
 
+    /* v5.0: KPI value — IBM Plex Mono, max 1.2rem */
     .tactical-stat-card .stat-value {
-        font-size: 1.6rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.2rem;
         font-weight: 700;
+        font-variant-numeric: tabular-nums;
     }
 
     .tactical-stat-card .metric-sub {
         margin-top: 6px;
-        font-size: 0.78rem;
-        opacity: 0.7;
+        font-size: 0.69rem;
+        color: #8a97a6;
     }
 
     .section-divider {
         margin: 20px 0 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        border-top: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .dashboard-enterprise .enterprise-divider-fade {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg,
+                transparent,
+                var(--e-border-strong) 20%,
+                var(--e-border-strong) 80%,
+                transparent);
+        margin: var(--e-space-4) 0;
     }
 
     .overall-health-label {
@@ -218,8 +237,8 @@
     }
 
     #server-health-summary .server-kpi-card.server-filter-active {
-        border-color: rgba(32, 201, 151, 0.35);
-        box-shadow: 0 0 0 1px rgba(32, 201, 151, 0.12) inset;
+        border-color: rgba(148, 163, 184, 0.32);
+        box-shadow: none;
     }
 
     .section-block {
@@ -229,8 +248,8 @@
 
 
     .breakdown-panel {
-        background: rgba(14, 15, 22, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.20);
         border-radius: 8px;
         padding: 16px;
     }
@@ -249,15 +268,15 @@
     }
 
     .breakdown-subcard {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(16, 19, 27, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.16);
         border-radius: 8px;
         box-shadow: none;
     }
 
     .breakdown-subcard .card-header {
         background: transparent;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
     }
 
     .breakdown-left .table-responsive {
@@ -319,9 +338,9 @@
 
     .device-kpi-card:hover,
     .server-kpi-card:hover {
-        border-color: rgba(32, 201, 151, 0.6);
-        transform: translateY(-2px);
-        transition: transform 150ms ease, border-color 150ms ease;
+        border-color: rgba(148, 163, 184, 0.32);
+        transform: translateY(-1px);
+        transition: transform 130ms ease, border-color 130ms ease;
     }
 
     #card-network-avail canvas {
@@ -344,7 +363,7 @@
         height: 40px;
         padding: 0 14px;
         font-size: 0.85rem;
-        border-radius: 10px;
+        border-radius: 4px;
         display: flex;
         align-items: center;
     }
@@ -380,7 +399,7 @@
 
     /* FLEET OVERVIEW STYLES (MATCHING NETWORK OVERVIEW) */
     #fleet-overview-row .tactical-stat-card {
-        border-color: rgba(32, 201, 151, 0.26);
+        border-color: rgba(148, 163, 184, 0.16);
     }
 
     /* Mute P95 and secondary metrics */
@@ -391,9 +410,9 @@
 
     /* Visually attach the table to the overview (inset look) */
     .fleet-table-card {
-        background: rgba(255, 255, 255, 0.03);
+        background: rgba(16, 19, 27, 0.72);
         /* Slightly darker/different to show hierarchy but blend */
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(148, 163, 184, 0.16);
         box-shadow: none;
         /* Flatten it to look like a sub-panel */
     }
@@ -405,7 +424,21 @@
 
 
     .alert-row-critical:hover {
-        box-shadow: 0 0 12px rgba(220, 53, 69, 0.25);
+        box-shadow: none;
+        /* v5.0: no glow */
+    }
+
+    .dashboard-enterprise #table-alerts-body tr.alert-row-warning>td {
+        background: rgba(199, 160, 89, 0.16) !important;
+        border-bottom: 1px solid rgba(199, 160, 89, 0.32) !important;
+    }
+
+    .dashboard-enterprise #table-alerts-body tr.alert-row-warning>td:first-child {
+        border-left: 3px solid var(--s-warning);
+    }
+
+    .dashboard-enterprise #table-alerts-body tr.alert-row-warning:hover>td {
+        background: rgba(199, 160, 89, 0.22) !important;
     }
 
     /* Fix 6: Separation */
@@ -421,21 +454,64 @@
     /* ============================================================
        ENTERPRISE COMPACT OVERRIDES (Dashboard-only)
        ============================================================ */
+    /* ── NMS Design System v5.0 — Full Token Set ── */
     .dashboard-enterprise {
+        /* Spacing */
         --e-space-1: 0.4rem;
         --e-space-2: 0.62rem;
         --e-space-3: 0.82rem;
         --e-space-4: 1.15rem;
         --e-space-5: 1.55rem;
 
-        --e-bg-panel: rgba(16, 19, 27, 0.88);
+        /* Surfaces */
+        --e-bg-base: #070a10;
+        --e-bg-panel: rgba(16, 19, 27, 0.92);
         --e-bg-panel-soft: rgba(16, 19, 27, 0.72);
-        --e-border: rgba(148, 163, 184, 0.2);
-        --e-border-strong: rgba(148, 163, 184, 0.36);
+        --e-bg-row-alt: rgba(255, 255, 255, 0.018);
+        --e-bg-row-hover: rgba(148, 163, 184, 0.10);
 
+        /* Borders */
+        --e-border: rgba(148, 163, 184, 0.16);
+        --e-border-strong: rgba(148, 163, 184, 0.32);
+        --e-border-panel: rgba(148, 163, 184, 0.20);
+
+        /* Typography */
         --e-text-primary: #e6edf5;
         --e-text-secondary: #c3cfdb;
-        --e-text-muted: #93a0ae;
+        --e-text-muted: #8a97a6;
+        --e-text-dim: #5e6b78;
+
+        /* Status Colors */
+        --s-critical: #dc3545;
+        --s-warning: #ffc107;
+        --s-degraded: #fd7e14;
+        --s-healthy: #20c997;
+        --s-offline: #6c757d;
+        --s-unknown: #adb5bd;
+
+        /* Status Backgrounds (muted) */
+        --s-critical-bg: rgba(220, 53, 69, 0.12);
+        --s-critical-bd: rgba(220, 53, 69, 0.30);
+        --s-warning-bg: rgba(255, 193, 7, 0.10);
+        --s-warning-bd: rgba(255, 193, 7, 0.28);
+        --s-healthy-bg: rgba(32, 201, 151, 0.10);
+        --s-healthy-bd: rgba(32, 201, 151, 0.24);
+        --s-offline-bg: rgba(108, 117, 125, 0.12);
+        --s-offline-bd: rgba(108, 117, 125, 0.28);
+
+        /* Animation Durations */
+        --a-micro: 130ms;
+        --a-transition: 180ms;
+        --a-panel: 300ms;
+        --a-max: 400ms;
+
+        /* Typography Scale */
+        --t-kpi-value: 1.2rem;
+        --t-kpi-label: 0.63rem;
+        --t-table-header: 0.62rem;
+        --t-body: 0.82rem;
+        --t-mono: 'IBM Plex Mono', monospace;
+        --t-sans: 'IBM Plex Sans', sans-serif;
     }
 
     .dashboard-enterprise.tactical-theme {
@@ -473,7 +549,7 @@
     .dashboard-enterprise .overall-health-card {
         background: var(--e-bg-panel) !important;
         border: 1px solid var(--e-border) !important;
-        border-radius: 10px !important;
+        border-radius: 6px !important;
         box-shadow: none !important;
     }
 
@@ -489,7 +565,8 @@
     .dashboard-enterprise .alerts-container:hover {
         border-color: var(--e-border-strong) !important;
         transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22) !important;
+        /* v5.0: no shadow expansion on hover */
+        box-shadow: none !important;
     }
 
     .dashboard-enterprise .text-success {
@@ -583,15 +660,16 @@
         font-size: 0.6rem;
         line-height: 1.2;
         letter-spacing: 0.1em;
-        border-radius: 999px;
+        border-radius: 3px;
         color: var(--e-text-muted);
         border: 1px solid var(--e-border);
         background: rgba(148, 163, 184, 0.08);
     }
 
+    /* v5.0: active tabs are NEVER green */
     .dashboard-enterprise .tabs button.active {
         color: var(--e-text-primary);
-        border-color: rgba(173, 186, 201, 0.55);
+        border-color: var(--e-border-strong);
         background: rgba(148, 163, 184, 0.18);
     }
 
@@ -687,7 +765,7 @@
 
     .dashboard-enterprise .alerts-filters {
         padding: 0.52rem 0.62rem;
-        border-radius: 10px;
+        border-radius: 4px;
         border: 1px solid var(--e-border);
         background: rgba(148, 163, 184, 0.04);
     }
@@ -706,6 +784,29 @@
     .dashboard-enterprise .alerts-filters .tactical-select:hover,
     .dashboard-enterprise .alerts-filters .tactical-input:hover {
         border-color: rgba(173, 186, 201, 0.42);
+    }
+
+
+    /* v5.0: KPI card top accent line by status */
+    .dashboard-enterprise .tactical-stat-card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+    }
+
+    .dashboard-enterprise .tactical-stat-card.critical::after {
+        background: var(--s-critical);
+    }
+
+    .dashboard-enterprise .tactical-stat-card.warning::after {
+        background: var(--s-warning);
+    }
+
+    .dashboard-enterprise .tactical-stat-card.healthy::after {
+        background: rgba(32, 201, 151, 0.35);
     }
 
     .dashboard-enterprise .tactical-table {
@@ -747,7 +848,7 @@
 
     .dashboard-enterprise .badge,
     .dashboard-enterprise .tactical-badge {
-        border-radius: 999px;
+        border-radius: 3px;
         border: 1px solid transparent;
         font-size: 0.58rem;
         font-weight: 700;
@@ -842,6 +943,82 @@
         border-color: rgba(148, 163, 184, 0.38);
     }
 
+    .dashboard-enterprise .network-segments-panel .subnet-panel-divider {
+        margin: 0;
+    }
+
+    .dashboard-enterprise .network-segments-panel .subnet-table-scroll {
+        max-height: 340px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .dashboard-enterprise .network-segments-panel .subnet-table-scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .dashboard-enterprise .network-segments-panel .subnet-table-scroll::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.26);
+        border-radius: 4px;
+    }
+
+    .dashboard-enterprise .subnet-row-clickable {
+        cursor: pointer;
+    }
+
+    .dashboard-enterprise .subnet-row-clickable:focus-visible {
+        outline: 1px solid var(--e-border-strong);
+        outline-offset: -1px;
+    }
+
+    .dashboard-enterprise .subnet-row-hint {
+        margin-left: 0.45rem;
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--e-text-muted);
+    }
+
+    .dashboard-enterprise .subnet-health-badge {
+        min-width: 84px;
+        text-align: center;
+    }
+
+    .dashboard-enterprise .subnet-detail-kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .dashboard-enterprise .subnet-detail-kpi {
+        border: 1px solid var(--e-border);
+        border-radius: 6px;
+        padding: 0.5rem 0.6rem;
+        background: rgba(148, 163, 184, 0.05);
+    }
+
+    .dashboard-enterprise .subnet-detail-kpi .label {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--e-text-muted);
+    }
+
+    .dashboard-enterprise .subnet-detail-kpi .value {
+        font-family: var(--t-mono);
+        font-size: 0.96rem;
+        font-weight: 700;
+        color: var(--e-text-primary);
+        line-height: 1.2;
+    }
+
+    .dashboard-enterprise .subnet-modal-device-scroll {
+        max-height: 360px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
     #overall-health-card.enterprise-header-strip {
         margin-bottom: var(--e-space-2);
         padding: 0.5rem 0.74rem;
@@ -867,6 +1044,71 @@
     .dashboard-enterprise .section-block {
         margin-top: 0.82rem;
         padding-inline: 0;
+    }
+
+    .dashboard-enterprise .initially-hidden,
+    #serverDetailsModal .initially-hidden {
+        display: none;
+    }
+
+    .dashboard-enterprise .sparkline-wrap {
+        height: 30px;
+        position: relative;
+        margin-top: 0.25rem;
+    }
+
+    .dashboard-enterprise .chart-wrap-90,
+    .dashboard-enterprise .chart-wrap-220 {
+        position: relative;
+    }
+
+    .dashboard-enterprise .chart-wrap-90 {
+        height: 90px;
+    }
+
+    .dashboard-enterprise .chart-wrap-220 {
+        height: 220px;
+    }
+
+    .dashboard-enterprise .server-col-fixed {
+        width: 250px;
+    }
+
+    .dashboard-enterprise .alert-banner-critical {
+        display: none;
+        background: rgba(220, 53, 69, 0.15);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        border-left: 4px solid #dc3545;
+        border-radius: 8px;
+    }
+
+    #serverDetailsModal .modal-chart-200 {
+        height: 200px;
+    }
+
+    #serverDetailsModal .modal-chart-220 {
+        height: 220px;
+    }
+
+    #serverDetailsModal .load-avg-row {
+        height: 80px;
+    }
+
+    #serverDetailsModal .swap-progress-shell {
+        height: 12px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    #serverDetailsModal #swap-progress-bar {
+        width: 0%;
+    }
+
+    #serverDetailsModal .alert-banner-warning {
+        display: none;
+        background: rgba(255, 193, 7, 0.15);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        border-left: 4px solid #ffc107;
+        border-radius: 8px;
     }
 
     #device-breakdown {
@@ -922,6 +1164,182 @@
             padding: 0.68rem 0.72rem;
         }
     }
+
+    /* ── Quick-Add Device modal (dashboard) ── */
+    .dash-config-btn {
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        background: rgba(148, 163, 184, 0.08);
+        color: var(--e-text-secondary, #c3cfdb);
+        font-size: 0.72rem;
+        cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease;
+    }
+
+    .dash-config-btn:hover {
+        background: rgba(148, 163, 184, 0.18);
+        border-color: rgba(148, 163, 184, 0.42);
+        color: var(--e-text-primary, #e6edf5);
+    }
+
+    .dash-modal-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgba(8, 11, 17, 0.78);
+        z-index: 1080;
+        animation: sw-fade-in 140ms ease-out;
+    }
+
+    .dash-modal-card {
+        width: min(520px, 100%);
+        max-height: 85vh;
+        overflow-y: auto;
+        background: var(--e-bg-panel, rgba(16, 19, 27, 0.96));
+        border: 1px solid var(--e-border, rgba(148, 163, 184, 0.28));
+        border-radius: 10px;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+        color: var(--e-text-primary, #e6edf5);
+        animation: sw-slide-in 180ms ease-out;
+    }
+
+    .dash-modal-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.82rem 1rem;
+        border-bottom: 1px solid var(--e-border, rgba(148, 163, 184, 0.25));
+    }
+
+    .dash-modal-header h5 {
+        margin: 0;
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .dash-modal-header .close-btn {
+        margin-left: auto;
+        background: none;
+        border: none;
+        color: var(--e-text-muted, #8a97a6);
+        font-size: 0.92rem;
+        cursor: pointer;
+    }
+
+    .dash-modal-body {
+        padding: 0.82rem 1rem;
+    }
+
+    .dash-modal-body label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--e-text-secondary, #c3cfdb);
+        margin-bottom: 0.2rem;
+    }
+
+    .dash-modal-body input,
+    .dash-modal-body select,
+    .dash-modal-body textarea {
+        font-size: 0.79rem;
+        background: rgba(9, 13, 19, 0.78);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 6px;
+        color: var(--e-text-primary, #e6edf5);
+        padding: 0.38rem 0.58rem;
+        width: 100%;
+        margin-bottom: 0.6rem;
+    }
+
+    .dash-modal-body input:focus,
+    .dash-modal-body select:focus {
+        outline: none;
+        border-color: rgba(148, 163, 184, 0.50);
+    }
+
+    .dash-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.62rem 1rem;
+        border-top: 1px solid var(--e-border, rgba(148, 163, 184, 0.18));
+    }
+
+    .dash-modal-footer button {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-radius: 6px;
+        padding: 0.36rem 0.82rem;
+        cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease;
+    }
+
+    .dash-modal-footer .btn-cancel {
+        background: rgba(148, 163, 184, 0.1);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        color: var(--e-text-secondary, #c3cfdb);
+    }
+
+    .dash-modal-footer .btn-save {
+        background: rgba(148, 163, 184, 0.18);
+        border: 1px solid rgba(148, 163, 184, 0.42);
+        color: var(--e-text-primary, #e6edf5);
+    }
+
+    .dash-modal-footer .btn-save:hover {
+        background: rgba(148, 163, 184, 0.28);
+    }
+
+    .dash-cred-divider {
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--e-text-muted, #8a97a6);
+        margin: 0.4rem 0 0.3rem;
+    }
+
+    .dash-cred-hint {
+        font-size: 0.66rem;
+        color: var(--e-text-muted, #8a97a6);
+        margin-top: -0.4rem;
+        margin-bottom: 0.5rem;
+    }
+
+    @keyframes sw-fade-in {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes sw-slide-in {
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 </style>
 {% endblock %}
 
@@ -935,7 +1353,7 @@
             <div class="enterprise-section-sub">Real-time infrastructure monitoring</div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <div class="dropdown" id="time-range-container" style="display:inline-block;">
+            <div class="dropdown d-inline-block" id="time-range-container">
                 <button class="btn tactical-select dropdown-toggle btn-sm" type="button" data-bs-toggle="dropdown"
                     data-value="24h">Last 24 Hours</button>
                 <ul class="dropdown-menu tactical-dropdown">
@@ -946,10 +1364,15 @@
             </div>
             <button id="btn-refresh" class="btn tactical-btn-outline btn-sm"><i class="fas fa-sync-alt"></i>
                 Refresh</button>
+            <button class="dash-config-btn" id="dash-add-device-btn" title="Add / configure device">
+                <i class="fas fa-plus"></i>
+            </button>
         </div>
     </div>
     <!-- Error Banner -->
-    <div id="global-error" class="alert alert-danger" style="display: none;"></div>
+    <div id="global-error" class="initially-hidden"
+        style="display:none;background:var(--s-critical-bg);border:1px solid var(--s-critical-bd);border-left:3px solid var(--s-critical);border-radius:4px;padding:var(--e-space-3) var(--e-space-4);font-family:var(--t-mono);font-size:0.72rem;color:#f5a0a8;margin-bottom:var(--e-space-3);">
+    </div>
     <!-- LAYER 1: Global Status Strip -->
     <div id="overall-health-card" class="overall-health-card enterprise-header-strip health-degraded">
         <div class="enterprise-strip-left">
@@ -1024,8 +1447,7 @@
                 <div class="stat-label">Availability</div>
                 <div class="stat-value" id="val-availability">-%</div>
                 <div class="metric-sub" id="sub-availability-trend"><span class="text-secondary">Loading...</span></div>
-                <div style="height: 30px; position: relative; margin-top: 4px;"><canvas
-                        id="chart-availability-spark"></canvas></div>
+                <div class="sparkline-wrap"><canvas id="chart-availability-spark"></canvas></div>
                 <i class="fas fa-chart-line stat-icon"></i>
             </div>
         </div>
@@ -1212,23 +1634,14 @@
         }
 
         #device-breakdown .breakdown-panel {
-            background: linear-gradient(180deg, rgba(16, 19, 27, 0.92) 0%, rgba(12, 16, 22, 0.92) 100%);
+            background: var(--e-bg-panel);
             border: 1px solid rgba(148, 163, 184, 0.25);
             box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
         }
 
+        /* v5.0: focus pulse removed — state changes are instant */
         #device-breakdown .breakdown-panel.scroll-focus {
-            animation: breakdownFocusPulse 700ms ease;
-        }
-
-        @keyframes breakdownFocusPulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(148, 163, 184, 0.34), 0 10px 26px rgba(0, 0, 0, 0.26);
-            }
-
-            100% {
-                box-shadow: 0 0 0 10px rgba(148, 163, 184, 0), 0 10px 26px rgba(0, 0, 0, 0.26);
-            }
+            /* no animation */
         }
 
         .device-kpi-card,
@@ -1271,52 +1684,53 @@
             border-radius: 6px;
             border: 1px solid rgba(255, 255, 255, 0.12);
             background: rgba(18, 24, 32, 0.85);
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55);
-            transition: transform 0.22s ease, box-shadow 0.22s ease;
-            will-change: transform, box-shadow;
+            box-shadow: none;
+            transition: border-color 130ms ease;
         }
 
         .availability-cell:hover {
-            transform: translateY(-1px);
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55), 0 0 10px rgba(0, 0, 0, 0.35);
+            /* v5.0: no transform on availability hover */
+            transform: none;
+            box-shadow: none;
         }
 
+        /* v5.0: muted availability tiers — no vivid gradients */
         .availability-cell.avail-excellent,
         .legend-swatch.avail-excellent {
-            background: linear-gradient(135deg, rgba(29, 209, 161, 0.9), rgba(16, 172, 132, 0.9));
-            border-color: rgba(29, 209, 161, 0.85);
-            box-shadow: inset 0 0 8px rgba(29, 209, 161, 0.45);
+            background: rgba(32, 201, 151, 0.18);
+            border-color: rgba(32, 201, 151, 0.24);
+            box-shadow: none;
         }
 
         .availability-cell.avail-good,
         .legend-swatch.avail-good {
-            background: linear-gradient(135deg, rgba(72, 219, 251, 0.85), rgba(10, 189, 227, 0.85));
-            border-color: rgba(72, 219, 251, 0.75);
-            box-shadow: inset 0 0 8px rgba(72, 219, 251, 0.35);
+            background: rgba(56, 139, 192, 0.18);
+            border-color: rgba(56, 139, 192, 0.24);
+            box-shadow: none;
         }
 
         .availability-cell.avail-warning,
         .legend-swatch.avail-warning {
-            background: linear-gradient(135deg, rgba(254, 202, 87, 0.9), rgba(255, 159, 67, 0.9));
-            border-color: rgba(255, 159, 67, 0.85);
-            box-shadow: inset 0 0 8px rgba(255, 159, 67, 0.35);
+            background: rgba(255, 193, 7, 0.18);
+            border-color: rgba(255, 193, 7, 0.28);
+            box-shadow: none;
         }
 
         .availability-cell.avail-bad,
         .legend-swatch.avail-bad {
-            background: linear-gradient(135deg, rgba(255, 107, 107, 0.9), rgba(238, 82, 83, 0.9));
-            border-color: rgba(238, 82, 83, 0.85);
-            box-shadow: inset 0 0 8px rgba(238, 82, 83, 0.35);
+            background: rgba(220, 53, 69, 0.20);
+            border-color: rgba(220, 53, 69, 0.30);
+            box-shadow: none;
         }
 
         .availability-cell.avail-unknown,
         .legend-swatch.avail-unknown {
             background: repeating-linear-gradient(45deg,
-                    rgba(255, 255, 255, 0.08),
-                    rgba(255, 255, 255, 0.08) 6px,
-                    rgba(255, 255, 255, 0.02) 6px,
-                    rgba(255, 255, 255, 0.02) 12px);
-            border-color: rgba(255, 255, 255, 0.18);
+                    rgba(148, 163, 184, 0.16),
+                    rgba(148, 163, 184, 0.16) 5px,
+                    rgba(148, 163, 184, 0.06) 5px,
+                    rgba(148, 163, 184, 0.06) 10px);
+            border-color: rgba(148, 163, 184, 0.38);
         }
 
         .availability-legend {
@@ -1349,8 +1763,8 @@
 
         #device-breakdown .breakdown-panel {
             padding: 0.56rem 0.62rem 0.64rem;
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            /* v5.0: no backdrop-filter blur */
+
         }
 
         #device-breakdown .breakdown-grid {
@@ -1433,7 +1847,7 @@
 
         #device-breakdown .table-responsive::-webkit-scrollbar-thumb {
             background: rgba(148, 163, 184, 0.35);
-            border-radius: 999px;
+            border-radius: 3px;
         }
 
         #device-breakdown .breakdown-left .table-responsive {
@@ -1546,236 +1960,238 @@
     <div id="device-breakdown">
         <div class="expanded-wrapper">
             <div class="breakdown-panel">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div>
-                    <h5 class="enterprise-section-title mb-0">Network Intelligence</h5>
-                    <div class="enterprise-section-sub">Latency, loss, alerts, inventory, discovery</div>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <div class="enterprise-section-sub">Updated: <span id="device-breakdown-updated">-</span></div>
-                    <button class="btn btn-sm btn-outline-secondary breakdown-collapse-btn" id="device-breakdown-close"
-                        type="button" title="Collapse panel" aria-label="Collapse device breakdown">
-                        <i class="fas fa-chevron-up"></i>
-                        <span>Collapse</span>
-                    </button>
-                </div>
-            </div>
-            <div class="breakdown-grid">
-                <div class="breakdown-left">
-                    <div class="breakdown-section-heading">
-                        <h6>Network Performance</h6>
-                        <span>Latency, loss, jitter</span>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <h5 class="enterprise-section-title mb-0">Network Intelligence</h5>
+                        <div class="enterprise-section-sub">Latency, loss, alerts, inventory, discovery</div>
                     </div>
-                    <div class="tactical-card breakdown-subcard">
-                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                            <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
-                            <div class="tabs"><button class="active" data-target="tab-latency">Latency</button><button
-                                    data-target="tab-loss">Loss</button><button
-                                    data-target="tab-inventory-list">Inventory</button><button
-                                    data-target="tab-discovery">Discovery</button></div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="enterprise-section-sub">Updated: <span id="device-breakdown-updated">-</span></div>
+                        <button class="btn btn-sm btn-outline-secondary breakdown-collapse-btn"
+                            id="device-breakdown-close" type="button" title="Collapse panel"
+                            aria-label="Collapse device breakdown">
+                            <i class="fas fa-chevron-up"></i>
+                            <span>Collapse</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="breakdown-grid">
+                    <div class="breakdown-left">
+                        <div class="breakdown-section-heading">
+                            <h6>Network Performance</h6>
+                            <span>Latency, loss, jitter</span>
                         </div>
-                        <div class="card-body">
-                            <div id="tab-latency" class="tab-content is-active">
-                                <div class="table-responsive">
-                                    <table class="tactical-table table-hover mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Device</th>
-                                                <th>Avg/Min/Max</th>
-                                                <th class="d-none d-lg-table-cell">Loss %</th>
-                                                <th class="d-none d-lg-table-cell">Jitter</th>
-                                                <th class="d-none d-md-table-cell">IP</th>
-                                                <th class="d-none d-md-table-cell">Time</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="table-top-latency-body">
-                                            <tr>
-                                                <td colspan="6" class="text-center text-secondary p-3">
-                                                    Loading...</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                        <div class="tactical-card breakdown-subcard">
+                            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
+                                <div class="tabs"><button class="active"
+                                        data-target="tab-latency">Latency</button><button
+                                        data-target="tab-loss">Loss</button><button
+                                        data-target="tab-inventory-list">Inventory</button><button
+                                        data-target="tab-discovery">Discovery</button></div>
                             </div>
-                            <div id="tab-loss" class="tab-content">
-                                <div class="table-responsive">
-                                    <table class="tactical-table table-hover mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Device</th>
-                                                <th>Loss Avg/Max</th>
-                                                <th class="d-none d-lg-table-cell">Latency Avg/Max
-                                                </th>
-                                                <th class="d-none d-lg-table-cell">Jitter</th>
-                                                <th class="d-none d-md-table-cell">IP</th>
-                                                <th class="d-none d-md-table-cell">Time</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="table-top-loss-body">
-                                            <tr>
-                                                <td colspan="6" class="text-center text-secondary p-3">
-                                                    Loading...</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div id="tab-inventory-list" class="tab-content">
-                                <div class="table-responsive">
-                                    <table class="tactical-table table-hover mb-0" id="table-inventory">
-                                        <thead>
-                                            <tr>
-                                                <th style="width: 40px;">
-                                                    <div class="form-check d-flex justify-content-center">
-                                                        <input class="form-check-input" type="checkbox"
-                                                            id="inventory-select-all">
-                                                    </div>
-                                                </th>
-                                                <th>Device</th>
-                                                <th>Brand</th>
-                                                <th>Tier</th>
-                                                <th>IP</th>
-                                                <th>Save</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="table-inventory-body">
-                                            <tr>
-                                                <td colspan="6" class="text-center text-secondary p-3">
-                                                    Loading...</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div id="tab-discovery" class="tab-content">
-                                <div class="row g-3 align-items-end">
-                                    <div class="col-md-6"><label class="form-label small text-secondary">Seed
-                                            IP</label><input id="seed-ip" class="form-control tactical-input"
-                                            placeholder="192.168.1.1"></div>
-                                    <div class="col-md-3"><button id="btn-start-discovery"
-                                            class="btn tactical-btn-outline w-100">Start
-                                            Mapping</button></div>
-                                    <div class="col-md-3">
-                                        <div id="discovery-status" class="small" style="display: none;"></div>
+                            <div class="card-body">
+                                <div id="tab-latency" class="tab-content is-active">
+                                    <div class="table-responsive">
+                                        <table class="tactical-table table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Device</th>
+                                                    <th>Avg/Min/Max</th>
+                                                    <th class="d-none d-lg-table-cell">Loss %</th>
+                                                    <th class="d-none d-lg-table-cell">Jitter</th>
+                                                    <th class="d-none d-md-table-cell">IP</th>
+                                                    <th class="d-none d-md-table-cell">Time</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-top-latency-body">
+                                                <tr>
+                                                    <td colspan="6" class="text-center text-secondary p-3">
+                                                        Loading...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                                <div id="discovery-results" class="mt-3" style="display: none;">
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <div class="tactical-card breakdown-subcard">
-                                                <div class="card-header small"><i
-                                                        class="fas fa-project-diagram"></i>Switches
+                                <div id="tab-loss" class="tab-content">
+                                    <div class="table-responsive">
+                                        <table class="tactical-table table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Device</th>
+                                                    <th>Loss Avg/Max</th>
+                                                    <th class="d-none d-lg-table-cell">Latency Avg/Max
+                                                    </th>
+                                                    <th class="d-none d-lg-table-cell">Jitter</th>
+                                                    <th class="d-none d-md-table-cell">IP</th>
+                                                    <th class="d-none d-md-table-cell">Time</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-top-loss-body">
+                                                <tr>
+                                                    <td colspan="6" class="text-center text-secondary p-3">
+                                                        Loading...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="tab-inventory-list" class="tab-content">
+                                    <div class="table-responsive">
+                                        <table class="tactical-table table-hover mb-0" id="table-inventory">
+                                            <thead>
+                                                <tr>
+                                                    <th>
+                                                        <div class="form-check d-flex justify-content-center">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                id="inventory-select-all">
+                                                        </div>
+                                                    </th>
+                                                    <th>Device</th>
+                                                    <th>Brand</th>
+                                                    <th>Tier</th>
+                                                    <th>IP</th>
+                                                    <th>Save</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-inventory-body">
+                                                <tr>
+                                                    <td colspan="6" class="text-center text-secondary p-3">
+                                                        Loading...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="tab-discovery" class="tab-content">
+                                    <div class="row g-3 align-items-end">
+                                        <div class="col-md-6"><label class="form-label small text-secondary">Seed
+                                                IP</label><input id="seed-ip" class="form-control tactical-input"
+                                                placeholder="192.168.1.1"></div>
+                                        <div class="col-md-3"><button id="btn-start-discovery"
+                                                class="btn tactical-btn-outline w-100">Start
+                                                Mapping</button></div>
+                                        <div class="col-md-3">
+                                            <div id="discovery-status" class="small initially-hidden"></div>
+                                        </div>
+                                    </div>
+                                    <div id="discovery-results" class="mt-3 initially-hidden">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <div class="tactical-card breakdown-subcard">
+                                                    <div class="card-header small"><i
+                                                            class="fas fa-project-diagram"></i>Switches
+                                                    </div>
+                                                    <div class="card-body p-0">
+                                                        <div class="table-responsive">
+                                                            <table class="tactical-table table-hover mb-0">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>IP</th>
+                                                                        <th>Neighbors</th>
+                                                                        <th>Devices</th>
+                                                                        <th>Errors</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody id="discovery-switches-body">
+                                                                    <tr>
+                                                                        <td colspan="4"
+                                                                            class="text-center text-secondary p-3">
+                                                                            No results yet.</td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="card-body p-0">
-                                                    <div class="table-responsive">
-                                                        <table class="tactical-table table-hover mb-0">
-                                                            <thead>
-                                                                <tr>
-                                                                    <th>IP</th>
-                                                                    <th>Neighbors</th>
-                                                                    <th>Devices</th>
-                                                                    <th>Errors</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody id="discovery-switches-body">
-                                                                <tr>
-                                                                    <td colspan="4"
-                                                                        class="text-center text-secondary p-3">
-                                                                        No results yet.</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="tactical-card breakdown-subcard">
+                                                    <div class="card-header small"><i class="fas fa-plug"></i>Devices
+                                                    </div>
+                                                    <div class="card-body p-0">
+                                                        <div class="table-responsive">
+                                                            <table class="tactical-table table-hover mb-0">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Switch</th>
+                                                                        <th>IP</th>
+                                                                        <th>MAC</th>
+                                                                        <th>Port</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody id="discovery-devices-body">
+                                                                    <tr>
+                                                                        <td colspan="4"
+                                                                            class="text-center text-secondary p-3">
+                                                                            No results yet.</td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
-                                            <div class="tactical-card breakdown-subcard">
-                                                <div class="card-header small"><i class="fas fa-plug"></i>Devices</div>
-                                                <div class="card-body p-0">
-                                                    <div class="table-responsive">
-                                                        <table class="tactical-table table-hover mb-0">
-                                                            <thead>
-                                                                <tr>
-                                                                    <th>Switch</th>
-                                                                    <th>IP</th>
-                                                                    <th>MAC</th>
-                                                                    <th>Port</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody id="discovery-devices-body">
-                                                                <tr>
-                                                                    <td colspan="4"
-                                                                        class="text-center text-secondary p-3">
-                                                                        No results yet.</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    <div class="breakdown-right">
+                        <div class="breakdown-section-heading">
+                            <h6>Asset Inventory</h6>
+                            <span>Composition and inventory</span>
+                        </div>
+                        <div class="tactical-card breakdown-subcard">
+                            <div class="card-header small"><i class="fas fa-boxes"></i>Inventory
+                                Breakdown</div>
+                            <div class="card-body">
+                                <div class="chart-wrap-220"><canvas id="chart-inventory"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="breakdown-right">
-                    <div class="breakdown-section-heading">
-                        <h6>Asset Inventory</h6>
-                        <span>Composition and inventory</span>
+                <div class="breakdown-section-heading">
+                    <h6>Service Impact</h6>
+                    <span>Availability and affected devices</span>
+                </div>
+                <div class="service-impact-row">
+                    <div class="tactical-card breakdown-subcard">
+                        <div class="card-header small"><i class="fas fa-chart-line"></i>Availability
+                            (24h Avg)</div>
+                        <div class="card-body">
+                            <div class="fw-bold" id="val-availability-breakdown">-%</div>
+                            <div class="chart-wrap-90"><canvas id="chart-availability-breakdown"></canvas></div>
+                            <div class="small text-secondary mt-2">24h Avg: <span id="val-availability-24h">-%</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="tactical-card breakdown-subcard">
-                        <div class="card-header small"><i class="fas fa-boxes"></i>Inventory
-                            Breakdown</div>
-                        <div class="card-body">
-                            <div style="height: 220px; position: relative;"><canvas id="chart-inventory"></canvas></div>
+                        <div class="card-header small"><i class="fas fa-exclamation-triangle"></i>Top Affected Devices
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="tactical-table table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>IP</th>
+                                            <th>Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-top-affected-body">
+                                        <tr>
+                                            <td colspan="3" class="text-center text-secondary p-3">
+                                                Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="breakdown-section-heading">
-                <h6>Service Impact</h6>
-                <span>Availability and affected devices</span>
-            </div>
-            <div class="service-impact-row">
-                <div class="tactical-card breakdown-subcard">
-                    <div class="card-header small"><i class="fas fa-chart-line"></i>Availability
-                        (24h Avg)</div>
-                    <div class="card-body">
-                        <div class="fw-bold" id="val-availability-breakdown">-%</div>
-                        <div style="height: 90px; position: relative;"><canvas
-                                id="chart-availability-breakdown"></canvas></div>
-                        <div class="small text-secondary mt-2">24h Avg: <span id="val-availability-24h">-%</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="tactical-card breakdown-subcard">
-                    <div class="card-header small"><i class="fas fa-exclamation-triangle"></i>Top Affected Devices
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="tactical-table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Device</th>
-                                        <th>IP</th>
-                                        <th>Last Seen</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-top-affected-body">
-                                    <tr>
-                                        <td colspan="3" class="text-center text-secondary p-3">
-                                            Loading...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
         </div>
     </div>
 
@@ -1849,7 +2265,7 @@
                             <table class="tactical-table table-hover mb-0" id="table-server-health">
                                 <thead>
                                     <tr>
-                                        <th style="width:250px">Server</th>
+                                        <th class="server-col-fixed">Server</th>
                                         <th>Status</th>
                                         <th>CPU</th>
                                         <th>Memory</th>
@@ -1875,12 +2291,52 @@
     </div>
 
     <!-- Usage Alerts (Moved Bottom) -->
-    <div id="fleet-alerts-bar" class="alert alert-danger border-0 mb-0 py-2"
-        style="display: none; background: rgba(220, 53, 69, 0.15); border-left: 4px solid #dc3545 !important; border-radius: 8px;">
+    <div id="fleet-alerts-bar" class="alert alert-danger mb-0 py-2 alert-banner-critical">
         <div class="d-flex align-items-center gap-3"><i class="fas fa-exclamation-triangle text-danger"></i>
             <div class="flex-grow-1 small fw-bold" id="fleet-alerts-text">No critical alerts.
             </div><button class="btn btn-sm btn-outline-danger" id="btn-view-critical">View
                 Details</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- LAYER 2.5: Network Segments Breakdown -->
+<div class="container-fluid tactical-theme dashboard-enterprise">
+    <hr class="enterprise-divider-fade">
+    <div class="row mb-4">
+        <div class="col-lg-12">
+            <div class="tactical-card enterprise-panel network-segments-panel">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="enterprise-section-title mb-0">
+                            <i class="fas fa-project-diagram me-2"></i>Network Segments
+                        </h5>
+                        <div class="enterprise-section-sub">Online/Offline breakdown per subnet</div>
+                    </div>
+                </div>
+                <hr class="enterprise-divider-fade subnet-panel-divider">
+                <div class="card-body p-0">
+                    <div class="table-responsive subnet-table-scroll">
+                        <table class="tactical-table table-hover mb-0" id="table-subnet-health">
+                            <thead>
+                                <tr>
+                                    <th>Subnet</th>
+                                    <th>Total</th>
+                                    <th>Online</th>
+                                    <th>Offline</th>
+                                    <th>Health</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subnet-health-body">
+                                <tr>
+                                    <td colspan="5" class="text-center text-secondary p-3">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -2002,6 +2458,69 @@
 {% endblock %}
 
 {% block modals %}
+<div class="modal fade" id="subnetDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content tactical-card">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title">
+                    <i class="fas fa-project-diagram me-2"></i><span id="subnet-modal-title">Subnet Details</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="enterprise-section-sub mb-2" id="subnet-modal-updated">Updated: -</div>
+                <div class="subnet-detail-kpis">
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Total Devices</div>
+                        <div class="value" id="subnet-modal-total">0</div>
+                    </div>
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Online</div>
+                        <div class="value" id="subnet-modal-online">0</div>
+                    </div>
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Offline</div>
+                        <div class="value" id="subnet-modal-offline">0</div>
+                    </div>
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Health</div>
+                        <div class="value" id="subnet-modal-health">-</div>
+                    </div>
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Monitored</div>
+                        <div class="value" id="subnet-modal-monitored">0</div>
+                    </div>
+                    <div class="subnet-detail-kpi">
+                        <div class="label">Servers</div>
+                        <div class="value" id="subnet-modal-servers">0</div>
+                    </div>
+                </div>
+                <div class="enterprise-section-sub mb-2">
+                    Device types: <span id="subnet-modal-types">-</span> |
+                    Vendors: <span id="subnet-modal-vendors">-</span>
+                </div>
+                <div class="table-responsive subnet-modal-device-scroll">
+                    <table class="tactical-table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Device</th>
+                                <th>IP</th>
+                                <th>Type</th>
+                                <th>Vendor</th>
+                                <th>Monitored</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subnet-modal-devices-body">
+                            <tr>
+                                <td colspan="5" class="text-center text-secondary p-3">Select a subnet to view details.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Server Details Modal -->
 <div class="modal fade" id="serverDetailsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -2064,7 +2583,7 @@
                                 <span class="metric-status" id="server-cpu-status">-</span>
                             </div>
                             <div class="card-body">
-                                <div style="height: 200px"><canvas id="chart-server-cpu"></canvas></div>
+                                <div class="modal-chart-200"><canvas id="chart-server-cpu"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -2079,7 +2598,7 @@
                                 <span class="metric-status" id="server-mem-status">-</span>
                             </div>
                             <div class="card-body">
-                                <div style="height: 200px"><canvas id="chart-server-mem"></canvas></div>
+                                <div class="modal-chart-200"><canvas id="chart-server-mem"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -2094,7 +2613,7 @@
                                 <span class="metric-status" id="server-disk-status">-</span>
                             </div>
                             <div class="card-body">
-                                <div style="height: 200px"><canvas id="chart-server-disk"></canvas></div>
+                                <div class="modal-chart-200"><canvas id="chart-server-disk"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -2104,7 +2623,7 @@
                         <div class="tactical-card h-100">
                             <div class="card-header small">Network IO (MB)</div>
                             <div class="card-body">
-                                <div style="height: 220px"><canvas id="chart-server-net"></canvas></div>
+                                <div class="modal-chart-220"><canvas id="chart-server-net"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -2115,7 +2634,7 @@
                         <div class="tactical-card h-100">
                             <div class="card-header small">Load Average (1/5/15 min)</div>
                             <div class="card-body">
-                                <div class="d-flex justify-content-around align-items-center" style="height: 80px;">
+                                <div class="d-flex justify-content-around align-items-center load-avg-row">
                                     <div class="text-center">
                                         <div class="text-secondary small">1min</div>
                                         <div class="fw-bold fs-5" id="load-avg-1min">-</div>
@@ -2141,9 +2660,8 @@
                                     <div class="d-flex justify-content-between small text-secondary">
                                         <span id="swap-used-text">- MB</span><span id="swap-percent-text">-%</span>
                                     </div>
-                                    <div class="progress" style="height: 12px; background: rgba(255,255,255,0.1);">
-                                        <div id="swap-progress-bar" class="progress-bar" role="progressbar"
-                                            style="width: 0%"></div>
+                                    <div class="progress swap-progress-shell">
+                                        <div id="swap-progress-bar" class="progress-bar" role="progressbar"></div>
                                     </div>
                                 </div>
                                 <div class="small text-secondary">Total: <span id="swap-total-text">- MB</span></div>
@@ -2239,8 +2757,7 @@
                     </div>
                 </div>
                 <!-- ALERTS BANNER -->
-                <div id="server-alerts-banner" class="alert alert-warning border-0 mt-4"
-                    style="display: none; background: rgba(255, 193, 7, 0.15); border-left: 4px solid #ffc107 !important;">
+                <div id="server-alerts-banner" class="alert alert-warning mt-4 alert-banner-warning">
                     <div class="d-flex align-items-start gap-3"><i class="fas fa-exclamation-triangle mt-1"></i>
                         <div class="flex-grow-1">
                             <div class="fw-bold mb-2">System Alerts</div>
@@ -2252,6 +2769,112 @@
         </div>
     </div>
 </div>
+
+<!-- ═══ Quick-Add Device Modal ═══ -->
+<div id="dash-add-device-modal" class="dash-modal-overlay" style="display:none;">
+    <div class="dash-modal-card">
+        <div class="dash-modal-header">
+            <i class="fas fa-plus" style="color:var(--e-text-muted);"></i>
+            <h5>Add Device</h5>
+            <button class="close-btn" id="dash-modal-close">&times;</button>
+        </div>
+        <form id="dash-add-device-form">
+            <div class="dash-modal-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.7rem;">
+                    <div>
+                        <label>Device Name *</label>
+                        <input type="text" name="device_name" id="dash-device-name" required
+                            placeholder="e.g. Core-SW-01">
+                    </div>
+                    <div>
+                        <label>IP Address *</label>
+                        <input type="text" name="device_ip" id="dash-device-ip" required placeholder="10.0.1.1">
+                    </div>
+                    <div>
+                        <label>Device Type</label>
+                        <select name="device_type" id="dash-device-type">
+                            <option value="unknown">Unknown</option>
+                            <option value="switch">Switch</option>
+                            <option value="router">Router</option>
+                            <option value="firewall">Firewall</option>
+                            <option value="access_point">Access Point</option>
+                            <option value="server">Server</option>
+                            <option value="workstation">Workstation</option>
+                            <option value="printer">Printer</option>
+                            <option value="camera_iot">Camera / IoT</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>MAC Address</label>
+                        <input type="text" name="macaddress" id="dash-device-mac" placeholder="AA:BB:CC:DD:EE:FF">
+                    </div>
+                    <div style="grid-column:span 2;">
+                        <label>Description</label>
+                        <input type="text" name="description" id="dash-device-desc" placeholder="Optional notes">
+                    </div>
+                </div>
+                <!-- Credentials -->
+                <div class="dash-cred-divider"><i class="fas fa-key" style="margin-right:0.3rem;"></i> Credentials</div>
+                <p class="dash-cred-hint">Used for SSH / SNMP / API. Password is stored hashed.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.7rem;">
+                    <div>
+                        <label>Username</label>
+                        <input type="text" name="device_username" placeholder="admin" autocomplete="off">
+                    </div>
+                    <div>
+                        <label>Password</label>
+                        <input type="password" name="device_password" placeholder="Enter password"
+                            autocomplete="new-password">
+                    </div>
+                </div>
+            </div>
+            <div class="dash-modal-footer">
+                <button type="button" class="btn-cancel" id="dash-modal-cancel">Cancel</button>
+                <button type="submit" class="btn-save">Save Device</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const modal = document.getElementById('dash-add-device-modal');
+        const form = document.getElementById('dash-add-device-form');
+        const open = document.getElementById('dash-add-device-btn');
+        const close = document.getElementById('dash-modal-close');
+        const cancel = document.getElementById('dash-modal-cancel');
+
+        function show() { modal.style.display = 'flex'; }
+        function hide() { modal.style.display = 'none'; form.reset(); }
+
+        open.addEventListener('click', show);
+        close.addEventListener('click', hide);
+        cancel.addEventListener('click', hide);
+        modal.addEventListener('click', function (e) { if (e.target === modal) hide(); });
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const fd = new FormData(form);
+            try {
+                const res = await fetch('/api/devices/save', { method: 'POST', body: fd });
+                if (res.redirected || res.ok) {
+                    hide();
+                    // Subtle reload to pick up new device
+                    if (typeof window.refreshDashboard === 'function') {
+                        window.refreshDashboard();
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    const text = await res.text();
+                    alert('Save failed: ' + text);
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        });
+    })();
+</script>
 {% endblock %}
 
 {% block extra_js %}

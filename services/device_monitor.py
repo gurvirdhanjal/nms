@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from extensions import db
-from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.orm.exc import StaleDataError, ObjectDeletedError
 from services.network_scanner import NetworkScanner
 import statistics
 
@@ -85,24 +85,36 @@ class DeviceMonitor:
         from models.scan_history import DeviceScanHistory
         from metrics.normalizer import MetricNormalizer
         
-        # Monitor ALL devices as requested
-        devices = Device.query.all()
+        # Snapshot IDs only; each loop fetches a fresh row to avoid stale ORM objects
+        device_ids = [row[0] for row in db.session.query(Device.device_id).all()]
         
-        print(f"Monitoring {len(devices)} stored devices...")
+        print(f"Monitoring {len(device_ids)} stored devices...")
         
         scan_results = []
         
-        for device in devices:
+        for device_id in device_ids:
+            device = db.session.get(Device, device_id)
+            if not device:
+                continue
+
             # Skip devices in maintenance window
             if getattr(device, 'maintenance_mode', False):
                 continue
 
-            status, latency, packet_loss = await self.scanner.ping_device(device.device_ip)
+            device_ip = device.device_ip
+            device_name = device.device_name
+            status, latency, packet_loss = await self.scanner.ping_device(device_ip)
+
+            # Device may have been deleted while awaiting network I/O.
+            live_device = db.session.get(Device, device_id)
+            if not live_device:
+                db.session.rollback()
+                continue
             
             # Save scan history
             scan_record = DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 ping_time_ms=latency,
                 status=status,
                 scan_type='scheduled',
@@ -110,28 +122,33 @@ class DeviceMonitor:
             )
             
             # Normalize and collect metrics (now includes packet_loss)
-            metrics = MetricNormalizer.normalize_ping(device.device_ip, status, latency, packet_loss=packet_loss)
+            metrics = MetricNormalizer.normalize_ping(device_ip, status, latency, packet_loss=packet_loss)
             self.collector.add_metrics(metrics)
             
             # Evaluate Alerts (Phase 1A)
             from services.alert_manager import AlertManager
             is_online = (status == 'Online')
-            AlertManager.process_scan_result(device, is_online, latency, packet_loss, commit=False)
+            try:
+                AlertManager.process_scan_result(live_device, is_online, latency, packet_loss, commit=False)
+            except (StaleDataError, ObjectDeletedError) as e:
+                print(f"[WARN] Device became stale during alert processing for {device_ip}: {e}")
+                db.session.rollback()
+                continue
 
             # Broadcast real-time SSE event (Legacy connection for now)
             # We can refactor this to be event-driven later
             if not is_online or (latency and latency > 100) or (packet_loss and packet_loss > 5):
-                 # Simple broadcast for UI updates if impactful change
-                 try:
+                # Simple broadcast for UI updates if impactful change
+                try:
                     from services.sse_broadcaster import broadcast_event
                     broadcast_event('device_update', {
-                        'device_id': device.device_id,
-                        'ip': device.device_ip,
+                        'device_id': device_id,
+                        'ip': device_ip,
                         'status': status,
                         'latency': latency,
                         'packet_loss': packet_loss
                     })
-                 except Exception as e:
+                except Exception as e:
                     print(f"SSE Error: {e}")
 
 
@@ -140,16 +157,16 @@ class DeviceMonitor:
             # Commit per device to prevent long-running transactions/locks
             try:
                 db.session.commit()
-            except StaleDataError as e:
-                print(f"[WARN] Device disappeared during commit for {device.device_ip}: {e}")
+            except (StaleDataError, ObjectDeletedError) as e:
+                print(f"[WARN] Device disappeared during commit for {device_ip}: {e}")
                 db.session.rollback()
             except Exception as e:
-                print(f"[ERROR] Failed to commit scan record for {device.device_ip}: {e}")
+                print(f"[ERROR] Failed to commit scan record for {device_ip}: {e}")
                 db.session.rollback()
 
             scan_results.append({
-                'device_name': device.device_name,
-                'device_ip': device.device_ip,
+                'device_name': device_name,
+                'device_ip': device_ip,
                 'status': status,
                 'latency': latency,
                 'packet_loss': packet_loss,  # NEW: Include in results

@@ -2,9 +2,10 @@
 Provides endpoints to trigger and monitor database maintenance tasks
 and manage device maintenance windows.
 """
-from flask import Blueprint, jsonify, request, session, render_template
+from flask import Blueprint, jsonify, request, render_template
 from datetime import datetime, date
 from extensions import db
+from middleware.rbac import require_login, require_role
 
 maintenance_bp = Blueprint('maintenance_bp', __name__, url_prefix='/api/maintenance')
 
@@ -13,11 +14,9 @@ maintenance_bp = Blueprint('maintenance_bp', __name__, url_prefix='/api/maintena
 # Page route — Maintenance Window UI
 # ============================================================
 @maintenance_bp.route('/window')
+@require_login
 def maintenance_page():
     """Render the maintenance window management page."""
-    if 'logged_in' not in session:
-        from flask import redirect, url_for
-        return redirect(url_for('auth_bp.login'))
     return render_template('maintenance_window.html')
 
 
@@ -25,6 +24,7 @@ def maintenance_page():
 # POST /api/maintenance/cleanup
 # ============================================================
 @maintenance_bp.route('/cleanup', methods=['POST'])
+@require_role('admin')
 def run_cleanup():
     """
     Run database cleanup tasks.
@@ -38,13 +38,6 @@ def run_cleanup():
       server_health_daily_days
     }
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    # Check if user is admin (cleanup is admin-only)
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Admin access required'}), 403
-    
     try:
         from services.maintenance_service import maintenance_service
         
@@ -85,17 +78,12 @@ def run_cleanup():
 # POST /api/maintenance/aggregate
 # ============================================================
 @maintenance_bp.route('/aggregate', methods=['POST'])
+@require_role('admin')
 def run_aggregation():
     """
     Run daily stats aggregation.
     Body (optional): { date: "YYYY-MM-DD" }
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Admin access required'}), 403
-    
     try:
         from services.maintenance_service import maintenance_service
         
@@ -119,14 +107,9 @@ def run_aggregation():
 # POST /api/maintenance/run-all
 # ============================================================
 @maintenance_bp.route('/run-all', methods=['POST'])
+@require_role('admin')
 def run_all_maintenance():
     """Run all maintenance tasks (aggregation + cleanup)."""
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Admin access required'}), 403
-    
     try:
         from services.maintenance_service import maintenance_service
         
@@ -142,14 +125,12 @@ def run_all_maintenance():
 # GET /api/maintenance/status
 # ============================================================
 @maintenance_bp.route('/status')
+@require_login
 def get_maintenance_status():
     """
     Get database statistics for maintenance monitoring.
     Returns counts and oldest records for each table.
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from models.scan_history import DeviceScanHistory
         from models.interfaces import InterfaceTrafficHistory
@@ -261,11 +242,9 @@ def get_maintenance_status():
 # GET /api/maintenance/devices  — List devices with maintenance status
 # ============================================================
 @maintenance_bp.route('/devices')
+@require_login
 def get_maintenance_devices():
     """Return all devices with their maintenance mode status."""
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
     try:
         from models.device import Device
         devices = Device.query.order_by(Device.device_name).all()
@@ -293,16 +272,11 @@ def get_maintenance_devices():
 # POST /api/maintenance/toggle  — Toggle maintenance mode
 # ============================================================
 @maintenance_bp.route('/toggle', methods=['POST'])
+@require_role('admin')
 def toggle_maintenance():
     """Toggle maintenance_mode for a device.
     Body: { "device_id": int }
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Admin access required'}), 403
-
     try:
         from models.device import Device
 

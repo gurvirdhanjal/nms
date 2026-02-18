@@ -42,6 +42,23 @@ export function updateState(key, data) {
     }
 }
 
+export function updateStateBatch(updates) {
+    if (!updates || typeof updates !== 'object') return;
+
+    let changed = false;
+    Object.entries(updates).forEach(([key, value]) => {
+        if (key in dashboardState) {
+            dashboardState[key] = value;
+            changed = true;
+        }
+    });
+
+    if (!changed) return;
+    dashboardState.lastUpdated = new Date();
+    notifyListeners();
+    saveToCache();
+}
+
 function saveToCache() {
     try {
         const cacheData = {
@@ -131,11 +148,13 @@ export function mergeRealtimeUpdate(eventType, payload) {
     if (dashboardState.summary) {
         switch (eventType) {
             case 'device_status':
+            case 'device_update':
                 // Update device counts based on status change
                 if (dashboardState.summary.devices) {
                     const devices = dashboardState.summary.devices;
-                    const isDown = payload.new_state === 'CRITICAL' || payload.new_state === 'down';
-                    const isUp = payload.new_state === 'OK' || payload.new_state === 'up';
+                    const nextState = (payload.new_state || payload.status || '').toString().toLowerCase();
+                    const isDown = nextState === 'critical' || nextState === 'down' || nextState === 'offline';
+                    const isUp = nextState === 'ok' || nextState === 'up' || nextState === 'online';
 
                     if (isDown) {
                         // Device went down

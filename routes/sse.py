@@ -2,10 +2,17 @@
 SSE (Server-Sent Events) streaming endpoint for real-time dashboard updates.
 """
 import uuid
-from flask import Blueprint, Response, session, stream_with_context
+from flask import Blueprint, Response, stream_with_context
+from middleware.rbac import require_login
 from services.sse_broadcaster import get_broadcaster
 
 sse_bp = Blueprint('sse_bp', __name__, url_prefix='/api/events')
+
+
+@sse_bp.before_request
+@require_login
+def _sse_auth_guard():
+    return None
 
 
 @sse_bp.route('/stream')
@@ -27,10 +34,6 @@ def event_stream():
     - Connection: keep-alive (persistent connection)
     - X-Accel-Buffering: no (disable nginx buffering)
     """
-    # Auth check
-    if 'logged_in' not in session:
-        return Response('Unauthorized', status=401)
-    
     client_id = str(uuid.uuid4())
     broadcaster = get_broadcaster()
     
@@ -75,9 +78,6 @@ def event_stream():
 @sse_bp.route('/status')
 def get_status():
     """Get SSE connection status (for debugging)."""
-    if 'logged_in' not in session:
-        return {'error': 'Unauthorized'}, 401
-    
     broadcaster = get_broadcaster()
     return {
         'connected_clients': broadcaster.get_client_count(),

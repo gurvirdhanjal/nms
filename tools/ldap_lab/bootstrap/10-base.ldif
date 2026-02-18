@@ -1,0 +1,46 @@
+dn: ou=users,dc=example,dc=local
+objectClass: top
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=example,dc=local
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=nmsadmin,ou=users,dc=example,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: nmsadmin
+cn: NMS Admin
+sn: Admin
+displayName: NMS Admin
+mail: nmsadmin@example.local
+userPassword: nmsadmin123
+
+dn: uid=nmsuser,ou=users,dc=example,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: nmsuser
+cn: NMS User
+sn: User
+displayName: NMS User
+mail: nmsuser@example.local
+userPassword: nmsuser123
+
+dn: cn=MonitorAdmins,ou=groups,dc=example,dc=local
+objectClass: top
+objectClass: groupOfNames
+cn: MonitorAdmins
+member: uid=nmsadmin,ou=users,dc=example,dc=local
+
+dn: cn=MonitorUsers,ou=groups,dc=example,dc=local
+objectClass: top
+objectClass: groupOfNames
+cn: MonitorUsers
+member: uid=nmsadmin,ou=users,dc=example,dc=local
+member: uid=nmsuser,ou=users,dc=example,dc=local

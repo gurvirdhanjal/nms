@@ -1,10 +1,17 @@
-from flask import Blueprint, jsonify, request, session, current_app
+from flask import Blueprint, jsonify, request, current_app
 from extensions import db
+from middleware.rbac import require_login
 
 from services.snmp_discovery import SnmpDiscovery
 
 
 switch_discovery_bp = Blueprint('switch_discovery_bp', __name__, url_prefix='')
+
+
+@switch_discovery_bp.before_request
+@require_login
+def _switch_discovery_auth_guard():
+    return None
 
 
 def _persist_devices(switches):
@@ -69,9 +76,6 @@ def _persist_devices(switches):
 
 @switch_discovery_bp.route('/api/switches/discover', methods=['POST'])
 def discover_switches():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
     data = request.get_json(silent=True) or {}
     seed_ip = data.get('seed_ip')
 

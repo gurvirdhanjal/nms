@@ -1,13 +1,11 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app
+from flask import Blueprint, render_template, request, jsonify, session, current_app
 from services.discovery_service import get_discovery_service
 from services.device_identity import upsert_device_from_identity
-from models.scan_history import NetworkScan
 from extensions import db
-from datetime import datetime
 import json
-import socket
 import ipaddress
-import psutil
+import logging
+from middleware.rbac import require_login
 
 # ===============================
 # CONFIG (SAFETY FIRST)
@@ -22,6 +20,42 @@ PING_TIMEOUT = 2
 # ===============================
 
 scanning_bp = Blueprint('scanning_bp', __name__, url_prefix='')
+logger = logging.getLogger(__name__)
+
+
+def _normalize_snmp_version(version):
+    normalized = (version or "2c").strip().lower().replace("v", "")
+    if normalized in ("1", "2c", "3"):
+        return normalized
+    return "2c"
+
+
+def _upsert_snmp_config_for_device(device, data):
+    from models.snmp_config import DeviceSnmpConfig
+
+    snmp_working = bool(data.get('snmp_working'))
+    snmp_community = (data.get('snmp_community') or '').strip()
+    if not (snmp_working and snmp_community):
+        return
+
+    snmp_version = _normalize_snmp_version(data.get('snmp_version', '2c'))
+    snmp_port = int(data.get('snmp_port') or 161)
+
+    config = DeviceSnmpConfig.query.filter_by(device_id=device.device_id).first()
+    if not config:
+        config = DeviceSnmpConfig(device_id=device.device_id)
+
+    config.community_string = snmp_community
+    config.snmp_version = snmp_version
+    config.snmp_port = snmp_port
+    config.is_enabled = bool(device.is_monitored)
+    db.session.add(config)
+
+
+@scanning_bp.before_request
+@require_login
+def _scanning_auth_guard():
+    return None
 
 # ===============================
 # NETWORK DETECTION
@@ -53,8 +87,6 @@ def validate_network(cidr):
 
 @scanning_bp.route('/scanner')
 def scanner_page():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
     return render_template('scanning.html')
 
 @scanning_bp.route('/api/get_local_ip_range')
@@ -72,7 +104,10 @@ def scan_network():
 
     data = request.get_json(silent=True) or {}
     ip_range = data.get('ip_range')
-    scan_mode = data.get('scan_mode', 'heavy')
+    requested_scan_mode = (data.get('scan_mode') or 'heavy').strip().lower()
+    scan_mode = 'heavy'
+    if requested_scan_mode != 'heavy':
+        print(f"[DEBUG] Unsupported scan mode '{requested_scan_mode}' requested. Falling back to heavy mode.")
     
     print(f"[DEBUG] scan_network called. Mode: {scan_mode}")
     service = get_discovery_service()
@@ -94,7 +129,8 @@ def scan_network():
     try:
         service = get_discovery_service()
         scan_id = service.start_scan(str(result), username, scan_mode=scan_mode)
-        return jsonify({'scan_id': scan_id, 'status': 'started'}), 202
+        logger.info("Scan API start: id=%s user=%s range=%s", scan_id, username, str(result))
+        return jsonify({'scan_id': scan_id, 'status': 'started', 'scan_mode': scan_mode}), 202
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 @scanning_bp.route('/api/scan_progress/<scan_id>')
@@ -107,71 +143,6 @@ def scan_progress(scan_id):
     if not status:
         return jsonify({'error': 'Scan not found'}), 404
         
-    # If scan completed, save to DB (idempotency needed or move to service callback)
-    # Ideally, the service should handle persistence, but for now we keep it here or just log it
-    # We can check if it's the *first* time we see it completed if needed, but the current UI polls until complete
-    
-    if status['status'] == 'completed' and not status.get('saved'):
-        # Optional: Trigger DB save here if not done yet
-        # For simplicity, we'll let the "save_scan_to_db" be handled if we move it to service or invoke here
-        # But since 'get_scan_status' is a getter, it shouldn't have side effects ideally.
-        # The previous implementation saved at end of thread.
-        # We will rely on the service buffer for results.
-        # Auto-save scan results to database as requested
-        try:
-            results = service.get_scan_results(scan_id)
-            from models.device import Device
-            from services.device_classifier import DeviceClassifier
-
-            count_added = 0
-            count_updated = 0
-            for device_data in results:
-                ip = device_data.get('ip')
-                if not ip:
-                    continue
-
-                device_type_raw = (device_data.get('device_type') or device_data.get('type') or '').strip()
-                device_type = DeviceClassifier.normalize_device_type(device_type_raw)
-                confidence_score = device_data.get('confidence_score')
-                classification_confidence = (device_data.get('classification_confidence') or '').strip()
-                classification_details = device_data.get('classification_details')
-
-                device, action, _prev_ip = upsert_device_from_identity(
-                    ip=ip,
-                    mac=device_data.get('mac'),
-                    hostname=device_data.get('hostname') or 'Unknown',
-                    manufacturer=device_data.get('manufacturer') or 'Unknown',
-                    device_type=device_type or 'unknown',
-                    is_monitored=True,
-                    is_active=True
-                )
-
-                if device and (classification_confidence or confidence_score is not None or classification_details):
-                    if (device.classification_confidence or '').strip().lower() != 'manual':
-                        if classification_confidence:
-                            device.classification_confidence = classification_confidence
-                        if confidence_score is not None:
-                            device.confidence_score = confidence_score
-                        if classification_details is not None:
-                            if not isinstance(classification_details, str):
-                                classification_details = json.dumps(classification_details)
-                            device.classification_details = classification_details
-
-                if action == "created":
-                    count_added += 1
-                elif action == "updated":
-                    count_updated += 1
-
-            if count_added > 0 or count_updated > 0:
-                db.session.commit()
-            with service.active_scans_lock:
-                if scan_id in service.active_scans:
-                    service.active_scans[scan_id]['saved'] = True
-
-        except Exception as e:
-            print(f"Error auto-saving scan results: {e}")
-            db.session.rollback()
-
     return jsonify(status)
 
 @scanning_bp.route('/api/active_scan')
@@ -203,9 +174,18 @@ def active_scan():
 @scanning_bp.route('/api/stop_scan/<scan_id>', methods=['POST'])
 def stop_scan(scan_id):
     service = get_discovery_service()
-    if service.stop_scan(scan_id):
-        return jsonify({'status': 'stopped'})
-    return jsonify({'error': 'Scan not found'}), 404
+    result = service.stop_scan(scan_id)
+    if result.get('ok'):
+        logger.info("Scan API stop: id=%s state=%s message=%s", scan_id, result.get('state'), result.get('message'))
+        return jsonify({
+            'status': result.get('state') or 'stopped',
+            'message': result.get('message'),
+            'already': bool(result.get('already'))
+        })
+    logger.warning("Scan API stop failed: id=%s state=%s message=%s", scan_id, result.get('state'), result.get('message'))
+    if result.get('state') == 'not_found':
+        return jsonify({'error': 'Scan not found'}), 404
+    return jsonify({'error': result.get('message') or 'Unable to stop scan'}), 409
 
 @scanning_bp.route('/api/ping_device', methods=['POST'])
 def ping_device():
@@ -326,6 +306,7 @@ def add_to_inventory():
             return jsonify({'success': False, 'message': 'IP address required'}), 400
 
         if action in ("created", "updated"):
+            _upsert_snmp_config_for_device(device, data)
             db.session.commit()
 
         return jsonify({

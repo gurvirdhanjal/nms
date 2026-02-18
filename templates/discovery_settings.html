@@ -213,12 +213,8 @@
                     <div class="settings-section">
                         <h5><i class="fas fa-clock me-2"></i>Scan Intervals</h5>
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small">Light Sweep Interval (minutes)</label>
-                                <input type="number" class="form-control" id="lightInterval" min="1" max="1440">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small">Heavy Scan Interval (minutes)</label>
+                            <div class="col-md-12">
+                                <label class="form-label small">Auto Scan Interval (minutes)</label>
                                 <input type="number" class="form-control" id="heavyInterval" min="1" max="10080">
                             </div>
                         </div>
@@ -283,10 +279,6 @@
             <div class="card-body">
                 <div class="stat-grid">
                     <div class="stat-item">
-                        <div class="stat-label">Last Light Scan</div>
-                        <div class="stat-value" id="statLightScan">-</div>
-                    </div>
-                    <div class="stat-item">
                         <div class="stat-label">Last Heavy Scan</div>
                         <div class="stat-value" id="statHeavyScan">-</div>
                     </div>
@@ -315,11 +307,8 @@
             <div class="card-body">
                 <p class="text-muted small mb-3">Trigger a scan immediately without waiting for the scheduler.</p>
                 <div class="trigger-btn-group">
-                    <button class="btn btn-outline-info flex-fill" id="triggerLightBtn">
-                        <i class="fas fa-wifi"></i> Light Sweep
-                    </button>
                     <button class="btn btn-outline-warning flex-fill" id="triggerHeavyBtn">
-                        <i class="fas fa-microscope"></i> Heavy Scan
+                        <i class="fas fa-microscope"></i> Run Auto Scan Now
                     </button>
                 </div>
                 <div id="triggerStatus" class="small mt-2" style="display:none;"></div>
@@ -376,7 +365,6 @@
 
         function populateForm(cfg) {
             document.getElementById('enabledToggle').checked = cfg.enabled;
-            document.getElementById('lightInterval').value = cfg.light_interval_min;
             document.getElementById('heavyInterval').value = cfg.heavy_interval_min;
             document.getElementById('maxPings').value = cfg.max_concurrent_pings;
             document.getElementById('pingTimeout').value = cfg.ping_timeout || 2;
@@ -397,8 +385,6 @@
                 badge.className = 'badge bg-secondary';
             }
 
-            document.getElementById('statLightScan').textContent =
-                formatScanTimestamp(cfg.last_light_scan);
             document.getElementById('statHeavyScan').textContent =
                 formatScanTimestamp(cfg.last_heavy_scan);
             document.getElementById('statDuration').textContent =
@@ -465,7 +451,6 @@
                 const payload = {
                     enabled: document.getElementById('enabledToggle').checked,
                     subnets: currentSubnets,
-                    light_interval_min: parseInt(document.getElementById('lightInterval').value) || 30,
                     heavy_interval_min: parseInt(document.getElementById('heavyInterval').value) || 1440,
                     max_concurrent_pings: parseInt(document.getElementById('maxPings').value) || 50,
                     ping_timeout: parseInt(document.getElementById('pingTimeout').value) || 2,
@@ -496,23 +481,6 @@
         });
 
         // ---- Triggers ----
-        document.getElementById('triggerLightBtn').addEventListener('click', async function () {
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
-            try {
-                const res = await fetch('/api/discovery-settings/trigger-light', { method: 'POST' });
-                const data = await res.json();
-                showTriggerStatus(data.message || 'Triggered.', 'text-info');
-            } catch (e) {
-                showTriggerStatus('Failed: ' + e.message, 'text-danger');
-            } finally {
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-wifi"></i> Light Sweep';
-                // Reload stats after a short delay
-                setTimeout(loadSettings, 5000);
-            }
-        });
-
         document.getElementById('triggerHeavyBtn').addEventListener('click', async function () {
             this.disabled = true;
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
@@ -524,7 +492,7 @@
                 showTriggerStatus('Failed: ' + e.message, 'text-danger');
             } finally {
                 this.disabled = false;
-                this.innerHTML = '<i class="fas fa-microscope"></i> Heavy Scan';
+                this.innerHTML = '<i class="fas fa-microscope"></i> Run Auto Scan Now';
                 setTimeout(loadSettings, 10000);
             }
         });

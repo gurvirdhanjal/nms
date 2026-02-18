@@ -1,3 +1,5 @@
+import { patchKeyedTableRows } from '../domPatch.js';
+
 let modalInstance = null;
 let currentDeviceId = null;
 let charts = {};
@@ -615,24 +617,24 @@ function renderDiskIO(diskIO) {
 
 function renderTopProcesses(processes) {
     const tbody = document.getElementById('top-processes-body');
+    if (!tbody) return;
 
-    if (!processes || processes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary p-3">No process data available</td></tr>';
-        return;
-    }
+    patchKeyedTableRows(tbody, (processes || []).slice(0, 5), {
+        getKey: (proc, index) => proc.pid || `${proc.name || 'proc'}-${index}`,
+        emptyColSpan: 5,
+        emptyMessage: 'No process data available',
+        emptyClassName: 'text-center text-secondary p-3',
+        renderCells: (proc) => {
+            const cpuClass = proc.cpu_percent > 50 ? 'text-danger' : proc.cpu_percent > 25 ? 'text-warning' : '';
+            const memClass = proc.memory_percent > 50 ? 'text-danger' : proc.memory_percent > 25 ? 'text-warning' : '';
 
-    tbody.innerHTML = processes.slice(0, 5).map(proc => {
-        const cpuClass = proc.cpu_percent > 50 ? 'text-danger' : proc.cpu_percent > 25 ? 'text-warning' : '';
-        const memClass = proc.memory_percent > 50 ? 'text-danger' : proc.memory_percent > 25 ? 'text-warning' : '';
-
-        return `
-            <tr>
+            return `
                 <td>${proc.name || '-'}</td>
                 <td>${proc.pid || '-'}</td>
                 <td class="${cpuClass}">${proc.cpu_percent !== null && proc.cpu_percent !== undefined ? proc.cpu_percent.toFixed(1) + '%' : '-'}</td>
                 <td class="${memClass}">${proc.memory_percent !== null && proc.memory_percent !== undefined ? proc.memory_percent.toFixed(1) + '%' : '-'}</td>
                 <td>${proc.status || '-'}</td>
-            </tr>
-        `;
-    }).join('');
+            `;
+        }
+    });
 }

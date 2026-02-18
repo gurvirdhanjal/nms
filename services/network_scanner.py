@@ -309,11 +309,15 @@ class NetworkScanner:
             if oui in self._vendor_cache:
                 return self._vendor_cache[oui]
 
-            # mac_vendor_lookup's lookup can be a coroutine in newer versions
-            vendor = self.mac_lookup.lookup(mac)
-            if asyncio.iscoroutine(vendor):
-                vendor = await vendor
-                
+            # mac_vendor_lookup.MacLookup.lookup() - Handle sync vs async return
+            try:
+                # Newer versions might return a coroutine directly
+                vendor = self.mac_lookup.lookup(mac)
+                if asyncio.iscoroutine(vendor) or (hasattr(vendor, '__await__') and not isinstance(vendor, str)):
+                    vendor = await vendor
+            except Exception:
+                vendor = "Unknown"
+                 
             vendor = vendor if vendor else "Unknown"
             self._vendor_cache[oui] = vendor
             return vendor
@@ -553,17 +557,6 @@ class NetworkScanner:
             }
 
             if status != "Online":
-                return device_info
-
-            # In 'light' mode, we prioritize speed.
-
-
-            # Ping-only: no MAC, no hostname, no manufacturer, no ports.
-
-
-            if scan_mode == 'light':
-
-
                 return device_info
 
             # HEAVY MODE: Full enrichment
@@ -913,8 +906,10 @@ class NetworkScanner:
             return False
         if active_scans_lock:
             with active_scans_lock:
-                return active_scans.get(scan_id, {}).get("status") == "stopped"
-        return active_scans.get(scan_id, {}).get("status") == "stopped"
+                scan_state = active_scans.get(scan_id, {})
+                return bool(scan_state.get("stop")) or scan_state.get("status") == "stopped"
+        scan_state = active_scans.get(scan_id, {})
+        return bool(scan_state.get("stop")) or scan_state.get("status") == "stopped"
 
     def _safe_update_scan(self, scan_id, active_scans, active_scans_lock, updates: dict) -> None:
         if not scan_id or not active_scans:

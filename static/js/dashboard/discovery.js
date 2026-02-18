@@ -1,6 +1,7 @@
 /**
  * Network Discovery UI Handler
  */
+import { patchKeyedTableRows } from './domPatch.js';
 
 export function initDiscovery() {
     const startBtn = document.getElementById('btn-start-discovery');
@@ -55,10 +56,18 @@ export function initDiscovery() {
         const devicesBody = document.getElementById('discovery-devices-body');
         if (resultsEl) resultsEl.style.display = 'none';
         if (switchesBody) {
-            switchesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3">No results yet.</td></tr>';
+            patchKeyedTableRows(switchesBody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'No results yet.',
+                emptyClassName: 'text-center p-3'
+            });
         }
         if (devicesBody) {
-            devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3">No results yet.</td></tr>';
+            patchKeyedTableRows(devicesBody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'No results yet.',
+                emptyClassName: 'text-center p-3'
+            });
         }
     }
 
@@ -106,26 +115,35 @@ export function initDiscovery() {
         if (!resultsEl || !switchesBody || !devicesBody) return;
 
         if (!switches || switches.length === 0) {
-            switchesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3">No switches discovered.</td></tr>';
-            devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3">No devices discovered.</td></tr>';
+            patchKeyedTableRows(switchesBody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'No switches discovered.',
+                emptyClassName: 'text-center p-3'
+            });
+            patchKeyedTableRows(devicesBody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'No devices discovered.',
+                emptyClassName: 'text-center p-3'
+            });
             resultsEl.style.display = 'block';
             return;
         }
 
-        switchesBody.innerHTML = switches.map(sw => {
-            const neighbors = (sw.neighbors || []).length;
-            const devices = (sw.devices || []).length;
-            const errors = (sw.errors || []).length;
-            const ip = sw.ip || 'Unknown';
-            return `
-                <tr>
+        patchKeyedTableRows(switchesBody, switches, {
+            getKey: (sw, index) => sw.ip || `switch-${index}`,
+            renderCells: (sw) => {
+                const neighbors = (sw.neighbors || []).length;
+                const devices = (sw.devices || []).length;
+                const errors = (sw.errors || []).length;
+                const ip = sw.ip || 'Unknown';
+                return `
                     <td>${ip}</td>
                     <td>${neighbors}</td>
                     <td>${devices}</td>
                     <td>${errors}</td>
-                </tr>
-            `;
-        }).join('');
+                `;
+            }
+        });
 
         const deviceRows = [];
         switches.forEach(sw => {
@@ -141,16 +159,21 @@ export function initDiscovery() {
         });
 
         if (deviceRows.length === 0) {
-            devicesBody.innerHTML = '<tr><td colspan="4" class="text-center p-3">No devices discovered.</td></tr>';
+            patchKeyedTableRows(devicesBody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'No devices discovered.',
+                emptyClassName: 'text-center p-3'
+            });
         } else {
-            devicesBody.innerHTML = deviceRows.map(d => `
-                <tr>
+            patchKeyedTableRows(devicesBody, deviceRows, {
+                getKey: (device, index) => `${device.switch_ip}-${device.mac || device.ip || index}`,
+                renderCells: (d) => `
                     <td>${d.switch_ip}</td>
                     <td>${d.ip || '-'}</td>
                     <td>${d.mac || '-'}</td>
                     <td>${d.port || '-'}</td>
-                </tr>
-            `).join('');
+                `
+            });
         }
 
         resultsEl.style.display = 'block';

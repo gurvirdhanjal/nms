@@ -1,8 +1,10 @@
 /**
  * Connection Status Indicator Component
  *
- * Displays polling status with visual feedback:
- * - Green dot + "Polling (30s)"
+ * Displays dashboard data transport mode:
+ * - SSE live stream (primary)
+ * - SSE connecting
+ * - Polling fallback
  */
 
 /**
@@ -17,11 +19,44 @@ export function renderConnectionIndicator(status = 'polling') {
         return;
     }
 
-    const config = {
-        dotClass: 'indicator-dot--connected',
-        text: 'Polling (30s)',
-        title: 'Dashboard updates every 30 seconds'
+    const configs = {
+        connected: {
+            dotClass: 'indicator-dot--connected',
+            text: 'Live Stream',
+            title: 'Real-time updates via SSE'
+        },
+        sse_connected: {
+            dotClass: 'indicator-dot--connected',
+            text: 'Live Stream',
+            title: 'Real-time updates via SSE'
+        },
+        connecting: {
+            dotClass: 'indicator-dot--connecting',
+            text: 'Stream Connecting',
+            title: 'Establishing SSE connection'
+        },
+        sse_connecting: {
+            dotClass: 'indicator-dot--connecting',
+            text: 'Stream Connecting',
+            title: 'Establishing SSE connection'
+        },
+        disconnected: {
+            dotClass: 'indicator-dot--fallback',
+            text: 'Polling Fallback (30s)',
+            title: 'SSE unavailable, using polling fallback'
+        },
+        polling_fallback: {
+            dotClass: 'indicator-dot--fallback',
+            text: 'Polling Fallback (30s)',
+            title: 'SSE unavailable, using polling fallback'
+        },
+        polling: {
+            dotClass: 'indicator-dot--fallback',
+            text: 'Polling (30s)',
+            title: 'Dashboard updates every 30 seconds'
+        }
     };
+    const config = configs[status] || configs.polling;
 
     container.innerHTML = `
         <div class="connection-indicator" title="${config.title}">

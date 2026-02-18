@@ -16,6 +16,23 @@ async function fetchAPI(endpoint) {
     }
 }
 
+export async function fetchFullSnapshot({
+    range = '24h',
+    forceFreshTopProblems = false,
+    alertsStatus = 'active',
+    alertsLimit = 200
+} = {}) {
+    const params = new URLSearchParams({
+        range: String(range || '24h'),
+        status: String(alertsStatus || 'active'),
+        limit: String(alertsLimit || 200)
+    });
+    if (forceFreshTopProblems) {
+        params.set('fresh', '1');
+    }
+    return fetchAPI(`/api/dashboard/full_snapshot?${params.toString()}`);
+}
+
 export async function fetchSummary() {
     return fetchAPI('/api/dashboard/summary');
 }
@@ -56,4 +73,12 @@ export async function fetchFleetMetrics() {
 export async function fetchAvailabilityDetails(forceFresh = false) {
     const suffix = forceFresh ? '?fresh=1' : '';
     return fetchAPI(`/api/dashboard/availability-details${suffix}`);
+}
+
+export async function fetchSubnetDetails(subnet, limit = 500) {
+    const params = new URLSearchParams({
+        subnet: String(subnet || ''),
+        limit: String(limit || 500)
+    });
+    return fetchAPI(`/api/dashboard/subnet-details?${params.toString()}`);
 }

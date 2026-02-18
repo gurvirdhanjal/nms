@@ -5,7 +5,7 @@ class Device(db.Model):
     device_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_name = db.Column(db.String(100), nullable=False)
     device_type = db.Column(db.String(100), nullable=False)
-    device_ip = db.Column(db.String(50), nullable=False)
+    device_ip = db.Column(db.String(50), nullable=False, index=True)
     port = db.Column(db.String(50), nullable=True)
     rstplink = db.Column(db.String(100), nullable=True)
     macaddress = db.Column(db.String(50), nullable=True)
@@ -30,8 +30,8 @@ class Device(db.Model):
     # ssh_profile_id = db.Column(db.Integer, db.ForeignKey('ssh_profiles.profile_id'), nullable=True)
     
     # Phase 3: Infrastructure Mapping & Topology
-    parent_switch_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), nullable=True)
-    parent_port_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id'), nullable=True)
+    parent_switch_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='SET NULL'), nullable=True)
+    parent_port_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id', ondelete='SET NULL'), nullable=True)
     last_discovery_method = db.Column(db.String(50), nullable=True) # LLDP, CDP, SSH-CAM, etc.
     
     # Intelligence & Classification
@@ -45,6 +45,7 @@ class Device(db.Model):
     packet_loss_strikes = db.Column(db.Integer, default=0)    # Consecutive high-packet-loss scans
     
     # Enhanced Identity
+    subnet_cidr = db.Column(db.String(50), nullable=True, index=True)  # e.g. "172.16.1.0/24"
     location = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
     
@@ -73,6 +74,10 @@ class Device(db.Model):
     wmi_username = db.Column(db.String(100), nullable=True)
     wmi_password = db.Column(db.String(100), nullable=True)
     wmi_domain = db.Column(db.String(100), nullable=True)
+    
+    # Device Credentials (for SSH/API/general access)
+    device_username = db.Column(db.String(100), nullable=True)
+    device_password_hash = db.Column(db.String(256), nullable=True)  # werkzeug pbkdf2 hash
     
     # Relationships
     # ssh_profile = db.relationship('SSHProfile', backref=db.backref('devices', lazy=True))
@@ -122,5 +127,8 @@ class Device(db.Model):
             'health_alert_strikes': self.health_alert_strikes,
             'latency_strikes': self.latency_strikes,
             'packet_loss_strikes': self.packet_loss_strikes,
-            'hardware_specs': self.hardware_specs
+            'hardware_specs': self.hardware_specs,
+            'device_username': self.device_username,
+            'subnet_cidr': self.subnet_cidr,
+            # device_password_hash intentionally excluded for security
         }

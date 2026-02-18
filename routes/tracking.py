@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
+from middleware.rbac import require_login
 from extensions import db
 from models.tracked_device import TrackedDevice, DeviceScanHistory, DeviceActivityLog, DeviceResourceLog, DeviceApplicationLog
 from datetime import datetime, timedelta
@@ -17,6 +18,11 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 
 tracking_bp = Blueprint('tracking_bp', __name__)
+
+@tracking_bp.before_request
+@require_login
+def _tracking_auth_guard():
+    return None
 
 # Use centralized config for API key
 from config import Config
@@ -738,9 +744,6 @@ def utility_processor():
 @tracking_bp.route('/tracking')
 def device_tracking():
     """Main device tracking page"""
-    if not session.get('logged_in'):
-        return redirect(url_for('auth_bp.login'))
-    
     # 1. Fetch all devices (Fast)
     saved_devices = TrackedDevice.query.order_by(TrackedDevice.device_name).all()
     
@@ -773,9 +776,6 @@ def device_tracking():
 @tracking_bp.route('/tracking/history/<int:device_id>')
 def device_history(device_id):
     """Device history page"""
-    if not session.get('logged_in'):
-        return redirect(url_for('auth_bp.login'))
-    
     device = TrackedDevice.query.get_or_404(device_id)
     
     # Get date range from request
@@ -1333,10 +1333,6 @@ def api_toggle_mic(mac_address):
 @tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
 def proxy_camera_stream(mac_address):
     """Proxy camera stream from device"""
-    # Check auth (can be disabled for debugging if needed but better safe)
-    if not session.get('logged_in'):
-        return Response('Unauthorized', 401)
-        
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
         return Response("Device not found or offline", 404)
@@ -1401,8 +1397,6 @@ def api_toggle_camera(mac_address):
 @tracking_bp.route('/api/tracking/stop-camera/<mac_address>', methods=['POST'])
 def api_stop_camera(mac_address):
     """Stop camera stream on device"""
-    if not session.get('logged_in'):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
     
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
@@ -1435,8 +1429,6 @@ def api_stop_camera(mac_address):
 def api_scan_devices():
     """Scan network for devices"""
     print("[DEBUG] /api/tracking/scan endpoint called!")
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         scanner = NetworkScanner()
@@ -1519,8 +1511,6 @@ def api_scan_devices():
 @tracking_bp.route('/api/tracking/save-device', methods=['POST'])
 def api_save_device():
     """Save/update device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         data = request.json
@@ -1560,8 +1550,6 @@ def api_save_device():
 @tracking_bp.route('/api/tracking/delete-device', methods=['POST'])
 def api_delete_device():
     """Delete device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         mac_address = request.json.get('mac_address')
@@ -1581,8 +1569,6 @@ def api_delete_device():
 @tracking_bp.route('/api/tracking/sync-ips', methods=['POST'])
 def api_sync_ips():
     """Sync IP addresses for all devices"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         scanner = NetworkScanner()
@@ -1628,9 +1614,6 @@ def api_sync_ips():
 @tracking_bp.route('/tracking/live')
 def live_tracking():
     """Live tracking page (separate from main tracking)"""
-    if not session.get('logged_in'):
-        return redirect(url_for('auth_bp.login'))
-    
     saved_devices = TrackedDevice.query.order_by(TrackedDevice.device_name).all()
     
     # Convert devices to serializable dictionaries
@@ -1643,8 +1626,6 @@ def live_tracking():
 @tracking_bp.route('/api/tracking/live-summary')
 def api_live_summary():
     """Get live summary data for all devices"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         devices = TrackedDevice.query.all()
@@ -1686,8 +1667,6 @@ def api_live_summary():
 @tracking_bp.route('/api/tracking/live-status/<mac_address>')
 def api_live_status(mac_address):
     """Get simplified live status for a device"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
@@ -1760,8 +1739,6 @@ def check_live_alerts(tracking_data, device_info):
 @tracking_bp.route('/api/tracking/live-alerts')
 def api_live_alerts():
     """Get live alerts for all devices"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     
     try:
         devices = TrackedDevice.query.all()
@@ -1795,8 +1772,6 @@ def api_live_alerts():
 @tracking_bp.route('/api/tracking/maintenance/<mac_address>', methods=['POST'])
 def api_toggle_device_maintenance(mac_address):
     """Toggle maintenance mode for a tracked device."""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
 
     data = request.get_json(silent=True) or {}
     if 'enabled' not in data:
@@ -1829,8 +1804,6 @@ def api_toggle_device_maintenance(mac_address):
 @tracking_bp.route('/api/tracking/metrics/productivity')
 def api_productivity_metrics():
     """Get productivity metrics and work session blocks."""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         
     try:
         refresh_requested = request.args.get('refresh') == '1'
@@ -1874,8 +1847,6 @@ def api_productivity_metrics():
 @tracking_bp.route('/api/tracking/metrics/security')
 def api_security_metrics():
     """Get security risk metrics and unusual activity alerts."""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
     try:
         refresh_requested = request.args.get('refresh') == '1'
@@ -1993,8 +1964,6 @@ def api_security_metrics():
 @tracking_bp.route('/api/tracking/metrics/performance')
 def api_performance_metrics():
     """Get performance metrics (CPU heatmap data)."""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
     try:
         refresh_requested = request.args.get('refresh') == '1'
@@ -2033,8 +2002,6 @@ def api_performance_metrics():
 @tracking_bp.route('/api/tracking/metrics/details/<metric_type>')
 def api_metric_details(metric_type):
     """Get detailed breakdown for a specific metric"""
-    if not session.get('logged_in'):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         
     try:
         refresh_requested = request.args.get('refresh') == '1'

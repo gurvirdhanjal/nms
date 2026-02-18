@@ -1,18 +1,24 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session
 from extensions import db, event_manager
 from services.device_monitor import DeviceMonitor
 import asyncio
 import time
+import logging
 from sqlalchemy.exc import OperationalError
+from middleware.rbac import require_login
 
 monitoring_bp = Blueprint('monitoring_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
+logger = logging.getLogger(__name__)
+
+
+@monitoring_bp.before_request
+@require_login
+def _monitoring_auth_guard():
+    return None
 
 @monitoring_bp.route('/dashboard')
 def dashboard():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
-    
     from models.device import Device
     import ipaddress
     
@@ -42,8 +48,6 @@ def dashboard():
 
 @monitoring_bp.route('/monitoring')
 def monitoring_page():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
     return render_template('monitoring.html')
 import ipaddress
 
@@ -77,6 +81,10 @@ def get_monitoring_status():
     devices = query.all()
     mode = (request.args.get('mode') or '').lower()
     fallback_live = (request.args.get('fallback') or '').lower() in ('1', 'true', 'yes', 'live', 'ping')
+    max_cached_status_age_seconds = 90
+    max_live_fallback_devices = 24
+    max_live_fallback_concurrency = 8
+    per_device_live_timeout_seconds = 3.5
 
     def normalize_status(value):
         if value is None:
@@ -128,7 +136,7 @@ def get_monitoring_status():
         latest_map = {row[1].device_id: row[0] for row in latest_rows}
         devices_list = []
         device_index = {}
-        unknown_devices = []
+        live_check_devices = []
 
         for device in devices:
             scan = latest_map.get(device.device_id)
@@ -150,32 +158,58 @@ def get_monitoring_status():
             devices_list.append(entry)
             device_index[device.device_id] = entry
 
-            if status == "Unknown" and fallback_live and not getattr(device, 'maintenance_mode', False) and device.device_ip:
-                unknown_devices.append(device)
+            scan_age_seconds = None
+            if scan and scan.scan_timestamp:
+                scan_age_seconds = max((datetime.utcnow() - scan.scan_timestamp).total_seconds(), 0.0)
 
-        if fallback_live and unknown_devices:
-            async def ping_unknown_devices():
-                tasks = [
-                    monitor.scanner.ping_device(d.device_ip, count=1, timeout=1.5)
-                    for d in unknown_devices
-                ]
+            needs_live_check = False
+            if fallback_live and not getattr(device, 'maintenance_mode', False) and device.device_ip:
+                if status in ("Unknown", "Offline"):
+                    needs_live_check = True
+                elif scan_age_seconds is None or scan_age_seconds > max_cached_status_age_seconds:
+                    needs_live_check = True
+
+            if needs_live_check and len(live_check_devices) < max_live_fallback_devices:
+                live_check_devices.append(device)
+
+        if fallback_live and live_check_devices:
+            logger.info(
+                "Live refresh fallback triggered: candidates=%s limited=%s",
+                len(live_check_devices),
+                max_live_fallback_devices
+            )
+
+            async def ping_live_check_devices():
+                sem = asyncio.Semaphore(max_live_fallback_concurrency)
+
+                async def ping_one(device):
+                    async with sem:
+                        return await asyncio.wait_for(
+                            monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5),
+                            timeout=per_device_live_timeout_seconds
+                        )
+
+                tasks = [ping_one(d) for d in live_check_devices]
                 return await asyncio.gather(*tasks, return_exceptions=True)
 
             try:
-                ping_results = asyncio.run(ping_unknown_devices())
+                ping_results = asyncio.run(ping_live_check_devices())
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                ping_results = loop.run_until_complete(ping_unknown_devices())
+                ping_results = loop.run_until_complete(ping_live_check_devices())
                 loop.close()
 
             history_entries = []
-            for device, result in zip(unknown_devices, ping_results):
+            fallback_errors = 0
+            for device, result in zip(live_check_devices, ping_results):
                 status = "Unknown"
                 latency = None
                 packet_loss = None
 
-                if isinstance(result, tuple) and len(result) >= 2:
+                if isinstance(result, Exception):
+                    fallback_errors += 1
+                elif isinstance(result, tuple) and len(result) >= 2:
                     status, latency, packet_loss = result
                     status = normalize_status(status)
 
@@ -202,6 +236,12 @@ def get_monitoring_status():
             except Exception as db_e:
                 print(f"DEBUG: Error saving fallback history: {db_e}")
                 db.session.rollback()
+            if fallback_errors:
+                logger.warning(
+                    "Live refresh fallback errors: count=%s total=%s",
+                    fallback_errors,
+                    len(live_check_devices)
+                )
 
         if status_filter and status_filter != 'all':
             devices_list = [device for device in devices_list if device['status'].lower() == status_filter.lower()]

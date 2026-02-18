@@ -1,25 +1,23 @@
 """
 LDAP / Active Directory Authentication Service.
 
-Flow: Service-account bind → search user DN → user-bind with supplied password.
+Flow: service-account bind -> search user DN -> user-bind with supplied password.
 Falls back gracefully on connection errors so local auth remains available.
-
-Uses ldap3 (pure Python, Windows-compatible, no C compiler needed).
 """
+
 import logging
+import ssl
+
 from flask import current_app
-from ldap3 import (
-    Server, Connection, Tls, ALL, SUBTREE,
-    SIMPLE, AUTO_BIND_TLS_BEFORE_BIND, AUTO_BIND_NONE
-)
-from ldap3.utils.conv import escape_filter_chars
+from ldap3 import ALL, SUBTREE, SIMPLE, Connection, Server, Tls
 from ldap3.core.exceptions import (
     LDAPBindError,
-    LDAPSocketOpenError,
     LDAPExceptionError,
-    LDAPSocketReceiveError
+    LDAPInvalidCredentialsResult,
+    LDAPSocketOpenError,
+    LDAPSocketReceiveError,
 )
-import ssl
+from ldap3.utils.conv import escape_filter_chars
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ class LDAPService:
         }
         validate = validate_map.get(
             current_app.config.get('LDAP_TLS_VALIDATE', 'CERT_REQUIRED'),
-            ssl.CERT_REQUIRED
+            ssl.CERT_REQUIRED,
         )
         ca_file = current_app.config.get('LDAP_CA_CERT_FILE') or None
 
@@ -61,10 +59,19 @@ class LDAPService:
             connect_timeout=current_app.config.get('LDAP_CONNECT_TIMEOUT', 5),
         )
 
+    @staticmethod
+    def _safe_unbind(connection):
+        if not connection:
+            return
+        try:
+            connection.unbind()
+        except Exception:
+            pass
+
     @classmethod
     def authenticate(cls, username, password):
         """
-        Authenticate a user against LDAP.
+        Authenticate a user against LDAP/AD.
 
         Returns dict on success:
             {
@@ -73,14 +80,15 @@ class LDAPService:
                 'display_name': str | None,
                 'external_id': str | None,
                 'groups': list[str],
-                'role': str,          # 'admin' or configured default
+                'role': str
             }
-
         Returns None on invalid credentials.
-        Raises LDAPConnectionError on infrastructure failure (caller should
-        fall through to local auth and log a warning).
+        Raises LDAPConnectionError on infrastructure failures.
         """
         if not current_app.config.get('LDAP_ENABLED'):
+            return None
+
+        if not username or not password:
             return None
 
         server_url = current_app.config.get('LDAP_SERVER', '')
@@ -88,11 +96,13 @@ class LDAPService:
             log.warning("[LDAP] LDAP_ENABLED=true but LDAP_SERVER is empty. Skipping.")
             return None
 
+        svc_conn = None
+        user_conn = None
+
         try:
             server = cls._get_server()
             timeout = current_app.config.get('LDAP_RECEIVE_TIMEOUT', 5)
 
-            # ── Step 1: Service-account bind ──────────────────────
             bind_dn = current_app.config.get('LDAP_BIND_DN', '')
             bind_pw = current_app.config.get('LDAP_BIND_PASSWORD', '')
 
@@ -106,19 +116,15 @@ class LDAPService:
                 raise_exceptions=True,
             )
 
-            # Handle STARTTLS
             if current_app.config.get('LDAP_STARTTLS') and not current_app.config.get('LDAP_USE_SSL'):
                 svc_conn.open()
                 svc_conn.start_tls()
-                svc_conn.bind()
-            else:
-                svc_conn.bind()
+            svc_conn.bind()
 
-            # ── Step 2: Search for user DN ────────────────────────
             safe_username = escape_filter_chars(username)
             search_filter = current_app.config.get(
                 'LDAP_USER_SEARCH_FILTER',
-                '(sAMAccountName={username})'
+                '(sAMAccountName={username})',
             ).replace('{username}', safe_username)
 
             base_dn = current_app.config.get('LDAP_BASE_DN', '')
@@ -135,14 +141,11 @@ class LDAPService:
 
             if not svc_conn.entries:
                 log.info(f"[LDAP] User '{username}' not found in directory.")
-                svc_conn.unbind()
                 return None
 
             entry = svc_conn.entries[0]
             user_dn = entry.entry_dn
-            svc_conn.unbind()
 
-            # ── Step 3: Bind as the user (password verification) ──
             user_conn = Connection(
                 server,
                 user=user_dn,
@@ -156,28 +159,46 @@ class LDAPService:
             if current_app.config.get('LDAP_STARTTLS') and not current_app.config.get('LDAP_USE_SSL'):
                 user_conn.open()
                 user_conn.start_tls()
-                user_conn.bind()
-            else:
-                user_conn.bind()
+            user_conn.bind()
 
-            user_conn.unbind()
-
-            # ── Step 4: Extract attributes ────────────────────────
             email = str(entry[attr_email]) if hasattr(entry, attr_email) and entry[attr_email].value else None
-            display_name = str(entry[attr_display]) if hasattr(entry, attr_display) and entry[attr_display].value else None
+            display_name = (
+                str(entry[attr_display])
+                if hasattr(entry, attr_display) and entry[attr_display].value
+                else None
+            )
             external_id = str(entry[attr_guid]) if hasattr(entry, attr_guid) and entry[attr_guid].value else None
 
             groups = []
             if hasattr(entry, 'memberOf') and entry['memberOf'].values:
-                groups = [str(g) for g in entry['memberOf'].values]
+                groups = [str(group_dn) for group_dn in entry['memberOf'].values]
 
-            # ── Step 5: Determine role ────────────────────────────
+            # OpenLDAP labs often do not expose memberOf by default.
+            if not groups:
+                group_base = current_app.config.get('LDAP_GROUP_SEARCH_BASE') or base_dn
+                group_filter_template = current_app.config.get(
+                    'LDAP_GROUP_SEARCH_FILTER',
+                    '(|(member={user_dn})(uniqueMember={user_dn})(memberUid={username}))',
+                )
+                if group_base and group_filter_template:
+                    group_filter = (
+                        group_filter_template
+                        .replace('{user_dn}', escape_filter_chars(user_dn))
+                        .replace('{username}', safe_username)
+                    )
+                    svc_conn.search(
+                        search_base=group_base,
+                        search_filter=group_filter,
+                        search_scope=SUBTREE,
+                        attributes=['cn'],
+                    )
+                    groups = [str(group_entry.entry_dn) for group_entry in svc_conn.entries]
+
             role = current_app.config.get('LDAP_DEFAULT_ROLE', 'user')
             admin_group = current_app.config.get('LDAP_ADMIN_GROUP', '')
             if admin_group:
-                # Case-insensitive membership check
                 admin_group_lower = admin_group.lower()
-                if any(admin_group_lower in g.lower() for g in groups):
+                if any(admin_group_lower in group_dn.lower() for group_dn in groups):
                     role = 'admin'
 
             log.info(f"[LDAP] Authenticated '{username}' (role={role})")
@@ -190,21 +211,19 @@ class LDAPService:
                 'role': role,
             }
 
-        except LDAPBindError:
-            # Invalid credentials — this is normal, not an error
+        except (LDAPBindError, LDAPInvalidCredentialsResult):
             log.info(f"[LDAP] Invalid credentials for '{username}'.")
             return None
-
-        except (LDAPSocketOpenError, LDAPSocketReceiveError) as e:
-            # Infrastructure failure — caller should fall through to local auth
-            log.warning(f"[LDAP] Connection error: {e}. Falling back to local auth.")
-            raise LDAPConnectionError(str(e))
-
-        except LDAPExceptionError as e:
-            log.warning(f"[LDAP] Unexpected error: {e}. Falling back to local auth.")
-            raise LDAPConnectionError(str(e))
+        except (LDAPSocketOpenError, LDAPSocketReceiveError) as exc:
+            log.warning(f"[LDAP] Connection error: {exc}. Falling back to local auth.")
+            raise LDAPConnectionError(str(exc))
+        except LDAPExceptionError as exc:
+            log.warning(f"[LDAP] Unexpected error: {exc}. Falling back to local auth.")
+            raise LDAPConnectionError(str(exc))
+        finally:
+            cls._safe_unbind(user_conn)
+            cls._safe_unbind(svc_conn)
 
 
 class LDAPConnectionError(Exception):
     """Raised when LDAP server is unreachable. Caller should fall through to local auth."""
-    pass

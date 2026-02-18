@@ -1,16 +1,21 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app
+from flask import Blueprint, render_template, request, jsonify, current_app
 from extensions import db
 from models.discovery_config import get_config
+from middleware.rbac import require_login
 
 discovery_settings_bp = Blueprint(
     "discovery_settings_bp", __name__, url_prefix=""
 )
 
 
+@discovery_settings_bp.before_request
+@require_login
+def _discovery_settings_auth_guard():
+    return None
+
+
 @discovery_settings_bp.route("/discovery-settings")
 def settings_page():
-    if "logged_in" not in session:
-        return redirect(url_for("auth_bp.login"))
     return render_template("discovery_settings.html")
 
 
@@ -34,8 +39,6 @@ def update_settings():
         cfg.enabled = bool(data["enabled"])
     if "subnets" in data:
         cfg.subnets = data["subnets"]  # expects a list
-    if "light_interval_min" in data:
-        cfg.light_interval_min = max(1, int(data["light_interval_min"]))
     if "heavy_interval_min" in data:
         cfg.heavy_interval_min = max(1, int(data["heavy_interval_min"]))
     if "max_concurrent_pings" in data:
@@ -58,19 +61,10 @@ def update_settings():
 # Manual triggers
 # ------------------------------------------------------------------ #
 
-@discovery_settings_bp.route("/api/discovery-settings/trigger-light", methods=["POST"])
-def trigger_light():
-    from services.auto_discovery_service import get_auto_discovery_service
-    app = current_app._get_current_object()
-    svc = get_auto_discovery_service()
-    svc.trigger_light_sweep(app)
-    return jsonify({"success": True, "message": "Light sweep triggered in background."})
-
-
 @discovery_settings_bp.route("/api/discovery-settings/trigger-heavy", methods=["POST"])
 def trigger_heavy():
     from services.auto_discovery_service import get_auto_discovery_service
     app = current_app._get_current_object()
     svc = get_auto_discovery_service()
     svc.trigger_heavy_scan(app)
-    return jsonify({"success": True, "message": "Heavy scan triggered in background."})
+    return jsonify({"success": True, "message": "Auto scan triggered in background."})

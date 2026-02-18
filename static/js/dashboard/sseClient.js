@@ -51,6 +51,7 @@ export function initSSE(options = {}) {
     // Store handlers
     eventHandlers = {
         device_status: options.onDeviceStatus,
+        device_update: options.onDeviceUpdate || options.onDeviceStatus,
         alert_created: options.onAlertCreated,
         latency_spike: options.onLatencySpike,
         interface_threshold: options.onInterfaceThreshold,
@@ -100,6 +101,11 @@ function connect() {
         // Handle device status events
         eventSource.addEventListener('device_status', (event) => {
             handleEvent('device_status', event);
+        });
+
+        // Legacy/compat event type used by device monitor worker
+        eventSource.addEventListener('device_update', (event) => {
+            handleEvent('device_update', event);
         });
 
         // Handle alert events
@@ -220,6 +226,8 @@ function flushEventBuffer() {
  * Handle disconnection and schedule reconnect.
  */
 function handleDisconnect() {
+    clearTimeout(retryTimeout);
+
     if (eventSource) {
         eventSource.close();
         eventSource = null;

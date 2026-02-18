@@ -2,10 +2,17 @@
 Service Check API routes for Network Monitoring System.
 Provides endpoints for TCP, HTTP, and DNS connectivity checks.
 """
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from datetime import datetime
+from middleware.rbac import require_login
 
 service_checks_bp = Blueprint('service_checks_bp', __name__, url_prefix='/api/services')
+
+
+@service_checks_bp.before_request
+@require_login
+def _service_checks_auth_guard():
+    return None
 
 
 # ============================================================
@@ -17,9 +24,6 @@ def check_tcp():
     Check TCP port connectivity.
     Query params: host, port, timeout (optional)
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     host = request.args.get('host')
     port = request.args.get('port')
     timeout = request.args.get('timeout', 5, type=float)
@@ -57,9 +61,6 @@ def check_http():
     Check HTTP endpoint availability.
     Query params: url, method (GET), expected_status (200), timeout, verify_ssl (true)
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     url = request.args.get('url')
     if not url:
         return jsonify({'error': 'Missing url parameter'}), 400
@@ -101,9 +102,6 @@ def check_dns():
     Check DNS resolution.
     Query params: hostname, record_type (A), nameserver (optional), timeout
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     hostname = request.args.get('hostname')
     if not hostname:
         return jsonify({'error': 'Missing hostname parameter'}), 400
@@ -141,9 +139,6 @@ def check_common_ports():
     Check multiple common ports on a host.
     Query params: host, ports (comma-separated list or 'common')
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     host = request.args.get('host')
     if not host:
         return jsonify({'error': 'Missing host parameter'}), 400
@@ -198,9 +193,6 @@ def check_batch():
     Run multiple checks in batch.
     Body: { checks: [ { type: 'tcp'|'http'|'dns', ... }, ... ] }
     """
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     try:
         from services.service_checker import service_checker
         

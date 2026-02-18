@@ -1,12 +1,19 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from extensions import db
 from models.server_health import ServerHealthLog
 from models.device import Device
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from utils.server_health import compute_server_health, is_server_device
+from middleware.rbac import require_login
 
 server_metrics_bp = Blueprint('server_metrics_bp', __name__)
+
+
+@server_metrics_bp.before_request
+@require_login
+def _server_metrics_auth_guard():
+    return None
 
 
 def _avg(values):
@@ -36,9 +43,6 @@ def _iso_utc(ts):
 
 @server_metrics_bp.route('/api/server/fleet-metrics')
 def get_fleet_metrics():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
     try:
         # 1. Identify active servers (last 24h)
         cutoff = datetime.utcnow() - timedelta(hours=24)
@@ -158,9 +162,6 @@ def get_fleet_metrics():
 
 @server_metrics_bp.route('/api/server/health')
 def get_server_health_summary():
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     # Original logic continues below...
     try:
         # Latest agent log per device
@@ -250,9 +251,6 @@ def get_server_health_summary():
 
 @server_metrics_bp.route('/api/server/<int:device_id>/metrics')
 def get_server_metrics(device_id):
-    if 'logged_in' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
     time_range = request.args.get('range', '24h')
     
     # Determine cutoff

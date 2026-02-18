@@ -13,7 +13,12 @@ class DeviceSnmpConfig(db.Model):
     __tablename__ = 'device_snmp_config'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('device.device_id'), unique=True, nullable=False)
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey('device.device_id', ondelete='CASCADE'),
+        unique=True,
+        nullable=False
+    )
     
     # SNMP v1/v2c settings
     community_string = db.Column(db.String(100), default='public')

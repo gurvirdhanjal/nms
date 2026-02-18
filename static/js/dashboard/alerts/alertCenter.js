@@ -1,5 +1,6 @@
 import { openServerModal } from '../modals/serverDetailModal.js';
 import { setupTacticalDropdown } from '../utils.js';
+import { patchKeyedTableRows } from '../domPatch.js';
 
 let currentAlerts = [];
 let handlers = {
@@ -131,45 +132,42 @@ function renderAlertTable(alerts) {
         const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
         return tb - ta;
     });
-    if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No alerts match filters</td></tr>';
-        return;
-    }
+    patchKeyedTableRows(tbody, filtered, {
+        getKey: (alert, index) => alert.id || `${alert.timestamp || 'alert'}-${alert.device_id || index}`,
+        emptyColSpan: 5,
+        emptyMessage: 'No alerts match filters',
+        emptyClassName: 'text-center text-muted',
+        renderCells: (alert) => {
+            const sev = normalizeSeverity(alert.severity);
+            const scope = classifyScope(alert);
+            const time = alert.timestamp ? new Date(alert.timestamp).toLocaleString() : '-';
+            const deviceLabel = alert.device_name || alert.device_ip || 'Unknown';
+            const deviceType = alert.device_type || '-';
+            const sevClass = sev === 'Critical' ? 'tactical-badge-danger' : sev === 'Warning' ? 'tactical-badge-warning' : 'tactical-badge-info';
 
-    tbody.innerHTML = '';
-    filtered.forEach(a => {
-        const sev = normalizeSeverity(a.severity);
-        const scope = classifyScope(a);
-        const time = a.timestamp ? new Date(a.timestamp).toLocaleString() : '-';
-        const deviceLabel = a.device_name || a.device_ip || 'Unknown';
-        const deviceType = a.device_type || '-';
-        const sevClass = sev === 'Critical' ? 'tactical-badge-danger' : sev === 'Warning' ? 'tactical-badge-warning' : 'tactical-badge-info';
-        const severityClass = `alert-row-${(a.severity || 'info').toLowerCase()}`;
-
-        const row = document.createElement('tr');
-        row.classList.add('alert-row');
-        row.classList.add(severityClass);
-        row.dataset.scope = scope;
-        row.dataset.deviceId = a.device_id || '';
-        row.innerHTML = `
-            <td><span class="badge ${sevClass}">${sev}</span></td>
-            <td>${scope}</td>
-            <td>
-                <div class="fw-bold">${deviceLabel}</div>
-                <div class="small text-secondary">${deviceType}</div>
-            </td>
-            <td>${a.message || '-'}</td>
-            <td class="text-secondary">${time}</td>
-        `;
-        row.addEventListener('click', () => {
-            const rowScope = row.dataset.scope;
-            const deviceId = row.dataset.deviceId;
-            if (rowScope === 'Server' && deviceId) {
-                openServerModal(deviceId);
-            } else if (handlers.onDeviceBreakdown) {
-                handlers.onDeviceBreakdown();
-            }
-        });
-        tbody.appendChild(row);
+            return `
+                <td><span class="badge ${sevClass}">${sev}</span></td>
+                <td>${scope}</td>
+                <td>
+                    <div class="fw-bold">${deviceLabel}</div>
+                    <div class="small text-secondary">${deviceType}</div>
+                </td>
+                <td>${alert.message || '-'}</td>
+                <td class="text-secondary">${time}</td>
+            `;
+        },
+        applyRow: (row, alert) => {
+            const scope = classifyScope(alert);
+            row.className = `alert-row alert-row-${(alert.severity || 'info').toLowerCase()}`;
+            row.dataset.scope = scope;
+            row.dataset.deviceId = alert.device_id || '';
+            row.onclick = () => {
+                if (scope === 'Server' && alert.device_id) {
+                    openServerModal(alert.device_id);
+                } else if (handlers.onDeviceBreakdown) {
+                    handlers.onDeviceBreakdown();
+                }
+            };
+        }
     });
 }

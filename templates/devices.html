@@ -3,59 +3,61 @@
 {% block title %}Device Management - Device Monitoring{% endblock %}
 {% block extra_css %}
 <style>
-    /* Tactical Device Management Page Styles */
+    /* ================================================================
+       Devices Page — v5.0 NMS Design System Compliance
+       ================================================================ */
+
+    /* Page header */
     .page-header h1 {
-        font-family: 'Orbitron', monospace;
-        font-size: 2rem;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 1.12rem;
         font-weight: 700;
-        letter-spacing: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #e6edf5;
         margin-bottom: 0.5rem;
-        background: linear-gradient(90deg, #00ffc8, #00d4aa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
     }
 
     .page-header h1 i {
-        color: #00d4aa;
+        color: #8a97a6;
         margin-right: 0.75rem;
-        -webkit-text-fill-color: #00d4aa;
     }
 
     .page-header .lead {
-        color: #6a6a80;
-        font-size: 1rem;
+        color: #8a97a6;
+        font-size: 0.74rem;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.06em;
     }
 
-    /* Device table enhanced styles */
+    /* Device table container */
     .device-table-container {
-        border-radius: 12px;
+        border-radius: 6px;
         overflow: hidden;
-        border: 1px solid rgba(0, 212, 170, 0.2);
+        border: 1px solid rgba(148, 163, 184, 0.20);
     }
 
-    /* Device details modal tactical styling */
+    /* Device details modal */
     .device-details-container .detail-item {
         padding: 0.75rem;
-        border-left: 3px solid #00d4aa;
-        background: rgba(0, 212, 170, 0.05);
+        border-left: 3px solid rgba(148, 163, 184, 0.36);
+        background: rgba(148, 163, 184, 0.05);
         margin-bottom: 0.75rem;
         border-radius: 4px;
     }
 
     .device-details-container .detail-label {
-        color: #00d4aa;
-        font-size: 0.8rem;
+        color: #8a97a6;
+        font-size: 0.72rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.06em;
         margin-bottom: 0.25rem;
     }
 
     .device-details-container .detail-value {
-        color: #ffffff;
-        font-size: 0.95rem;
+        color: #e6edf5;
+        font-size: 0.88rem;
+        font-family: 'IBM Plex Mono', monospace;
     }
 
     /* Empty state */
@@ -65,35 +67,81 @@
     }
 
     .empty-state i {
-        color: #00d4aa;
-        opacity: 0.3;
+        color: #8a97a6;
+        opacity: 0.4;
     }
 
     .empty-state h5 {
-        color: #ffffff;
+        color: #e6edf5;
         margin-top: 1rem;
     }
 
     .empty-state p {
-        color: #6a6a80;
+        color: #8a97a6;
     }
 
-    /* Add custom scrollbar for this page */
+    /* Scrollbar — neutral (not green) */
     ::-webkit-scrollbar {
         width: 8px;
     }
 
     ::-webkit-scrollbar-track {
-        background: #1a1a24;
+        background: #10131b;
     }
 
     ::-webkit-scrollbar-thumb {
-        background: #252532;
+        background: rgba(148, 163, 184, 0.24);
         border-radius: 4px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: #00d4aa;
+        background: rgba(148, 163, 184, 0.40);
+    }
+
+    /* Card overrides for v5.0 */
+    .card {
+        border-radius: 6px;
+        border-color: rgba(148, 163, 184, 0.20);
+    }
+
+    .card-header {
+        border-bottom-color: rgba(148, 163, 184, 0.14);
+    }
+
+    /* Table header typography */
+    .table-dark th {
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #b8c6d5;
+    }
+
+    /* Table rows */
+    .table tbody td {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.79rem;
+        font-variant-numeric: tabular-nums;
+        vertical-align: middle;
+    }
+
+    /* Alert info — muted styling */
+    .alert-info {
+        background: rgba(95, 151, 194, 0.08);
+        border: 1px solid rgba(95, 151, 194, 0.18);
+        border-left: 3px solid rgba(95, 151, 194, 0.40);
+        border-radius: 4px;
+        color: #c3cfdb;
+        font-size: 0.79rem;
+    }
+
+    /* Credential section divider */
+    .credential-section-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #8a97a6;
     }
 </style>
 {% endblock %}
@@ -140,6 +188,14 @@
                             <option value="printer">Printer</option>
                             <option value="mobile">Mobile</option>
                             <option value="iot">IoT</option>
+                        </select>
+
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" id="subnetFilter"
+                            onchange="filterTable()" style="max-width: 170px;">
+                            <option value="">All Subnets</option>
+                            {% for sn in subnets %}
+                            <option value="{{ sn }}">{{ sn }}</option>
+                            {% endfor %}
                         </select>
 
                         <div class="input-group input-group-sm flex-grow-1">
@@ -194,13 +250,15 @@
                                 <th>Name</th>
                                 <th>IP Address</th>
                                 <th>Type</th>
+                                <th>SNMP</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for device in devices %}
-                            <tr data-device-id="{{ device.device_id }}" data-device-ip="{{ device.device_ip }}">
+                            <tr data-device-id="{{ device.device_id }}" data-device-ip="{{ device.device_ip }}"
+                                data-subnet="{{ device.subnet_cidr or '' }}">
                                 <td>
                                     <div class="form-check">
                                         <input class="form-check-input device-checkbox" type="checkbox"
@@ -209,9 +267,6 @@
                                 </td>
                                 <td>
                                     <strong>{{ device.device_name }}</strong>
-                                    {% if device.rstplink %}
-                                    <i class="fas fa-video text-info ms-1" title="RTSP Stream Available"></i>
-                                    {% endif %}
                                     <div class="small text-muted mt-1">
                                         <span class="me-1">MAC</span>
                                         <code>{{ device.macaddress or 'N/A' }}</code>
@@ -222,28 +277,49 @@
                                     <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                         onchange="updateDeviceType({{ device.device_id }}, this.value, this)"
                                         style="width: 130px;">
-                                        <option value="unknown" {% if (device.device_type or '')|lower in ['','unknown'] %}selected{% endif %}>
+                                        <option value="unknown" {% if (device.device_type or '' )|lower in
+                                            ['','unknown'] %}selected{% endif %}>
                                             Unknown</option>
-                                        <option value="switch" {% if device.device_type|lower=='switch' %}selected{% endif %}>
+                                        <option value="switch" {% if device.device_type|lower=='switch' %}selected{%
+                                            endif %}>
                                             Switch</option>
-                                        <option value="access_point" {% if device.device_type|lower=='access_point' %}selected{% endif %}>
+                                        <option value="access_point" {% if device.device_type|lower=='access_point'
+                                            %}selected{% endif %}>
                                             Access Point</option>
-                                        <option value="router" {% if device.device_type|lower=='router' %}selected{% endif %}>
+                                        <option value="router" {% if device.device_type|lower=='router' %}selected{%
+                                            endif %}>
                                             Router</option>
-                                        <option value="firewall" {% if device.device_type|lower=='firewall' %}selected{% endif %}>
+                                        <option value="firewall" {% if device.device_type|lower=='firewall' %}selected{%
+                                            endif %}>
                                             Firewall</option>
-                                        <option value="server" {% if device.device_type|lower=='server' %}selected{% endif %}>
+                                        <option value="server" {% if device.device_type|lower=='server' %}selected{%
+                                            endif %}>
                                             Server</option>
-                                        <option value="workstation" {% if device.device_type|lower=='workstation' %}selected{% endif %}>
+                                        <option value="workstation" {% if device.device_type|lower=='workstation'
+                                            %}selected{% endif %}>
                                             Workstation</option>
-                                        <option value="camera" {% if device.device_type|lower in ['camera','camera/iot','camera_iot'] %}selected{% endif %}>
+                                        <option value="camera" {% if device.device_type|lower in
+                                            ['camera','camera/iot','camera_iot'] %}selected{% endif %}>
                                             Camera/IoT</option>
-                                        <option value="printer" {% if device.device_type|lower=='printer' %}selected{% endif %}>
+                                        <option value="printer" {% if device.device_type|lower=='printer' %}selected{%
+                                            endif %}>
                                             Printer</option>
-                                        <option value="mobile" {% if device.device_type|lower=='mobile' %}selected{% endif %}>
+                                        <option value="mobile" {% if device.device_type|lower=='mobile' %}selected{%
+                                            endif %}>
                                             Mobile</option>
-                                        <option value="iot" {% if device.device_type|lower=='iot' %}selected{% endif %}>IoT</option>
+                                        <option value="iot" {% if device.device_type|lower=='iot' %}selected{% endif %}>
+                                            IoT</option>
                                     </select>
+                                </td>
+                                <td>
+                                    {% if device.snmp_enabled %}
+                                    <span class="badge bg-success">Enabled</span>
+                                    {% if device.snmp_last_error %}
+                                    <div class="small text-warning mt-1" title="{{ device.snmp_last_error }}">Error</div>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="badge bg-secondary">Disabled</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     <span id="status-{{ device.device_id }}" class="status-indicator status-unknown"
@@ -339,7 +415,7 @@
                                 <div class="col-md-6">
                                     <label class="form-label">Device Type <span class="text-danger">*</span></label>
                                     <select class="form-select bg-dark text-light border-secondary" name="device_type"
-                                        id="device_type" required onchange="toggleDeviceTypeFields()">
+                                        id="device_type" required>
                                         <option value="server">Server</option>
                                         <option value="switch">Switch</option>
                                         <option value="router">Router</option>
@@ -383,47 +459,28 @@
                                         placeholder="Optional notes..."></textarea>
                                 </div>
 
-                                <!-- Camera Specific (Conditional) -->
-                                <div id="cameraFields" style="display: none;"
-                                    class="col-12 border-top border-secondary pt-2 mt-2">
-                                    <h6 class="text-info"><i class="fas fa-video"></i> Camera Settings</h6>
-                                    <div class="row g-2">
-                                        <div class="col-md-6">
-                                            <label class="form-label">Brand</label>
-                                            <select class="form-select bg-dark text-light border-secondary" name="brand"
-                                                id="brand">
-                                                <option value="">Generic</option>
-                                                <option value="hikvision">Hikvision</option>
-                                                <option value="dahua">Dahua</option>
-                                                <option value="axis">Axis</option>
-                                                <option value="uniview">Uniview</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">RTSP Port</label>
-                                            <input type="number"
-                                                class="form-control bg-dark text-light border-secondary" name="port"
-                                                id="port" value="554">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Username</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                                name="username" id="username">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Password</label>
-                                            <input type="password"
-                                                class="form-control bg-dark text-light border-secondary" name="password"
-                                                id="password">
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Custom RTSP Link</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                                name="rstplink" id="rstplink"
-                                                placeholder="rtsp://user:pass@ip:554/stream">
-                                            <div class="form-text text-muted">Leave blank to auto-generate based on
-                                                brand.</div>
-                                        </div>
+                                <!-- Device Credentials -->
+                                <div class="col-12 mt-2">
+                                    <hr class="my-2" style="border-color: rgba(148, 163, 184, 0.20);">
+                                    <h6 class="credential-section-label mb-1">
+                                        <i class="fas fa-key me-1"></i> Device Credentials
+                                    </h6>
+                                    <p class="text-muted small mb-2">
+                                        Used for SSH, SNMP, or API authentication. Password is stored securely (hashed).
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Username</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        name="device_username" id="device_username" placeholder="admin, root, etc."
+                                        autocomplete="off">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control bg-dark text-light border-secondary"
+                                        name="device_password" id="device_password" placeholder="Enter password"
+                                        autocomplete="new-password">
+                                    <div class="form-text text-muted">Leave blank when editing to keep current password.
                                     </div>
                                 </div>
                             </div>
@@ -623,13 +680,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // Initialize components
-        const typeSelect = document.getElementById('device_type');
-        if (typeSelect) {
-            typeSelect.addEventListener('change', toggleDeviceTypeFields);
-            toggleDeviceTypeFields(); // initial state
-        }
-
         // Bulk Selection Logic
         const selectAll = document.getElementById('selectAllCheckbox');
         const checkboxes = document.querySelectorAll('.device-checkbox');
@@ -668,21 +718,6 @@
         bsModal.show();
     }
     });
-
-    function toggleDeviceTypeFields() {
-        const typeSelect = document.getElementById('device_type');
-        if (!typeSelect) return;
-        const val = typeSelect.value.toLowerCase();
-
-        const cameraFields = document.getElementById('cameraFields');
-        const brandField = document.getElementById('brand');
-
-        if (val === 'camera' || val === 'camera_iot' || val === 'camera/iot') {
-            if (cameraFields) cameraFields.style.display = 'block';
-        } else {
-            if (cameraFields) cameraFields.style.display = 'none';
-        }
-    }
 
     function toggleMonitoringFields() {
         const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
@@ -772,7 +807,6 @@
                 tab.show();
             }
 
-            toggleDeviceTypeFields();
             toggleMonitoringFields();
             toggleSnmpVersion();
             document.getElementById('testResult').innerHTML = '';
@@ -1093,6 +1127,8 @@
         const statusFilter = statusSelect ? statusSelect.value.toLowerCase() : "";
         const typeSelect = document.getElementById("typeFilter");
         const typeFilter = typeSelect ? typeSelect.value.toLowerCase().trim() : "";
+        const subnetSelect = document.getElementById("subnetFilter");
+        const subnetFilter = subnetSelect ? subnetSelect.value : "";
 
         const normalizeType = (value) => {
             const raw = (value || "").toLowerCase().trim();
@@ -1112,6 +1148,7 @@
             const ip = row.cells[2]?.textContent.toLowerCase() || "";
             const type = row.querySelector('select') ? row.querySelector('select').value.toLowerCase() : "";
             const statusIndicator = row.querySelector('.status-indicator');
+            const rowSubnet = row.getAttribute('data-subnet') || '';
             let status = "unknown";
 
             if (statusIndicator) {
@@ -1123,7 +1160,8 @@
             const matchesSearch = name.includes(searchText) || ip.includes(searchText);
             const matchesStatus = statusFilter === "" || status === statusFilter;
             const matchesType = typeFilter === "" || normalizeType(type) === normalizeType(typeFilter);
-            row.style.display = (matchesSearch && matchesStatus && matchesType) ? "" : "none";
+            const matchesSubnet = subnetFilter === "" || rowSubnet === subnetFilter;
+            row.style.display = (matchesSearch && matchesStatus && matchesType && matchesSubnet) ? "" : "none";
         }
     }
 </script>

@@ -290,6 +290,111 @@ def _ensure_postgres_metric_indexes():
         print(f"[DB] Migration warning (postgres metric indexes): {exc}")
 
 
+def _ensure_reporting_indexes(inspector=None):
+    """
+    Add indexes used heavily by reports and analytics queries.
+    Safe to run repeatedly via IF NOT EXISTS.
+    """
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        tables = set(inspector.get_table_names())
+        statements = []
+
+        if 'dashboard_events' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_dashboard_events_device_timestamp ON dashboard_events (device_id, timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_dashboard_events_severity_timestamp ON dashboard_events (severity, timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_dashboard_events_resolved_timestamp ON dashboard_events (resolved, timestamp)",
+            ])
+
+        if 'server_health_logs' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_server_health_timestamp ON server_health_logs (timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_server_health_source_timestamp ON server_health_logs (source, timestamp)",
+            ])
+
+        if 'server_health_hourly_rollups' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_server_health_hourly_source_bucket ON server_health_hourly_rollups (source, bucket_hour)",
+            ])
+
+        if 'server_health_daily_rollups' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_server_health_daily_source_bucket ON server_health_daily_rollups (source, bucket_day)",
+            ])
+
+        if 'device_scan_history' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_scan_history_status_time ON device_scan_history (status, scan_timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_device_scan_history_ip_time ON device_scan_history (device_ip, scan_timestamp)",
+            ])
+
+        for stmt in statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (reporting indexes): {exc}")
+
+
+def _ensure_core_device_indexes_and_constraints(inspector=None):
+    """
+    Add defensive indexes and constraints for device/scan performance.
+    Unique device_ip is applied only when existing data is clean.
+    """
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        tables = set(inspector.get_table_names())
+        statements = []
+
+        if 'device' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_subnet_cidr ON device (subnet_cidr)",
+                "CREATE INDEX IF NOT EXISTS idx_device_device_ip ON device (device_ip)",
+            ])
+
+        if 'device_scan_history' in tables:
+            statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_scan_history_status_time ON device_scan_history (status, scan_timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_device_scan_history_ip_time ON device_scan_history (device_ip, scan_timestamp)",
+            ])
+
+        if 'poll_tasks' in tables:
+            statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_poll_tasks_status_next_run_at ON poll_tasks (status, next_run_at)"
+            )
+
+        for stmt in statements:
+            db.session.execute(text(stmt))
+
+        # Safe unique constraint on device_ip.
+        if 'device' in tables:
+            dup = db.session.execute(text("""
+                SELECT device_ip
+                FROM device
+                WHERE device_ip IS NOT NULL AND TRIM(device_ip) <> ''
+                GROUP BY device_ip
+                HAVING COUNT(*) > 1
+                LIMIT 1
+            """)).fetchone()
+
+            if dup is None:
+                db.session.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_device_device_ip ON device (device_ip)"
+                ))
+            else:
+                print(f"[DB] Skipping unique device_ip index due to duplicates (example: {dup[0]}).")
+
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (core indexes/constraints): {exc}")
+
+
 def _ensure_device_maintenance_columns(inspector=None):
     """Add maintenance_mode and health_alert_strikes to Device table."""
     try:
@@ -475,6 +580,8 @@ def ensure_server_health_columns():
     _ensure_server_health_columns(inspector)
     _ensure_server_health_rollup_tables()
     _ensure_postgres_metric_indexes()
+    _ensure_reporting_indexes(inspector)
+    _ensure_core_device_indexes_and_constraints(inspector)
     _ensure_device_hardware_specs_column(inspector)
     _ensure_device_resource_columns(inspector)
     _ensure_unique_client_id_column(inspector)

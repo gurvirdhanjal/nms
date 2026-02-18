@@ -1,19 +1,13 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, flash
 from extensions import db, bcrypt
 from models.user import User
+from middleware.rbac import require_role
 
 user_management_bp = Blueprint('user_management_bp', __name__, url_prefix='')
 
 @user_management_bp.route('/user_management')
+@require_role('admin')
 def user_management():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
-    
-    # Check if user is admin
-    if session.get('role') != 'admin':
-        flash('Access denied. Admin privileges required.', 'danger')
-        return redirect(url_for('monitoring_bp.dashboard'))
-    
     users = User.query.all()
     user = None
 
@@ -35,15 +29,8 @@ def user_management():
     return render_template('user_management.html', users=users, user=user)
 
 @user_management_bp.route('/user_management/save', methods=['POST'])
+@require_role('admin')
 def save_user():
-    if 'logged_in' not in session:
-        return redirect(url_for('auth_bp.login'))
-    
-    # Check if user is admin
-    if session.get('role') != 'admin':
-        flash('Access denied. Admin privileges required.', 'danger')
-        return redirect(url_for('monitoring_bp.dashboard'))
-    
     try:
         user_id = request.form.get('user_id')
         username = request.form['username']
@@ -100,10 +87,8 @@ def save_user():
         return redirect(url_for('user_management_bp.user_management'))
 
 @user_management_bp.route('/api/users/<int:user_id>/toggle_status', methods=['POST'])
+@require_role('admin')
 def toggle_user_status(user_id):
-    if 'logged_in' not in session or session.get('role') != 'admin':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
     user = User.query.get(user_id)
     if user:
         # Prevent deactivating own account
