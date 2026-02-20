@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}Device Details - {{ device.device_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .device-detail-page {
+        --dd-border: rgba(148, 163, 184, 0.2);
+        --dd-border-soft: rgba(148, 163, 184, 0.12);
+        --dd-bg: rgba(16, 19, 27, 0.86);
+        --dd-muted: #8a97a6;
+    }
+
+    .device-detail-page .lucide {
+        width: 15px;
+        height: 15px;
+        stroke-width: 1.9;
+        vertical-align: text-bottom;
+    }
+
+    .device-detail-page .page-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.9rem;
+    }
+
+    .device-detail-page .page-title {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.58rem;
+        font-size: 1.02rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .device-detail-page .subtitle {
+        margin-top: 0.36rem;
+        color: var(--dd-muted);
+        font-size: 0.74rem;
+        letter-spacing: 0.04em;
+    }
+
+    .device-detail-page .subtitle code {
+        color: #c3cfdb;
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .device-detail-page .page-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.38rem;
+        flex-wrap: wrap;
+    }
+
+    .device-detail-page .card {
+        background: var(--dd-bg);
+        border-color: var(--dd-border);
+    }
+
+    .device-detail-page .card-header {
+        border-bottom-color: var(--dd-border-soft);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: #c3cfdb;
+        display: flex;
+        align-items: center;
+        gap: 0.38rem;
+    }
+
+    .device-detail-page .kv {
+        display: grid;
+        grid-template-columns: 130px 1fr;
+        gap: 0.45rem 0.62rem;
+        font-size: 0.78rem;
+        margin: 0;
+    }
+
+    .device-detail-page .kv dt {
+        color: var(--dd-muted);
+        font-weight: 500;
+        margin: 0;
+    }
+
+    .device-detail-page .kv dd {
+        margin: 0;
+        color: #e6edf5;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .device-detail-page .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.6rem;
+    }
+
+    .device-detail-page .metric-box {
+        border: 1px solid var(--dd-border-soft);
+        border-radius: 6px;
+        padding: 0.62rem;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .device-detail-page .metric-label {
+        color: var(--dd-muted);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .device-detail-page .metric-value {
+        margin-top: 0.2rem;
+        font-size: 0.95rem;
+        font-family: 'IBM Plex Mono', monospace;
+        color: #e6edf5;
+    }
+
+    .device-detail-page .table th {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #b8c6d5;
+    }
+
+    .device-detail-page .table td {
+        font-size: 0.76rem;
+        font-family: 'IBM Plex Mono', monospace;
+        vertical-align: middle;
+    }
+
+    @media (max-width: 768px) {
+        .device-detail-page .metric-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .device-detail-page .kv {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="device-detail-page">
+    <div class="page-head">
+        <div>
+            <h1 class="page-title">
+                <i data-lucide="server-cog"></i>{{ device.device_name }}
+            </h1>
+            <div class="subtitle">
+                <code>{{ device.device_ip }}</code> - {{ (device.device_type or 'unknown')|replace('_', ' ')|title }}
+            </div>
+        </div>
+
+        <div class="page-actions">
+            <a href="{{ url_for('devices_bp.device_management') }}" class="btn btn-outline-secondary btn-sm">
+                <i data-lucide="arrow-left"></i> Back to Devices
+            </a>
+            <button type="button" class="btn btn-primary btn-sm" id="btnPollSnmp" {% if not snmp_enabled %}disabled{% endif %}>
+                <i data-lucide="radar"></i> Poll SNMP
+            </button>
+            <button type="button" class="btn btn-outline-info btn-sm" id="btnRefreshInterfaces" {% if not snmp_enabled %}disabled{% endif %}>
+                <i data-lucide="refresh-cw"></i> Refresh Interfaces
+            </button>
+        </div>
+    </div>
+
+    <div id="detailAlert" class="mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i data-lucide="badge-info"></i> Identity</div>
+                <div class="card-body">
+                    <dl class="kv">
+                        <dt>Device ID</dt>
+                        <dd>{{ device.device_id }}</dd>
+                        <dt>Hostname</dt>
+                        <dd>{{ device.hostname or 'N/A' }}</dd>
+                        <dt>MAC</dt>
+                        <dd>{{ device.macaddress or 'N/A' }}</dd>
+                        <dt>Manufacturer</dt>
+                        <dd>{{ device.manufacturer or 'N/A' }}</dd>
+                        <dt>Subnet</dt>
+                        <dd>{{ device.subnet_cidr or 'Unassigned' }}</dd>
+                        <dt>Location</dt>
+                        <dd>{{ device.location or 'N/A' }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i data-lucide="settings-2"></i> Monitoring</div>
+                <div class="card-body">
+                    <dl class="kv">
+                        <dt>Mode</dt>
+                        <dd>{{ (device.monitoring_mode or 'ping')|upper }}</dd>
+                        <dt>Monitored</dt>
+                        <dd>{{ 'Yes' if device.is_monitored else 'No' }}</dd>
+                        <dt>Maintenance</dt>
+                        <dd>{{ 'Enabled' if device.maintenance_mode else 'Disabled' }}</dd>
+                        <dt>SNMP Enabled</dt>
+                        <dd>{{ 'Yes' if snmp_enabled else 'No' }}</dd>
+                        <dt>Last Updated</dt>
+                        <dd>{{ device.updated_at.strftime('%Y-%m-%d %H:%M:%S') if device.updated_at else 'N/A' }}</dd>
+                        <dt>Description</dt>
+                        <dd>{{ device.description or 'N/A' }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i data-lucide="network"></i> SNMP Configuration</div>
+                <div class="card-body">
+                    {% if snmp_config %}
+                    <dl class="kv">
+                        <dt>Version</dt>
+                        <dd>v{{ snmp_config.snmp_version or '2c' }}</dd>
+                        <dt>Port</dt>
+                        <dd>{{ snmp_config.snmp_port or 161 }}</dd>
+                        <dt>Poll Interval</dt>
+                        <dd>{{ snmp_config.poll_interval_seconds or 300 }}s</dd>
+                        <dt>Security Name</dt>
+                        <dd>{{ snmp_config.security_name or 'N/A' }}</dd>
+                        <dt>Auth/Priv</dt>
+                        <dd>{{ snmp_config.auth_protocol or 'None' }} / {{ snmp_config.priv_protocol or 'None' }}</dd>
+                        <dt>Last Success</dt>
+                        <dd>{{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') if snmp_config.last_successful_poll else 'N/A' }}</dd>
+                        <dt>Last Error</dt>
+                        <dd>{{ snmp_config.last_poll_error or 'None' }}</dd>
+                    </dl>
+                    {% else %}
+                    <div class="text-muted small">No SNMP config found for this device.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i data-lucide="activity"></i> Latest Health Metrics</div>
+                <div class="card-body">
+                    <div class="metric-grid mb-3" id="snmpMetricGrid">
+                        <div class="metric-box">
+                            <div class="metric-label">SNMP CPU</div>
+                            <div class="metric-value" id="snmpCpuVal">
+                                {% if latest_snmp_log and latest_snmp_log.cpu_usage is not none %}{{ '%.1f'|format(latest_snmp_log.cpu_usage) }}%{% else %}N/A{% endif %}
+                            </div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">SNMP Memory</div>
+                            <div class="metric-value" id="snmpMemVal">
+                                {% if latest_snmp_log and latest_snmp_log.memory_usage is not none %}{{ '%.1f'|format(latest_snmp_log.memory_usage) }}%{% else %}N/A{% endif %}
+                            </div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">SNMP Disk</div>
+                            <div class="metric-value" id="snmpDiskVal">
+                                {% if latest_snmp_log and latest_snmp_log.disk_usage is not none %}{{ '%.1f'|format(latest_snmp_log.disk_usage) }}%{% else %}N/A{% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <dl class="kv mb-0">
+                        <dt>SNMP Metric Timestamp</dt>
+                        <dd id="snmpMetricTs">{{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_snmp_log and latest_snmp_log.timestamp else 'N/A' }}</dd>
+                        <dt>Agent Metric Timestamp</dt>
+                        <dd>{{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_agent_log and latest_agent_log.timestamp else 'N/A' }}</dd>
+                        <dt>Metrics Availability</dt>
+                        <dd>{{ 'Available' if has_snmp_metrics else 'No SNMP metrics yet' }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header"><i data-lucide="list-tree"></i> Interface Inventory ({{ interfaces|length }})</div>
+        <div class="card-body p-0">
+            {% if interfaces %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ifIndex</th>
+                            <th>Name</th>
+                            <th>Alias</th>
+                            <th>Admin</th>
+                            <th>Oper</th>
+                            <th>Speed</th>
+                            <th>Last Poll</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for iface in interfaces %}
+                        <tr>
+                            <td>{{ iface.if_index }}</td>
+                            <td>{{ iface.name or 'N/A' }}</td>
+                            <td>{{ iface.alias or 'N/A' }}</td>
+                            <td>{{ iface.admin_status or 'N/A' }}</td>
+                            <td>{{ iface.oper_status or 'N/A' }}</td>
+                            <td>
+                                {% if iface.speed_bps %}
+                                {{ '%.2f'|format((iface.speed_bps / 1000000.0)) }} Mbps
+                                {% else %}
+                                N/A
+                                {% endif %}
+                            </td>
+                            <td>{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-3 text-muted small">No interfaces stored yet. Use "Refresh Interfaces" to pull from SNMP.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const pollBtn = document.getElementById('btnPollSnmp');
+        const refreshBtn = document.getElementById('btnRefreshInterfaces');
+        const alertBox = document.getElementById('detailAlert');
+
+        function redrawIcons() {
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
+        }
+
+        function showAlert(type, message) {
+            alertBox.innerHTML = `<div class="alert alert-${type} py-2 mb-0">${message}</div>`;
+            redrawIcons();
+        }
+
+        function setMetricValue(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = value;
+        }
+
+        if (pollBtn) {
+            pollBtn.addEventListener('click', async () => {
+                pollBtn.disabled = true;
+                pollBtn.innerHTML = '<i data-lucide="loader"></i> Polling...';
+                redrawIcons();
+
+                try {
+                    const res = await fetch(`/api/snmp/poll/{{ device.device_id }}`, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || 'SNMP poll failed');
+                    }
+
+                    const health = data.health || (data.system && data.system.health) || {};
+                    setMetricValue('snmpCpuVal', health.cpu_usage != null ? `${Number(health.cpu_usage).toFixed(1)}%` : 'N/A');
+                    setMetricValue('snmpMemVal', health.memory_usage != null ? `${Number(health.memory_usage).toFixed(1)}%` : 'N/A');
+                    setMetricValue('snmpDiskVal', health.disk_usage != null ? `${Number(health.disk_usage).toFixed(1)}%` : 'N/A');
+                    setMetricValue('snmpMetricTs', new Date().toLocaleString());
+                    showAlert('success', `SNMP poll completed. Interfaces returned: ${Array.isArray(data.interfaces) ? data.interfaces.length : 0}.`);
+                } catch (err) {
+                    showAlert('danger', `SNMP poll error: ${err.message}`);
+                } finally {
+                    pollBtn.disabled = false;
+                    pollBtn.innerHTML = '<i data-lucide="radar"></i> Poll SNMP';
+                    redrawIcons();
+                }
+            });
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.disabled = true;
+                refreshBtn.innerHTML = '<i data-lucide="loader"></i> Refreshing...';
+                redrawIcons();
+                try {
+                    const res = await fetch(`/api/snmp/interfaces/{{ device.device_id }}?refresh=true`, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || 'Interface refresh failed');
+                    }
+                    showAlert('success', `Interface inventory refreshed (${data.count || 0} interfaces). Reloading view...`);
+                    setTimeout(() => window.location.reload(), 650);
+                } catch (err) {
+                    showAlert('danger', `Interface refresh error: ${err.message}`);
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i data-lucide="refresh-cw"></i> Refresh Interfaces';
+                    redrawIcons();
+                }
+            });
+        }
+
+        redrawIcons();
+    })();
+</script>
+{% endblock %}

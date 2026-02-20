@@ -67,9 +67,40 @@ def get_monitoring_status():
     
     query = Device.query
     device_ip = request.args.get('device_ip')
+    raw_device_ids = request.args.getlist('device_ids')
+    max_status_device_ids = 500
+
+    parsed_device_ids = []
+    if raw_device_ids:
+        tokens = []
+        for raw in raw_device_ids:
+            if raw is None:
+                continue
+            tokens.extend(str(raw).split(','))
+
+        seen_ids = set()
+        for token in tokens:
+            token = str(token).strip()
+            if not token:
+                continue
+            if not token.isdigit():
+                continue
+            device_id = int(token)
+            if device_id in seen_ids:
+                continue
+            seen_ids.add(device_id)
+            parsed_device_ids.append(device_id)
+            if len(parsed_device_ids) >= max_status_device_ids:
+                break
+
+    if raw_device_ids and not parsed_device_ids:
+        return jsonify({"devices": []})
     
     if device_ip:
         query = query.filter_by(device_ip=device_ip)
+
+    if parsed_device_ids:
+        query = query.filter(Device.device_id.in_(parsed_device_ids))
     
     if device_type and device_type != 'all':
         dtype = (device_type or '').strip().lower()
@@ -119,27 +150,33 @@ def get_monitoring_status():
 
     if mode in ('latest', 'cached'):
         # Fast path: use latest scan history instead of live ping
-        latest_subq = db.session.query(
-            DeviceScanHistory.device_ip,
-            func.max(DeviceScanHistory.scan_id).label('max_id')
-        ).group_by(DeviceScanHistory.device_ip).subquery()
+        if not devices:
+            return jsonify({"devices": []})
 
-        latest_rows = db.session.query(DeviceScanHistory, Device).join(
-            latest_subq,
-            (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-            (DeviceScanHistory.scan_id == latest_subq.c.max_id)
-        ).join(
-            Device,
-            Device.device_ip == DeviceScanHistory.device_ip
-        ).all()
+        target_device_ips = list({d.device_ip for d in devices if d.device_ip})
+        latest_map = {}
 
-        latest_map = {row[1].device_id: row[0] for row in latest_rows}
+        if target_device_ips:
+            latest_subq = db.session.query(
+                DeviceScanHistory.device_ip,
+                func.max(DeviceScanHistory.scan_id).label('max_id')
+            ).filter(
+                DeviceScanHistory.device_ip.in_(target_device_ips)
+            ).group_by(DeviceScanHistory.device_ip).subquery()
+
+            latest_rows = db.session.query(DeviceScanHistory).join(
+                latest_subq,
+                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
+                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+            ).all()
+            latest_map = {row.device_ip: row for row in latest_rows}
+
         devices_list = []
         device_index = {}
         live_check_devices = []
 
         for device in devices:
-            scan = latest_map.get(device.device_id)
+            scan = latest_map.get(device.device_ip)
             if getattr(device, 'maintenance_mode', False):
                 status = "Maintenance"
             else:

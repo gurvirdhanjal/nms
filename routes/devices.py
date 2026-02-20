@@ -7,7 +7,7 @@ from middleware.rbac import require_login
 import asyncio
 import json
 import logging
-from sqlalchemy import inspect, or_
+from sqlalchemy import inspect, or_, func
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 logger = logging.getLogger(__name__)
@@ -133,12 +133,96 @@ def _delete_device_with_dependencies(device, existing_tables=None):
 
     db.session.delete(device)
 
+
+def _normalize_status_filter(raw_status):
+    status_map = {
+        'online': 'Online',
+        'offline': 'Offline',
+        'maintenance': 'Maintenance',
+    }
+    return status_map.get((raw_status or '').strip().lower(), '')
+
+
+def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device_type='', subnet='', status=''):
+    """Apply consistent device filters for UI pages and cross-page selection endpoints."""
+    filtered_query = query
+
+    if subnet:
+        filtered_query = filtered_query.filter(Device.subnet_cidr == subnet)
+
+    if device_type and device_type != 'all':
+        if device_type in ('camera', 'camera/iot', 'camera_iot'):
+            filtered_query = filtered_query.filter(
+                Device.device_type.in_(['camera', 'camera/iot', 'camera_iot'])
+            )
+        else:
+            filtered_query = filtered_query.filter(Device.device_type == device_type)
+
+    if search:
+        pattern = f"%{search}%"
+        filtered_query = filtered_query.filter(or_(
+            Device.device_name.ilike(pattern),
+            Device.device_ip.ilike(pattern),
+            Device.hostname.ilike(pattern),
+            Device.macaddress.ilike(pattern),
+            Device.manufacturer.ilike(pattern)
+        ))
+
+    normalized_status = _normalize_status_filter(status)
+    if normalized_status == 'Maintenance':
+        filtered_query = filtered_query.filter(Device.maintenance_mode.is_(True))
+    elif normalized_status in ('Online', 'Offline'):
+        latest_scan_subq = db.session.query(
+            DeviceScanHistory.device_ip.label('device_ip'),
+            func.max(DeviceScanHistory.scan_id).label('max_scan_id')
+        ).group_by(DeviceScanHistory.device_ip).subquery()
+
+        filtered_query = (
+            filtered_query
+            .filter(Device.maintenance_mode.is_(False))
+            .join(latest_scan_subq, Device.device_ip == latest_scan_subq.c.device_ip)
+            .join(DeviceScanHistory, DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
+            .filter(func.lower(DeviceScanHistory.status) == normalized_status.lower())
+        )
+
+    return filtered_query
+
 @devices_bp.route('/devices')
 def device_management():
     try:
         from models.device import Device
+        from models.scan_history import DeviceScanHistory
         from models.snmp_config import DeviceSnmpConfig
-        devices = Device.query.order_by(Device.device_ip.asc()).all()
+
+        page = request.args.get('page', default=1, type=int) or 1
+        per_page = request.args.get('per_page', default=100, type=int) or 100
+        allowed_per_page = {50, 100, 200}
+        if per_page not in allowed_per_page:
+            per_page = 100
+
+        active_search = (request.args.get('search') or '').strip()
+        active_type = (request.args.get('type') or '').strip().lower()
+        active_subnet = (request.args.get('subnet') or '').strip()
+        active_status = _normalize_status_filter(request.args.get('status'))
+
+        base_query = Device.query
+        filtered_query = _apply_device_filters(
+            base_query,
+            Device=Device,
+            DeviceScanHistory=DeviceScanHistory,
+            search=active_search,
+            device_type=active_type,
+            subnet=active_subnet,
+            status=active_status,
+        )
+
+        devices_query = filtered_query.order_by(Device.device_ip.asc())
+        global_device_count = base_query.count()
+        total_devices = devices_query.count()
+        total_pages = max((total_devices + per_page - 1) // per_page, 1)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+        devices = devices_query.offset(offset).limit(per_page).all()
         device_ids = [d.device_id for d in devices]
         snmp_by_device_id = {}
         if device_ids:
@@ -171,7 +255,15 @@ def device_management():
                 _delete_device_with_dependencies(device)
                 db.session.commit()
                 print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
-            return redirect(url_for('devices_bp.device_management'))
+            redirect_params = {
+                'page': page,
+                'per_page': per_page,
+                'search': active_search,
+                'type': active_type,
+                'subnet': active_subnet,
+                'status': active_status,
+            }
+            return redirect(url_for('devices_bp.device_management', **redirect_params))
 
         # Count devices that still need auto-classification
         unclassified_count = 0
@@ -189,7 +281,23 @@ def device_management():
             device=device,
             prefill_data=prefill_data,
             unclassified_count=unclassified_count,
-            subnets=sorted(set(d.subnet_cidr for d in devices if d.subnet_cidr))
+            subnets=[
+                row[0]
+                for row in db.session.query(Device.subnet_cidr)
+                .filter(Device.subnet_cidr.isnot(None))
+                .distinct()
+                .order_by(Device.subnet_cidr.asc())
+                .all()
+            ],
+            page=page,
+            per_page=per_page,
+            total_devices=total_devices,
+            total_pages=total_pages,
+            global_device_count=global_device_count,
+            active_search=active_search,
+            active_type=active_type,
+            active_subnet=active_subnet,
+            active_status=active_status
         )
     except Exception as e:
         import traceback
@@ -482,6 +590,52 @@ def api_devices():
     device_dicts = [d.to_dict() for d in query.all()]
     return jsonify(device_dicts)
 
+
+@devices_bp.route('/api/devices/filter_ids')
+def api_filtered_device_ids():
+    """Return matching device IDs for current filters (for cross-page bulk selection)."""
+    from models.device import Device
+    from models.scan_history import DeviceScanHistory
+
+    search = (request.args.get('search') or '').strip()
+    device_type = (request.args.get('device_type') or '').strip().lower()
+    subnet = (request.args.get('subnet') or '').strip()
+    status = _normalize_status_filter(request.args.get('status'))
+
+    max_ids = request.args.get('max_ids', default=2000, type=int) or 2000
+    max_ids = max(1, min(max_ids, 5000))
+
+    query = _apply_device_filters(
+        Device.query,
+        Device=Device,
+        DeviceScanHistory=DeviceScanHistory,
+        search=search,
+        device_type=device_type,
+        subnet=subnet,
+        status=status,
+    )
+
+    total_matched = query.count()
+    rows = (
+        query.order_by(Device.device_id.asc())
+        .with_entities(Device.device_id)
+        .limit(max_ids + 1)
+        .all()
+    )
+
+    truncated = len(rows) > max_ids
+    if truncated:
+        rows = rows[:max_ids]
+
+    return jsonify({
+        'device_ids': [row[0] for row in rows],
+        'total_matched': total_matched,
+        'selected_count': len(rows),
+        'truncated': truncated,
+        'max_ids': max_ids,
+        'status_filter_applied': bool(status),
+    })
+
 @devices_bp.route('/api/devices/<int:device_id>')
 def api_device_detail(device_id):
     from models.device import Device
@@ -490,6 +644,55 @@ def api_device_detail(device_id):
         return jsonify(device.to_dict())
     else:
         return jsonify({'error': 'Device not found'}), 404
+
+@devices_bp.route('/devices/<int:device_id>/details')
+def device_details_page(device_id):
+    from models.device import Device
+    from models.interfaces import DeviceInterface
+    from models.server_health import ServerHealthLog
+    from models.snmp_config import DeviceSnmpConfig
+
+    device = Device.query.get_or_404(device_id)
+
+    snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
+
+    latest_snmp_log = (
+        ServerHealthLog.query.filter(
+            ServerHealthLog.device_id == device_id,
+            ServerHealthLog.source == 'snmp',
+        )
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    latest_agent_log = (
+        ServerHealthLog.query.filter(
+            ServerHealthLog.device_id == device_id,
+            ServerHealthLog.source == 'agent',
+        )
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    interfaces = (
+        DeviceInterface.query.filter_by(device_id=device_id)
+        .order_by(DeviceInterface.if_index.asc())
+        .all()
+    )
+
+    snmp_enabled = bool(snmp_config and snmp_config.is_enabled)
+    has_snmp_metrics = bool(latest_snmp_log or interfaces)
+
+    return render_template(
+        'device_details.html',
+        device=device,
+        snmp_config=snmp_config,
+        latest_snmp_log=latest_snmp_log,
+        latest_agent_log=latest_agent_log,
+        interfaces=interfaces,
+        snmp_enabled=snmp_enabled,
+        has_snmp_metrics=has_snmp_metrics,
+    )
 
 @devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST'])
 def toggle_device_monitoring(device_id):
