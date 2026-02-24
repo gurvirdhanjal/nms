@@ -3,221 +3,188 @@
 {% block title %}Network Scanner - Device Monitoring{% endblock %}
 {% block extra_css %}
 <style>
-    /* Scanning Page - Tactical Theme Overrides */
-    .scan-header {
-        margin-bottom: 2rem;
+    .devices-page {
+        --d-border: rgba(148, 163, 184, 0.2);
+        --d-border-soft: rgba(148, 163, 184, 0.14);
+        --d-text-main: #e6edf5;
+        --d-text-muted: #8a97a6;
     }
 
-    .scan-header h3 {
-        font-family: 'Orbitron', monospace;
-        color: var(--tactical-accent-bright);
-        text-transform: uppercase;
-        letter-spacing: 2px;
+    .devices-page .lucide {
+        width: 15px;
+        height: 15px;
+        stroke-width: 1.9;
+        vertical-align: text-bottom;
+    }
+
+    .devices-page .page-header h1 {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 1.04rem;
         font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-
-    .table {
-        font-size: 0.85rem;
-    }
-
-    .table th {
-        font-weight: 500;
         text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.5px;
-        color: rgba(255, 255, 255, 0.6);
+        letter-spacing: 0.09em;
+        color: var(--d-text-main);
     }
 
+    .devices-page .page-header .lead {
+        margin: 0.32rem 0 0;
+        color: var(--d-text-muted);
+        font-size: 0.69rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+    }
 
-    /* Scan Input Group */
-    .scan-input-group {
+    .devices-page .card {
+        border-radius: 6px;
+        border-color: var(--d-border);
+        background: rgba(16, 19, 27, 0.86);
+    }
+
+    .devices-page .card-header {
+        padding: 0.58rem 0.78rem;
+        border-bottom-color: var(--d-border-soft);
         display: flex;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+        align-items: center;
+        justify-content: space-between;
     }
 
-    .input-group .btn {
-        padding: 0.4rem 0.75rem;
-        font-size: 0.85rem;
+    .devices-page .card-body {
+        padding: 0.7rem 0.78rem;
     }
 
-
-    .scan-input-group .input-wrapper {
-        flex: 1;
+    .devices-page .devices-toolbar {
         display: flex;
-        gap: 0.5rem;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.72rem;
+        flex-wrap: wrap;
     }
 
-    .scan-input-group .tactical-input {
-        flex: 1;
-    }
-
-
-    /* ============================= */
-    /* SAFE ICON NORMALIZATION PATCH */
-    /* ============================= */
-
-    /* Reset FontAwesome to default behavior */
-    i.fas,
-    i.far,
-    i.fab {
-        font-size: 1em;
-        vertical-align: -0.125em;
-        /* default FA alignment */
-        color: inherit;
-    }
-
-    /* Smaller icons only inside buttons */
-    .btn i {
+    .devices-page .devices-title {
+        display: flex;
+        align-items: center;
+        gap: 0.48rem;
+        margin: 0;
         font-size: 0.8rem;
-        margin-right: 4px;
-    }
-
-    /* Smaller header icons */
-    .card-header i {
-        font-size: 0.85rem;
-        opacity: 0.85;
-    }
-
-    .table thead th {
-        font-size: 0.75rem;
+        letter-spacing: 0.07em;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: rgba(255, 255, 255, 0.6);
-        font-weight: 500;
+        color: #c3cfdb;
     }
 
-    .table tbody td {
-        font-size: 0.85rem;
+    .devices-page .btn {
+        font-size: 0.73rem;
+        letter-spacing: 0.03em;
     }
 
-    .table td {
+    .devices-page .btn .lucide {
+        margin-right: 0.3rem;
+    }
+
+    .devices-page .form-control,
+    .devices-page .form-select,
+    .devices-page .input-group-text {
+        font-size: 0.74rem;
+    }
+
+    /* Table consistency with devices.html */
+    .devices-page .table-responsive {
+        border: 1px solid var(--d-border);
+        border-radius: 6px;
+        max-height: 70vh;
+        overflow-x: auto;
+        overflow-y: auto;
+    }
+
+    .devices-page .devices-table {
+        margin-bottom: 0;
+    }
+
+    .devices-page .devices-table thead th {
+        padding: 0.46rem 0.52rem;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.085em;
+        color: #b8c6d5;
+        white-space: nowrap;
+    }
+
+    .devices-page .devices-table tbody td {
+        padding: 0.44rem 0.52rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.75rem;
+        font-variant-numeric: tabular-nums;
         vertical-align: middle;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        line-height: 1.2;
     }
 
-
-    /* Table action icons */
-    .table td i:not(.fa-plus):not(.fa-satellite-dish):not(.fa-search) {
-        font-size: 0.85rem;
+    .devices-page .devices-table tbody tr {
+        border-color: rgba(148, 163, 184, 0.1);
     }
 
-    .action-scan {
-        color: #38bdf8;
-        border-color: rgba(255, 255, 255, 0.1);
+    .devices-page .device-name-cell strong {
+        display: inline-block;
+        color: var(--d-text-main);
+        font-size: 0.78rem;
+        font-family: 'IBM Plex Sans', sans-serif;
     }
 
-    .action-scan i {
-        color: #38bdf8;
+    .devices-page .device-mac {
+        margin-top: 0.16rem;
+        font-size: 0.66rem;
+        color: var(--d-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
     }
-
-
-    /* ============================= */
-    /* DARK DROPDOWN FIX */
-    /* ============================= */
-
-    .dropdown-menu {
-        background-color: #111827;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 0.25rem 0;
-    }
-
-    .dropdown-item {
-        color: rgba(255, 255, 255, 0.85);
-        font-size: 0.85rem;
-    }
-
-    .dropdown-item:hover {
-        background-color: rgba(255, 255, 255, 0.05);
-        color: #ffffff;
-    }
-
-    .dropdown-item i {
-        color: rgba(255, 255, 255, 0.7);
-        margin-right: 6px;
-    }
-
-
-
-
-    .tactical-card .card-header {
-        background: transparent;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        padding: 0.75rem 1rem;
-    }
-
 
 
     /* Progress Bar Enhancements */
-    .tactical-progress {
+    .devices-page .tactical-progress {
         height: 24px;
-        margin-bottom: 1.5rem;
-        background: var(--tactical-bg-elevated);
-        border-radius: var(--tactical-radius-sm);
+        margin-bottom: 0.7rem;
+        background: rgba(16, 19, 27, 0.86);
+        border: 1px solid var(--d-border);
+        border-radius: 4px;
         overflow: hidden;
     }
 
-    .tactical-progress .progress-bar {
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    .devices-page .tactical-progress .progress-bar {
         font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--tactical-bg-darkest);
-        background: var(--tactical-accent);
-        border-radius: var(--tactical-radius-sm);
-    }
-
-    /* Scan Results Area */
-    .device-added {
-        background-color: rgba(25, 135, 84, 0.25) !important;
-        border-left: 3px solid #198754;
-    }
-
-    .device-added td {
-        color: #e0e0e0 !important;
-    }
-
-    .scan-results-table {
-        margin-top: 1rem;
+        font-weight: 700;
     }
 
     /* Action Buttons for Results */
-    .result-actions {
+    .devices-page .result-actions {
         display: flex;
         gap: 0.5rem;
     }
 
-    .btn-primary {
-        background-color: #1f2937;
-        border-color: #1f2937;
-    }
-
-    .btn-primary:hover {
-        background-color: #111827;
-        border-color: #111827;
-    }
-
-
-    .result-actions .tactical-btn-sm {
-        padding: 0.35rem 0.75rem;
-        font-size: 0.75rem;
-    }
-
-    /* Empty State */
-    .empty-scan-state {
+    .devices-page .empty-scan-state {
         text-align: center;
-        padding: 3rem 1rem;
-        color: var(--tactical-text-muted);
+        padding: 2.1rem 1rem;
     }
 
-    .empty-scan-state i {
-        font-size: 3rem;
-        color: var(--tactical-accent-dim);
-        margin-bottom: 1rem;
-        opacity: 0.5;
+    .devices-page .empty-scan-state i,
+    .devices-page .empty-scan-state .lucide {
+        width: 44px;
+        height: 44px;
+        color: #8a97a6;
+        opacity: 0.42;
+    }
+
+    .devices-page .empty-scan-state h5 {
+        margin-top: 0.7rem;
+        color: var(--d-text-main);
+        font-size: 0.95rem;
+    }
+
+    .devices-page .empty-scan-state p {
+        color: var(--d-text-muted);
+        font-size: 0.77rem;
     }
 
     /* Port Scan Modal Enhancements */
@@ -228,74 +195,74 @@
 
     .port-result-item {
         padding: 0.75rem 1rem;
-        background: var(--tactical-bg-dark);
-        border-left: 3px solid var(--tactical-accent);
+        background: rgba(16, 19, 27, 0.86);
+        border-left: 3px solid rgba(95, 151, 194, 0.4);
         margin-bottom: 0.5rem;
-        border-radius: var(--tactical-radius-sm);
+        border-radius: 4px;
     }
 
     .port-result-item.closed {
-        border-left-color: var(--tactical-text-dim);
+        border-left-color: var(--d-text-muted);
         opacity: 0.6;
     }
 
     /* Scan Statistics */
-    .scan-stats {
+    .devices-page .scan-stats {
         display: flex;
-        gap: 1rem;
+        gap: 0.7rem;
         margin-bottom: 1.5rem;
         flex-wrap: wrap;
     }
 
-    .scan-stat-item {
+    .devices-page .scan-stat-item {
         flex: 1;
         min-width: 150px;
-        padding: 1rem;
-        background: var(--tactical-bg-surface);
-        border-left: 3px solid var(--tactical-accent);
-        border-radius: var(--tactical-radius-sm);
+        padding: 0.7rem;
+        background: rgba(16, 19, 27, 0.86);
+        border: 1px solid var(--d-border);
+        border-left: 3px solid rgba(95, 151, 194, 0.4);
+        border-radius: 4px;
     }
 
-    .scan-stat-item .stat-value {
-        font-size: 1.75rem;
+    .devices-page .scan-stat-item .stat-value {
+        font-size: 1.25rem;
         font-weight: 700;
-        color: var(--tactical-accent-bright);
-        font-family: 'Orbitron', monospace;
+        color: var(--d-text-main);
+        font-family: 'IBM Plex Mono', monospace;
     }
 
-    .scan-stat-item .stat-label {
-        font-size: 0.75rem;
-        color: var(--tactical-text-muted);
+    .devices-page .scan-stat-item .stat-label {
+        font-size: 0.68rem;
+        color: var(--d-text-muted);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.06em;
     }
 
     /* ===== Ultra Minimal Action Icons ===== */
-    .device-actions {
+    .devices-page .device-actions {
         display: flex;
         align-items: center;
         gap: 14px;
         justify-content: center;
     }
 
-    .action-icon {
+    .devices-page .action-icon {
         font-size: 0.85rem;
         cursor: pointer;
         opacity: 0.65;
         transition: all 0.2s ease;
     }
 
-    .action-icon:hover {
+    .devices-page .action-icon:hover {
         opacity: 1;
         transform: scale(1.1);
     }
 
-    /* Individual subtle colors */
-    .action-add {
+    .devices-page .action-add {
         color: #00d4aa;
     }
 
-    .action-scan {
+    .devices-page .action-scan {
         color: #38bdf8;
     }
 </style>
@@ -303,33 +270,50 @@
 
 {% block content %}
 
-<div class="container-fluid mt-4">
-    <div class="row">
+<div class="devices-page">
+    <div class="row mb-2">
+        <div class="col-md-12 page-header">
+            <h1><i data-lucide="scan-search"></i> Network Scanner</h1>
+            <p class="lead">Discover and add new endpoints to the monitoring inventory</p>
+        </div>
+    </div>
+
+    <div class="row mt-3">
         <div class="col-md-12">
-            <div class="tactical-card">
+            <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 text-uppercase text-muted">Network Scanner</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3 text-start">
-                        <div class="col-md-12 ms-1">
-                            <span class="badge bg-secondary">
-                                <i class="fas fa-server text-warning"></i> Heavy Scan Mode (Ports + SNMP)
+                    <div class="devices-toolbar">
+                        <h5 class="devices-title"><i data-lucide="radar"></i> Active Discovery</h5>
+                        <div class="devices-filters">
+                            <span class="badge bg-dark border border-secondary text-secondary me-2"
+                                style="font-size: 0.65rem;">
+                                <i data-lucide="zap" class="text-warning"></i> Heavy Scan Mode (Ports + SNMP)
                             </span>
                         </div>
                     </div>
+                </div>
+                <div class="card-body">
                     <div class="row mb-3">
-                        <div class="col-md-8">
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="ipRange" placeholder="e.g., 192.168.1.0/24">
-                                <button class="btn btn-outline-secondary" type="button" id="getLocalRange">
-                                    <i class="fas fa-home"></i> Get Local Range
+                        <div class="col-md-6">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-dark border-secondary text-light"><i
+                                        data-lucide="network"></i></span>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="ipRange"
+                                    placeholder="e.g., 192.168.1.0/24">
+                                <button class="btn btn-outline-secondary border-secondary" type="button"
+                                    id="getLocalRange" title="Get Local Range">
+                                    <i data-lucide="home"></i> Local
                                 </button>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <button class="btn btn-primary w-100" id="startScan">
-                                <i class="fas fa-play"></i> Start Network Scan
+                        <div class="col-md-3">
+                            <button class="btn btn-primary btn-sm w-100" id="startScan">
+                                <i data-lucide="play"></i> Start Network Scan
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-success btn-sm w-100" id="scanAndAddBtn">
+                                <i data-lucide="database"></i> Scan & Add to DB
                             </button>
                         </div>
                     </div>
@@ -337,8 +321,8 @@
                     <div class="row mb-3">
                         <div class="col-md-12">
                             <div class="tactical-progress" style="display: none;" id="scanProgress">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                                    style="width: 0%">0%</div>
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                    role="progressbar" style="width: 0%">0%</div>
                             </div>
                         </div>
                     </div>
@@ -347,14 +331,18 @@
                         <div class="col-md-12">
                             <!-- Bulk Actions Area (Hidden by default) -->
                             <div id="bulkActions" style="display: none;"
-                                class="mb-3 p-2 bg-dark rounded border border-secondary d-flex align-items-center justify-content-between">
+                                class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
                                 <div>
-                                    <span class="text-white me-2"><i class="fas fa-check-square"></i> <span
+                                    <span class="text-white me-2"><i data-lucide="check-square"></i> <span
                                             id="selectedCount">0</span> devices selected</span>
                                 </div>
                                 <div>
-                                    <button class="btn btn-success btn-sm me-2" id="bulkAddBtn">
-                                        <i class="fas fa-plus-circle"></i> Add Selected to Inventory
+                                    <button class="btn btn-outline-secondary btn-sm me-1"
+                                        onclick="clearBulkSelection()">
+                                        <i data-lucide="x-circle"></i> Clear
+                                    </button>
+                                    <button class="btn btn-success btn-sm" id="bulkAddBtn">
+                                        <i data-lucide="plus-circle"></i> Add Selected to Inventory
                                     </button>
                                 </div>
                             </div>
@@ -371,93 +359,106 @@
 
     <!-- SNMP Discovery Toggle Button -->
     <div class="row mt-3">
-        <div class="d-flex justify-content-between align-items-center mt-4">
-            <h6 class="text-muted mb-0">SNMP Discovery</h6>
-            <button class="btn btn-sm btn-outline-secondary" id="toggleDiscoveryPanel">
-                Configure
-            </button>
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
+                <h6 class="devices-title text-muted mb-0"><i data-lucide="git-merge"></i> SNMP Topology Discovery</h6>
+                <button class="btn btn-sm btn-outline-secondary" id="toggleDiscoveryPanel">
+                    Configure <i data-lucide="chevron-down" id="discoveryChevron"></i>
+                </button>
+            </div>
         </div>
-
     </div>
 
     <!-- SNMP Discovery Panel (Hidden by default) -->
     <div class="row mt-3" id="discoveryPanel" style="display: none;">
         <div class="col-md-12">
-            <div class="tactical-card">
-                <div class="card-header d-flex align-items-center justify-content-between">
-                    <h4><i class="fas fa-project-diagram"></i> SNMP Network Discovery</h4>
-                    <span class="badge bg-info">CDP / LLDP</span>
-                </div>
+            <div class="card bg-dark border-secondary">
                 <div class="card-body">
                     <p class="text-muted small mb-3">
-                        <i class="fas fa-info-circle"></i>
+                        <i data-lucide="info"></i>
                         Enter a seed switch IP and its SNMP community string. The system will use CDP/LLDP to
                         recursively discover neighboring switches and their connected devices via MAC/ARP tables.
                     </p>
 
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted">Seed Switch IP</label>
-                            <input type="text" class="form-control" id="seed-ip" placeholder="e.g., 192.168.1.1">
+                    <div class="row mb-3 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted"
+                                style="font-size: 0.65rem; text-transform: uppercase;">Seed Switch IP</label>
+                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                id="seed-ip" placeholder="e.g., 192.168.1.1">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small text-muted">Community String</label>
-                            <input type="text" class="form-control" id="snmp-community" placeholder="public"
-                                value="public">
+                            <label class="form-label text-muted"
+                                style="font-size: 0.65rem; text-transform: uppercase;">Community</label>
+                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                id="snmp-community" placeholder="public" value="public">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label small text-muted">SNMP Version</label>
-                            <select class="form-select" id="snmp-version">
+                            <label class="form-label text-muted"
+                                style="font-size: 0.65rem; text-transform: uppercase;">Version</label>
+                            <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                id="snmp-version">
                                 <option value="2c" selected>v2c</option>
                                 <option value="1">v1</option>
                             </select>
                         </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-info w-100" id="btn-start-discovery">
-                                <i class="fas fa-satellite-dish"></i> Start Mapping
+                        <div class="col-md-4">
+                            <button class="btn btn-info btn-sm w-100" id="btn-start-discovery">
+                                <i data-lucide="satellite-dish"></i> Start Mapping
                             </button>
                         </div>
                     </div>
 
                     <!-- Advanced Options (collapsible) -->
                     <div class="mb-3">
-                        <a class="small text-muted" data-bs-toggle="collapse" href="#snmpAdvancedOptions" role="button">
-                            <i class="fas fa-sliders-h"></i> Advanced Options
+                        <a class="small text-muted" data-bs-toggle="collapse" href="#snmpAdvancedOptions" role="button"
+                            style="text-decoration: none;">
+                            <i data-lucide="sliders-horizontal"></i> Advanced Options
                         </a>
                         <div class="collapse mt-2" id="snmpAdvancedOptions">
-                            <div class="row">
+                            <div class="row g-2">
                                 <div class="col-md-3">
-                                    <label class="form-label small text-muted">Max Depth</label>
-                                    <input type="number" class="form-control form-control-sm" id="snmp-max-depth"
-                                        value="3" min="1" max="10">
+                                    <label class="form-label text-muted"
+                                        style="font-size: 0.65rem; text-transform: uppercase;">Max Depth</label>
+                                    <input type="number"
+                                        class="form-control form-control-sm bg-dark text-light border-secondary"
+                                        id="snmp-max-depth" value="3" min="1" max="10">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label small text-muted">Max Switches</label>
-                                    <input type="number" class="form-control form-control-sm" id="snmp-max-switches"
-                                        value="50" min="1" max="200">
+                                    <label class="form-label text-muted"
+                                        style="font-size: 0.65rem; text-transform: uppercase;">Max Switches</label>
+                                    <input type="number"
+                                        class="form-control form-control-sm bg-dark text-light border-secondary"
+                                        id="snmp-max-switches" value="50" min="1" max="200">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label small text-muted">Timeout (sec)</label>
-                                    <input type="number" class="form-control form-control-sm" id="snmp-timeout"
-                                        value="2" min="1" max="10">
+                                    <label class="form-label text-muted"
+                                        style="font-size: 0.65rem; text-transform: uppercase;">Timeout (sec)</label>
+                                    <input type="number"
+                                        class="form-control form-control-sm bg-dark text-light border-secondary"
+                                        id="snmp-timeout" value="2" min="1" max="10">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label small text-muted">Retries</label>
-                                    <input type="number" class="form-control form-control-sm" id="snmp-retries"
-                                        value="1" min="0" max="5">
+                                    <label class="form-label text-muted"
+                                        style="font-size: 0.65rem; text-transform: uppercase;">Retries</label>
+                                    <input type="number"
+                                        class="form-control form-control-sm bg-dark text-light border-secondary"
+                                        id="snmp-retries" value="1" min="0" max="5">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Discovery Status -->
-                    <div id="discovery-status" class="small mt-2 p-2 rounded" style="display: none;"></div>
+                    <div id="discovery-status" class="alert p-2 mt-2 mb-0" style="display: none; font-size: 0.75rem;">
+                    </div>
 
                     <!-- Discovery Results (Hidden until results arrive) -->
                     <div id="discovery-results" style="display: none;" class="mt-3">
-                        <h6 class="text-info"><i class="fas fa-network-wired"></i> Discovered Switches</h6>
-                        <div class="table-responsive mb-3">
-                            <table class="table table-hover table-sm align-middle">
+                        <h6 class="devices-title mt-4 mb-2"><i data-lucide="network"></i> Discovered Switches</h6>
+                        <div class="table-responsive mb-3 border border-secondary rounded overflow-auto"
+                            style="max-height: 300px;">
+                            <table class="table table-hover table-sm devices-table align-middle">
                                 <thead class="table-dark">
                                     <tr>
                                         <th>Switch IP</th>
@@ -468,15 +469,17 @@
                                 </thead>
                                 <tbody id="discovery-switches-body">
                                     <tr>
-                                        <td colspan="4" class="text-center p-3 text-muted">No results yet.</td>
+                                        <td colspan="4" class="text-center p-3 text-muted" style="font-size: 0.75rem;">
+                                            No results yet.</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
 
-                        <h6 class="text-info"><i class="fas fa-desktop"></i> Discovered Devices</h6>
-                        <div class="table-responsive">
-                            <table class="table table-hover table-sm align-middle">
+                        <h6 class="devices-title mt-4 mb-2"><i data-lucide="monitor"></i> Discovered Devices</h6>
+                        <div class="table-responsive border border-secondary rounded overflow-auto"
+                            style="max-height: 400px;">
+                            <table class="table table-hover table-sm devices-table align-middle">
                                 <thead class="table-dark">
                                     <tr>
                                         <th>Switch</th>
@@ -487,7 +490,8 @@
                                 </thead>
                                 <tbody id="discovery-devices-body">
                                     <tr>
-                                        <td colspan="4" class="text-center p-3 text-muted">No results yet.</td>
+                                        <td colspan="4" class="text-center p-3 text-muted" style="font-size: 0.75rem;">
+                                            No results yet.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -503,17 +507,19 @@
 <!-- Port Scan Modal -->
 <div class="modal fade" id="portScanModal" tabindex="-1" aria-labelledby="portScanModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
+        <div class="modal-content tactical-card">
+            <div class="modal-header border-bottom-0">
                 <h5 class="modal-title" id="portScanModalLabel"><i class="fas fa-network-wired"></i> Port Scan Results
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
             <div class="modal-body" id="portScanResults">
                 <!-- Port scan results will be displayed here -->
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <div class="modal-footer border-top-0">
+                <button type="button" class="btn btn-secondary tactical-btn-outline"
+                    data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -522,7 +528,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/scanning.js') }}"></script>
+<script src="{{ url_for('static', filename='js/scanning.js') }}?v={{ range(1, 10000) | random }}"></script>
 <script>
     // ============================================================================
     // SNMP DISCOVERY PANEL LOGIC

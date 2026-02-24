@@ -736,6 +736,24 @@
             box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-warning) 75%, transparent);
         }
 
+        .status-maintenance {
+            background-color: var(--ui-warning);
+            box-shadow: 0 0 8px color-mix(in srgb, var(--ui-warning) 65%, transparent);
+        }
+
+        .status-maintenance::after {
+            box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-warning) 75%, transparent);
+        }
+
+        .status-unknown {
+            background-color: var(--ui-text-muted);
+            box-shadow: 0 0 8px color-mix(in srgb, var(--ui-text-muted) 60%, transparent);
+        }
+
+        .status-unknown::after {
+            box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-text-muted) 70%, transparent);
+        }
+
         @keyframes pulse-ring {
             0% {
                 transform: scale(0.8);
@@ -1791,13 +1809,13 @@
                         class="sidebar-link {% if request.endpoint and 'reports_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="bar-chart-3"></i><span class="link-text">Reports</span>
                     </a>
-                    <a href="{{ url_for('monitoring_bp.monitoring_page') }}"
-                        class="sidebar-link {% if request.endpoint == 'monitoring_bp.monitoring_page' %}active{% endif %}">
-                        <i data-lucide="network"></i><span class="link-text">Network</span>
-                    </a>
                     <a href="{{ url_for('tracking_bp.device_tracking') }}"
-                        class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint %}active{% endif %}">
-                        <i data-lucide="crosshair"></i><span class="link-text">Tracking</span>
+                        class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint and request.endpoint != 'tracking_bp.live_tracking' %}active{% endif %}">
+                        <i data-lucide="users-round"></i><span class="link-text">Device Tracking</span>
+                    </a>
+                    <a href="{{ url_for('tracking_bp.live_tracking') }}"
+                        class="sidebar-link {% if request.endpoint == 'tracking_bp.live_tracking' %}active{% endif %}">
+                        <i data-lucide="crosshair"></i><span class="link-text">Live Tracking</span>
                     </a>
                     <a href="{{ url_for('file_transfer_bp.file_transfer_dashboard') }}"
                         class="sidebar-link {% if request.endpoint and 'file_transfer_bp' in request.endpoint %}active{% endif %}">

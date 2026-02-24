@@ -161,6 +161,8 @@ class MonitoringScheduler:
                 from models.device import Device
                 from models.snmp_config import DeviceSnmpConfig
                 from models.poll_task import PollTask
+                from models.server_health import ServerHealthLog
+                from datetime import datetime, timedelta
 
                 # Find devices with SNMP enabled
                 configs = DeviceSnmpConfig.query.filter_by(is_enabled=True).all()
@@ -169,11 +171,24 @@ class MonitoringScheduler:
 
                 enqueued = 0
                 skipped = 0
+                now = datetime.utcnow()
+                stale_threshold = now - timedelta(minutes=5)
 
                 for config in configs:
                     device = Device.query.get(config.device_id)
                     if not device or not device.is_monitored:
                         continue
+                        
+                    # Skip SNMP polling for Servers if the Python Agent is actively reporting
+                    if device.device_type == 'server':
+                        latest_agent_log = ServerHealthLog.query.filter_by(
+                            device_id=device.device_id, 
+                            source='agent'
+                        ).order_by(ServerHealthLog.timestamp.desc()).first()
+                        
+                        if latest_agent_log and latest_agent_log.timestamp >= stale_threshold:
+                            skipped += 1
+                            continue # Agent is fresh, no need for SNMP fallback
 
                     # Map device criticality to priority
                     tier = getattr(device, 'cos_tier', 'Standard') or 'Standard'

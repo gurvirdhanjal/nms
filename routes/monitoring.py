@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from extensions import db, event_manager
 from services.device_monitor import DeviceMonitor
 import asyncio
@@ -48,7 +48,8 @@ def dashboard():
 
 @monitoring_bp.route('/monitoring')
 def monitoring_page():
-    return render_template('monitoring.html')
+    # Monitoring tab is now dedicated to employee/device tracking.
+    return redirect(url_for('tracking_bp.device_tracking'))
 import ipaddress
 
 # ... existing imports ...
@@ -131,6 +132,15 @@ def get_monitoring_status():
             return "Unknown"
         return val.capitalize()
 
+    def normalize_availability_status(value):
+        """Collapse statuses to Online/Offline/Maintenance for UI consistency."""
+        normalized = normalize_status(value)
+        if normalized == "Online":
+            return "Online"
+        if normalized == "Maintenance":
+            return "Maintenance"
+        return "Offline"
+
     def save_scan_history(history_entries):
         if not history_entries:
             return
@@ -180,7 +190,7 @@ def get_monitoring_status():
             if getattr(device, 'maintenance_mode', False):
                 status = "Maintenance"
             else:
-                status = normalize_status(scan.status if scan else None)
+                status = normalize_availability_status(scan.status if scan else None)
 
             entry = {
                 "device_id": device.device_id,
@@ -240,7 +250,7 @@ def get_monitoring_status():
             history_entries = []
             fallback_errors = 0
             for device, result in zip(live_check_devices, ping_results):
-                status = "Unknown"
+                status = "Offline"
                 latency = None
                 packet_loss = None
 
@@ -248,7 +258,7 @@ def get_monitoring_status():
                     fallback_errors += 1
                 elif isinstance(result, tuple) and len(result) >= 2:
                     status, latency, packet_loss = result
-                    status = normalize_status(status)
+                    status = normalize_availability_status(status)
 
                 entry = device_index.get(device.device_id)
                 if entry:
@@ -318,7 +328,7 @@ def get_monitoring_status():
         try:
             # Optimization: Single ping for dashboard speed
             status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
-            status = normalize_status(status)
+            status = normalize_availability_status(status)
             
             # Fallback: Check Tactical Agent Port (5002) if Ping fails
             if status == 'Offline': 
@@ -361,7 +371,7 @@ def get_monitoring_status():
                 "rstp_link": device.rstplink,
                 "port": device.port,
                 "is_monitored": device.is_monitored,
-                "status": "Unknown",
+                "status": "Offline",
                 "latency": None,
             }
 

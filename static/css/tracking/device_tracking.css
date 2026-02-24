@@ -1,0 +1,360 @@
+#tracking-device-page .tracking-device-table thead th,
+#tracking-device-page .tracking-scan-table thead th {
+    padding: 0.46rem 0.52rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.085em;
+    color: #b8c6d5;
+    white-space: nowrap;
+}
+
+#tracking-device-page .tracking-device-table tbody td,
+#tracking-device-page .tracking-scan-table tbody td {
+    padding: 0.44rem 0.52rem;
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+    line-height: 1.2;
+}
+
+#tracking-device-page .tracking-device-table tbody tr,
+#tracking-device-page .tracking-scan-table tbody tr {
+    border-color: rgba(148, 163, 184, 0.1);
+}
+
+#tracking-device-page .device-name-cell strong {
+    display: inline-block;
+    color: var(--e-text-primary, #e6edf5);
+    font-size: 0.78rem;
+    font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);
+}
+
+#tracking-device-page .device-mac {
+    margin-top: 0.16rem;
+    font-size: 0.66rem;
+    color: var(--e-text-muted, #8a97a6);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+#tracking-device-page .tracking-title {
+    margin: 0;
+}
+
+#tracking-device-page .tracking-page-header .lead {
+    margin: 0;
+    color: var(--ui-text-muted, #9ca3af);
+}
+
+#tracking-device-page .tracking-header-actions .btn {
+    white-space: nowrap;
+}
+
+#tracking-device-page .tracking-device-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+#tracking-device-page .tracking-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.35rem;
+}
+
+#tracking-device-page .tracking-status-dot.status-online {
+    background: var(--s-healthy);
+}
+
+#tracking-device-page .tracking-status-dot.status-offline {
+    background: var(--s-critical);
+}
+
+#tracking-device-page .tracking-status-dot.status-degraded {
+    background: var(--s-warning);
+}
+
+#tracking-device-page .tracking-status-dot.status-unknown {
+    background: var(--s-warning);
+}
+
+#tracking-device-page .tracking-filter-empty-state {
+    border: 1px dashed rgba(148, 163, 184, 0.35);
+    border-radius: 0.5rem;
+    color: #cbd5e1;
+}
+
+#tracking-device-page .scan-summary-card {
+    border-radius: 0.5rem;
+    padding: 0.9rem;
+    text-align: center;
+}
+
+#tracking-device-page .scan-summary-card h3 {
+    margin: 0;
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+}
+
+#tracking-device-page .tracking-scan-table code,
+#tracking-device-page .tracking-device-table code {
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+}
+
+#tracking-device-page .tracking-notification-host {
+    position: fixed;
+    top: 78px;
+    right: 20px;
+    z-index: 1085;
+    width: min(460px, calc(100vw - 28px));
+    pointer-events: none;
+}
+
+#tracking-device-page .tracking-toast {
+    pointer-events: auto;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+    margin-bottom: 0.55rem;
+}
+
+#tracking-device-page #scanResultsBanner {
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 767.98px) {
+    #tracking-device-page .tracking-header-actions {
+        width: 100%;
+    }
+
+    #tracking-device-page .tracking-header-actions .btn,
+    #tracking-device-page .tracking-header-actions a {
+        flex: 1 1 calc(50% - 0.25rem);
+        text-align: center;
+    }
+
+    #tracking-device-page .tracking-notification-host {
+        left: 14px;
+        right: 14px;
+        top: 72px;
+        width: auto;
+    }
+}
+
+
+/* Enterprise standard status colors and tokens */
+#tracking-device-page .status-text-online {
+    color: var(--s-healthy, #10b981);
+}
+
+#tracking-device-page .status-text-offline {
+    color: var(--s-critical, #ef4444);
+}
+
+#tracking-device-page .status-text-warning {
+    color: var(--s-unknown, #f59e0b);
+}
+
+#tracking-device-page .status-text-degraded {
+    color: var(--s-degraded, #f59e0b);
+}
+
+/* Tactical Stat Card Styles (adapted from dashboard.html, made denser) */
+#tracking-device-page .tactical-stat-card {
+    min-height: 84px;
+    padding: 0.5rem 0.6rem 0.5rem;
+    background: var(--e-bg-panel, #1e293b);
+    border: 1px solid var(--e-border-panel, #334155);
+    border-radius: 4px;
+    box-shadow: none;
+    transition: transform 130ms ease, border-color 130ms ease;
+}
+
+#tracking-device-page .tactical-stat-card:hover {
+    border-color: rgba(148, 163, 184, 0.32);
+    transform: translateY(-1px);
+}
+
+#tracking-device-page .kpi-view-icon {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 0.55rem;
+    color: rgba(179, 192, 206, 0.45);
+    transition: color 130ms ease;
+    pointer-events: none;
+}
+
+#tracking-device-page .tactical-stat-card:hover .kpi-view-icon {
+    color: rgba(211, 220, 230, 0.72);
+}
+
+#tracking-device-page .stat-label {
+    font-size: 0.55rem !important;
+    letter-spacing: 0.12em;
+    color: var(--e-text-muted, #9ca3af) !important;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+}
+
+#tracking-device-page .stat-value {
+    font-size: 1rem !important;
+    line-height: 1.1;
+    font-weight: 700;
+    color: var(--e-text-primary, #f8fafc);
+    font-family: var(--t-mono, monospace);
+    font-variant-numeric: tabular-nums;
+}
+
+#tracking-device-page .metric-sub {
+    margin-top: 0.15rem;
+    font-size: 0.6rem !important;
+    line-height: 1.15;
+    color: var(--e-text-muted, #9ca3af) !important;
+}
+
+#tracking-device-page .tactical-stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+#tracking-device-page .tactical-stat-card.healthy {
+    border-left: 3px solid var(--s-healthy, #10b981);
+}
+
+#tracking-device-page .tactical-stat-card.critical {
+    border-left: 3px solid var(--s-critical, #ef4444);
+}
+
+#tracking-device-page .tactical-stat-card.warning {
+    border-left: 3px solid var(--s-degraded, #f59e0b);
+}
+
+#tracking-device-page .panel-header {
+    background: rgba(30, 41, 59, 0.5);
+    border-bottom: 1px solid var(--e-border-panel, #334155);
+    font-family: var(--t-mono, monospace);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--e-text-primary, #f8fafc);
+    padding: var(--e-space-3, 0.75rem) var(--e-space-4, 1rem);
+}
+
+#tracking-device-page .tactical-btn-outline {
+    background: transparent;
+    border: 1px solid var(--e-border-panel, #334155);
+    color: var(--e-text-secondary, #9ca3af);
+    font-size: 0.8rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+}
+
+#tracking-device-page .tactical-btn-outline:hover,
+#tracking-device-page .tactical-btn-outline.active {
+    border-color: var(--e-text-primary, #f8fafc);
+    color: var(--e-text-primary, #f8fafc);
+}
+
+#tracking-device-page .tactical-input,
+#tracking-device-page .tactical-select {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--e-border-panel, #334155);
+    color: var(--e-text-primary, #f8fafc);
+    font-size: 0.85rem;
+    padding: 0.4rem 0.75rem;
+}
+
+#tracking-device-page .tactical-input:focus,
+#tracking-device-page .tactical-select:focus {
+    background: rgba(15, 23, 42, 0.8);
+    border-color: var(--e-text-secondary, #9ca3af);
+    box-shadow: none;
+    color: var(--e-text-primary, #f8fafc);
+}
+
+#tracking-device-page .tactical-table th {
+    font-family: var(--t-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--e-text-secondary, #9ca3af);
+    border-bottom: 1px solid var(--e-border-panel, #334155) !important;
+    background: rgba(30, 41, 59, 0.3) !important;
+    padding: var(--e-space-2, 0.5rem) var(--e-space-3, 0.75rem);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+#tracking-device-page .tactical-table td {
+    border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+    padding: var(--e-space-3, 0.75rem);
+    vertical-align: middle;
+    font-size: 0.85rem;
+    color: var(--e-text-primary, #f8fafc);
+}
+
+#tracking-device-page .tactical-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7rem;
+    font-family: var(--t-mono, monospace);
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    letter-spacing: 0.05em;
+}
+
+#tracking-device-page .tactical-badge-healthy {
+    border-color: rgba(16, 185, 129, 0.3);
+    color: var(--s-healthy, #10b981);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+#tracking-device-page .tactical-badge-critical {
+    border-color: rgba(239, 68, 68, 0.3);
+    color: var(--s-critical, #ef4444);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+#tracking-device-page .tactical-badge-warning {
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--s-degraded, #f59e0b);
+    background: rgba(245, 158, 11, 0.1);
+}
+
+#tracking-device-page .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+#tracking-device-page .status-dot.healthy {
+    background: var(--s-healthy, #10b981);
+}
+
+#tracking-device-page .status-dot.offline {
+    background: var(--s-critical, #ef4444);
+}
+
+#tracking-device-page .status-dot.unknown {
+    background: var(--s-unknown, #f59e0b);
+}

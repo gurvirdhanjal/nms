@@ -1,10 +1,11 @@
-import psutil
+﻿import psutil
 import platform
 import socket
 import time
 import requests
 import os
 import uuid
+import sys
 import logging
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -619,18 +620,51 @@ def get_network_metrics():
         return {}
 
 def get_network_connections():
-    """Get summary of network connections by status"""
+    """Get summary of network connections by status and top active remote IPs"""
     try:
-        connections = psutil.net_connections()
+        connections = psutil.net_connections(kind='inet')
+        
+        established = 0
+        listening = 0
+        time_wait = 0
+        close_wait = 0
+        fin_wait = 0
+        
+        remote_ips = {}
+        
+        for c in connections:
+            if c.status == 'ESTABLISHED':
+                established += 1
+                if c.raddr and hasattr(c.raddr, 'ip'):
+                    ip = c.raddr.ip
+                    # Filter out localhost
+                    if not ip.startswith('127.') and ip != '::1':
+                        remote_ips[ip] = remote_ips.get(ip, 0) + 1
+            elif c.status == 'LISTEN':
+                listening += 1
+            elif c.status == 'TIME_WAIT':
+                time_wait += 1
+            elif c.status == 'CLOSE_WAIT':
+                close_wait += 1
+            elif c.status in ('FIN_WAIT1', 'FIN_WAIT2'):
+                fin_wait += 1
+                
+        # Sort and get top 20 connected IPs
+        top_ips = sorted(remote_ips.items(), key=lambda x: x[1], reverse=True)[:20]
+        top_remote_ips = [{"ip": ip, "count": count} for ip, count in top_ips]
+
         return {
             "total": len(connections),
-            "established": len([c for c in connections if c.status == 'ESTABLISHED']),
-            "listening": len([c for c in connections if c.status == 'LISTEN']),
-            "time_wait": len([c for c in connections if c.status == 'TIME_WAIT']),
-            "close_wait": len([c for c in connections if c.status == 'CLOSE_WAIT']),
-            "fin_wait": len([c for c in connections if c.status == 'FIN_WAIT1' or c.status == 'FIN_WAIT2'])
+            "established": established,
+            "unique_remote_ips_count": len(remote_ips),
+            "listening": listening,
+            "time_wait": time_wait,
+            "close_wait": close_wait,
+            "fin_wait": fin_wait,
+            "top_remote_ips": top_remote_ips
         }
-    except:
+    except Exception as e:
+        _LOG.debug(f"Error fetching connections: {e}")
         return {}
 
 def get_network_interfaces():
@@ -873,6 +907,27 @@ def main():
     iteration = 0
     while True:
         try:
+            # --- SAFEGUARDS ---
+            try:
+                # 1. Memory Leak Protection (Auto-exit if > 150MB) 
+                # The OS service manager will instantly restart this clean process
+                process = psutil.Process(os.getpid())
+                mem_mb = process.memory_info().rss / (1024 * 1024)
+                if mem_mb > 150.0:
+                    _LOG.error(f"Memory safeguard triggered! Agent consuming {mem_mb:.1f}MB (Limit 150MB). Auto-restarting...")
+                    sys.exit(1)
+                    
+                # 2. CPU Shedding (Throttle if host is under extreme load > 95%)
+                host_cpu = psutil.cpu_percent(interval=None)
+                current_interval = INTERVAL_SECONDS
+                if host_cpu > 95.0:
+                    _LOG.warning(f"Host CPU critically high ({host_cpu}%). Throttling next scan interval to {INTERVAL_SECONDS * 2}s to save resources.")
+                    current_interval = INTERVAL_SECONDS * 2
+            except Exception as e:
+                _LOG.debug(f"Safeguard check failed: {e}")
+                current_interval = INTERVAL_SECONDS
+            # ------------------
+
             iteration += 1
             metrics = collect_metrics()
 
@@ -899,7 +954,7 @@ def main():
         except Exception as e:
             _LOG.exception("Unhandled error: %s", e)
 
-        time.sleep(INTERVAL_SECONDS)
+        time.sleep(current_interval)
 
 
 if __name__ == "__main__":

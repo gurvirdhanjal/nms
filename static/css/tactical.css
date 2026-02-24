@@ -57,27 +57,26 @@
 
     /* Accent Colors */
     --tactical-accent: #00d4aa;
-    --tactical-accent-bright: #00ffc8;
     --tactical-accent-dim: #00a080;
-    --tactical-accent-glow: rgba(0, 212, 170, 0.4);
+    --tactical-accent-glow: rgba(0, 212, 170, 0.25);
     --tactical-accent-subtle: rgba(0, 212, 170, 0.1);
 
     /* Status Colors */
     --tactical-success: #00ff88;
     --tactical-success-dim: #00cc6a;
-    --tactical-success-glow: rgba(0, 255, 136, 0.3);
+    --tactical-success-glow: rgba(0, 255, 136, 0.2);
 
     --tactical-danger: #ff3b5c;
     --tactical-danger-dim: #cc2f4a;
-    --tactical-danger-glow: rgba(255, 59, 92, 0.3);
+    --tactical-danger-glow: rgba(255, 59, 92, 0.2);
 
     --tactical-warning: #ffaa00;
     --tactical-warning-dim: #cc8800;
-    --tactical-warning-glow: rgba(255, 170, 0, 0.3);
+    --tactical-warning-glow: rgba(255, 170, 0, 0.2);
 
     --tactical-info: #00aaff;
     --tactical-info-dim: #0088cc;
-    --tactical-info-glow: rgba(0, 170, 255, 0.3);
+    --tactical-info-glow: rgba(0, 170, 255, 0.2);
 
     /* Text Colors */
     --tactical-text-primary: #ffffff;
@@ -91,11 +90,11 @@
     --tactical-border-bright: rgba(0, 212, 170, 0.6);
 
     /* Shadows */
-    --tactical-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    --tactical-shadow-accent: 0 0 20px rgba(0, 212, 170, 0.2);
-    --tactical-glow-sm: 0 0 10px;
-    --tactical-glow-md: 0 0 20px;
-    --tactical-glow-lg: 0 0 40px;
+    --tactical-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    --tactical-shadow-accent: 0 0 15px rgba(0, 212, 170, 0.15);
+    --tactical-glow-sm: 0 0 8px;
+    --tactical-glow-md: 0 0 15px;
+    --tactical-glow-lg: 0 0 30px;
 
     /* Spacing */
     --tactical-radius-sm: 4px;
@@ -261,7 +260,7 @@ body.tactical-theme {
 }
 
 .tactical-card .card-body {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
     color: var(--tactical-text-secondary);
 }
 
@@ -277,10 +276,10 @@ body.tactical-theme {
     background: var(--tactical-bg-card);
     border: 1px solid var(--tactical-border);
     border-radius: var(--tactical-radius-lg);
-    padding: 1.5rem;
+    padding: 1rem 1.25rem;
     position: relative;
     overflow: hidden;
-    min-height: 160px;
+    min-height: 120px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -309,7 +308,7 @@ body.tactical-theme {
 }
 
 .tactical-stat-card .stat-value {
-    font-size: 3.5rem;
+    font-size: 2.5rem;
     font-weight: 700;
     font-family: 'Rajdhani', sans-serif;
     color: var(--tactical-text-primary);
@@ -577,7 +576,7 @@ body.tactical-theme {
 }
 
 .tactical-table tbody td {
-    padding: 0.875rem 1rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--tactical-border);
     color: var(--tactical-text-secondary);
     vertical-align: middle;

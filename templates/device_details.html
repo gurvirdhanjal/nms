@@ -141,6 +141,45 @@
             grid-template-columns: 1fr;
         }
     }
+
+    .icon-spin {
+        animation: api-spin 2s linear infinite;
+    }
+
+    @keyframes api-spin {
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    #serverDetailsModal .modal-chart-200 {
+        height: 200px;
+    }
+
+    #serverDetailsModal .modal-chart-220 {
+        height: 220px;
+    }
+
+    #serverDetailsModal .load-avg-row {
+        height: 80px;
+    }
+
+    #serverDetailsModal .swap-progress-shell {
+        height: 12px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    #serverDetailsModal #swap-progress-bar {
+        width: 0%;
+    }
+
+    #serverDetailsModal .alert-banner-warning {
+        display: none;
+        background: rgba(255, 193, 7, 0.15);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        border-left: 4px solid #ffc107;
+        border-radius: 8px;
+    }
 </style>
 {% endblock %}
 
@@ -160,12 +199,19 @@
             <a href="{{ url_for('devices_bp.device_management') }}" class="btn btn-outline-secondary btn-sm">
                 <i data-lucide="arrow-left"></i> Back to Devices
             </a>
-            <button type="button" class="btn btn-primary btn-sm" id="btnPollSnmp" {% if not snmp_enabled %}disabled{% endif %}>
+            <button type="button" class="btn btn-primary btn-sm" id="btnPollSnmp" {% if not snmp_enabled %}disabled{%
+                endif %}>
                 <i data-lucide="radar"></i> Poll SNMP
             </button>
-            <button type="button" class="btn btn-outline-info btn-sm" id="btnRefreshInterfaces" {% if not snmp_enabled %}disabled{% endif %}>
+            <button type="button" class="btn btn-outline-info btn-sm" id="btnRefreshInterfaces" {% if not snmp_enabled
+                %}disabled{% endif %}>
                 <i data-lucide="refresh-cw"></i> Refresh Interfaces
             </button>
+            {% if (device.device_type or '')|lower == 'server' %}
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnOpenServerDetailModal">
+                <i data-lucide="chart-line"></i> Open Server Modal
+            </button>
+            {% endif %}
         </div>
     </div>
 
@@ -233,7 +279,8 @@
                         <dt>Auth/Priv</dt>
                         <dd>{{ snmp_config.auth_protocol or 'None' }} / {{ snmp_config.priv_protocol or 'None' }}</dd>
                         <dt>Last Success</dt>
-                        <dd>{{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') if snmp_config.last_successful_poll else 'N/A' }}</dd>
+                        <dd>{{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') if
+                            snmp_config.last_successful_poll else 'N/A' }}</dd>
                         <dt>Last Error</dt>
                         <dd>{{ snmp_config.last_poll_error or 'None' }}</dd>
                     </dl>
@@ -252,28 +299,33 @@
                         <div class="metric-box">
                             <div class="metric-label">SNMP CPU</div>
                             <div class="metric-value" id="snmpCpuVal">
-                                {% if latest_snmp_log and latest_snmp_log.cpu_usage is not none %}{{ '%.1f'|format(latest_snmp_log.cpu_usage) }}%{% else %}N/A{% endif %}
+                                {% if latest_snmp_log and latest_snmp_log.cpu_usage is not none %}{{
+                                '%.1f'|format(latest_snmp_log.cpu_usage) }}%{% else %}N/A{% endif %}
                             </div>
                         </div>
                         <div class="metric-box">
                             <div class="metric-label">SNMP Memory</div>
                             <div class="metric-value" id="snmpMemVal">
-                                {% if latest_snmp_log and latest_snmp_log.memory_usage is not none %}{{ '%.1f'|format(latest_snmp_log.memory_usage) }}%{% else %}N/A{% endif %}
+                                {% if latest_snmp_log and latest_snmp_log.memory_usage is not none %}{{
+                                '%.1f'|format(latest_snmp_log.memory_usage) }}%{% else %}N/A{% endif %}
                             </div>
                         </div>
                         <div class="metric-box">
                             <div class="metric-label">SNMP Disk</div>
                             <div class="metric-value" id="snmpDiskVal">
-                                {% if latest_snmp_log and latest_snmp_log.disk_usage is not none %}{{ '%.1f'|format(latest_snmp_log.disk_usage) }}%{% else %}N/A{% endif %}
+                                {% if latest_snmp_log and latest_snmp_log.disk_usage is not none %}{{
+                                '%.1f'|format(latest_snmp_log.disk_usage) }}%{% else %}N/A{% endif %}
                             </div>
                         </div>
                     </div>
 
                     <dl class="kv mb-0">
                         <dt>SNMP Metric Timestamp</dt>
-                        <dd id="snmpMetricTs">{{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_snmp_log and latest_snmp_log.timestamp else 'N/A' }}</dd>
+                        <dd id="snmpMetricTs">{{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if
+                            latest_snmp_log and latest_snmp_log.timestamp else 'N/A' }}</dd>
                         <dt>Agent Metric Timestamp</dt>
-                        <dd>{{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_agent_log and latest_agent_log.timestamp else 'N/A' }}</dd>
+                        <dd>{{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_agent_log and
+                            latest_agent_log.timestamp else 'N/A' }}</dd>
                         <dt>Metrics Availability</dt>
                         <dd>{{ 'Available' if has_snmp_metrics else 'No SNMP metrics yet' }}</dd>
                     </dl>
@@ -314,26 +366,124 @@
                                 N/A
                                 {% endif %}
                             </td>
-                            <td>{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else 'N/A' }}</td>
+                            <td>{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else 'N/A'
+                                }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
-            <div class="p-3 text-muted small">No interfaces stored yet. Use "Refresh Interfaces" to pull from SNMP.</div>
+            <div class="p-3 text-muted small">No interfaces stored yet. Use "Refresh Interfaces" to pull from SNMP.
+            </div>
             {% endif %}
         </div>
     </div>
+    {% if device.device_type == 'server' %}
+    <div class="row g-3 mt-1">
+        <!-- Agent Reported Connections Card -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>
+                        <i data-lucide="plug-zap"></i> Agent Connections (Top 20 IPs)
+                        <span class="badge bg-secondary ms-2" title="Total Unique Connected Client IPs"
+                            id="agentUniqueIpsBadge">
+                            {% if latest_agent_log and latest_agent_log.network_connections_unique_ips != none %}
+                            {{ latest_agent_log.network_connections_unique_ips }} Total Unique IPs
+                            {% else %}
+                            Unique IPs: -
+                            {% endif %}
+                        </span>
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Remote IP</th>
+                                    <th>Active Connections</th>
+                                    <th>Resolved Device</th>
+                                </tr>
+                            </thead>
+                            <tbody id="agentConnectionsBody">
+                                {% if latest_agent_log and latest_agent_log.network_top_remote_ips %}
+                                {% for conn in latest_agent_log.network_top_remote_ips %}
+                                <tr>
+                                    <td><code>{{ conn.ip }}</code></td>
+                                    <td><span class="badge bg-primary">{{ conn.count }}</span></td>
+                                    <td><span class="text-muted"><i data-lucide="help-circle"></i> Unknown Device</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted p-3">No agent connection data
+                                        available yet. Please wait for the next check-in.</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Snapshot Connections Card -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i data-lucide="terminal"></i> Server Connections (Agent Snapshot)</span>
+                    <button type="button" class="btn btn-outline-info btn-sm" id="btnRefreshConnections">
+                        <i data-lucide="refresh-cw"></i> Refresh Snapshot
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Remote IP</th>
+                                    <th>Hostname</th>
+                                    <th>Connections</th>
+                                    <th>Resolved Device</th>
+                                </tr>
+                            </thead>
+                            <tbody id="connectionsBody">
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted p-3">Click 'Refresh Snapshot' to
+                                        load latest agent connection data.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block modals %}
+{{ super() }}
+{% if (device.device_type or '')|lower == 'server' %}
+{% include 'partials/server_details_modal.html' %}
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
     (function () {
+        const deviceId = Number('{{ device.device_id }}');
         const pollBtn = document.getElementById('btnPollSnmp');
         const refreshBtn = document.getElementById('btnRefreshInterfaces');
+        const refreshConnBtn = document.getElementById('btnRefreshConnections');
         const alertBox = document.getElementById('detailAlert');
+        const snapshotConnectionsBody = document.getElementById('connectionsBody');
+        const agentConnectionsBody = document.getElementById('agentConnectionsBody');
+        const agentUniqueIpsBadge = document.getElementById('agentUniqueIpsBadge');
 
         function redrawIcons() {
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -352,6 +502,114 @@
             el.textContent = value;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function parseApiResponse(response) {
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+                return await response.json();
+            }
+
+            const text = await response.text();
+            try {
+                return JSON.parse(text);
+            } catch (_error) {
+                const statusText = `${response.status} ${response.statusText}`.trim();
+                const snippet = text ? text.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+                throw new Error(
+                    `Expected JSON response but received non-JSON (${statusText})${snippet ? `: ${snippet}` : ''}`
+                );
+            }
+        }
+
+        function extractErrorMessage(payload, fallback) {
+            if (!payload) return fallback;
+            if (typeof payload === 'string') return payload;
+            if (payload.error && typeof payload.error === 'string') return payload.error;
+            if (payload.error && typeof payload.error.message === 'string') return payload.error.message;
+            if (typeof payload.message === 'string') return payload.message;
+            if (payload.success === false && typeof payload.error === 'string') return payload.error;
+            return fallback;
+        }
+
+        function resolvedDeviceHtml(entry, ipValue) {
+            const remoteDeviceId = entry.remote_device_id;
+            if (remoteDeviceId) {
+                const name = escapeHtml(entry.remote_device_name || `Device ${remoteDeviceId}`);
+                return `<a href="/devices/${remoteDeviceId}/details" class="text-info text-decoration-none fw-bold" target="_blank" rel="noopener noreferrer"><i data-lucide="server-cog"></i> ${name}</a>`;
+            }
+            const fallbackIp = escapeHtml(ipValue || 'Unknown');
+            return `<span class="text-muted"><i data-lucide="help-circle"></i> Unknown Device (${fallbackIp})</span>`;
+        }
+
+        function renderAgentSnapshot(snapshot) {
+            if (!agentConnectionsBody) return;
+            const topIps = Array.isArray(snapshot?.top_remote_ips) ? snapshot.top_remote_ips : [];
+            const uniqueCount = snapshot?.unique_remote_ips_count;
+            if (agentUniqueIpsBadge) {
+                agentUniqueIpsBadge.textContent = uniqueCount != null
+                    ? `${uniqueCount} Total Unique IPs`
+                    : 'Unique IPs: -';
+            }
+
+            if (topIps.length === 0) {
+                agentConnectionsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-3">No agent connection snapshot available.</td></tr>';
+                redrawIcons();
+                return;
+            }
+
+            let html = '';
+            topIps.forEach((entry) => {
+                const ip = escapeHtml(entry.ip || '-');
+                const count = Number.isFinite(Number(entry.count)) ? Number(entry.count) : 0;
+                html += `<tr>
+                    <td><code>${ip}</code></td>
+                    <td><span class="badge bg-primary">${count}</span></td>
+                    <td>${resolvedDeviceHtml(entry, entry.ip)}</td>
+                </tr>`;
+            });
+            agentConnectionsBody.innerHTML = html;
+            redrawIcons();
+        }
+
+        function renderConnectionSnapshotRows(connections) {
+            if (!snapshotConnectionsBody) return;
+            const rows = Array.isArray(connections) ? connections : [];
+            if (rows.length === 0) {
+                snapshotConnectionsBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3">No active ESTABLISHED connections found.</td></tr>';
+                redrawIcons();
+                return;
+            }
+
+            let html = '';
+            rows.forEach((entry) => {
+                const ip = escapeHtml(entry.remote_ip || '-');
+                const hostname = escapeHtml(entry.remote_hostname || '-');
+                const connectionCount = Number.isFinite(Number(entry.connection_count)) ? Number(entry.connection_count) : 0;
+                html += `<tr>
+                    <td><code>${ip}</code></td>
+                    <td>${hostname}</td>
+                    <td><span class="badge bg-primary">${connectionCount}</span></td>
+                    <td>${resolvedDeviceHtml(entry, entry.remote_ip)}</td>
+                </tr>`;
+            });
+            snapshotConnectionsBody.innerHTML = html;
+            redrawIcons();
+        }
+
+        function renderConnectionSnapshotError(message) {
+            if (!snapshotConnectionsBody) return;
+            snapshotConnectionsBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger p-3"><i data-lucide="alert-triangle"></i> ${escapeHtml(message)}</td></tr>`;
+            redrawIcons();
+        }
+
         if (pollBtn) {
             pollBtn.addEventListener('click', async () => {
                 pollBtn.disabled = true;
@@ -363,9 +621,9 @@
                         method: 'GET',
                         credentials: 'same-origin',
                     });
-                    const data = await res.json();
+                    const data = await parseApiResponse(res);
                     if (!res.ok || data.error) {
-                        throw new Error(data.error || 'SNMP poll failed');
+                        throw new Error(extractErrorMessage(data, 'SNMP poll failed'));
                     }
 
                     const health = data.health || (data.system && data.system.health) || {};
@@ -384,6 +642,55 @@
             });
         }
 
+
+        if (refreshConnBtn) {
+            refreshConnBtn.addEventListener('click', async () => {
+                refreshConnBtn.disabled = true;
+                const originalHtml = refreshConnBtn.innerHTML;
+                refreshConnBtn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Loading...';
+                redrawIcons();
+
+                const tbody = document.getElementById('connectionsBody');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3"><i data-lucide="loader" class="icon-spin"></i> Loading latest agent snapshot...</td></tr>';
+                redrawIcons();
+
+                try {
+                    const res = await fetch(`/api/devices/${deviceId}/connections`, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                    });
+                    const data = await parseApiResponse(res);
+
+                    if (!res.ok || data.error) {
+                        throw new Error(extractErrorMessage(data, 'Failed to fetch connections'));
+                    }
+
+                    renderAgentSnapshot(data.agent_snapshot || {});
+                    renderConnectionSnapshotRows(data.connections || []);
+                    const rowCount = Array.isArray(data.connections) ? data.connections.length : 0;
+                    const meta = data.meta || {};
+                    const snapshotAge = Number.isFinite(Number(meta.snapshot_age_seconds))
+                        ? `, snapshot age ${Number(meta.snapshot_age_seconds)}s`
+                        : '';
+                    const totalConnections = Number.isFinite(Number(meta.total_connections))
+                        ? Number(meta.total_connections)
+                        : (data.connections || []).reduce((sum, row) => sum + (Number(row.connection_count) || 0), 0);
+                    const totalIps = Number.isFinite(Number(meta.total_unique_remote_ips))
+                        ? Number(meta.total_unique_remote_ips)
+                        : rowCount;
+                    showAlert('success', `Connection snapshot refreshed${snapshotAge}. Showing ${rowCount} of ${totalIps} IPs (${totalConnections} total connections).`);
+
+                } catch (err) {
+                    showAlert('danger', `Connection Snapshot Error: ${err.message}`);
+                    renderConnectionSnapshotError(err.message);
+                } finally {
+                    refreshConnBtn.disabled = false;
+                    refreshConnBtn.innerHTML = originalHtml;
+                    redrawIcons();
+                }
+            });
+        }
+
         if (refreshBtn) {
             refreshBtn.addEventListener('click', async () => {
                 refreshBtn.disabled = true;
@@ -394,9 +701,9 @@
                         method: 'GET',
                         credentials: 'same-origin',
                     });
-                    const data = await res.json();
+                    const data = await parseApiResponse(res);
                     if (!res.ok || data.error) {
-                        throw new Error(data.error || 'Interface refresh failed');
+                        throw new Error(extractErrorMessage(data, 'Interface refresh failed'));
                     }
                     showAlert('success', `Interface inventory refreshed (${data.count || 0} interfaces). Reloading view...`);
                     setTimeout(() => window.location.reload(), 650);
@@ -412,4 +719,15 @@
         redrawIcons();
     })();
 </script>
+{% if (device.device_type or '')|lower == 'server' %}
+<script type="module">
+    import { initServerModal, openServerModal } from "{{ url_for('static', filename='js/dashboard/modals/serverDetailModal.js') }}?v=2.10";
+
+    const openServerModalBtn = document.getElementById('btnOpenServerDetailModal');
+    if (openServerModalBtn) {
+        initServerModal();
+        openServerModalBtn.addEventListener('click', () => openServerModal({{ device.device_id }}));
+    }
+</script>
+{% endif %}
 {% endblock %}

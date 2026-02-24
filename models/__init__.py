@@ -2,7 +2,7 @@
 from .user import User
 from .device import Device
 from .scan_history import DeviceScanHistory, NetworkScan, PortScanResult
-from .dashboard import DashboardEvent, DailyDeviceStats
+from .dashboard import DashboardEvent, DailyDeviceStats, DashboardSnapshot
 from .interfaces import DeviceInterface, InterfaceTrafficHistory
 from .snmp_config import DeviceSnmpConfig
 from .topology import SwitchTopology
@@ -16,7 +16,7 @@ from .server_health_rollups import (
 
 __all__ = [
     'User', 'Device', 'DeviceScanHistory', 'NetworkScan', 'PortScanResult',
-    'DashboardEvent', 'DailyDeviceStats', 'DeviceInterface', 'InterfaceTrafficHistory',
+    'DashboardEvent', 'DailyDeviceStats', 'DashboardSnapshot', 'DeviceInterface', 'InterfaceTrafficHistory',
     'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice', 'ServerHealthLog',
     'ServerHealthHourlyRollup', 'ServerHealthDailyRollup', 'ServerHealthRollupState'
 ]

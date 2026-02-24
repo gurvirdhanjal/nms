@@ -5,6 +5,7 @@ Provides aggregated health, trends, and problem detection.
 from flask import Blueprint, jsonify, request, session
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case, or_
+import time
 from utils.server_health import compute_server_health, is_server_device
 from extensions import db
 from middleware.rbac import require_login
@@ -17,22 +18,84 @@ def _dashboard_auth_guard():
     return None
 
 # ============================================================
-# In-memory cache (simple TTL-based, no Redis required)
+# Distributed Cache (Redis) with local fallback
 # ============================================================
+import json
+from extensions import redis_client
+
 _cache = {}
 _cache_ttl = {}
+CACHE_NAMESPACE = 'dashboard'
+CACHE_VERSION = 'v1'
+
+
+def _versioned_cache_key(key: str) -> str:
+    return f"{CACHE_NAMESPACE}:{str(key).strip()}:{CACHE_VERSION}"
 
 def get_cached(key, ttl_seconds=30):
     """Get value from cache if not expired."""
-    if key in _cache:
-        if datetime.utcnow() < _cache_ttl.get(key, datetime.min):
-            return _cache[key]
+    cache_key = _versioned_cache_key(key)
+    if redis_client:
+        try:
+            val = redis_client.get(cache_key)
+            if val:
+                return json.loads(val)
+            return None
+        except Exception as e:
+            # Fallback to in-memory silently
+            import logging
+            logging.getLogger(__name__).warning(f"Redis get failed for {key}: {e}")
+            pass
+
+    # Local fallback
+    if cache_key in _cache:
+        if datetime.utcnow() < _cache_ttl.get(cache_key, datetime.min):
+            return _cache[cache_key]
     return None
 
 def set_cached(key, value, ttl_seconds=30):
     """Set value in cache with TTL."""
-    _cache[key] = value
-    _cache_ttl[key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    cache_key = _versioned_cache_key(key)
+    if redis_client:
+        try:
+            # We serialize to JSON strings for Redis
+            payload = json.dumps(value)
+            redis_client.setex(cache_key, ttl_seconds, payload)
+            return
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Redis set failed for {key}: {e}")
+            pass
+
+    # Local fallback
+    _cache[cache_key] = value
+    _cache_ttl[cache_key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+
+def acquire_stampede_lock(lock_key, ttl_seconds=10):
+    """
+    Acquire a distributed lock to prevent thundering herd when rebuilding cache.
+    Returns True if acquired, False if someone else is building it.
+    """
+    versioned_lock_key = _versioned_cache_key(f"lock:{lock_key}")
+    if redis_client:
+        try:
+            # SET NX EX
+            acquired = redis_client.set(versioned_lock_key, "1", nx=True, ex=ttl_seconds)
+            return bool(acquired)
+        except Exception:
+            return True # If Redis is down, degradation permits local compute
+
+    return True # In-memory single worker environments always acquire lock.
+
+
+def release_stampede_lock(lock_key):
+    """Best-effort lock release for cache rebuild coordination."""
+    versioned_lock_key = _versioned_cache_key(f"lock:{lock_key}")
+    if redis_client:
+        try:
+            redis_client.delete(versioned_lock_key)
+        except Exception:
+            pass
 
 
 def _extract_json_payload(result):
@@ -479,63 +542,88 @@ def get_summary():
 def get_full_snapshot():
     """
     Consolidated dashboard payload for a single network request and single render cycle.
-    Query params:
-    - range: trends range (24h|7d|30d)
-    - fresh: top-problems cache bypass (1|true|yes)
-    - status: alerts status (active|resolved|all)
-    - limit: alerts limit
+    Phase 3: Now returns a native DB JSON string in O(1) time complexity.
+    To force computation (used by the background worker), append ?worker_compute=true
     """
-
+    from models.dashboard import DashboardSnapshot
+    
     time_range = request.args.get('range', '24h')
     alerts_status = request.args.get('status', 'active')
     alerts_limit = request.args.get('limit', '200')
+    worker_compute = request.args.get('worker_compute', '').lower() in ('1', 'true', 'yes')
     fresh_top_problems = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    
     snapshot_cache_key = f'full_snapshot_{time_range}_{alerts_status}_{alerts_limit}'
+    snapshot_lock_key = f'full_snapshot:{time_range}:{alerts_status}:{alerts_limit}'
+    lock_acquired = False
 
-    if not fresh_top_problems:
-        cached_snapshot = get_cached(snapshot_cache_key, ttl_seconds=10)
-        if cached_snapshot:
-            return jsonify(cached_snapshot)
+    if not worker_compute and not fresh_top_problems:
+        # Phase 3: Ultra-fast O(1) Native Database Fetch
+        snapshot = DashboardSnapshot.query.filter_by(cache_key=snapshot_cache_key).first()
+        if snapshot:
+            from flask import Response
+            return Response(snapshot.payload, mimetype='application/json')
 
-    # Existing endpoint handlers read request.args directly.
-    # We keep arg names identical so behavior remains consistent.
-    from routes.server_metrics import get_server_health_summary, get_fleet_metrics
+        # If no snapshot exists yet, acquire distributed lock so only one worker rebuilds.
+        lock_acquired = acquire_stampede_lock(snapshot_lock_key, ttl_seconds=20)
+        if not lock_acquired:
+            wait_deadline = time.monotonic() + 2.5
+            while time.monotonic() < wait_deadline:
+                time.sleep(0.1)
+                snapshot = DashboardSnapshot.query.filter_by(cache_key=snapshot_cache_key).first()
+                if snapshot:
+                    from flask import Response
+                    return Response(snapshot.payload, mimetype='application/json')
 
-    sections = {
-        'summary': get_summary,
-        'fleetMetrics': get_fleet_metrics,
-        'topProblems': get_top_problems,
-        'trends': get_trends,
-        'inventory': get_inventory_stats,
-        'serverHealth': get_server_health_summary,
-        'alerts': get_all_alerts
-    }
+            return jsonify({
+                'error': 'SNAPSHOT_WARMING',
+                'message': 'Dashboard snapshot is being rebuilt. Retry shortly.'
+            }), 503
 
-    payload = {
-        'timestamp': datetime.utcnow().isoformat(),
-        'summary': None,
-        'fleetMetrics': None,
-        'topProblems': None,
-        'trends': None,
-        'inventory': None,
-        'serverHealth': None,
-        'alerts': None
-    }
-    errors = {}
+    try:
+        from routes.server_metrics import get_server_health_summary, get_fleet_metrics
 
-    for key, handler in sections.items():
-        section_payload, section_error = _collect_section(key, handler)
-        payload[key] = section_payload
-        if section_error:
-            errors[key] = section_error
+        sections = {
+            'summary': get_summary,
+            'fleetMetrics': get_fleet_metrics,
+            'topProblems': get_top_problems,
+            'trends': get_trends,
+            'inventory': get_inventory_stats,
+            'serverHealth': get_server_health_summary,
+            'alerts': get_all_alerts
+        }
 
-    if errors:
-        payload['errors'] = errors
+        payload = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'summary': None,
+            'fleetMetrics': None,
+            'topProblems': None,
+            'trends': None,
+            'inventory': None,
+            'serverHealth': None,
+            'alerts': None
+        }
+        errors = {}
 
-    if not errors and not fresh_top_problems:
-        set_cached(snapshot_cache_key, payload, ttl_seconds=10)
+        for key, handler in sections.items():
+            section_payload, section_error = _collect_section(key, handler)
+            payload[key] = section_payload
+            if section_error:
+                errors[key] = section_error
 
-    return jsonify(payload)
+        if errors:
+            payload['errors'] = errors
+
+        if worker_compute:
+            # Background worker mode: Just return the pure python dict to be serialized and stored.
+            return jsonify(payload)
+
+        # In case normal clients hit this block (bootstrapping phase or fresh_top_problems=true),
+        # return it normally as a JSON response.
+        return jsonify(payload)
+    finally:
+        if lock_acquired:
+            release_stampede_lock(snapshot_lock_key)
 
 
 # ============================================================

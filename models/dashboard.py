@@ -93,3 +93,20 @@ class DailyDeviceStats(db.Model):
             'online_scans': self.online_scans,
             'total_alerts': self.total_alerts
         }
+
+class DashboardSnapshot(db.Model):
+    """
+    O(1) Snapshot Aggregation Table.
+    Stores pre-computed JSON blobs of the full dashboard payload to serve 
+    in O(1) time complexity natively via the database string response.
+    """
+    __tablename__ = 'dashboard_snapshot'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cache_key = db.Column(db.String(100), unique=True, index=True, nullable=False)
+    payload = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<DashboardSnapshot {self.cache_key}>'
+

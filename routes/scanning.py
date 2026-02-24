@@ -41,15 +41,14 @@ def _upsert_snmp_config_for_device(device, data):
     snmp_version = _normalize_snmp_version(data.get('snmp_version', '2c'))
     snmp_port = int(data.get('snmp_port') or 161)
 
-    config = DeviceSnmpConfig.query.filter_by(device_id=device.device_id).first()
-    if not config:
-        config = DeviceSnmpConfig(device_id=device.device_id)
+    if not device.snmp_config:
+        device.snmp_config = DeviceSnmpConfig()
+    config = device.snmp_config
 
     config.community_string = snmp_community
     config.snmp_version = snmp_version
     config.snmp_port = snmp_port
     config.is_enabled = bool(device.is_monitored)
-    db.session.add(config)
 
 
 @scanning_bp.before_request
@@ -323,6 +322,7 @@ def add_to_inventory():
         
     except Exception as e:
         db.session.rollback()
+        logger.error(f"[Inventory] Failed to add device: {e}")
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @scanning_bp.route('/api/discovery/start', methods=['POST'])

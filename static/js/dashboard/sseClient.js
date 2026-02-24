@@ -52,6 +52,7 @@ export function initSSE(options = {}) {
     eventHandlers = {
         device_status: options.onDeviceStatus,
         device_update: options.onDeviceUpdate || options.onDeviceStatus,
+        device_update_batch: options.onDeviceUpdateBatch,
         alert_created: options.onAlertCreated,
         latency_spike: options.onLatencySpike,
         interface_threshold: options.onInterfaceThreshold,
@@ -106,6 +107,10 @@ function connect() {
         // Legacy/compat event type used by device monitor worker
         eventSource.addEventListener('device_update', (event) => {
             handleEvent('device_update', event);
+        });
+
+        eventSource.addEventListener('device_update_batch', (event) => {
+            handleEvent('device_update_batch', event);
         });
 
         // Handle alert events

@@ -191,6 +191,11 @@ def receive_metrics():
         net_conns = data.get('network_connections', {})
         network_connections_total = net_conns.get('total') if isinstance(net_conns, dict) else None
         network_connections_established = net_conns.get('established') if isinstance(net_conns, dict) else None
+        network_connections_unique_ips = net_conns.get('unique_remote_ips_count') if isinstance(net_conns, dict) else None
+        
+        network_top_remote_ips = net_conns.get('top_remote_ips', [])
+        if not isinstance(network_top_remote_ips, list):
+            network_top_remote_ips = None
 
         # Processes
         processes = data.get('processes', {})
@@ -270,6 +275,8 @@ def receive_metrics():
             disk_busy_percent=disk_busy_percent,
             network_connections_total=network_connections_total,
             network_connections_established=network_connections_established,
+            network_connections_unique_ips=network_connections_unique_ips,
+            network_top_remote_ips=network_top_remote_ips,
             process_count=process_count,
             zombie_count=zombie_count,
             context_switches_per_sec=context_switches_per_sec,

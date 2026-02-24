@@ -41,6 +41,57 @@ def _iso_utc(ts):
     return ts.isoformat()
 
 
+def _sanitize_top_remote_ips(raw_rows):
+    if not isinstance(raw_rows, list):
+        return []
+
+    cleaned = []
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        ip_value = str(row.get('ip') or '').strip()
+        if not ip_value:
+            continue
+        try:
+            count = int(row.get('count'))
+        except (TypeError, ValueError):
+            count = 0
+        cleaned.append({
+            'ip': ip_value,
+            'count': max(count, 0),
+        })
+
+    cleaned.sort(key=lambda item: item['count'], reverse=True)
+    return cleaned[:20]
+
+
+def _resolve_top_remote_ips(rows):
+    ip_values = [row['ip'] for row in rows if row.get('ip')]
+    if not ip_values:
+        return rows
+
+    known_map = {
+        d.device_ip: {
+            'id': d.device_id,
+            'name': d.device_name,
+            'type': d.device_type,
+        }
+        for d in Device.query.filter(Device.device_ip.in_(ip_values)).all()
+    }
+
+    for row in rows:
+        match = known_map.get(row['ip'])
+        if match:
+            row['remote_device_id'] = match['id']
+            row['remote_device_name'] = match['name']
+            row['remote_device_type'] = match['type']
+        else:
+            row['remote_device_id'] = None
+            row['remote_device_name'] = 'Unknown Device'
+            row['remote_device_type'] = 'unknown'
+    return rows
+
+
 @server_metrics_bp.route('/api/server/fleet-metrics')
 def get_fleet_metrics():
     try:
@@ -308,6 +359,9 @@ def get_server_metrics(device_id):
                 'disk_total_gb': last_log.disk_total_gb,
                 'architecture': last_log.os_arch
             }
+        top_remote_ips = _resolve_top_remote_ips(
+            _sanitize_top_remote_ips(last_log.network_top_remote_ips if last_log else [])
+        )
 
         buckets = _downsample_logs(logs, max_points)
         for bucket in buckets:
@@ -384,6 +438,8 @@ def get_server_metrics(device_id):
                 'tcp_retransmits_delta': last_log.tcp_retransmits_delta if last_log else None
             },
             'network_per_interface': last_log.network_per_interface if last_log and last_log.network_per_interface else {},
+            'network_top_remote_ips': top_remote_ips,
+            'network_connections_unique_ips': last_log.network_connections_unique_ips if last_log else None,
             'processes': {
                 'total': last_log.process_count if last_log else None,
                 'zombie': last_log.zombie_count if last_log else None,

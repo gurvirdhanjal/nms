@@ -91,6 +91,7 @@ class DeviceMonitor:
         print(f"Monitoring {len(device_ids)} stored devices...")
         
         scan_results = []
+        sse_update_batch = []
         
         for device_id in device_ids:
             device = db.session.get(Device, device_id)
@@ -135,13 +136,12 @@ class DeviceMonitor:
                 db.session.rollback()
                 continue
 
-            # Broadcast real-time SSE event (Legacy connection for now)
+            # Accumulate SSE updates into a batch
             # We can refactor this to be event-driven later
             if not is_online or (latency and latency > 100) or (packet_loss and packet_loss > 5):
-                # Simple broadcast for UI updates if impactful change
+                # Simple accumulate for UI updates if impactful change
                 try:
-                    from services.sse_broadcaster import broadcast_event
-                    broadcast_event('device_update', {
+                    sse_update_batch.append({
                         'device_id': device_id,
                         'ip': device_ip,
                         'status': status,
@@ -149,7 +149,7 @@ class DeviceMonitor:
                         'packet_loss': packet_loss
                     })
                 except Exception as e:
-                    print(f"SSE Error: {e}")
+                    print(f"Batch Accumulation Error: {e}")
 
 
             db.session.add(scan_record)
@@ -175,6 +175,14 @@ class DeviceMonitor:
         
         # Final commit removed as we commit per device
         # db.session.commit()
+
+        # Fire one single broadcast for all troubled devices
+        if sse_update_batch:
+            try:
+                from services.sse_broadcaster import broadcast_event
+                broadcast_event('device_update_batch', {'devices': sse_update_batch})
+            except Exception as e:
+                print(f"Bulk SSE Broadcast Error: {e}")
 
         return scan_results
     

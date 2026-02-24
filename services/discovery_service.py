@@ -260,44 +260,54 @@ class DiscoveryService:
             count_updated = 0
 
             for device_data in devices:
-                ip = device_data.get('ip')
-                if not ip:
+                try:
+                    ip = device_data.get('ip')
+                    if not ip:
+                        continue
+
+                    device_type_raw = (device_data.get('device_type') or device_data.get('type') or '').strip()
+                    device_type = DeviceClassifier.normalize_device_type(device_type_raw)
+                    confidence_score = device_data.get('confidence_score')
+                    classification_confidence = (device_data.get('classification_confidence') or '').strip()
+                    classification_details = device_data.get('classification_details')
+
+                    device, action, _prev_ip = upsert_device_from_identity(
+                        ip=ip,
+                        mac=device_data.get('mac'),
+                        hostname=device_data.get('hostname') or 'Unknown',
+                        manufacturer=device_data.get('manufacturer') or 'Unknown',
+                        device_type=device_type or 'unknown',
+                        is_monitored=True,
+                        is_active=True
+                    )
+
+                    if device and (classification_confidence or confidence_score is not None or classification_details):
+                        if (device.classification_confidence or '').strip().lower() != 'manual':
+                            if classification_confidence:
+                                device.classification_confidence = classification_confidence
+                            if confidence_score is not None:
+                                device.confidence_score = confidence_score
+                            if classification_details is not None:
+                                if not isinstance(classification_details, str):
+                                    classification_details = json.dumps(classification_details)
+                                device.classification_details = classification_details
+
+                    if action == "created":
+                        count_added += 1
+                    elif action == "updated":
+                        count_updated += 1
+                except Exception as e:
+                    # Rollback to prevent session pollution from affecting subsequent devices
+                    db.session.rollback()
+                    print(f"[Discovery] Failed to add device {device_data.get('ip', 'unknown')}: {e}")
                     continue
 
-                device_type_raw = (device_data.get('device_type') or device_data.get('type') or '').strip()
-                device_type = DeviceClassifier.normalize_device_type(device_type_raw)
-                confidence_score = device_data.get('confidence_score')
-                classification_confidence = (device_data.get('classification_confidence') or '').strip()
-                classification_details = device_data.get('classification_details')
-
-                device, action, _prev_ip = upsert_device_from_identity(
-                    ip=ip,
-                    mac=device_data.get('mac'),
-                    hostname=device_data.get('hostname') or 'Unknown',
-                    manufacturer=device_data.get('manufacturer') or 'Unknown',
-                    device_type=device_type or 'unknown',
-                    is_monitored=True,
-                    is_active=True
-                )
-
-                if device and (classification_confidence or confidence_score is not None or classification_details):
-                    if (device.classification_confidence or '').strip().lower() != 'manual':
-                        if classification_confidence:
-                            device.classification_confidence = classification_confidence
-                        if confidence_score is not None:
-                            device.confidence_score = confidence_score
-                        if classification_details is not None:
-                            if not isinstance(classification_details, str):
-                                classification_details = json.dumps(classification_details)
-                            device.classification_details = classification_details
-
-                if action == "created":
-                    count_added += 1
-                elif action == "updated":
-                    count_updated += 1
-
             if count_added > 0 or count_updated > 0:
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"[Discovery] Failed to commit scan results: {e}")
 
             with self.active_scans_lock:
                 if scan_id in self.active_scans:

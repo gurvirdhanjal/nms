@@ -1,1010 +1,436 @@
 {% extends "base.html" %}
 
-{% block title %}Device Tracking - Admin{% endblock %}
+{% block title %}Live Tracking - Admin{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1 style="color: white;"><i class="fas fa-laptop-house"></i> Device Management</h1>
-        <p style="color: white;" class="lead">Configure and manage employee devices</p>
-    </div>
-</div>
+<div id="tracking-device-page" class="dashboard-enterprise">
+    <div id="trackingNotificationHost" class="tracking-notification-host"></div>
 
-<!-- Dashboard Overview Cards -->
-<div class="row mt-4">
-    <div class="col-md-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h4 class="card-title">{{ saved_devices|length }}</h4>
-                        <p class="card-text">Total Devices</p>
-                    </div>
-                    <div class="align-self-center">
-                        <i class="fas fa-laptop fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h4 class="card-title">{{ active_count|default(0) }}</h4>
-                        <p class="card-text">Active Devices</p>
-                    </div>
-                    <div class="align-self-center">
-                        <i class="fas fa-signal fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-info text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h4 class="card-title">{{ online_count|default(0) }}</h4>
-                        <p class="card-text">Online Now</p>
-                    </div>
-                    <div class="align-self-center">
-                        <i class="fas fa-wifi fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-warning text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h4 class="card-title">
-                            <a href="{{ url_for('tracking_bp.live_tracking') }}"
-                                class="text-white text-decoration-none">
-                                <i class="fas fa-external-link-alt"></i> Go Live
-                            </a>
-                        </h4>
-                        <p class="card-text">Live Tracking</p>
-                    </div>
-                    <div class="align-self-center">
-                        <i class="fas fa-chart-line fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Network Scanner Section -->
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <div class="row w-100 m-0">
-                    <div class="col-md-6">
-                        <h5 class="mb-0"><i class="fas fa-satellite-dish"></i> Network Scanner</h5>
-                    </div>
-                    <div class="col-md-6 text-end">
-                        <button class="btn btn-primary" id="trackingScanBtn">
-                            <i class="fas fa-search"></i> Scan Network
-                        </button>
-                        <button class="btn btn-info" id="syncBtn">
-                            <i class="fas fa-sync-alt"></i> Sync IPs
-                        </button>
-                        <button class="btn btn-success" onclick="openAddDeviceModal()">
-                            <i class="fas fa-plus"></i> Add Manual
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="scanResults">
-                    <div class="text-center text-muted py-4">
-                        <i class="fas fa-search fa-3x mb-3"></i>
-                        <p>Click "Scan Network" to discover devices with port 5002 open</p>
-                        <small class="text-muted">Scans for devices with port 5002 open (your tracking service)</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Main Device Management Section -->
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-laptop"></i> Device Management</h5>
+    <div class="row">
+        <div class="col-md-12">
+            <div
+                class="tracking-page-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
                 <div>
-                    <a href="{{ url_for('tracking_bp.live_tracking') }}" class="btn btn-primary btn-sm">
-                        <i class="fas fa-chart-line"></i> Go to Live Tracking
+                    <h1 class="tracking-title"><i data-lucide="monitor"></i> Live Tracking</h1>
+                    <p class="lead mb-0">Manage stored employee endpoints first, then discover or sync active
+                        `service.py` agents.</p>
+                </div>
+                <div class="tracking-header-actions d-flex align-items-center gap-2 flex-nowrap">
+                    <button class="tactical-btn-outline open-add-device active border-primary text-white" type="button">
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Device
+                    </button>
+                    <button class="tactical-btn-outline" type="button" id="trackingScanBtn">
+                        <i data-lucide="search" style="width: 14px; height: 14px;"></i> Scan Network
+                    </button>
+                    <button class="tactical-btn-outline text-info border-info" type="button" id="syncBtn">
+                        <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Sync IPs
+                    </button>
+                    <a href="{{ url_for('tracking_bp.live_tracking') }}" class="tactical-btn-outline">
+                        <i data-lucide="activity" style="width: 14px; height: 14px;"></i> Go Live
                     </a>
                 </div>
             </div>
-            <div class="card-body">
-                <!-- Quick Stats -->
-                <div class="row mt-4">
+        </div>
+    </div>
 
-                    <div class="col-md-4 col-sm-6 mb-3">
-                        <div class="p-3 text-center bg-success text-white rounded shadow-sm">
-                            <i class="fas fa-plug fa-2x mb-2"></i>
-                            <h5>{{ online_count }}</h5>
-                            <small>Currently Online</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4 col-sm-6 mb-3">
-                        <div class="p-3 text-center bg-info text-white rounded shadow-sm">
-                            <i class="fas fa-history fa-2x mb-2"></i>
-                            <h5>{{ last_24h_activity }}</h5>
-                            <small>Active Last 24h</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4 col-sm-6 mb-3">
-                        <div class="p-3 text-center bg-danger text-white rounded shadow-sm">
-                            <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
-                            <h5>{{ offline_count }}</h5>
-                            <small>Currently Offline</small>
-                        </div>
-                    </div>
-
+    <div class="row g-3 mb-4" id="device-kpi-row">
+        <div class="col-md-3 col-sm-6">
+            <div class="tactical-stat-card device-kpi-card enterprise-kpi">
+                <div class="kpi-view-icon"><i data-lucide="laptop" style="width: 14px; height: 14px;"></i></div>
+                <div class="stat-label">TOTAL DEVICES</div>
+                <div class="stat-value text-white">{{ saved_devices|length }}</div>
+                <div class="metric-sub"><span class="text-secondary">Managed endpoints</span></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="tactical-stat-card device-kpi-card enterprise-kpi healthy">
+                <div class="kpi-view-icon text-success"><i data-lucide="wifi" style="width: 14px; height: 14px;"></i>
                 </div>
+                <div class="stat-label">ONLINE NOW</div>
+                <div class="stat-value status-text-online">{{ online_count|default(0) }}</div>
+                <div class="metric-sub"><span class="text-secondary">Currently responsive</span></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div
+                class="tactical-stat-card device-kpi-card enterprise-kpi {% if offline_count|default(0) > 0 %}critical{% endif %}">
+                <div
+                    class="kpi-view-icon {% if offline_count|default(0) > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    <i data-lucide="power-off" style="width: 14px; height: 14px;"></i>
+                </div>
+                <div class="stat-label">OFFLINE</div>
+                <div class="stat-value {% if offline_count|default(0) > 0 %}text-danger{% else %}text-white{% endif %}">
+                    {{ offline_count|default(0) }}</div>
+                <div class="metric-sub"><span class="text-secondary">Unreachable agents</span></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="tactical-stat-card device-kpi-card enterprise-kpi warning">
+                <div class="kpi-view-icon text-warning"><i data-lucide="history" style="width: 14px; height: 14px;"></i>
+                </div>
+                <div class="stat-label">ACTIVE LAST 24H</div>
+                <div class="stat-value text-warning">{{ last_24h_activity|default(0) }}</div>
+                <div class="metric-sub"><span class="text-secondary">Recent check-ins</span></div>
+            </div>
+        </div>
+    </div>
 
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="tactical-stat-card tracking-stored-card mt-4">
+                <div
+                    class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <i data-lucide="laptop" style="width: 16px; height: 16px;"></i> <span>STORED EMPLOYEE
+                            DEVICES</span>
+                    </div>
+                    <button class="tactical-btn-outline open-add-device active border-primary text-white" type="button">
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Device
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="row g-2 align-items-center p-3 border-bottom mb-0"
+                        style="background: rgba(0,0,0,0.15); border-color: var(--e-border-strong) !important;">
+                        <div class="col-lg-6 col-md-7">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text px-2 bg-transparent border-secondary text-secondary"><i
+                                        data-lucide="search" style="width: 14px; height: 14px;"></i></span>
+                                <input type="text" class="form-control tactical-input m-0 w-auto flex-grow-1 h-auto"
+                                    id="deviceSearchInput"
+                                    style="border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0;"
+                                    placeholder="Search by device, employee, hostname...">
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-md-3">
+                            <select class="form-select tactical-select m-0 w-100 h-auto py-1 text-secondary"
+                                id="deviceStatusFilter">
+                                <option value="all">All Status</option>
+                                <option value="online">Online</option>
+                                <option value="degraded">Degraded</option>
+                                <option value="offline">Offline</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-4 col-md-2 text-md-end">
+                            <small class="text-muted"><span id="deviceVisibleCount">{{ saved_devices|length }}</span>
+                                shown</small>
+                        </div>
+                    </div>
 
-                <!-- Device List -->
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Device</th>
-                                <th>Status</th>
-                                <th>Network Info</th>
-                                <th>Last Seen</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="deviceList">
-                            {% for device in saved_devices %}
-                            {% set device_status = check_device_status(device) %}
-                            <tr id="device-row-{{ device.id }}">
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="device-icon me-3">
-                                            <i class="fas fa-laptop fa-2x text-muted"></i>
+                    <div class="table-responsive border border-secondary rounded overflow-auto"
+                        style="max-height: 70vh;">
+                        <table class="table table-hover tactical-table tracking-device-table w-100 mb-0 border-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Status</th>
+                                    <th>Network Info</th>
+                                    <th>Last Seen</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceList">
+                                {% for device in saved_devices %}
+                                {% set device_status = check_device_status(device) %}
+                                <tr id="device-row-{{ device.id }}" data-device-row="true"
+                                    data-device-status="{{ device_status }}" data-mac="{{ device.mac_address }}"
+                                    data-search-index="{{ ((device.device_name or '') ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or ''))|lower }}">
+                                    <td class="device-name-cell">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="tracking-device-icon">
+                                                <i data-lucide="laptop" class="text-muted"
+                                                    style="width:14px; height:14px; stroke-width: 1.8;"></i>
+                                            </div>
+                                            <div>
+                                                <strong>{{ device.device_name }}</strong>
+                                                <div class="device-mac">{{ device.employee_name or 'Unassigned' }}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <strong>{{ device.device_name }}</strong>
-                                            <br>
-                                            <small class="text-muted">{{ device.employee_name or 'Unassigned' }}</small>
-                                            {% if device.department %}
-                                            <br><span class="badge bg-info">{{ device.department }}</span>
+                                    </td>
+                                    <td class="tracking-status-cell">
+                                        {% if device_status == 'online' %}
+                                        <span class="tactical-badge tactical-badge-healthy status-badge">ONLINE</span>
+                                        {% elif device_status == 'offline' %}
+                                        <span class="tactical-badge tactical-badge-critical status-badge">OFFLINE</span>
+                                        {% else %}
+                                        <span class="tactical-badge tactical-badge-warning status-badge">UNKNOWN</span>
+                                        {% endif %}
+                                        <br>
+                                        <div class="text-muted tracking-status-meta mt-1"
+                                            style="font-size: 0.7rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">
+                                            {% if device.last_seen %}
+                                            Last seen: {{ device.last_seen.strftime('%Y-%m-%d') }}
+                                            {% else %}
+                                            Last seen: Never
                                             {% endif %}
                                         </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    {% if device_status == 'online' %}
-                                    <span class="status-indicator status-online"></span> <span
-                                        class="text-success fw-bold">Online</span>
-                                    {% elif device_status == 'offline' %}
-                                    <span class="status-indicator status-offline"></span> <span
-                                        class="text-danger fw-bold">Offline</span>
-                                    {% else %}
-                                    <span class="status-indicator status-warning"></span> <span
-                                        class="text-warning fw-bold">Unknown</span>
-                                    {% endif %}
-                                    <br>
-                                    <small class="text-muted">
-                                        {% if device.last_seen %}
-                                        {{ device.last_seen.strftime('%Y-%m-%d') }}
-                                        {% else %}
-                                        Never
-                                        {% endif %}
-                                    </small>
-                                </td>
-                                <td>
-                                    <div>
-                                        <small><strong>IP:</strong>
-                                            <code>{{ device.ip_address or 'N/A' }}</code></small>
-                                        <br>
-                                        <small><strong>MAC:</strong> {{ device.mac_address }}</small>
-                                        <br>
-                                        <small><strong>Host:</strong> {{ device.hostname or 'N/A' }}</small>
-                                    </div>
-                                </td>
-                                <td>
-                                    {% if device.last_seen %}
-                                    {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
-                                    {% else %}
-                                    <span class="text-muted">Never</span>
-                                    {% endif %}
-                                    <br>
-                                    <small class="text-muted">
-                                        {% if device.created_at %}
-                                        Added: {{ device.created_at.strftime('%Y-%m-%d') }}
-                                        {% endif %}
-                                    </small>
-                                </td>
-                                <td>
-                                    <div class="btn-group-vertical btn-group-sm" role="group">
-                                        <div class="btn-group btn-group-sm" role="group">
+                                    </td>
+                                    <td>
+                                        <strong
+                                            style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">IP:</strong>
+                                        <span class="text-success">{{ device.ip_address or 'N/A' }}</span><br>
+                                        <strong
+                                            style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">MAC:</strong>
+                                        {{ device.mac_address }}<br>
+                                        <strong
+                                            style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">Host:</strong>
+                                        {{ device.hostname or 'N/A' }}
+                                    </td>
+                                    <td>
+                                        <div
+                                            style="color: var(--e-text-primary, #e6edf5); font-weight: 600; font-size: 0.75rem;">
+                                            {% if device.last_seen %}
+                                            {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
+                                            {% else %}
+                                            <span class="text-muted">Never</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-muted mt-1"
+                                            style="font-family: var(--t-sans, 'IBM Plex Sans', sans-serif); font-size: 0.7rem;">
+                                            {% if device.created_at %}
+                                            Added: {{ device.created_at.strftime('%Y-%m-%d') }}
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group device-actions justify-content-end">
                                             <a href="{{ url_for('tracking_bp.live_tracking') }}?device_id={{ device.id }}"
-                                                class="btn btn-outline-primary" title="Live Tracking">
-                                                <i class="fas fa-play"></i> Live
+                                                class="tactical-btn-outline" title="Live Tracking">
+                                                <i data-lucide="play"
+                                                    style="width: 13px; height: 13px; margin-right: 2px;"></i> Live
                                             </a>
                                             <a href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"
-                                                class="btn btn-outline-info" title="View History">
-                                                <i class="fas fa-history"></i>
+                                                class="tactical-btn-outline" title="View History">
+                                                <i data-lucide="history" style="width: 13px; height: 13px;"></i>
                                             </a>
-                                        </div>
-                                        <div class="btn-group btn-group-sm mt-1" role="group">
-                                            <button class="btn btn-outline-warning edit-device"
-                                                data-device='{{ device.to_dict() | tojson | e }}' title="Edit Device">
-                                                <i class="fas fa-edit"></i>
+                                            <button class="tactical-btn-outline edit-device"
+                                                data-device='{{ device.to_dict() | tojson | e }}' type="button"
+                                                title="Edit Device">
+                                                <i data-lucide="edit" style="width: 13px; height: 13px;"></i>
                                             </button>
-                                            <button class="btn btn-outline-danger delete-device"
+                                            <button class="tactical-btn-outline delete-device"
                                                 data-mac="{{ device.mac_address }}"
-                                                data-device-name="{{ device.device_name }}" title="Delete Device">
-                                                <i class="fas fa-trash"></i>
+                                                data-device-name="{{ device.device_name }}" type="button"
+                                                title="Delete Device">
+                                                <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
                                             </button>
                                         </div>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="5" class="text-center py-4">
-                                    <i class="fas fa-laptop fa-3x text-muted mb-3"></i>
-                                    <h5>No Devices Configured</h5>
-                                    <p class="text-muted">Scan your network or add devices manually to get started.</p>
-                                    <button class="btn btn-primary mt-2" onclick="openAddDeviceModal()">
-                                        <i class="fas fa-plus"></i> Add Your First Device
-                                    </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr id="deviceListEmptyRow">
+                                    <td colspan="5" class="text-center py-4">
+                                        <i data-lucide="laptop" class="text-muted mb-3"
+                                            style="width: 3rem; height: 3rem;"></i>
+                                        <h5>No Devices Configured</h5>
+                                        <p class="text-muted mb-2">Add your first employee endpoint, then use scan and
+                                            sync to keep the list current.</p>
+                                        <button
+                                            class="tactical-btn-outline open-add-device active border-primary text-white"
+                                            type="button">
+                                            <i data-lucide="plus"></i> Add Your First Device
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
 
-                <!-- Bulk Actions -->
-                {% if saved_devices %}
-                <div class="mt-3 border-top pt-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
+                    <div id="deviceFilterEmptyState" class="tracking-filter-empty-state text-center py-4 d-none">
+                        <i data-lucide="filter" class="text-muted mb-2" style="width: 2rem; height: 2rem;"></i>
+                        <p class="mb-0">No stored devices match the current filter.</p>
+                    </div>
+
+                    {% if saved_devices %}
+                    <div class="p-3 border-top border-secondary">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <small class="text-muted">{{ saved_devices|length }} device(s) total</small>
+                            <div class="d-flex gap-2">
+                                <button class="tactical-btn-outline" id="exportDevicesBtn" type="button">
+                                    <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export List
+                                </button>
+                                <button class="tactical-btn-outline text-warning border-warning" id="bulkEditBtn"
+                                    type="button">
+                                    <i data-lucide="edit" style="width: 14px; height: 14px;"></i> Bulk Edit
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-secondary" id="exportDevicesBtn">
-                                <i class="fas fa-download"></i> Export List
-                            </button>
-                            <button class="btn btn-sm btn-outline-warning" id="bulkEditBtn">
-                                <i class="fas fa-edit"></i> Bulk Edit
-                            </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="tactical-stat-card tracking-scanner-card mt-4">
+                <div
+                    class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <i data-lucide="radio" style="width: 16px; height: 16px;"></i> <span>AGENT DISCOVERY AND
+                            SYNC</span>
+                    </div>
+                    <small class="text-muted">Scanner probes port 5002 identity.</small>
+                </div>
+                <div class="card-body">
+                    <div id="scanResultsBanner" class="alert alert-info d-none mb-3" role="status"></div>
+
+                    <div class="row g-3 mb-3" id="scanSummaryCards">
+                        <div class="col-md-4">
+                            <div class="tactical-stat-card device-kpi-card enterprise-kpi healthy">
+                                <div class="kpi-view-icon text-success"><i data-lucide="radio"
+                                        style="width: 14px; height: 14px;"></i></div>
+                                <div class="stat-label">TRACKING ACTIVE</div>
+                                <div class="stat-value text-white" id="scanTrackingActiveCount">0</div>
+                            </div>
                         </div>
+                        <div class="col-md-4">
+                            <div class="tactical-stat-card device-kpi-card enterprise-kpi warning">
+                                <div class="kpi-view-icon text-warning"><i data-lucide="unlock"
+                                        style="width: 14px; height: 14px;"></i></div>
+                                <div class="stat-label">PORT OPEN ONLY</div>
+                                <div class="stat-value text-warning" id="scanPortOnlyCount">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="tactical-stat-card device-kpi-card enterprise-kpi">
+                                <div class="kpi-view-icon text-info"><i data-lucide="plus-circle"
+                                        style="width: 14px; height: 14px;"></i></div>
+                                <div class="stat-label">NEW DEVICES</div>
+                                <div class="stat-value text-info" id="scanNewDevicesCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="scanResultsEmptyState" class="text-center text-muted py-4">
+                        <i data-lucide="search" class="mb-3" style="width: 3rem; height: 3rem;"></i>
+                        <p class="mb-1">Click "Scan Network" to discover active employee agents.</p>
+                        <small class="text-muted">Discovered tracking-active agents can be auto-saved and synced into
+                            the stored list.</small>
+                    </div>
+
+                    <div class="table-responsive border border-secondary rounded overflow-auto"
+                        id="scanResultsTableWrap" style="max-height: 70vh;" hidden>
+                        <table class="table table-hover tactical-table tracking-scan-table w-100 mb-0 border-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Status</th>
+                                    <th>Network Info</th>
+                                    <th>Tracking</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scanResultsBody"></tbody>
+                        </table>
                     </div>
                 </div>
-                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Add Employee Device</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="deviceForm">
+                        <input type="hidden" id="editMac" name="mac_address">
+
+                        <div class="mb-3">
+                            <label class="form-label">Device Name</label>
+                            <input type="text" class="form-control tactical-input" id="deviceName" name="device_name"
+                                placeholder="Optional (auto-filled from hostname if empty)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Employee Name</label>
+                            <input type="text" class="form-control tactical-input" id="employeeName"
+                                name="employee_name" placeholder="Optional assignment label">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">MAC Address</label>
+                                    <input type="text" class="form-control tactical-input" id="macAddress"
+                                        name="mac_address" pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
+                                    <div class="form-text">Optional when IP is provided. Format: 00:1A:2B:3C:4D:5E</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">IP Address</label>
+                                    <input type="text" class="form-control tactical-input" id="ipAddress"
+                                        name="ip_address" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                                    <div class="form-text">Required if MAC is unknown. Backend resolves identity via Agent</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Hostname</label>
+                                    <input type="text" class="form-control tactical-input" id="hostname"
+                                        name="hostname">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Department</label>
+                                    <input type="text" class="form-control tactical-input" id="department"
+                                        name="department">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control tactical-input" id="notes" name="notes" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="tactical-btn-outline active border-primary text-white"
+                        id="saveDeviceBtn">Save Device</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i data-lucide="alert-triangle"></i> Confirm Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
+                    <p class="text-danger mb-0"><small>This action cannot be undone. All tracking history for this
+                            device will be lost.</small></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="tactical-btn-outline text-danger border-danger"
+                        id="confirmDeleteBtn">Delete Device</button>
+                </div>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Add/Edit Device Modal -->
-<div class="modal fade" id="addDeviceModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalTitle">Add New Device</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="deviceForm">
-                    <input type="hidden" id="editMac" name="mac_address">
-
-                    <div class="mb-3">
-                        <label class="form-label">Device Name *</label>
-                        <input type="text" class="form-control" id="deviceName" name="device_name" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Employee Name</label>
-                        <input type="text" class="form-control" id="employeeName" name="employee_name">
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">MAC Address *</label>
-                                <input type="text" class="form-control" id="macAddress" name="mac_address" required
-                                    pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
-                                <div class="form-text">Format: 00:1A:2B:3C:4D:5E</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">IP Address</label>
-                                <input type="text" class="form-control" id="ipAddress" name="ip_address"
-                                    pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Hostname</label>
-                                <input type="text" class="form-control" id="hostname" name="hostname">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Department</label>
-                                <input type="text" class="form-control" id="department" name="department">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Notes</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveDeviceBtn">Save Device</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Confirm Delete Modal -->
-<div class="modal fade" id="confirmDeleteModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Confirm Delete</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
-                <p class="text-danger"><small>This action cannot be undone. All tracking history for this device will be
-                        lost.</small></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete Device</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}">
+{% endblock %}
+
 {% block extra_js %}
-<script>
-    // Global variables for device management
-    let deviceToDelete = null;
-
-    // Define showNotification helper if missing
-    function showNotification(message, type = 'info') {
-        const container = document.querySelector('.main-content') || document.body;
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        // Insert at the top of main content
-        container.insertBefore(alertDiv, container.firstChild);
-
-        // Auto dismiss after 5 seconds
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
-    }
-
-    // Initialize when DOM is loaded
-    document.addEventListener('DOMContentLoaded', function () {
-        attachDeviceManagementListeners();
-    });
-
-    // Attach event listeners for device management
-    function attachDeviceManagementListeners() {
-        // Scan button
-        // Scan button
-        const scanBtn = document.getElementById('trackingScanBtn');
-        if (scanBtn) {
-            scanBtn.addEventListener('click', function () {
-                console.log("Tracking Scan button clicked!");
-                // alert("Starting Scan..."); // Uncomment if needed for extreme debugging
-                const btn = this;
-                const originalText = btn.innerHTML;
-
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
-                btn.disabled = true;
-
-                fetch('/api/tracking/scan', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                })
-                    .then(response => {
-                        console.log("Scan response received:", response.status);
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log("Scan data:", data);
-                        if (data.success) {
-                            displayScanResults(data.devices_found, data.total_found, data.tracking_active, data.port_only, data.new_devices);
-
-                            if (data.updated_ips && data.updated_ips.length > 0) {
-                                showNotification(`Updated IP addresses for ${data.updated_ips.length} device(s)`, 'success');
-                            }
-                        } else {
-                            showNotification('Scan failed: ' + data.error, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Scan error:', error);
-                        alert('Scan Error: ' + error.message);
-                        showNotification('Scan error: ' + error.message, 'danger');
-                    })
-                    .finally(() => {
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
-            });
-        }
-
-        // Sync IPs manually
-        document.getElementById('syncBtn').addEventListener('click', function () {
-            const btn = this;
-            const originalText = btn.innerHTML;
-
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
-            btn.disabled = true;
-
-            fetch('/api/tracking/sync-ips', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        if (data.updated_devices && data.updated_devices.length > 0) {
-                            showNotification(`Updated IP addresses for ${data.updated_devices.length} device(s)`, 'success');
-                            setTimeout(() => location.reload(), 1500);
-                        } else {
-                            showNotification('All devices are up to date!', 'info');
-                        }
-                    } else {
-                        showNotification('Sync failed: ' + data.error, 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('Sync error:', error);
-                    showNotification('Sync error: ' + error.message, 'danger');
-                })
-                .finally(() => {
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                });
-        });
-
-        // Save device
-        document.getElementById('saveDeviceBtn').addEventListener('click', function () {
-            const originalMac = document.getElementById('editMac').value;
-            const formData = {
-                device_name: document.getElementById('deviceName').value,
-                employee_name: document.getElementById('employeeName').value,
-                mac_address: document.getElementById('macAddress').value,
-                ip_address: document.getElementById('ipAddress').value,
-                hostname: document.getElementById('hostname').value,
-                department: document.getElementById('department').value,
-                notes: document.getElementById('notes').value
-            };
-            if (originalMac) {
-                formData.mac_address = originalMac;
-            }
-
-            if (!formData.device_name || !formData.mac_address) {
-                showNotification('Device Name and MAC Address are required', 'warning');
-                return;
-            }
-
-            // Validate MAC address format
-            const macPattern = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-            if (!macPattern.test(formData.mac_address)) {
-                showNotification('Invalid MAC address format. Use format: 00:1A:2B:3C:4D:5E', 'warning');
-                return;
-            }
-
-            // Show loading state
-            const btn = document.getElementById('saveDeviceBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-            btn.disabled = true;
-
-            fetch('/api/tracking/save-device', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        showNotification('Device saved successfully!', 'success');
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('addDeviceModal'));
-                        modal.hide();
-                        setTimeout(() => location.reload(), 1000);
-                    } else {
-                        showNotification('Save failed: ' + data.error, 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('Save error:', error);
-                    showNotification('Save error: ' + error.message, 'danger');
-                    alert('Save Failed: ' + error.message);
-                })
-                .finally(() => {
-                    if (typeof btn !== 'undefined') {
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    } else {
-                        // Fallback
-                        document.getElementById('saveDeviceBtn').disabled = false;
-                        document.getElementById('saveDeviceBtn').innerHTML = 'Save Device';
-                    }
-                });
-
-        });
-
-        // Edit device buttons
-        document.querySelectorAll('.edit-device').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const raw = this.getAttribute('data-device');
-                let device = {};
-                if (raw) {
-                    try {
-                        device = JSON.parse(raw);
-                    } catch (e) {
-                        console.error('Invalid device data:', e, raw);
-                    }
-                }
-                populateEditForm(device);
-            });
-        });
-
-        // Delete device buttons
-        document.querySelectorAll('.delete-device').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const macAddress = this.getAttribute('data-mac');
-                const deviceName = this.getAttribute('data-device-name');
-                showDeleteConfirmation(macAddress, deviceName);
-            });
-        });
-
-        // Confirm delete button
-        document.getElementById('confirmDeleteBtn').addEventListener('click', function () {
-            if (deviceToDelete) {
-                deleteDevice(deviceToDelete);
-            }
-        });
-
-        // Export devices button
-        document.getElementById('exportDevicesBtn')?.addEventListener('click', function () {
-            exportDevicesList();
-        });
-
-        // Bulk edit button
-        document.getElementById('bulkEditBtn')?.addEventListener('click', function () {
-            showNotification('Bulk edit feature coming soon!', 'info');
-        });
-
-        // Clear form when modal is hidden
-        document.getElementById('addDeviceModal').addEventListener('hidden.bs.modal', function () {
-            clearDeviceForm();
-        });
-
-
-    }
-
-    // Show delete confirmation modal
-    function showDeleteConfirmation(macAddress, deviceName) {
-        deviceToDelete = macAddress;
-        document.getElementById('deleteDeviceName').textContent = deviceName;
-
-        const deleteModal = new bootstrap.Modal(document.getElementById('confirmDeleteModal'));
-        deleteModal.show();
-    }
-
-    // Delete device
-    function deleteDevice(macAddress) {
-        fetch('/api/tracking/delete-device', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ mac_address: macAddress })
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showNotification('Device deleted successfully!', 'success');
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal'));
-                    modal.hide();
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showNotification('Delete failed: ' + data.error, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Delete error:', error);
-                showNotification('Delete error: ' + error.message, 'danger');
-            });
-    }
-
-    // Populate edit form
-    function populateEditForm(device) {
-        document.getElementById('modalTitle').textContent = 'Edit Device';
-        document.getElementById('deviceName').value = device.device_name || '';
-        document.getElementById('employeeName').value = device.employee_name || '';
-        document.getElementById('macAddress').value = device.mac_address || '';
-        document.getElementById('ipAddress').value = device.ip_address || '';
-        document.getElementById('hostname').value = device.hostname || '';
-        document.getElementById('department').value = device.department || '';
-        document.getElementById('notes').value = device.notes || '';
-        document.getElementById('editMac').value = device.mac_address || '';
-
-        const macField = document.getElementById('macAddress');
-        macField.readOnly = true;
-        macField.classList.add('bg-light');
-
-        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('addDeviceModal'));
-        modal.show();
-    }
-
-    // Open Add Device Modal safely
-    window.openAddDeviceModal = function () {
-        clearDeviceForm();
-        const modalEl = document.getElementById('addDeviceModal');
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
-    };
-
-    // Clear device form and reset states
-    function clearDeviceForm() {
-        document.getElementById('modalTitle').textContent = 'Add New Device';
-        document.getElementById('deviceForm').reset();
-        document.getElementById('editMac').value = '';
-
-        const macField = document.getElementById('macAddress');
-        if (macField) {
-            macField.readOnly = false;
-            macField.classList.remove('bg-light');
-        }
-
-        // Reset save button state
-        const btn = document.getElementById('saveDeviceBtn');
-        if (btn) {
-            btn.innerHTML = 'Save Device';
-            btn.disabled = false;
-        }
-    }
-
-    // Export devices list
-    function exportDevicesList() {
-        // Fetch devices from API instead of using template variable
-        fetch('/api/tracking/live-summary')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    createCSVExport(data.devices);
-                } else {
-                    showNotification('Failed to load devices for export', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Export error:', error);
-                showNotification('Export error: ' + error.message, 'danger');
-            });
-    }
-
-    // Create CSV from devices data
-    function createCSVExport(devices) {
-        // Create CSV content
-        let csvContent = "Device Name,Employee Name,Status,Last Seen\n";
-
-        devices.forEach(device => {
-            const lastSeen = device.timestamp ? new Date(device.timestamp).toLocaleDateString() : 'Never';
-            csvContent += `"${device.device_name}","${device.employee_name || ''}","${device.status || 'offline'}","${lastSeen}"\n`;
-        });
-
-        // Create download link
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `devices-export-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-
-        showNotification('Device list exported successfully!', 'success');
-    }
-
-    // Display scan results
-    function displayScanResults(devices, totalFound, trackingActive, portOnly, newDevices) {
-        const scanResults = document.getElementById('scanResults');
-
-        if (devices.length === 0) {
-            scanResults.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                <h5>No Devices Found</h5>
-                <p class="text-muted">No devices with port 5002 open were found on your network.</p>
-                <small class="text-muted">Make sure the tracking service is running on target devices.</small>
-            </div>
-        `;
-            return;
-        }
-
-        let html = `
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle"></i> Found ${totalFound} device(s) with port 5002 open
-        </div>
-        
-        <div class="row">
-            <div class="col-md-4">
-                <div class="card bg-success text-white mb-3">
-                    <div class="card-body text-center">
-                        <h3>${trackingActive}</h3>
-                        <p>Tracking Active</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card bg-warning text-white mb-3">
-                    <div class="card-body text-center">
-                        <h3>${portOnly}</h3>
-                        <p>Port Open Only</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card bg-primary text-white mb-3">
-                    <div class="card-body text-center">
-                        <h3>${newDevices}</h3>
-                        <p>New Devices</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="table-responsive">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Device</th>
-                        <th>Status</th>
-                        <th>Network Info</th>
-                        <th>Tracking</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
-        devices.forEach(device => {
-            let statusBadge, statusText;
-            if (device.status === 'tracking_active') {
-                statusBadge = 'bg-success';
-                statusText = 'Tracking Active';
-            } else if (device.status === 'port_open_no_service') {
-                statusBadge = 'bg-warning';
-                statusText = 'Port Open';
-            } else {
-                statusBadge = 'bg-secondary';
-                statusText = 'Unknown';
-            }
-
-            const isSaved = device.is_saved || false;
-            const saveButton = isSaved
-                ? '<button class="btn btn-sm btn-outline-secondary" disabled>Already Saved</button>'
-                : `<button class="btn btn-sm btn-outline-primary save-scanned-device" 
-                      data-mac="${device.mac_address}"
-                      data-ip="${device.ip}"
-                      data-hostname="${device.hostname}"
-                      data-system="${device.system}">
-                 <i class="fas fa-save"></i> Save
-               </button>`;
-
-            html += `
-            <tr>
-                <td>
-                    <strong>${device.hostname}</strong><br>
-                    <small class="text-muted">${device.system}</small>
-                </td>
-                <td>
-                    <span class="badge ${statusBadge}">${statusText}</span>
-                </td>
-                <td>
-                    <small><strong>IP:</strong> ${device.ip}</small><br>
-                    <small><strong>MAC:</strong> ${device.mac_address}</small>
-                </td>
-                <td>
-                    ${device.tracking_data ? 'Active' : 'Inactive'}
-                </td>
-                <td>
-                    ${saveButton}
-                </td>
-            </tr>
-        `;
-        });
-
-        html += `
-                </tbody>
-            </table>
-        </div>
-    `;
-
-        scanResults.innerHTML = html;
-
-        // Attach event listeners to save buttons
-        document.querySelectorAll('.save-scanned-device').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const device = {
-                    mac_address: this.getAttribute('data-mac'),
-                    ip: this.getAttribute('data-ip'),
-                    hostname: this.getAttribute('data-hostname'),
-                    system: this.getAttribute('data-system')
-                };
-                saveScannedDevice(device);
-            });
-        });
-    }
-
-    // Save scanned device
-    function saveScannedDevice(device) {
-        const formData = {
-            device_name: device.hostname || 'Unknown Device',
-            employee_name: '',
-            mac_address: device.mac_address,
-            ip_address: device.ip,
-            hostname: device.hostname,
-            department: '',
-            notes: 'Added from network scan'
-        };
-
-        fetch('/api/tracking/save-device', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(formData)
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Device saved successfully!', 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showNotification('Save failed: ' + data.error, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Save error:', error);
-                showNotification('Save error: ' + error.message, 'danger');
-            });
-    }
-
-    // Show notification
-    function showNotification(message, type) {
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        notification.style.cssText = `
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
-        min-width: 300px;
-        max-width: 500px;
-        animation: slideInRight 0.3s ease-out;
-    `;
-
-        notification.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-
-        // Add to page
-        document.body.appendChild(notification);
-
-        // Auto remove after 5 seconds
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 5000);
-    }
-
-    // Add CSS animation
-    const style = document.createElement('style');
-    style.textContent = `
-    @keyframes slideInRight {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    .device-icon {
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-`;
-    document.head.appendChild(style);
-</script>
-
-<style>
-    /* Additional styles for device management */
-    #deviceList tr:hover {
-        background-color: rgba(0, 0, 0, 0.02);
-    }
-
-    .device-icon {
-        background-color: #f8f9fa;
-        border-radius: 8px;
-        border: 1px solid #dee2e6;
-    }
-
-    .badge {
-        font-weight: 500;
-    }
-
-    .table th {
-        font-weight: 600;
-        font-size: 0.9em;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-</style>
+<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}"></script>
 {% endblock %}

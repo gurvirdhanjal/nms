@@ -131,6 +131,9 @@ class Config:
     # API Key for mobile/external clients
     MOBILE_API_KEY = os.environ.get('MOBILE_API_KEY')
 
+    # Redis configuration
+    REDIS_URL = os.environ.get('REDIS_URL', 'redis://default:D94fZxj196v9oyHgamcpauqdRK8cjtA9@redis-12227.c321.us-east-1-2.ec2.cloud.redislabs.com:12227')
+
     # Enforce Postgres-only ingestion for agent metrics
     REQUIRE_POSTGRES_ONLY = os.environ.get('REQUIRE_POSTGRES_ONLY', 'false').lower() == 'true'
 

@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let totalDevicesFound = 0;
     let activePings = new Set(); // Track active ping requests
     let isAddingDevice = false;
+    let isAutoAdd = false; // Flag for Scan & Add to DB functionality
 
     // Store all discovered devices: ip -> deviceObject
     let discoveredDevices = new Map();
@@ -140,6 +141,38 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
+            isAutoAdd = false; // Normal manual scan
+
+            const ipRange = ipRangeInput.value;
+            // Allow empty IP range to trigger backend auto-detection
+            if (!ipRange) {
+                showToast('Auto-detecting network range...', 'info', 2000);
+            }
+
+            // Reset state
+            discoveredDevices.clear();
+            deviceRows.clear();
+            selectedIPs.clear();
+            updateBulkUI();
+
+            startNetworkScan(ipRange);
+        });
+    }
+
+    const scanAndAddBtn = document.getElementById('scanAndAddBtn');
+    if (scanAndAddBtn) {
+        scanAndAddBtn.addEventListener('click', function () {
+            if (isScanning) {
+                if (isAutoAdd) {
+                    stopCurrentScan();
+                } else {
+                    showToast('A manual scan is already in progress.', 'warning', 3000);
+                }
+                return;
+            }
+
+            isAutoAdd = true; // Enable automatic DB addition
+
             const ipRange = ipRangeInput.value;
             // Allow empty IP range to trigger backend auto-detection
             if (!ipRange) {
@@ -176,9 +209,18 @@ document.addEventListener('DOMContentLoaded', function () {
         progressBar.style.width = '0%';
         progressBar.textContent = 'Starting scan...';
         progressBar.classList.add('progress-bar-animated');
-        startScanBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Scan';
-        startScanBtn.classList.remove('btn-primary');
-        startScanBtn.classList.add('btn-danger');
+
+        if (isAutoAdd && scanAndAddBtn) {
+            scanAndAddBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Scan & Add';
+            scanAndAddBtn.classList.remove('btn-success');
+            scanAndAddBtn.classList.add('btn-danger');
+            startScanBtn.disabled = true;
+        } else {
+            startScanBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Scan';
+            startScanBtn.classList.remove('btn-primary');
+            startScanBtn.classList.add('btn-danger');
+            if (scanAndAddBtn) scanAndAddBtn.disabled = true;
+        }
         isScanning = true;
 
         scanResults.innerHTML = `
@@ -248,6 +290,22 @@ document.addEventListener('DOMContentLoaded', function () {
                         showError(data.error);
                     } else if (data.status === 'completed') {
                         showCompletionMessage(data);
+
+                        if (isAutoAdd) {
+                            console.log("Auto-add enabled. Adding all discovered devices...");
+                            if (discoveredDevices.size === 0) {
+                                showToast("No devices discovered to add.", "warning");
+                            } else {
+                                // Add all discovered to selected pool
+                                selectedIPs.clear();
+                                for (const ip of discoveredDevices.keys()) {
+                                    selectedIPs.add(ip);
+                                }
+                                // Execute DB injection
+                                executeBulkAdd();
+                            }
+                            isAutoAdd = false; // reset after use
+                        }
                     }
                     resetScanButton();
                 }
@@ -306,19 +364,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function initializeResultsTable() {
         const checkboxHeader = `
-                            <th style="width: 40px;">
+                            <th class="select-column" style="width: 40px;">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
                                 </div>
                             </th>`;
 
         scanResults.innerHTML = `
-            <div class="alert alert-info py-2 mb-2">
-                <i class="fas fa-sync fa-spin"></i> 
+            <div class="alert alert-info py-2 mb-2" style="font-size: 0.75rem;">
+                <i data-lucide="loader-2" class="icon-spin"></i> 
                 Network scan in progress... Found <span id="liveCount">0</span> devices so far...
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
+            <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell" style="max-height: 50vh;">
+                <table class="table table-hover table-sm devices-table align-middle">
                     <thead class="table-dark">
                         <tr>
                             ${checkboxHeader}
@@ -328,17 +386,17 @@ document.addEventListener('DOMContentLoaded', function () {
                             <th>Manufacturer</th>
                             <th>Status</th>
                             <th>Latency</th>
-                            <th>Actions</th>
+                            <th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="devicesTableBody">
                     </tbody>
                 </table>
             </div>
-            <div class="mt-2">
+            <div class="mt-2" style="font-size: 0.75rem;">
                 <strong>Total devices found: <span id="totalCount">0</span></strong>
                 <div class="progress mt-1" style="height: 8px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
                          id="detailedProgress" style="width: 0%"></div>
                 </div>
             </div>
@@ -354,6 +412,11 @@ document.addEventListener('DOMContentLoaded', function () {
         // Let's attach to scanResults, as it contains the table.
         scanResults.removeEventListener('click', handleTableClick);
         scanResults.addEventListener('click', handleTableClick);
+
+        // Render lucide icons for injected HTML
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     }
 
     function handleTableClick(e) {
@@ -404,23 +467,29 @@ document.addEventListener('DOMContentLoaded', function () {
         tr.setAttribute('data-ip-row', device.ip);
 
         // Status badge logic
-        let statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+        let statusBadge = '<span class="badge bg-secondary border border-secondary text-secondary">Unknown</span>';
         if (device.status === 'Online') {
-            statusBadge = '<span class="badge bg-success">Online</span>';
+            statusBadge = '<span class="badge bg-dark border border-success text-success">Online</span>';
         } else if (device.status === 'Offline') {
-            statusBadge = '<span class="badge bg-danger">Offline</span>';
+            statusBadge = '<span class="badge bg-dark border border-danger text-danger">Offline</span>';
         }
 
         // Latency
         const latency = device.latency ? `${Math.round(device.latency)} ms` : '-';
 
         const actionIcons = `
-                <i class="fas fa-plus action-icon action-add" title="Add to Inventory" data-ip="${device.ip}"></i>
-                <i class="fas fa-search action-icon action-scan" title="Port Scan" data-ip="${device.ip}"></i>
+            <div class="d-flex justify-content-center gap-3 device-actions">
+                <span class="action-icon action-add" title="Add to Inventory" data-ip="${device.ip}" style="cursor: pointer; color: var(--e-text-secondary);">
+                    <i class="fas fa-plus"></i>
+                </span>
+                <span class="action-icon action-scan" title="Port Scan" data-ip="${device.ip}" style="cursor: pointer; color: var(--e-text-secondary);">
+                    <i class="fas fa-search"></i>
+                </span>
+            </div>
             `;
 
         const checkboxCell = `
-            <td>
+            <td class="select-column">
                 <div class="form-check">
                     <input class="form-check-input device-checkbox" type="checkbox" value="${device.ip}">
                 </div>
@@ -428,13 +497,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         tr.innerHTML = `
             ${checkboxCell}
-            <td>${device.ip}</td>
+            <td class="device-name-cell"><strong>${device.ip}</strong></td>
             <td>${device.hostname || 'Unknown'}</td>
-            <td>${device.mac || 'N/A'}</td>
+            <td><div class="device-mac">${device.mac || 'N/A'}</div></td>
             <td>${device.manufacturer || 'Unknown'}</td>
             <td>${statusBadge}</td>
             <td>${latency}</td>
-            <td class="device-actions">
+            <td class="text-center">
                 ${actionIcons}
             </td>
         `;
@@ -576,6 +645,15 @@ document.addEventListener('DOMContentLoaded', function () {
         startScanBtn.innerHTML = '<i class="fas fa-play"></i> Start Network Scan';
         startScanBtn.classList.remove('btn-danger');
         startScanBtn.classList.add('btn-primary');
+        startScanBtn.disabled = false;
+
+        if (scanAndAddBtn) {
+            scanAndAddBtn.innerHTML = '<i class="fas fa-database"></i> Scan & Add to DB';
+            scanAndAddBtn.classList.remove('btn-danger');
+            scanAndAddBtn.classList.add('btn-success');
+            scanAndAddBtn.disabled = false;
+        }
+
         isScanning = false;
 
         progressBar.classList.remove('progress-bar-animated');
@@ -798,15 +876,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     data.open_ports.forEach(port => {
                         let connectBtn = '';
                         if (port.port === 80) {
-                            connectBtn = `<button class="btn btn-sm btn-primary" onclick="window.openHTTP('${data.ip_address}')"><i class="fas fa-globe"></i> Open</button>`;
+                            connectBtn = `<button class="btn btn-sm tactical-btn-outline" onclick="window.openHTTP('${data.ip_address}')"><i class="fas fa-globe me-1"></i> Open</button>`;
                         } else if (port.port === 443) {
-                            connectBtn = `<button class="btn btn-sm btn-success" onclick="window.openHTTPS('${data.ip_address}')"><i class="fas fa-lock"></i> Open</button>`;
+                            connectBtn = `<button class="btn btn-sm tactical-btn-outline" onclick="window.openHTTPS('${data.ip_address}')"><i class="fas fa-lock me-1"></i> Open</button>`;
                         } else if (port.port === 3389) {
-                            connectBtn = `<button class="btn btn-sm btn-warning" onclick="window.openRDP('${data.ip_address}')"><i class="fas fa-desktop"></i> Connect</button>`;
+                            connectBtn = `<button class="btn btn-sm tactical-btn-outline" onclick="window.openRDP('${data.ip_address}')"><i class="fas fa-desktop me-1"></i> Connect</button>`;
                         } else if (port.port === 22) {
-                            connectBtn = `<button class="btn btn-sm btn-info" onclick="window.openSSH('${data.ip_address}')"><i class="fas fa-terminal"></i> SSH</button>`;
+                            connectBtn = `<button class="btn btn-sm tactical-btn-outline" onclick="window.openSSH('${data.ip_address}')"><i class="fas fa-terminal me-1"></i> SSH</button>`;
                         } else {
-                            connectBtn = `<button class="btn btn-sm btn-secondary" onclick="window.openCustomPort('${data.ip_address}', [${port.port}])"><i class="fas fa-cog"></i> Connect</button>`;
+                            connectBtn = `<button class="btn btn-sm tactical-btn-outline" onclick="window.openCustomPort('${data.ip_address}', [${port.port}])"><i class="fas fa-cog me-1"></i> Connect</button>`;
                         }
 
                         portsHtml += `
@@ -824,8 +902,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 modalBody.innerHTML = `
                 <div class="table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead class="table-dark">
+                    <table class="tactical-table table-hover mb-0">
+                        <thead>
                             <tr>
                                 <th>Port</th>
                                 <th>Service</th>

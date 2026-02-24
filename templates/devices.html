@@ -197,6 +197,55 @@
         font-size: 0.73rem;
     }
 
+    .devices-page .bulk-actions-layout {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+    }
+
+    .devices-page .devices-table-shell {
+        max-height: calc(100vh - 280px);
+        min-height: 300px;
+    }
+
+    .devices-page .select-column {
+        width: 40px;
+    }
+
+    .devices-page .devices-hidden {
+        display: none;
+    }
+
+    .devices-page .devices-row-hidden {
+        display: none;
+    }
+
+    .devices-page .empty-state-icon {
+        width: 48px;
+        height: 48px;
+        color: var(--d-text-muted);
+    }
+
+    .devices-page .monitoring-fields-hidden {
+        display: none;
+    }
+
+    .devices-page .devices-notification-host {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 1085;
+        max-width: 460px;
+        width: min(460px, calc(100vw - 2rem));
+    }
+
+    .devices-page .devices-notification {
+        box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.35);
+        border-color: rgba(148, 163, 184, 0.25);
+    }
+
     .devices-page .selection-hint {
         margin-left: 0.5rem;
         font-size: 0.66rem;
@@ -346,6 +395,7 @@
 {% endblock %}
 {% block content %}
 <div class="devices-page">
+    <div id="devicesNotificationHost" class="devices-notification-host" aria-live="polite" aria-atomic="false"></div>
     <div class="row mb-2">
         <div class="col-md-12 page-header">
             <h1><i data-lucide="server"></i> Device Management</h1>
@@ -443,11 +493,11 @@
                     </div>
                 </div>
                 <div class="card-body">
-                {% if devices %}
+<div id="devices-wrapper">
 
                 <!-- Bulk Actions -->
-                <div id="bulkActions" style="display: none;"
-                    class="alert alert-dark p-2 mb-3 border border-secondary d-flex align-items-center justify-content-between">
+                <div id="bulkActions"
+                    class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
                     <div>
                         <span class="text-white me-2"><i data-lucide="check-square"></i> <span
                                 id="selectedCount">0</span> selected</span>
@@ -463,19 +513,19 @@
                     </div>
                 </div>
 
-                <div class="alert alert-info">
+                <div class="alert alert-info mb-2">
                     <i data-lucide="info"></i>
                     Showing <span id="deviceTotalCount">{{ devices|length }}</span> of
                     {{ total_devices|default(devices|length) }} matched device(s) |
                     Inventory {{ global_device_count|default(total_devices|default(devices|length)) }} |
                     Page {{ page|default(1) }} of {{ total_pages|default(1) }}
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell">
 
                     <table class="table table-hover devices-table">
                         <thead class="table-dark">
                             <tr>
-                                <th style="width: 40px;">
+                                <th class="select-column">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
                                     </div>
@@ -488,153 +538,35 @@
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {% for device in devices %}
-                            <tr data-device-id="{{ device.device_id }}" data-device-ip="{{ device.device_ip }}"
-                                data-subnet="{{ device.subnet_cidr or '' }}">
-                                <td>
-                                    <div class="form-check">
-                                        <input class="form-check-input device-checkbox" type="checkbox"
-                                            value="{{ device.device_id }}">
-                                    </div>
-                                </td>
-                                <td class="device-name-cell">
-                                    <strong>{{ device.device_name }}</strong>
-                                    <div class="device-mac">
-                                        <span class="me-1">MAC</span>
-                                        <code>{{ device.macaddress or 'N/A' }}</code>
-                                    </div>
-                                </td>
-                                <td><code>{{ device.device_ip }}</code></td>
-                                <td>
-                                    <select
-                                        class="form-select form-select-sm bg-dark text-light border-secondary device-type-select"
-                                        onchange="updateDeviceType({{ device.device_id }}, this.value, this)">
-                                        <option value="unknown" {% if (device.device_type or '' )|lower in
-                                            ['','unknown'] %}selected{% endif %}>
-                                            Unknown</option>
-                                        <option value="switch" {% if device.device_type|lower=='switch' %}selected{%
-                                            endif %}>
-                                            Switch</option>
-                                        <option value="access_point" {% if device.device_type|lower=='access_point'
-                                            %}selected{% endif %}>
-                                            Access Point</option>
-                                        <option value="router" {% if device.device_type|lower=='router' %}selected{%
-                                            endif %}>
-                                            Router</option>
-                                        <option value="firewall" {% if device.device_type|lower=='firewall' %}selected{%
-                                            endif %}>
-                                            Firewall</option>
-                                        <option value="server" {% if device.device_type|lower=='server' %}selected{%
-                                            endif %}>
-                                            Server</option>
-                                        <option value="workstation" {% if device.device_type|lower=='workstation'
-                                            %}selected{% endif %}>
-                                            Workstation</option>
-                                        <option value="camera" {% if device.device_type|lower in
-                                            ['camera','camera/iot','camera_iot'] %}selected{% endif %}>
-                                            Camera/IoT</option>
-                                        <option value="printer" {% if device.device_type|lower=='printer' %}selected{%
-                                            endif %}>
-                                            Printer</option>
-                                        <option value="mobile" {% if device.device_type|lower=='mobile' %}selected{%
-                                            endif %}>
-                                            Mobile</option>
-                                        <option value="iot" {% if device.device_type|lower=='iot' %}selected{% endif %}>
-                                            IoT</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    {% if device.snmp_enabled %}
-                                    <span class="badge bg-success">Enabled</span>
-                                    {% if device.snmp_last_error %}
-                                    <div class="small text-warning mt-1" title="{{ device.snmp_last_error }}">Error</div>
-                                    {% endif %}
-                                    {% else %}
-                                    <span class="badge bg-secondary">Disabled</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <span id="status-{{ device.device_id }}" class="status-indicator status-unknown"
-                                        title="Unknown"></span>
-                                </td>
-
-                                <td>
-                                    <div class="btn-group btn-group-sm device-actions">
-                                        <a class="btn btn-outline-info"
-                                            href="{{ url_for('devices_bp.device_details_page', device_id=device.device_id) }}"
-                                            title="Details">
-                                            <i data-lucide="info"></i>
-                                        </a>
-                                        <button class="btn btn-outline-warning"
-                                            onclick="toggleMonitoring({{ device.device_id }})"
-                                            title="Toggle Monitoring">
-                                            <i data-lucide="{% if device.is_monitored %}eye-off{% else %}eye{% endif %}"></i>
-                                        </button>
-                                        <button class="btn btn-outline-danger"
-                                            onclick="deleteDevice({{ device.device_id }})" title="Delete">
-                                            <i data-lucide="trash-2"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
+<tbody id="devices-table-body"></tbody>
                     </table>
                 </div>
-                {% if total_pages|default(1) > 1 %}
-                <div class="devices-pagination mt-2">
-                    <form method="get" action="{{ url_for('devices_bp.device_management') }}" class="per-page-form">
-                        <input type="hidden" name="page" value="1">
-                        <input type="hidden" name="search" value="{{ active_search or '' }}">
-                        <input type="hidden" name="type" value="{{ active_type or '' }}">
-                        <input type="hidden" name="subnet" value="{{ active_subnet or '' }}">
-                        <input type="hidden" name="status" value="{{ active_status or '' }}">
+<div class="devices-pagination mt-2" id="devices-pagination-container">
+                    <form id="perPageForm" class="per-page-form">
                         <label for="perPageSelect">Rows</label>
-                        <select id="perPageSelect" name="per_page"
-                            class="form-select form-select-sm bg-dark text-light border-secondary" onchange="clearCrossPageSelection(); this.form.submit();">
-                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
-                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-                            <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+                        <select id="perPageSelect" class="form-select form-select-sm bg-dark text-light border-secondary" onchange="clearCrossPageSelection(); scheduleFetchDevices();">
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
                         </select>
                     </form>
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearServerFilters()">
                         <i data-lucide="filter-x"></i> Clear Filters
                     </button>
-
-                    <ul class="pagination pagination-sm">
-                        <li class="page-item {% if page|default(1) <= 1 %}disabled{% endif %}">
-                            <a class="page-link"
-                                href="{% if page|default(1) <= 1 %}#{% else %}{{ url_for('devices_bp.device_management', page=1, per_page=per_page, search=active_search, type=active_type, subnet=active_subnet, status=active_status) }}{% endif %}">First</a>
-                        </li>
-                        <li class="page-item {% if page|default(1) <= 1 %}disabled{% endif %}">
-                            <a class="page-link"
-                                href="{% if page|default(1) <= 1 %}#{% else %}{{ url_for('devices_bp.device_management', page=page-1, per_page=per_page, search=active_search, type=active_type, subnet=active_subnet, status=active_status) }}{% endif %}">Prev</a>
-                        </li>
-                        <li class="page-item disabled">
-                            <span class="page-link">{{ page|default(1) }} / {{ total_pages|default(1) }}</span>
-                        </li>
-                        <li class="page-item {% if page|default(1) >= total_pages|default(1) %}disabled{% endif %}">
-                            <a class="page-link"
-                                href="{% if page|default(1) >= total_pages|default(1) %}#{% else %}{{ url_for('devices_bp.device_management', page=page+1, per_page=per_page, search=active_search, type=active_type, subnet=active_subnet, status=active_status) }}{% endif %}">Next</a>
-                        </li>
-                        <li class="page-item {% if page|default(1) >= total_pages|default(1) %}disabled{% endif %}">
-                            <a class="page-link"
-                                href="{% if page|default(1) >= total_pages|default(1) %}#{% else %}{{ url_for('devices_bp.device_management', page=total_pages, per_page=per_page, search=active_search, type=active_type, subnet=active_subnet, status=active_status) }}{% endif %}">Last</a>
-                        </li>
-                    </ul>
+                    <ul class="pagination pagination-sm" id="devices-pagination-list"></ul>
                 </div>
-                {% endif %}
-                {% else %}
-                <div class="empty-state">
-                    <i data-lucide="server"></i>
-                    <h5>No Devices Found</h5>
-                    <p>Start a network scan to discover devices on your network.</p>
+            </div>
+
+            <div class="empty-state devices-hidden" id="devices-empty-state">
+                <div class="empty-state text-center p-5">
+                    <i data-lucide="server" class="empty-state-icon"></i>
+                    <h5 class="mt-3">No Devices Found</h5>
+                    <p class="text-secondary">Start a network scan to discover devices on your network.</p>
                     <a href="{{ url_for('scanning_bp.scanner_page') }}" class="btn btn-primary mt-2">
                         <i data-lucide="scan-search"></i> Go to Scanner
                     </a>
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -786,8 +718,8 @@
                             </div>
 
                             <!-- SNMP Fields -->
-                            <div id="snmpFields" style="display: none;"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                            <div id="snmpFields"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
                                 <h6 class="text-info mb-3">SNMP Configuration</h6>
                                 <div class="row g-3">
                                     <div class="col-md-6">
@@ -812,7 +744,7 @@
                                     </div>
 
                                     <!-- v3 Fields -->
-                                    <div class="col-md-12" id="snmp_v3_fields" style="display: none;">
+                                    <div class="col-md-12 monitoring-fields-hidden" id="snmp_v3_fields">
                                         <div class="row g-3">
                                             <div class="col-md-6">
                                                 <label class="form-label">Username</label>
@@ -859,8 +791,8 @@
                             </div>
 
                             <!-- Agent Fields -->
-                            <div id="agentFields" style="display: none;"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                            <div id="agentFields"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
                                 <h6 class="text-info mb-3">Agent Configuration</h6>
                                 <div class="row g-3">
                                     <div class="col-md-6">
@@ -886,8 +818,8 @@
                             </div>
 
                             <!-- WMI Fields -->
-                            <div id="wmiFields" style="display: none;"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10">
+                            <div id="wmiFields"
+                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
                                 <h6 class="text-info mb-3">WMI Configuration</h6>
                                 <div class="alert alert-warning py-1 small"><i data-lucide="triangle-alert"></i>
                                     Not recommended for long-term monitoring.</div>
@@ -957,10 +889,305 @@
 </div>
 
 <script>
+    
+    // Keyed DOM patch helper
+    window.patchKeyedTableRows = function (tbody, items, options) {
+        if (!tbody) return;
+        const rows = Array.isArray(items) ? items : [];
+        const { getKey, renderCells, applyRow, emptyColSpan, emptyMessage, emptyClassName } = options || {};
+
+        if (!rows.length) {
+            tbody.innerHTML = `<tr><td colspan="${emptyColSpan || 1}" class="${emptyClassName || 'text-center'}">${emptyMessage || 'No data'}</td></tr>`;
+            return;
+        }
+
+        const existing = new Map();
+        Array.from(tbody.querySelectorAll('tr[data-row-key]')).forEach((row) => {
+            existing.set(row.dataset.rowKey, row);
+        });
+
+        const desiredRows = [];
+        rows.forEach((item, index) => {
+            const rawKey = getKey ? getKey(item, index) : index;
+            const key = String(rawKey || index);
+
+            let row = existing.get(key);
+            if (!row) {
+                row = document.createElement('tr');
+                row.dataset.rowKey = key;
+            } else {
+                existing.delete(key);
+            }
+
+            const nextCells = renderCells ? renderCells(item, index) : '';
+            if (row.innerHTML !== nextCells) {
+                row.innerHTML = nextCells;
+            }
+
+            if (applyRow) {
+                applyRow(row, item, index);
+            }
+            desiredRows.push(row);
+        });
+
+        existing.forEach((staleRow) => staleRow.remove());
+        
+        let i = 0;
+        for (const row of desiredRows) {
+            if (tbody.children[i] !== row) {
+                tbody.insertBefore(row, tbody.children[i]);
+            }
+            i++;
+        }
+    };
+
+    let currentPage = 1;
+    let currentPerPage = 100;
+    
+    window.scheduleFetchDevices = function() {
+        if (typeof filterDebounceTimer !== 'undefined' && filterDebounceTimer) {
+            clearTimeout(filterDebounceTimer);
+        }
+        window.filterDebounceTimer = setTimeout(() => {
+            fetchDevices();
+        }, DEVICES_UI_CONFIG.filterDebounceMs);
+    };
+
+    window.goToPage = function(page) {
+        currentPage = page;
+        clearCrossPageSelection();
+        fetchDevices();
+    };
+
+    window.fetchDevices = function(forcePage=null) {
+        if (forcePage !== null) currentPage = forcePage;
+        
+        const filters = typeof getCurrentFilters === 'function' ? getCurrentFilters() : {search:'', type:'', subnet:'', status:''};
+        const perPageSelect = document.getElementById('perPageSelect');
+        if (perPageSelect) currentPerPage = parseInt(perPageSelect.value, 10);
+        
+        const params = new URLSearchParams({
+            page: currentPage,
+            per_page: currentPerPage,
+            search: filters.search,
+            type: filters.type,
+            subnet: filters.subnet,
+            status: filters.status
+        });
+
+        const fetchUrl = `/api/devices?${params.toString()}`;
+        
+        fetch(fetchUrl)
+            .then(res => res.json())
+            .then(data => {
+                const totalDevices = data.total_devices || 0;
+                const totalPages = data.total_pages || 1;
+                const devices = data.devices || [];
+                const globalCount = data.global_device_count || totalDevices;
+                
+                const wrapper = document.getElementById('devices-wrapper');
+                const emptyState = document.getElementById('devices-empty-state');
+                const totalEl = document.getElementById('deviceTotalCount');
+                
+                if (totalDevices === 0 && !filters.search && !filters.type && !filters.subnet && !filters.status) {
+                    if (wrapper) wrapper.classList.add('devices-hidden');
+                    if (emptyState) emptyState.classList.remove('devices-hidden');
+                    return;
+                } else {
+                    if (wrapper) wrapper.classList.remove('devices-hidden');
+                    if (emptyState) emptyState.classList.add('devices-hidden');
+                }
+
+                const infoAlert = document.querySelector('.alert.alert-info');
+                if (infoAlert) {
+                    infoAlert.innerHTML = `<i data-lucide="info"></i> Showing <span id="deviceTotalCount">${devices.length}</span> of ${totalDevices} matched device(s) | Inventory ${globalCount} | Page ${currentPage} of ${totalPages}`;
+                }
+
+                const tbody = document.getElementById('devices-table-body');
+                if (tbody) {
+                    window.patchKeyedTableRows(tbody, devices, {
+                        getKey: (d) => d.device_id,
+                        emptyColSpan: 7,
+                        emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
+                        emptyClassName: 'text-center',
+                        applyRow: (row, d) => {
+                            row.dataset.deviceId = d.device_id;
+                            row.dataset.deviceIp = d.device_ip;
+                            row.dataset.subnet = d.subnet_cidr || '';
+                            row.dataset.liveStatus = normalizeDeviceStatusKey(d.status);
+                        },
+                        renderCells: (d) => {
+                            const isUnknown = !d.device_type || d.device_type.toLowerCase() === 'unknown';
+                            
+                            const options = ['unknown','switch','access_point','router','firewall','server','workstation','camera','printer','mobile','iot'];
+                            const labels = ['Unknown','Switch','Access Point','Router','Firewall','Server','Workstation','Camera/IoT','Printer','Mobile','IoT'];
+                            
+                            let typeSelectHtml = `<select class="form-select form-select-sm bg-dark text-light border-secondary device-type-select" onchange="updateDeviceType(${d.device_id}, this.value, this)">`;
+                            options.forEach((opt, idx) => {
+                                let selected = (d.device_type || '').toLowerCase() === opt || (opt==='camera' && ['camera/iot','camera_iot'].includes((d.device_type||'').toLowerCase()));
+                                typeSelectHtml += `<option value="${opt}" ${selected ? 'selected' : ''}>${labels[idx]}</option>`;
+                            });
+                            typeSelectHtml += `</select>`;
+
+                            let snmpHtml = d.snmp_enabled 
+                                ? `<span class="badge bg-success">Enabled</span>` + (d.snmp_last_error ? `<div class="small text-warning mt-1" title="${d.snmp_last_error}">Error</div>` : '')
+                                : `<span class="badge bg-secondary">Disabled</span>`;
+
+                            const statusKey = normalizeDeviceStatusKey(d.status);
+                            const statusClass = statusKey === 'online'
+                                ? 'status-online'
+                                : statusKey === 'maintenance'
+                                    ? 'status-maintenance'
+                                    : 'status-offline';
+                            const statusText = statusKey === 'online'
+                                ? 'Online'
+                                : statusKey === 'maintenance'
+                                    ? 'Maintenance'
+                                    : 'Offline';
+                            
+                            const isChecked = (typeof globalFilteredSelectionIds !== 'undefined' && globalFilteredSelectionIds.has(d.device_id)) ? 'checked' : '';
+
+                            return `
+                                <td>
+                                    <div class="form-check">
+                                        <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" ${isChecked}>
+                                    </div>
+                                </td>
+                                <td class="device-name-cell">
+                                    <strong>${d.device_name}</strong>
+                                    <div class="device-mac">
+                                        <span class="me-1">MAC</span>
+                                        <code>${d.macaddress || 'N/A'}</code>
+                                    </div>
+                                </td>
+                                <td><code>${d.device_ip}</code></td>
+                                <td>${typeSelectHtml}</td>
+                                <td>${snmpHtml}</td>
+                                <td>
+                                    <span id="status-${d.device_id}" class="status-indicator ${statusClass}" title="${statusText}"></span>
+                                    <span class="visually-hidden">${statusText}</span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm device-actions">
+                                        <a class="btn btn-outline-info" href="/devices/${d.device_id}/details" title="Details">
+                                            <i data-lucide="info"></i>
+                                        </a>
+                                        <button class="btn btn-outline-warning" onclick="toggleMonitoring(${d.device_id})" title="Toggle Monitoring">
+                                            <i data-lucide="${d.is_monitored ? 'eye-off' : 'eye'}"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="deleteDevice(${d.device_id})" title="Delete">
+                                            <i data-lucide="trash-2"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            `;
+                        }
+                    });
+                }
+                
+                if (typeof rebuildDeviceRowsCache === 'function') rebuildDeviceRowsCache();
+                if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+                if (typeof updateBulkUI === 'function') updateBulkUI();
+                
+                // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
+                if (typeof fetchAllStatuses === 'function') fetchAllStatuses({ force: true });
+                
+                const pagList = document.getElementById('devices-pagination-list');
+                const pagCont = document.getElementById('devices-pagination-container');
+                if (pagList && pagCont) {
+                    if (totalPages > 1) {
+                        pagCont.classList.remove('devices-hidden');
+                        let html = '';
+                        html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(1);">First</a></li>`;
+                        html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage - 1});">Prev</a></li>`;
+                        html += `<li class="page-item disabled"><span class="page-link">${currentPage} / ${totalPages}</span></li>`;
+                        html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage + 1});">Next</a></li>`;
+                        html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${totalPages});">Last</a></li>`;
+                        pagList.innerHTML = html;
+                    } else {
+                        pagCont.classList.add('devices-hidden');
+                    }
+                }
+            })
+            .catch((error) => {
+                console.error(error);
+                showDevicesNotification('Failed to load devices. Please retry.', 'danger');
+            });
+    };
+
+    // Override the submitServerFilters function to not submit the form but trigger JS fetch
+    window.submitServerFilters = function(options = {}) {
+        if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
+        fetchDevices(1);
+    };
+
+    // Replace the DOMContentLoaded clearServerFilters
+    
+
+
+    window.clearServerFilters = function() {
+        const form = document.getElementById('deviceFilterForm');
+        if (!form) return;
+        const searchInput = form.querySelector('input[name="search"]');
+        const typeSelect = form.querySelector('select[name="type"]');
+        const subnetSelect = form.querySelector('select[name="subnet"]');
+        const statusSelect = form.querySelector('select[name="status"]');
+        
+        if (searchInput) searchInput.value = '';
+        if (typeSelect) typeSelect.value = '';
+        if (subnetSelect) subnetSelect.value = '';
+        if (statusSelect) statusSelect.value = '';
+        
+        if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
+        fetchDevices(1);
+    };
+
+    window.filterTable = function() {
+        fetchDevices();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchDevices(1);
+    });
+
+
     function hydrateLucideIcons() {
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }
+    }
+
+    function showDevicesNotification(message, type = 'info', timeoutMs = 4200) {
+        const host = document.getElementById('devicesNotificationHost');
+        if (!host) return;
+
+        const allowedTypes = new Set(['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark']);
+        const safeType = allowedTypes.has(type) ? type : 'info';
+
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${safeType} alert-dismissible fade show devices-notification`;
+        alert.setAttribute('role', 'alert');
+
+        const messageNode = document.createElement('span');
+        messageNode.textContent = String(message || '');
+        alert.appendChild(messageNode);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'btn-close';
+        closeBtn.setAttribute('data-bs-dismiss', 'alert');
+        closeBtn.setAttribute('aria-label', 'Close');
+        alert.appendChild(closeBtn);
+
+        host.appendChild(alert);
+
+        window.setTimeout(() => {
+            if (!alert.parentNode) return;
+            alert.classList.remove('show');
+            window.setTimeout(() => {
+                alert.remove();
+            }, 180);
+        }, timeoutMs);
     }
 
     const DEVICES_UI_CONFIG = Object.freeze({
@@ -990,12 +1217,25 @@
     let filteredSelectionHideTimer = null;
     let filteredSelectionStartedAt = 0;
 
+    function normalizeDeviceStatusKey(rawStatus) {
+        const normalized = String(rawStatus || '').trim().toLowerCase();
+        if (normalized === 'online' || normalized === 'up') return 'online';
+        if (normalized === 'maintenance') return 'maintenance';
+        return 'offline';
+    }
+
+    function statusTextFromKey(statusKey) {
+        if (statusKey === 'online') return 'Online';
+        if (statusKey === 'maintenance') return 'Maintenance';
+        return 'Offline';
+    }
+
     function getStatusKeyFromElement(statusElement) {
-        if (!statusElement) return 'unknown';
+        if (!statusElement) return 'offline';
         if (statusElement.classList.contains('status-online')) return 'online';
         if (statusElement.classList.contains('status-offline')) return 'offline';
         if (statusElement.classList.contains('status-maintenance')) return 'maintenance';
-        return 'unknown';
+        return 'offline';
     }
 
     function rebuildDeviceRowsCache() {
@@ -1012,10 +1252,10 @@
             row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
             return {
                 row,
-                deviceId: row.getAttribute('data-device-id'),
+                deviceId: row.dataset.deviceId || row.getAttribute('data-device-id'),
                 nameText: (row.cells[1]?.textContent || '').toLowerCase(),
                 ipText: (row.cells[2]?.textContent || '').toLowerCase(),
-                subnet: row.getAttribute('data-subnet') || '',
+                subnet: row.dataset.subnet || row.dataset.subnet || row.getAttribute('data-subnet') || '',
                 typeSelect,
                 checkbox: row.querySelector('.device-checkbox'),
                 statusElement
@@ -1043,11 +1283,11 @@
 
     function getRenderableDeviceIds() {
         if (!deviceRowsCache.length) {
-            rebuildDeviceRowsCache();
+            // fetchDevices handles this now
         }
 
         const statusFilterActive = hasActiveStatusFilter();
-        const visibleRows = deviceRowsCache.filter(entry => entry.row.style.display !== 'none');
+        const visibleRows = deviceRowsCache.filter(entry => !entry.row.classList.contains('devices-row-hidden'));
         const targetRows = statusFilterActive
             ? deviceRowsCache
             : (visibleRows.length ? visibleRows : deviceRowsCache);
@@ -1062,10 +1302,10 @@
 
     function getVisibleDeviceCheckboxes() {
         if (!deviceRowsCache.length) {
-            rebuildDeviceRowsCache();
+            // fetchDevices handles this now
         }
         return deviceRowsCache
-            .filter(entry => entry.row.style.display !== 'none')
+            .filter(entry => !entry.row.classList.contains('devices-row-hidden'))
             .map(entry => entry.checkbox)
             .filter(Boolean);
     }
@@ -1313,13 +1553,16 @@
             const isTruncated = Boolean(data.truncated);
             if (totalMatched <= 0 || selectedCount <= 0) {
                 stopFilteredSelectionProgress('No devices matched.');
-                alert('No devices match current filters.');
+                showDevicesNotification('No devices match current filters.', 'warning');
                 return;
             }
 
             if (isTruncated) {
                 stopFilteredSelectionProgress('Result too large. Narrow filters.');
-                alert(`Filtered set is too large (${totalMatched}). Narrow filters to <= ${data.max_ids || 2000} devices.`);
+                showDevicesNotification(
+                    `Filtered set is too large (${totalMatched}). Narrow filters to <= ${data.max_ids || 2000} devices.`,
+                    'warning'
+                );
                 return;
             }
 
@@ -1344,7 +1587,7 @@
         } catch (error) {
             console.error(error);
             stopFilteredSelectionProgress('Selection failed.');
-            alert(`Failed to select filtered devices: ${error.message}`);
+            showDevicesNotification(`Failed to select filtered devices: ${error.message}`, 'danger');
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -1408,7 +1651,7 @@
             });
         });
 
-        rebuildDeviceRowsCache();
+        // fetchDevices handles this now
         updateDeviceTotalCount();
         const initialFilters = getCurrentFilters();
         lastFilterSignature = `${(initialFilters.status || '').toLowerCase()}|${(initialFilters.search || '').toLowerCase()}`;
@@ -1443,9 +1686,13 @@
     function toggleMonitoringFields() {
         const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
 
-        document.getElementById('snmpFields').style.display = mode === 'snmp' ? 'block' : 'none';
-        document.getElementById('agentFields').style.display = mode === 'agent' ? 'block' : 'none';
-        document.getElementById('wmiFields').style.display = mode === 'wmi' ? 'block' : 'none';
+        const snmpFields = document.getElementById('snmpFields');
+        const agentFields = document.getElementById('agentFields');
+        const wmiFields = document.getElementById('wmiFields');
+
+        if (snmpFields) snmpFields.classList.toggle('monitoring-fields-hidden', mode !== 'snmp');
+        if (agentFields) agentFields.classList.toggle('monitoring-fields-hidden', mode !== 'agent');
+        if (wmiFields) wmiFields.classList.toggle('monitoring-fields-hidden', mode !== 'wmi');
     }
 
     function toggleSnmpVersion() {
@@ -1454,11 +1701,11 @@
         const v3Fields = document.getElementById('snmp_v3_fields');
 
         if (version === 'v2c') {
-            v2Fields.style.display = 'block';
-            v3Fields.style.display = 'none';
+            v2Fields.classList.remove('monitoring-fields-hidden');
+            v3Fields.classList.add('monitoring-fields-hidden');
         } else {
-            v2Fields.style.display = 'none';
-            v3Fields.style.display = 'block';
+            v2Fields.classList.add('monitoring-fields-hidden');
+            v3Fields.classList.remove('monitoring-fields-hidden');
         }
     }
 
@@ -1553,10 +1800,10 @@
         const crossPageBtn = document.getElementById('selectFilteredAcrossPagesBtn');
 
         if (count > 0 && bulkDiv) {
-            bulkDiv.style.display = 'flex';
+            bulkDiv.classList.remove('devices-hidden');
             if (countSpan) countSpan.textContent = count;
         } else if (bulkDiv) {
-            bulkDiv.style.display = 'none';
+            bulkDiv.classList.add('devices-hidden');
         }
 
         if (crossPageHint) {
@@ -1608,7 +1855,7 @@
                         const row = document.querySelector(`tr[data-device-id="${id}"]`);
                         if (row) row.remove();
                     });
-                    rebuildDeviceRowsCache();
+                    // fetchDevices handles this now
                     updateDeviceTotalCount();
                     clearCrossPageSelection();
                     updateBulkUI();
@@ -1617,14 +1864,14 @@
                     if (selectAll) {
                         selectAll.checked = false;
                     }
-                    alert(`Successfully deleted ${data.deleted} devices.`);
+                    showDevicesNotification(`Successfully deleted ${data.deleted} devices.`, 'success');
                 } else {
-                    alert(`Error: ${data.error || 'Unknown error'}`);
+                    showDevicesNotification(`Delete failed: ${data.error || 'Unknown error'}`, 'danger');
                 }
             })
             .catch(err => {
                 console.error(err);
-                alert('Error deleting devices');
+                showDevicesNotification('Error deleting devices', 'danger');
             })
             .finally(() => {
                 if (btn) {
@@ -1646,30 +1893,15 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Show success toast
-                    const toast = document.createElement('div');
-                    toast.className = 'position-fixed bottom-0 end-0 p-3';
-                    toast.style.zIndex = '9999';
-                    toast.innerHTML = `
-                <div class="toast show align-items-center text-white bg-success border-0" role="alert">
-                    <div class="d-flex">
-                        <div class="toast-body">
-                            <i data-lucide="check"></i> Device type updated to ${newType}
-                        </div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>
-                </div>`;
-                    document.body.appendChild(toast);
-                    hydrateLucideIcons();
-                    setTimeout(() => toast.remove(), 3000);
+                    showDevicesNotification(`Device type updated to ${newType}`, 'success');
                     scheduleFilterTable();
                 } else {
-                    alert('Error updating type: ' + data.error);
+                    showDevicesNotification('Error updating type: ' + data.error, 'danger');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating type');
+                showDevicesNotification('Error updating type', 'danger');
             })
             .finally(() => {
                 selectElement.disabled = false;
@@ -1694,12 +1926,12 @@
                         updateMonitoringToggleIcon(deviceId, data.is_monitored);
                         fetchAllStatuses({ force: true, deviceIds: [deviceId] });
                     } else {
-                        alert('Error toggling monitoring');
+                        showDevicesNotification('Error toggling monitoring', 'danger');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Error toggling monitoring');
+                    showDevicesNotification('Error toggling monitoring', 'danger');
                 });
         }
     }
@@ -1773,10 +2005,10 @@
             .then(data => {
                 if (!data.devices || !Array.isArray(data.devices)) return;
                 if (!deviceRowsCache.length) {
-                    rebuildDeviceRowsCache();
+                    // fetchDevices handles this now
                 }
                 if (!deviceRowById.size && deviceRowsCache.length) {
-                    rebuildDeviceRowsCache();
+                    // fetchDevices handles this now
                 }
 
                 const applyStatusUpdates = () => {
@@ -1786,17 +2018,18 @@
                         const entry = deviceRowById.get(String(device.device_id));
                         if (!entry || !entry.statusElement) return;
 
-                        const status = (device.status || 'Unknown').toLowerCase();
-                        let statusClass = 'status-unknown';
-                        if (status === 'online') statusClass = 'status-online';
-                        else if (status === 'offline') statusClass = 'status-offline';
-                        else if (status === 'maintenance') statusClass = 'status-maintenance';
+                        const status = normalizeDeviceStatusKey(device.status);
+                        const statusClass = status === 'online'
+                            ? 'status-online'
+                            : status === 'maintenance'
+                                ? 'status-maintenance'
+                                : 'status-offline';
 
                         const latencyText = (device.latency != null && status === 'online')
                             ? ` (${Math.round(device.latency)}ms)` : '';
 
                         const nextClassName = `status-indicator ${statusClass}`;
-                        const nextTitle = (device.status || 'Unknown') + latencyText;
+                        const nextTitle = statusTextFromKey(status) + latencyText;
 
                         if (entry.statusElement.className !== nextClassName) {
                             entry.statusElement.className = nextClassName;
@@ -1911,7 +2144,7 @@
 
     function filterTable() {
         if (!deviceRowsCache.length) {
-            rebuildDeviceRowsCache();
+            // fetchDevices handles this now
         }
         if (!deviceRowsCache.length) return;
 
@@ -1934,7 +2167,7 @@
         let visibleCount = 0;
 
         deviceRowsCache.forEach(entry => {
-            const status = (entry.row.dataset.liveStatus || getStatusKeyFromElement(entry.statusElement) || 'unknown').toLowerCase();
+            const status = (entry.row.dataset.liveStatus || getStatusKeyFromElement(entry.statusElement) || 'offline').toLowerCase();
             const typeValue = (entry.typeSelect ? String(entry.typeSelect.value || '') : '').toLowerCase();
             const subnetValue = String(entry.subnet || '').toLowerCase();
             const matchesSearch = searchFilter === ''
@@ -1945,13 +2178,15 @@
 
             const matchesStatus = statusFilter === '' || status === statusFilter;
             const isVisible = matchesStatus && matchesSearch;
-            const nextDisplay = isVisible ? '' : 'none';
             if (isVisible) {
                 visibleCount += 1;
             }
 
-            if (entry.row.style.display !== nextDisplay) {
-                entry.row.style.display = nextDisplay;
+            const isHidden = entry.row.classList.contains('devices-row-hidden');
+            if (isVisible && isHidden) {
+                entry.row.classList.remove('devices-row-hidden');
+            } else if (!isVisible && !isHidden) {
+                entry.row.classList.add('devices-row-hidden');
             }
 
             if (!isVisible && entry.checkbox && entry.checkbox.checked) {

@@ -6,6 +6,7 @@ aioping==0.4.0
 mac-vendor-lookup==0.1.12
 
 schedule==1.2.0
+APScheduler>=3.10.4
 requests==2.31.0
 python-dotenv==1.0.0
 opencv-python==4.8.1.78
@@ -23,6 +24,9 @@ pyasn1==0.4.8
 
 # PostgreSQL Driver
 psycopg2-binary==2.9.9
+
+# Redis
+redis>=5.0.0
 
 # Reporting / Export
 openpyxl>=3.1.0

@@ -49,6 +49,7 @@ class ServerHealthLog(db.Model):
     # Network Connections
     network_connections_total = db.Column(db.Integer, nullable=True)
     network_connections_established = db.Column(db.Integer, nullable=True)
+    network_connections_unique_ips = db.Column(db.Integer, nullable=True)
     
     # Processes
     process_count = db.Column(db.Integer, nullable=True)
@@ -61,6 +62,7 @@ class ServerHealthLog(db.Model):
     # JSON fields for complex data
     top_processes = db.Column(db.JSON, nullable=True)  # Top 5 processes by memory
     top_processes_cpu = db.Column(db.JSON, nullable=True)  # Top 5 processes by CPU
+    network_top_remote_ips = db.Column(db.JSON, nullable=True) # Top 20 connected remote IPs
     alerts = db.Column(db.JSON, nullable=True)  # Active system alerts
     
     # ICMP metrics (populated when source='icmp')
@@ -111,6 +113,7 @@ class ServerHealthLog(db.Model):
             'disk_busy_percent': self.disk_busy_percent,
             'network_connections_total': self.network_connections_total,
             'network_connections_established': self.network_connections_established,
+            'network_connections_unique_ips': self.network_connections_unique_ips,
             'process_count': self.process_count,
             'zombie_count': self.zombie_count,
             'context_switches_per_sec': self.context_switches_per_sec,
@@ -119,6 +122,7 @@ class ServerHealthLog(db.Model):
             'fd_percent': self.fd_percent,
             'top_processes': self.top_processes,
             'top_processes_cpu': self.top_processes_cpu,
+            'network_top_remote_ips': self.network_top_remote_ips,
             'alerts': self.alerts,
             'ping_latency_ms': self.ping_latency_ms,
             'packet_loss_pct': self.packet_loss_pct,

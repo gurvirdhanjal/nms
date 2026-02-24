@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import aioping
 import socket
 import subprocess
@@ -313,7 +314,7 @@ class NetworkScanner:
             try:
                 # Newer versions might return a coroutine directly
                 vendor = self.mac_lookup.lookup(mac)
-                if asyncio.iscoroutine(vendor) or (hasattr(vendor, '__await__') and not isinstance(vendor, str)):
+                if inspect.isawaitable(vendor):
                     vendor = await vendor
             except Exception:
                 vendor = "Unknown"

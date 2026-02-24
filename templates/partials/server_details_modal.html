@@ -1,0 +1,305 @@
+<div class="modal fade" id="serverDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content tactical-card">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title"><i class="fas fa-server"></i><span id="server-modal-title">Server Details</span>
+                </h5>
+                <div class="d-flex align-items-center gap-2">
+                    <a id="server-modal-open-page" class="btn btn-sm tactical-btn-outline" href="#" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-external-link-alt me-1"></i>Open Full Page
+                    </a>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-4 g-3 align-items-end">
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Health Status</div>
+                        <div class="fw-bold" id="server-modal-status">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Last Seen</div>
+                        <div class="fw-bold" id="server-modal-last-seen">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-secondary small">Uptime</div>
+                        <div class="fw-bold" id="server-modal-uptime">-</div>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <div class="btn-group btn-group-sm server-range-toggle" role="group"
+                            aria-label="Server time range">
+                            <button type="button" class="btn tactical-btn-outline" data-range="15m">15m</button>
+                            <button type="button" class="btn tactical-btn-outline" data-range="1h">1h</button>
+                            <button type="button" class="btn tactical-btn-outline" data-range="6h">6h</button>
+                            <button type="button" class="btn tactical-btn-outline active" data-range="24h">24h</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-4 g-3">
+                    <div class="col-md-3">
+                        <div class="text-secondary small">IP Address</div>
+                        <div class="fw-bold" id="server-modal-ip">-</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-secondary small">OS</div>
+                        <div class="fw-bold" id="server-modal-os">-</div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="text-secondary small">Hardware</div>
+                        <div class="fw-bold" id="server-modal-hardware">-</div>
+                    </div>
+                </div>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="fw-bold">CPU Usage</div>
+                                    <div class="small text-secondary" id="server-cpu-summary">Current: - | Avg: - |
+                                        Peak: -</div>
+                                </div>
+                                <span class="metric-status" id="server-cpu-status">-</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="modal-chart-200"><canvas id="chart-server-cpu"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="fw-bold">Memory</div>
+                                    <div class="small text-secondary" id="server-mem-summary">-</div>
+                                    <div class="small text-secondary" id="server-mem-peak">Peak Today: -</div>
+                                </div>
+                                <span class="metric-status" id="server-mem-status">-</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="modal-chart-200"><canvas id="chart-server-mem"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="fw-bold">Disk</div>
+                                    <div class="small text-secondary" id="server-disk-summary">-</div>
+                                    <div class="small text-secondary" id="server-disk-free">Free: -</div>
+                                </div>
+                                <span class="metric-status" id="server-disk-status">-</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="modal-chart-200"><canvas id="chart-server-disk"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-1">
+                    <div class="col-md-12">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Network IO (MB)</div>
+                            <div class="card-body">
+                                <div class="modal-chart-220"><canvas id="chart-server-net"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-1">
+                    <div class="col-md-6">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small d-flex justify-content-between align-items-center">
+                                <span>Agent Connections (Top 20 IPs)</span>
+                                <span id="server-modal-agent-unique-ips" class="tactical-badge tactical-badge-secondary">-</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="small text-secondary px-3 py-2" id="server-modal-agent-updated">Snapshot: -</div>
+                                <div class="table-responsive">
+                                    <table class="tactical-table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Remote IP</th>
+                                                <th>Active Connections</th>
+                                                <th>Resolved Device</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="server-modal-agent-connections-body">
+                                            <tr>
+                                                <td colspan="3" class="text-center text-secondary p-3">No agent snapshot loaded.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small d-flex justify-content-between align-items-center">
+                                <span>Connection Snapshot (Agent)</span>
+                                <button type="button" class="btn btn-sm tactical-btn-outline" id="btnModalRefreshSnapshot">
+                                    <i class="fas fa-sync-alt me-1"></i>Refresh Snapshot
+                                </button>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="small text-secondary px-3 py-2" id="server-modal-snapshot-status">Snapshot not loaded yet.</div>
+                                <div class="table-responsive">
+                                    <table class="tactical-table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Remote IP</th>
+                                                <th>Hostname</th>
+                                                <th>Connections</th>
+                                                <th>Resolved Device</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="server-modal-snapshot-connections-body">
+                                            <tr>
+                                                <td colspan="4" class="text-center text-secondary p-3">Click "Refresh Snapshot" to load latest agent connection data.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-3 mt-3">
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Load Average (1/5/15 min)</div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-around align-items-center load-avg-row">
+                                    <div class="text-center">
+                                        <div class="text-secondary small">1min</div>
+                                        <div class="fw-bold fs-5" id="load-avg-1min">-</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-secondary small">5min</div>
+                                        <div class="fw-bold fs-5" id="load-avg-5min">-</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-secondary small">15min</div>
+                                        <div class="fw-bold fs-5" id="load-avg-15min">-
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Swap Usage</div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between small text-secondary">
+                                        <span id="swap-used-text">- MB</span><span id="swap-percent-text">-%</span>
+                                    </div>
+                                    <div class="progress swap-progress-shell">
+                                        <div id="swap-progress-bar" class="progress-bar" role="progressbar"></div>
+                                    </div>
+                                </div>
+                                <div class="small text-secondary">Total: <span id="swap-total-text">- MB</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Processes & Connections</div>
+                            <div class="card-body">
+                                <div class="row g-2 small">
+                                    <div class="col-6">
+                                        <div class="text-secondary">Total Processes</div>
+                                        <div class="fw-bold" id="process-count">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-secondary">Zombie</div>
+                                        <div class="fw-bold text-warning" id="zombie-count">
+                                            -</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-secondary">Connections</div>
+                                        <div class="fw-bold" id="connections-total">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-secondary">Established</div>
+                                        <div class="fw-bold text-success" id="connections-established">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-1">
+                    <div class="col-md-12">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Disk I/O (Read/Write
+                                Operations)</div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-3 small">
+                                    <div class="col-3">
+                                        <div class="text-secondary">Read Ops</div>
+                                        <div class="fw-bold" id="disk-read-count">-
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-secondary">Write Ops</div>
+                                        <div class="fw-bold" id="disk-write-count">-
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-secondary">Read MB</div>
+                                        <div class="fw-bold" id="disk-read-mb">-</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-secondary">Write MB</div>
+                                        <div class="fw-bold" id="disk-write-mb">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-1">
+                    <div class="col-md-12">
+                        <div class="tactical-card h-100">
+                            <div class="card-header small">Top 5 Processes (Memory
+                                Hogs)</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="tactical-table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Process Name</th>
+                                                <th>PID</th>
+                                                <th>CPU %</th>
+                                                <th>Memory %</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="top-processes-body">
+                                            <tr>
+                                                <td colspan="5" class="text-center text-secondary p-3">
+                                                    No process data available</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="server-alerts-banner" class="alert alert-warning mt-4 alert-banner-warning">
+                    <div class="d-flex align-items-start gap-3"><i class="fas fa-exclamation-triangle mt-1"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold mb-2">System Alerts</div>
+                            <div id="server-alerts-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

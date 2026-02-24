@@ -166,12 +166,10 @@ def save_snmp_config():
         if not device:
             return jsonify({'error': 'Device not found'}), 404
         
-        # Find or create config
-        snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
-        
-        if not snmp_config:
-            snmp_config = DeviceSnmpConfig(device_id=device_id)
-            db.session.add(snmp_config)
+        # Find or create config using relationship
+        if not device.snmp_config:
+            device.snmp_config = DeviceSnmpConfig()
+        snmp_config = device.snmp_config
         
         # Update fields
         if 'community_string' in data:
@@ -185,7 +183,11 @@ def save_snmp_config():
         if 'is_enabled' in data:
             snmp_config.is_enabled = data['is_enabled']
         
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as commit_error:
+            db.session.rollback()
+            raise commit_error
         
         return jsonify({
             'success': True,

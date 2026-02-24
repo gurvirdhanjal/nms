@@ -1,7 +1,7 @@
 import logging
 import socket
 import time
-from models import Device, SSHProfile, SwitchTopology, db
+from models.ssh_profile import SSHProfile
 
 # Try to import paramiko, handle missing dependency gracefully
 try:
@@ -97,7 +97,7 @@ class SSHService:
         
         Mock implementation for now if no SSH profile.
         """
-        if not device.ssh_profile_id:
+        if not getattr(device, 'ssh_profile_id', None):
             return self._simulate_lldp_neighbors(device)
 
         # Real implementation would be here...
@@ -217,3 +217,82 @@ class SSHService:
             'uptime': "Windows Server", # Getting uptime is verbose in PS, skip for speed
             'status': 'online'
         }
+
+    def get_active_connections(self, host, profile_id, timeout=10):
+        """
+        Connects to a server to retrieve established TCP connections.
+        Returns a list of dicts: [{'remote_ip': str, 'remote_port': int, 'local_port': int, 'state': str}]
+        """
+        try:
+            is_linux = False
+            try:
+                out_uname, _ = self.execute_command(host, profile_id, "uname", timeout=5)
+                if "Linux" in out_uname:
+                    is_linux = True
+            except:
+                pass
+
+            if is_linux:
+                return self._get_linux_connections(host, profile_id, timeout)
+            else:
+                return self._get_windows_connections(host, profile_id, timeout)
+        except Exception as e:
+            self.logger.error(f"Failed to get connections for {host}: {e}")
+            return []
+
+    def _get_linux_connections(self, host, profile_id, timeout):
+        # Format of ss: ESTAB  0      0            10.10.1.88:22       10.10.1.100:60000 
+        cmd = "ss -tn state established | awk '{print $4, $5}' | tail -n +2"
+        out_conn, _ = self.execute_command(host, profile_id, cmd, timeout)
+        
+        connections = []
+        if not out_conn:
+            return connections
+            
+        for line in out_conn.strip().split('\\n'):
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                local_str = parts[0]
+                remote_str = parts[1]
+                
+                if ':' in remote_str and not remote_str.startswith('['):
+                    try:
+                        r_ip, r_port = remote_str.rsplit(':', 1)
+                        l_ip, l_port = local_str.rsplit(':', 1)
+                        if not r_ip.startswith('127.') and r_ip != '0.0.0.0':
+                            connections.append({
+                                'remote_ip': r_ip,
+                                'remote_port': int(r_port) if r_port.isdigit() else 0,
+                                'local_port': int(l_port) if l_port.isdigit() else 0,
+                                'state': 'ESTABLISHED'
+                            })
+                    except Exception as e:
+                        continue
+        return connections
+
+    def _get_windows_connections(self, host, profile_id, timeout):
+        cmd = 'powershell "Get-NetTCPConnection -State Established | Select-Object LocalPort,RemoteAddress,RemotePort | ConvertTo-Json"'
+        out_conn, _ = self.execute_command(host, profile_id, cmd, timeout)
+        
+        import json
+        connections = []
+        if not out_conn:
+            return connections
+            
+        try:
+            data = json.loads(out_conn)
+            if isinstance(data, dict):
+                data = [data]
+            for conn in data:
+                r_ip = conn.get('RemoteAddress', '')
+                if r_ip and not r_ip.startswith('127.') and r_ip != '::1':
+                    connections.append({
+                        'remote_ip': r_ip,
+                        'remote_port': int(conn.get('RemotePort', 0)),
+                        'local_port': int(conn.get('LocalPort', 0)),
+                        'state': 'ESTABLISHED'
+                    })
+        except Exception as e:
+            self.logger.error(f"Failed to parse windows connections: {e}")
+            
+        return connections

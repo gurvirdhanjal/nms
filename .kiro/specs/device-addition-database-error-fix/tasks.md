@@ -1,0 +1,147 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Fault Condition** - SNMP Configuration Creation for New Devices
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the NotNullViolation bug exists
+  - **Scoped PBT Approach**: Scope the property to concrete failing cases: new device creation with SNMP data
+  - Test that creating a new device with SNMP data via `upsert_device_from_identity()` and `_upsert_snmp_config_for_device()` raises NotNullViolation error
+  - Test that bulk device addition (5 devices with SNMP) fails and pollutes session causing subsequent requests to fail
+  - Test that POST to `/scanning/add_to_inventory` with new device + SNMP data returns 500 error
+  - Verify device.device_id is None before flush when DeviceSnmpConfig is created
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS with NotNullViolation error (this is correct - it proves the bug exists)
+  - Document counterexamples found: specific error messages, device_id values, session state
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 2.1, 2.2_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Existing Device and SNMP Update Behavior
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs (device updates, SNMP updates, device creation without SNMP)
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements
+  - Test 1: Device updates (existing device, change IP/hostname/manufacturer) - observe and verify behavior preserved
+  - Test 2: SNMP config updates (existing device with existing SNMP config) - observe and verify behavior preserved
+  - Test 3: Device creation without SNMP data - observe and verify behavior preserved
+  - Test 4: Identity matching (MAC → Hostname → IP priority) - observe and verify behavior preserved
+  - Test 5: Bulk operations for existing devices - observe and verify behavior preserved
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [-] 3. Fix for device addition database error
+
+  - [x] 3.1 Add SQLAlchemy relationship to Device model
+    - Open `models/device.py`
+    - Add `snmp_config` relationship property after line 119 (after other relationships)
+    - Use: `snmp_config = db.relationship('DeviceSnmpConfig', backref='device', uselist=False, cascade='all, delete-orphan')`
+    - `uselist=False` ensures one-to-one relationship
+    - `cascade='all, delete-orphan'` ensures SNMP config is deleted when device is deleted
+    - `backref='device'` creates reverse relationship on DeviceSnmpConfig
+    - _Bug_Condition: isBugCondition(input) where input.device_is_new == True AND input.snmp_data_present == True AND device.device_id == None_
+    - _Expected_Behavior: SQLAlchemy relationship handles FK assignment automatically after device INSERT_
+    - _Preservation: Device updates, SNMP updates, device creation without SNMP remain unchanged_
+    - _Requirements: 2.1, 2.2, 3.1, 3.2, 3.3, 3.4, 3.5_
+
+  - [x] 3.2 Refactor _upsert_snmp_config_for_device() in routes/scanning.py
+    - Replace manual FK assignment (lines 45-47) with relationship usage
+    - Change from: `config = DeviceSnmpConfig.query.filter_by(device_id=device.device_id).first(); if not config: config = DeviceSnmpConfig(device_id=device.device_id)`
+    - Change to: `if not device.snmp_config: device.snmp_config = DeviceSnmpConfig(); config = device.snmp_config`
+    - Remove explicit `db.session.add(config)` at line 52 (relationship handles this)
+    - _Bug_Condition: Manual device_id assignment before flush causes NotNullViolation_
+    - _Expected_Behavior: Relationship property allows automatic FK management_
+    - _Preservation: SNMP config updates for existing devices remain unchanged_
+    - _Requirements: 2.1, 2.2, 3.2_
+
+  - [x] 3.3 Add error handling with rollback to add_to_inventory() in routes/scanning.py
+    - Wrap existing try block (starting at line 268) with proper exception handling
+    - Add `except Exception as e:` block after existing code
+    - Add `db.session.rollback()` in except block to prevent session pollution
+    - Add `logger.error(f"[Inventory] Failed to add device: {e}")` for debugging
+    - Return appropriate error response (500 with error message)
+    - _Bug_Condition: Session pollution when NotNullViolation occurs_
+    - _Expected_Behavior: Session is rolled back, subsequent requests succeed_
+    - _Preservation: Existing error handling behavior remains unchanged_
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.4 Refactor _upsert_device_snmp_config() in routes/devices.py
+    - Change function signature from `_upsert_device_snmp_config(device_id, ...)` to `_upsert_device_snmp_config(device, ...)`
+    - Replace manual FK assignment (lines 65-69) with relationship usage
+    - Change from: `existing = DeviceSnmpConfig.query.filter_by(device_id=device_id).first(); config = existing or DeviceSnmpConfig(device_id=device_id)`
+    - Change to: `if not device.snmp_config: device.snmp_config = DeviceSnmpConfig(); config = device.snmp_config`
+    - Update `should_track` check to use `device.snmp_config` instead of `existing`
+    - Find all calls to `_upsert_device_snmp_config()` and update to pass `device` object instead of `device.device_id`
+    - _Bug_Condition: Manual device_id assignment before flush causes NotNullViolation_
+    - _Expected_Behavior: Relationship property allows automatic FK management_
+    - _Preservation: SNMP config updates for existing devices remain unchanged_
+    - _Requirements: 2.1, 2.2, 3.2_
+
+  - [x] 3.5 Add error handling with rollback to add_device() in routes/devices.py
+    - Wrap device creation and SNMP config logic in try block
+    - Add `except Exception as e:` block
+    - Add `db.session.rollback()` in except block to prevent session pollution
+    - Add `logger.error(f"[Devices] Failed to add device: {e}")` for debugging
+    - Return appropriate error response (500 with error message)
+    - _Bug_Condition: Session pollution when NotNullViolation occurs_
+    - _Expected_Behavior: Session is rolled back, subsequent requests succeed_
+    - _Preservation: Existing error handling behavior remains unchanged_
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.6 Refactor update_snmp_config() in routes/snmp.py
+    - Replace manual FK assignment (lines 171-175) with relationship usage
+    - Change from: `snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first(); if not snmp_config: snmp_config = DeviceSnmpConfig(device_id=device_id); db.session.add(snmp_config)`
+    - Change to: `if not device.snmp_config: device.snmp_config = DeviceSnmpConfig(); snmp_config = device.snmp_config`
+    - Add try-except block with rollback around commit operation
+    - _Bug_Condition: Manual device_id assignment (less critical, only for existing devices)_
+    - _Expected_Behavior: Relationship property provides consistent FK management_
+    - _Preservation: SNMP config updates for existing devices remain unchanged_
+    - _Requirements: 2.1, 2.2, 3.2_
+
+  - [x] 3.7 Verify error handling in discovery service
+    - Open `services/discovery_service.py`
+    - Locate `_persist()` function inside `scan_network_async`
+    - Ensure error handling includes `db.session.rollback()` when device addition fails
+    - Verify that bulk operations handle failures per-device without session pollution
+    - _Bug_Condition: Session pollution in bulk operations_
+    - _Expected_Behavior: Each device failure is isolated, doesn't affect subsequent devices_
+    - _Preservation: Bulk operation behavior remains unchanged_
+    - _Requirements: 2.1, 2.2, 3.4_
+
+  - [x] 3.8 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - SNMP Configuration Creation for New Devices
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - Verify that creating new devices with SNMP data succeeds without NotNullViolation
+    - Verify that bulk device addition succeeds for all devices without session pollution
+    - Verify that POST to `/scanning/add_to_inventory` returns 200 with device created
+    - Verify that device.device_id is correctly set and matches snmp_config.device_id
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.9 Verify preservation tests still pass
+    - **Property 2: Preservation** - Existing Device and SNMP Update Behavior
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - Verify device updates still work correctly (IP, hostname, manufacturer changes)
+    - Verify SNMP config updates still work correctly for existing devices
+    - Verify device creation without SNMP data still works correctly
+    - Verify identity matching (MAC → Hostname → IP) still works correctly
+    - Verify bulk operations for existing devices still work correctly
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all tests still pass after fix (no regressions)
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 4. Checkpoint - Ensure all tests pass
+  - Run all unit tests for device creation, SNMP configuration, and identity matching
+  - Run all property-based tests for fault condition and preservation
+  - Run all integration tests for API endpoints and bulk operations
+  - Verify no NotNullViolation errors occur for new device + SNMP scenarios
+  - Verify no session pollution occurs after errors
+  - Verify all preservation behaviors remain unchanged
+  - Ensure all tests pass, ask the user if questions arise

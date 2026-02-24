@@ -102,6 +102,13 @@ class Device(db.Model):
         cascade='all, delete-orphan'
     )
 
+    snmp_config = db.relationship(
+        'DeviceSnmpConfig',
+        backref='device',
+        uselist=False,
+        cascade='all, delete-orphan'
+    )
+
     def __repr__(self):
         return f'<Device {self.device_name} ({self.device_ip})>'
     

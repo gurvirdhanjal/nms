@@ -5,11 +5,14 @@ let currentDeviceId = null;
 let charts = {};
 let refreshTimer = null;
 let rangeButtons = null;
+let snapshotRefreshButton = null;
+let isFetchingSnapshot = false;
 
 export function initServerModal() {
     const el = document.getElementById('serverDetailsModal');
     if (el && window.bootstrap) {
         modalInstance = new window.bootstrap.Modal(el);
+        snapshotRefreshButton = document.getElementById('btnModalRefreshSnapshot');
 
         rangeButtons = Array.from(document.querySelectorAll('.server-range-toggle [data-range]'));
         if (rangeButtons.length > 0) {
@@ -21,12 +24,21 @@ export function initServerModal() {
             });
         }
 
+        if (snapshotRefreshButton && !snapshotRefreshButton.dataset.bound) {
+            snapshotRefreshButton.dataset.bound = 'true';
+            snapshotRefreshButton.addEventListener('click', async () => {
+                if (!currentDeviceId || isFetchingSnapshot) return;
+                await fetchConnectionSnapshot(currentDeviceId, { showLoadingState: true });
+            });
+        }
+
         if (!el.dataset.bound) {
             el.dataset.bound = 'true';
             el.addEventListener('hidden.bs.modal', () => {
                 Object.values(charts).forEach(chart => chart?.destroy());
                 charts = {};
                 currentDeviceId = null;
+                isFetchingSnapshot = false;
                 if (refreshTimer) {
                     clearInterval(refreshTimer);
                     refreshTimer = null;
@@ -53,6 +65,13 @@ export function openServerModal(deviceId) {
     if (hardwareEl) hardwareEl.textContent = '-';
     const lastSeenEl = document.getElementById('server-modal-last-seen');
     if (lastSeenEl) lastSeenEl.textContent = '-';
+    setOpenDetailsLink(deviceId);
+    renderAgentConnectionSnapshot({
+        top_remote_ips: [],
+        unique_remote_ips_count: null,
+        timestamp: null,
+    });
+    resetConnectionSnapshotPanel();
 
     // Default range (reset to 24h on open usually, or keep last? let's keep logic simple)
     // If we want to reset:
@@ -83,19 +102,51 @@ function setActiveRange(range) {
     });
 }
 
+async function parseApiResponse(response) {
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+        return await response.json();
+    }
+
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch (_error) {
+        const statusText = `${response.status} ${response.statusText}`.trim();
+        const snippet = text ? text.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+        throw new Error(
+            `Expected JSON response but received non-JSON (${statusText})${snippet ? `: ${snippet}` : ''}`
+        );
+    }
+}
+
+function getApiErrorMessage(data, fallback = 'Request failed') {
+    if (!data) return fallback;
+    if (typeof data === 'string') return data;
+    if (typeof data.error === 'string') return data.error;
+    if (data.error && typeof data.error.message === 'string') return data.error.message;
+    if (typeof data.message === 'string') return data.message;
+    if (data.success === false && typeof data.error === 'string') return data.error;
+    return fallback;
+}
+
 async function loadServerMetrics(deviceId, range) {
     try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(`/api/server/${deviceId}/metrics?range=${range}`, { signal: controller.signal });
+        const res = await fetch(`/api/server/${deviceId}/metrics?range=${range}`, {
+            signal: controller.signal,
+            credentials: 'same-origin'
+        });
         clearTimeout(timer);
-        const data = await res.json();
+        const data = await parseApiResponse(res);
 
-        if (data.error) throw new Error(data.error);
+        if (!res.ok || data.error) throw new Error(getApiErrorMessage(data, 'Failed to load server metrics'));
 
         // Update Header
         document.getElementById('server-modal-title').textContent = data.device_name || 'Server Details';
         document.getElementById('server-modal-ip').textContent = data.ip;
+        setOpenDetailsLink(deviceId);
 
         // Format uptime
         document.getElementById('server-modal-uptime').textContent = formatUptime(data.uptime);
@@ -116,6 +167,11 @@ async function loadServerMetrics(deviceId, range) {
         if (lastSeenEl) {
             lastSeenEl.textContent = data.last_seen ? new Date(data.last_seen).toLocaleString() : '-';
         }
+        renderAgentConnectionSnapshot({
+            top_remote_ips: data.network_top_remote_ips || [],
+            unique_remote_ips_count: data.network_connections_unique_ips,
+            timestamp: data.last_seen || null,
+        });
 
         // Downsample on the client as a safety net (prevents UI freezes if payload is large)
         let labels = Array.isArray(data.labels) ? data.labels : [];
@@ -193,13 +249,182 @@ async function loadServerMetrics(deviceId, range) {
         renderProcessesAndConnections(data.processes || {}, data.network_connections || {});
         renderDiskIO(data.disk_io || {});
         renderTopProcesses(data.top_processes || []);
-
     } catch (e) {
         console.error("Server Metrics Error:", e);
-        document.getElementById('server-modal-status').textContent = e.name === 'AbortError'
+        const message = e.name === 'AbortError'
             ? 'Timeout loading data'
-            : 'Error loading data';
+            : (e.message || 'Error loading data');
+        document.getElementById('server-modal-status').textContent = message;
         document.getElementById('server-modal-status').className = 'fw-bold text-danger';
+        renderConnectionSnapshotStatus(message, true);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function setOpenDetailsLink(deviceId) {
+    const openPageLink = document.getElementById('server-modal-open-page');
+    if (!openPageLink) return;
+    openPageLink.href = `/devices/${deviceId}/details`;
+}
+
+function renderConnectionSnapshotStatus(message, isError = false) {
+    const statusEl = document.getElementById('server-modal-snapshot-status');
+    if (!statusEl) return;
+    statusEl.textContent = message || 'Snapshot not loaded yet.';
+    statusEl.className = isError ? 'small text-danger px-3 py-2' : 'small text-secondary px-3 py-2';
+}
+
+function resetConnectionSnapshotPanel() {
+    renderConnectionSnapshotStatus('Snapshot not loaded yet.');
+    const tbody = document.getElementById('server-modal-snapshot-connections-body');
+    if (!tbody) return;
+    patchKeyedTableRows(tbody, [], {
+        emptyColSpan: 4,
+        emptyMessage: 'Click "Refresh Snapshot" to load latest agent connection data.',
+        emptyClassName: 'text-center text-secondary p-3'
+    });
+}
+
+function renderResolvedDeviceCell(entry, ipValue) {
+    if (entry?.remote_device_id) {
+        const id = Number(entry.remote_device_id);
+        const name = escapeHtml(entry.remote_device_name || `Device ${id}`);
+        return `<a href="/devices/${id}/details" class="text-info text-decoration-none fw-bold" target="_blank" rel="noopener noreferrer"><i class="fas fa-server me-1"></i>${name}</a>`;
+    }
+    return `<span class="text-muted"><i class="fas fa-question-circle me-1"></i>Unknown Device (${escapeHtml(ipValue || 'N/A')})</span>`;
+}
+
+function renderAgentConnectionSnapshot(snapshot) {
+    const badgeEl = document.getElementById('server-modal-agent-unique-ips');
+    const updatedEl = document.getElementById('server-modal-agent-updated');
+    const tbody = document.getElementById('server-modal-agent-connections-body');
+    if (!tbody) return;
+
+    const rows = Array.isArray(snapshot?.top_remote_ips) ? snapshot.top_remote_ips : [];
+    const uniqueCount = snapshot?.unique_remote_ips_count;
+    if (badgeEl) {
+        badgeEl.textContent = uniqueCount != null ? `${uniqueCount} Unique IPs` : 'Unique IPs: -';
+    }
+    if (updatedEl) {
+        updatedEl.textContent = snapshot?.timestamp
+            ? `Snapshot: ${new Date(snapshot.timestamp).toLocaleString()}`
+            : 'Snapshot: -';
+    }
+
+    patchKeyedTableRows(tbody, rows, {
+        getKey: (row, index) => row.ip || `agent-ip-${index}`,
+        emptyColSpan: 3,
+        emptyMessage: 'No agent snapshot data available',
+        emptyClassName: 'text-center text-secondary p-3',
+        renderCells: (row) => {
+            const ip = escapeHtml(row.ip || '-');
+            const count = Number.isFinite(Number(row.count)) ? Number(row.count) : 0;
+            return `
+                <td><code>${ip}</code></td>
+                <td><span class="badge bg-primary">${count}</span></td>
+                <td>${renderResolvedDeviceCell(row, row.ip)}</td>
+            `;
+        }
+    });
+}
+
+function renderConnectionSnapshotTable(rows) {
+    const tbody = document.getElementById('server-modal-snapshot-connections-body');
+    if (!tbody) return;
+    patchKeyedTableRows(tbody, rows || [], {
+        getKey: (row, index) => `${row.remote_ip || 'ip'}:${index}`,
+        emptyColSpan: 4,
+        emptyMessage: 'No active ESTABLISHED connections found.',
+        emptyClassName: 'text-center text-secondary p-3',
+        renderCells: (row) => {
+            const remoteIp = escapeHtml(row.remote_ip || '-');
+            const hostname = escapeHtml(row.remote_hostname || '-');
+            const connectionCount = Number.isFinite(Number(row.connection_count)) ? Number(row.connection_count) : 0;
+            return `
+                <td><code>${remoteIp}</code></td>
+                <td>${hostname}</td>
+                <td><span class="badge bg-primary">${connectionCount}</span></td>
+                <td>${renderResolvedDeviceCell(row, row.remote_ip)}</td>
+            `;
+        }
+    });
+}
+
+async function fetchConnectionSnapshot(deviceId, { showLoadingState = false } = {}) {
+    if (isFetchingSnapshot) return;
+    isFetchingSnapshot = true;
+    const originalLabel = snapshotRefreshButton ? snapshotRefreshButton.innerHTML : '';
+
+    if (showLoadingState && snapshotRefreshButton) {
+        snapshotRefreshButton.disabled = true;
+        snapshotRefreshButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+    }
+
+    if (showLoadingState) {
+        const tbody = document.getElementById('server-modal-snapshot-connections-body');
+        if (tbody) {
+            patchKeyedTableRows(tbody, [], {
+                emptyColSpan: 4,
+                emptyMessage: 'Loading latest agent snapshot...',
+                emptyClassName: 'text-center text-secondary p-3'
+            });
+        }
+        renderConnectionSnapshotStatus('Loading latest agent snapshot...');
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${deviceId}/connections`, {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+        const data = await parseApiResponse(response);
+        if (!response.ok || data.error) {
+            throw new Error(getApiErrorMessage(data, 'Failed to load connection snapshot'));
+        }
+
+        const rows = Array.isArray(data.connections) ? data.connections : [];
+        renderConnectionSnapshotTable(rows);
+        renderAgentConnectionSnapshot(data.agent_snapshot || {});
+
+        const meta = data.meta || {};
+        const totalConnections = Number.isFinite(Number(meta.total_connections))
+            ? Number(meta.total_connections)
+            : rows.reduce((sum, row) => sum + (Number(row.connection_count) || 0), 0);
+        const totalIps = Number.isFinite(Number(meta.total_unique_remote_ips))
+            ? Number(meta.total_unique_remote_ips)
+            : rows.length;
+        const topLimit = Number.isFinite(Number(meta.top_limit)) ? Number(meta.top_limit) : 20;
+        const showing = Math.min(rows.length, topLimit);
+        const snapshotAge = Number.isFinite(Number(meta.snapshot_age_seconds))
+            ? `${Number(meta.snapshot_age_seconds)}s old`
+            : 'age unknown';
+        renderConnectionSnapshotStatus(
+            `Snapshot ${snapshotAge}. Showing ${showing} of ${totalIps} remote IPs (${totalConnections} total connections).`
+        );
+    } catch (error) {
+        renderConnectionSnapshotStatus(error.message || 'Connection snapshot load failed', true);
+        const tbody = document.getElementById('server-modal-snapshot-connections-body');
+        if (tbody) {
+            patchKeyedTableRows(tbody, [], {
+                emptyColSpan: 4,
+                emptyMessage: error.message || 'Connection snapshot load failed',
+                emptyClassName: 'text-center text-danger p-3'
+            });
+        }
+    } finally {
+        isFetchingSnapshot = false;
+        if (snapshotRefreshButton) {
+            snapshotRefreshButton.disabled = false;
+            snapshotRefreshButton.innerHTML = originalLabel;
+        }
     }
 }
 

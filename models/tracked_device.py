@@ -15,6 +15,15 @@ class TrackedDevice(db.Model):
     notes = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
     maintenance_mode = db.Column(db.Boolean, default=False)
+    
+    # Live Tracking Cache Data
+    availability_status = db.Column(db.String(20), default='offline')
+    tracking_data = db.Column(db.Text)  # JSON dump of tracking stats
+    metrics_available = db.Column(db.Boolean, default=False)
+    probe_error_code = db.Column(db.String(50))
+    probe_method = db.Column(db.String(50))
+    last_probe_at = db.Column(db.DateTime)
+
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -37,6 +46,12 @@ class TrackedDevice(db.Model):
             'notes': self.notes,
             'is_active': self.is_active,
             'maintenance_mode': self.maintenance_mode,
+            'availability_status': self.availability_status,
+            'tracking_data': self.tracking_data,
+            'metrics_available': self.metrics_available,
+            'probe_error_code': self.probe_error_code,
+            'probe_method': self.probe_method,
+            'last_probe_at': self.last_probe_at.isoformat() if self.last_probe_at else None,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

@@ -4,6 +4,7 @@ from extensions import db
 from services.network_scanner import NetworkScanner
 from services.device_identity import upsert_device_from_identity, compute_subnet_cidr
 from middleware.rbac import require_login
+from datetime import datetime, timezone
 import asyncio
 import json
 import logging
@@ -11,6 +12,31 @@ from sqlalchemy import inspect, or_, func
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 logger = logging.getLogger(__name__)
+
+
+def _iso_utc(ts):
+    if not ts:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.isoformat()
+
+
+def _json_error_response(*, code, message, status, connections=None, agent_snapshot=None, meta=None):
+    payload = {
+        'error': {
+            'code': code,
+            'message': message,
+        },
+        'connections': connections if connections is not None else [],
+        'agent_snapshot': agent_snapshot if agent_snapshot is not None else {
+            'top_remote_ips': [],
+            'unique_remote_ips_count': None,
+            'timestamp': None,
+        },
+        'meta': meta if meta is not None else {},
+    }
+    return jsonify(payload), status
 
 
 def _normalize_snmp_version(version):
@@ -21,7 +47,7 @@ def _normalize_snmp_version(version):
 
 
 def _upsert_device_snmp_config(
-    device_id,
+    device,
     monitoring_mode,
     is_monitored,
     snmp_version,
@@ -36,11 +62,12 @@ def _upsert_device_snmp_config(
     from models.snmp_config import DeviceSnmpConfig
 
     normalized_version = _normalize_snmp_version(snmp_version)
-    existing = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
-    should_track = bool(existing) or monitoring_mode in ("snmp", "agent") or bool((snmp_community or "").strip())
+    should_track = bool(device.snmp_config) or monitoring_mode in ("snmp", "agent") or bool((snmp_community or "").strip())
     if not should_track:
         return
-    config = existing or DeviceSnmpConfig(device_id=device_id)
+    if not device.snmp_config:
+        device.snmp_config = DeviceSnmpConfig()
+    config = device.snmp_config
 
     config.snmp_version = normalized_version
     config.snmp_port = int(snmp_port or 161)
@@ -53,6 +80,7 @@ def _upsert_device_snmp_config(
     config.is_enabled = bool(is_monitored and monitoring_mode in ("snmp", "agent"))
 
     db.session.add(config)
+
 
 
 @devices_bp.before_request
@@ -143,6 +171,50 @@ def _normalize_status_filter(raw_status):
     return status_map.get((raw_status or '').strip().lower(), '')
 
 
+def _normalize_device_status(raw_status):
+    """Normalize scan status into the UI's availability buckets."""
+    value = (raw_status or '').strip().lower()
+    if value in ('online', 'up'):
+        return 'Online'
+    if value in ('maintenance', 'maintaince'):
+        return 'Maintenance'
+    return 'Offline'
+
+
+def _load_latest_scan_statuses(device_ips, *, DeviceScanHistory):
+    """Return latest normalized status keyed by device_ip."""
+    ips = sorted({ip for ip in device_ips if ip})
+    if not ips:
+        return {}
+
+    latest_scan_subq = db.session.query(
+        DeviceScanHistory.device_ip.label('device_ip'),
+        func.max(DeviceScanHistory.scan_id).label('max_scan_id')
+    ).filter(
+        DeviceScanHistory.device_ip.in_(ips)
+    ).group_by(DeviceScanHistory.device_ip).subquery()
+
+    latest_rows = db.session.query(
+        DeviceScanHistory.device_ip,
+        DeviceScanHistory.status
+    ).join(
+        latest_scan_subq,
+        (DeviceScanHistory.device_ip == latest_scan_subq.c.device_ip)
+        & (DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
+    ).all()
+
+    return {
+        row.device_ip: _normalize_device_status(row.status)
+        for row in latest_rows
+    }
+
+
+def _resolve_device_status(device, latest_status_by_ip):
+    if getattr(device, 'maintenance_mode', False):
+        return 'Maintenance'
+    return latest_status_by_ip.get(device.device_ip, 'Offline')
+
+
 def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device_type='', subnet='', status=''):
     """Apply consistent device filters for UI pages and cross-page selection endpoints."""
     filtered_query = query
@@ -177,13 +249,26 @@ def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device
             func.max(DeviceScanHistory.scan_id).label('max_scan_id')
         ).group_by(DeviceScanHistory.device_ip).subquery()
 
-        filtered_query = (
-            filtered_query
-            .filter(Device.maintenance_mode.is_(False))
-            .join(latest_scan_subq, Device.device_ip == latest_scan_subq.c.device_ip)
-            .join(DeviceScanHistory, DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
-            .filter(func.lower(DeviceScanHistory.status) == normalized_status.lower())
-        )
+        if normalized_status == 'Online':
+            filtered_query = (
+                filtered_query
+                .filter(Device.maintenance_mode.is_(False))
+                .join(latest_scan_subq, Device.device_ip == latest_scan_subq.c.device_ip)
+                .join(DeviceScanHistory, DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
+                .filter(func.lower(DeviceScanHistory.status) == 'online')
+            )
+        else:
+            # "Offline" includes stale/unknown/no-scan devices for KPI consistency.
+            filtered_query = (
+                filtered_query
+                .filter(Device.maintenance_mode.is_(False))
+                .outerjoin(latest_scan_subq, Device.device_ip == latest_scan_subq.c.device_ip)
+                .outerjoin(DeviceScanHistory, DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
+                .filter(or_(
+                    DeviceScanHistory.scan_id.is_(None),
+                    func.lower(DeviceScanHistory.status) != 'online'
+                ))
+            )
 
     return filtered_query
 
@@ -446,125 +531,131 @@ def save_device():
         # NOTE: We skip synchronous MAC/Hostname enrichment here to prevent UI blocking.
         # The background scanner will pick this up later.
 
-
-        if device_id:
-            # Update existing device
-            device = Device.query.get(device_id)
-            device.device_name = device_name
-            device.device_ip = device_ip
-            device.device_type = device_type
-            
-            device.location = location
-            device.description = description
-            device.monitoring_mode = monitoring_mode
-            
-            # SNMP
-            device.snmp_version = snmp_version
-            device.snmp_community = snmp_community
-            device.snmp_port = snmp_port
-            device.snmp_timeout = snmp_timeout
-            device.snmp_retries = snmp_retries
-            device.snmp_username = snmp_username
-            device.snmp_auth_proto = snmp_auth_proto
-            device.snmp_auth_password = snmp_auth_password
-            device.snmp_priv_proto = snmp_priv_proto
-            device.snmp_priv_password = snmp_priv_password
-            
-            # Agent
-            device.agent_token = agent_token
-            device.agent_interval = agent_interval
-            device.agent_os_type = agent_os_type
-            
-            # WMI
-            device.wmi_username = wmi_username
-            device.wmi_password = wmi_password
-            device.wmi_domain = wmi_domain
-            
-            device.maintenance_mode = maintenance_mode
-            
-            # Legacy & Common
-            device.port = port
-            if rstplink is not None:
-                device.rstplink = rstplink
-            device.macaddress = mac_address
-            device.hostname = hostname
-            device.manufacturer = manufacturer
-            device.is_monitored = is_monitored
-            device.subnet_cidr = compute_subnet_cidr(device_ip)
-            
-            # Credentials
-            device.device_username = device_username
-            # Only update password hash if a new password was provided
-            if device_password_raw:
-                device.device_password_hash = generate_password_hash(
-                    device_password_raw, method='pbkdf2:sha256', salt_length=16
-                )
-        else:
-            # Create new device
-            device = Device(
-                device_name=device_name,
-                device_ip=device_ip,
-                device_type=device_type,
-                location=location,
-                description=description,
-                monitoring_mode=monitoring_mode,
-                subnet_cidr=compute_subnet_cidr(device_ip),
+        try:
+            if device_id:
+                # Update existing device
+                device = Device.query.get(device_id)
+                device.device_name = device_name
+                device.device_ip = device_ip
+                device.device_type = device_type
+                
+                device.location = location
+                device.description = description
+                device.monitoring_mode = monitoring_mode
                 
                 # SNMP
+                device.snmp_version = snmp_version
+                device.snmp_community = snmp_community
+                device.snmp_port = snmp_port
+                device.snmp_timeout = snmp_timeout
+                device.snmp_retries = snmp_retries
+                device.snmp_username = snmp_username
+                device.snmp_auth_proto = snmp_auth_proto
+                device.snmp_auth_password = snmp_auth_password
+                device.snmp_priv_proto = snmp_priv_proto
+                device.snmp_priv_password = snmp_priv_password
+                
+                # Agent
+                device.agent_token = agent_token
+                device.agent_interval = agent_interval
+                device.agent_os_type = agent_os_type
+                
+                # WMI
+                device.wmi_username = wmi_username
+                device.wmi_password = wmi_password
+                device.wmi_domain = wmi_domain
+                
+                device.maintenance_mode = maintenance_mode
+                
+                # Legacy & Common
+                device.port = port
+                if rstplink is not None:
+                    device.rstplink = rstplink
+                device.macaddress = mac_address
+                device.hostname = hostname
+                device.manufacturer = manufacturer
+                device.is_monitored = is_monitored
+                device.subnet_cidr = compute_subnet_cidr(device_ip)
+                
+                # Credentials
+                device.device_username = device_username
+                # Only update password hash if a new password was provided
+                if device_password_raw:
+                    device.device_password_hash = generate_password_hash(
+                        device_password_raw, method='pbkdf2:sha256', salt_length=16
+                    )
+            else:
+                # Create new device
+                device = Device(
+                    device_name=device_name,
+                    device_ip=device_ip,
+                    device_type=device_type,
+                    location=location,
+                    description=description,
+                    monitoring_mode=monitoring_mode,
+                    subnet_cidr=compute_subnet_cidr(device_ip),
+                    
+                    # SNMP
+                    snmp_version=snmp_version,
+                    snmp_community=snmp_community,
+                    snmp_port=snmp_port,
+                    snmp_timeout=snmp_timeout,
+                    snmp_retries=snmp_retries,
+                    snmp_username=snmp_username,
+                    snmp_auth_proto=snmp_auth_proto,
+                    snmp_auth_password=snmp_auth_password,
+                    snmp_priv_proto=snmp_priv_proto,
+                    snmp_priv_password=snmp_priv_password,
+                    
+                    # Agent
+                    agent_token=agent_token,
+                    agent_interval=agent_interval,
+                    agent_os_type=agent_os_type,
+                    
+                    # WMI
+                    wmi_username=wmi_username,
+                    wmi_password=wmi_password,
+                    wmi_domain=wmi_domain,
+                    
+                    maintenance_mode=maintenance_mode,
+                    
+                    port=port,
+                    rstplink=rstplink,
+                    macaddress=mac_address,
+                    hostname=hostname,
+                    manufacturer=manufacturer,
+                    is_monitored=is_monitored,
+                    
+                    # Credentials
+                    device_username=device_username,
+                    device_password_hash=generate_password_hash(
+                        device_password_raw, method='pbkdf2:sha256', salt_length=16
+                    ) if device_password_raw else None
+                )
+                db.session.add(device)
+
+            db.session.flush()
+            _upsert_device_snmp_config(
+                device=device,
+                monitoring_mode=monitoring_mode,
+                is_monitored=is_monitored,
                 snmp_version=snmp_version,
-                snmp_community=snmp_community,
                 snmp_port=snmp_port,
-                snmp_timeout=snmp_timeout,
-                snmp_retries=snmp_retries,
+                snmp_community=snmp_community,
                 snmp_username=snmp_username,
                 snmp_auth_proto=snmp_auth_proto,
                 snmp_auth_password=snmp_auth_password,
                 snmp_priv_proto=snmp_priv_proto,
                 snmp_priv_password=snmp_priv_password,
-                
-                # Agent
-                agent_token=agent_token,
-                agent_interval=agent_interval,
-                agent_os_type=agent_os_type,
-                
-                # WMI
-                wmi_username=wmi_username,
-                wmi_password=wmi_password,
-                wmi_domain=wmi_domain,
-                
-                maintenance_mode=maintenance_mode,
-                
-                port=port,
-                rstplink=rstplink,
-                macaddress=mac_address,
-                hostname=hostname,
-                manufacturer=manufacturer,
-                is_monitored=is_monitored,
-                
-                # Credentials
-                device_username=device_username,
-                device_password_hash=generate_password_hash(
-                    device_password_raw, method='pbkdf2:sha256', salt_length=16
-                ) if device_password_raw else None
             )
-            db.session.add(device)
-
-        db.session.flush()
-        _upsert_device_snmp_config(
-            device_id=device.device_id,
-            monitoring_mode=monitoring_mode,
-            is_monitored=is_monitored,
-            snmp_version=snmp_version,
-            snmp_port=snmp_port,
-            snmp_community=snmp_community,
-            snmp_username=snmp_username,
-            snmp_auth_proto=snmp_auth_proto,
-            snmp_auth_password=snmp_auth_password,
-            snmp_priv_proto=snmp_priv_proto,
-            snmp_priv_password=snmp_priv_password,
-        )
-        db.session.commit()
-        return redirect(url_for('devices_bp.device_management'))
+            db.session.commit()
+            return redirect(url_for('devices_bp.device_management'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"[Devices] Failed to add device: {e}")
+            from models.device import Device
+            devices = Device.query.all()
+            return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}"), 500
     
     except Exception as e:
         from models.device import Device
@@ -582,15 +673,78 @@ def api_device_subnets():
 @devices_bp.route('/api/devices')
 def api_devices():
     from models.device import Device
-    query = Device.query.order_by(Device.device_ip.asc())
-    # Optional subnet filter (backward-compatible: absent param = all devices)
-    subnet_filter = request.args.get('subnet')
-    if subnet_filter:
-        query = query.filter_by(subnet_cidr=subnet_filter)
-    device_dicts = [d.to_dict() for d in query.all()]
-    return jsonify(device_dicts)
+    from models.scan_history import DeviceScanHistory
 
-
+    search = (request.args.get('search') or '').strip()
+    device_type = (request.args.get('type') or '').strip().lower()
+    subnet = (request.args.get('subnet') or '').strip()
+    status = _normalize_status_filter(request.args.get('status'))
+    
+    query = _apply_device_filters(
+        Device.query,
+        Device=Device,
+        DeviceScanHistory=DeviceScanHistory,
+        search=search,
+        device_type=device_type,
+        subnet=subnet,
+        status=status,
+    )
+    query = query.order_by(Device.device_ip.asc())
+    
+    if request.args.get('page') or request.args.get('paginate') == 'true':
+        page = request.args.get('page', default=1, type=int)
+        per_page = request.args.get('per_page', default=100, type=int)
+        
+        allowed_per_page = {50, 100, 200, 500}
+        if per_page not in allowed_per_page:
+            per_page = 100
+            
+        total_devices = query.count()
+        total_pages = max((total_devices + per_page - 1) // per_page, 1)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+        devices = query.offset(offset).limit(per_page).all()
+        
+        device_ids = [d.device_id for d in devices]
+        from models.snmp_config import DeviceSnmpConfig
+        snmp_by_device_id = {}
+        if device_ids:
+            configs = DeviceSnmpConfig.query.filter(DeviceSnmpConfig.device_id.in_(device_ids)).all()
+            snmp_by_device_id = {cfg.device_id: cfg for cfg in configs}
+            
+        result = []
+        latest_status_by_ip = _load_latest_scan_statuses(
+            [d.device_ip for d in devices],
+            DeviceScanHistory=DeviceScanHistory,
+        )
+        for d in devices:
+            d_dict = d.to_dict()
+            cfg = snmp_by_device_id.get(d.device_id)
+            d_dict['snmp_enabled'] = bool(cfg.is_enabled) if cfg else False
+            d_dict['snmp_last_error'] = cfg.last_poll_error if cfg else None
+            d_dict['status'] = _resolve_device_status(d, latest_status_by_ip)
+            result.append(d_dict)
+            
+        return jsonify({
+            'devices': result,
+            'total_devices': total_devices,
+            'total_pages': total_pages,
+            'page': page,
+            'per_page': per_page,
+            'global_device_count': Device.query.count()
+        })
+    else:
+        devices = query.all()
+        latest_status_by_ip = _load_latest_scan_statuses(
+            [d.device_ip for d in devices],
+            DeviceScanHistory=DeviceScanHistory,
+        )
+        device_dicts = []
+        for d in devices:
+            d_dict = d.to_dict()
+            d_dict['status'] = _resolve_device_status(d, latest_status_by_ip)
+            device_dicts.append(d_dict)
+        return jsonify(device_dicts)
 @devices_bp.route('/api/devices/filter_ids')
 def api_filtered_device_ids():
     """Return matching device IDs for current filters (for cross-page bulk selection)."""
@@ -694,6 +848,221 @@ def device_details_page(device_id):
         has_snmp_metrics=has_snmp_metrics,
     )
 
+@devices_bp.route('/api/devices/<int:device_id>/connections', methods=['GET'])
+def get_device_connections(device_id):
+    from models.device import Device
+    from models.server_health import ServerHealthLog
+
+    def _base_meta(
+        *,
+        monitoring_mode='unknown',
+        live_supported=False,
+        live_attempted=False,
+        cached=False,
+        cache_age_seconds=None,
+        rate_limited=False,
+        retry_after_seconds=None,
+        snapshot_available=False,
+        snapshot_age_seconds=None,
+        top_limit=20,
+        total_connections=0,
+        total_unique_remote_ips=0,
+    ):
+        return {
+            'device_id': device_id,
+            'live_method': 'agent_snapshot',
+            'monitoring_mode': monitoring_mode,
+            'wmi_live_fetch_planned': False,
+            'live_supported': bool(live_supported),
+            'live_attempted': bool(live_attempted),
+            'cached': bool(cached),
+            'cache_age_seconds': cache_age_seconds,
+            'rate_limited': bool(rate_limited),
+            'retry_after_seconds': retry_after_seconds,
+            'snapshot_available': bool(snapshot_available),
+            'snapshot_age_seconds': snapshot_age_seconds,
+            'top_limit': int(top_limit or 20),
+            'total_connections': int(total_connections or 0),
+            'total_unique_remote_ips': int(total_unique_remote_ips or 0),
+            'fetched_at': datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _build_known_device_map(ip_values):
+        safe_ips = [ip for ip in ip_values if isinstance(ip, str) and ip]
+        if not safe_ips:
+            return {}
+        known_devices = Device.query.filter(Device.device_ip.in_(safe_ips)).all()
+        return {
+            d.device_ip: {
+                'name': d.device_name,
+                'hostname': (d.hostname or '').strip() or None,
+                'type': d.device_type,
+                'id': d.device_id,
+            }
+            for d in known_devices
+        }
+
+    def _apply_resolution(ip_key, row, known_map):
+        value = row.get(ip_key)
+        match = known_map.get(value)
+        if match:
+            row['remote_device_name'] = match['name']
+            row['remote_hostname'] = match.get('hostname') or match['name'] or value
+            row['remote_device_type'] = match['type']
+            row['remote_device_id'] = match['id']
+        else:
+            row['remote_device_name'] = 'Unknown Device'
+            row['remote_hostname'] = value or 'Unknown'
+            row['remote_device_type'] = 'unknown'
+            row['remote_device_id'] = None
+        return row
+
+    def _to_int(value, default=0):
+        try:
+            parsed = int(value)
+            return parsed if parsed >= 0 else default
+        except (TypeError, ValueError):
+            return default
+
+    def _sanitize_agent_snapshot(raw_snapshot):
+        if not isinstance(raw_snapshot, list):
+            return []
+
+        cleaned = []
+        for item in raw_snapshot:
+            if not isinstance(item, dict):
+                continue
+
+            remote_ip = str(item.get('ip') or '').strip()
+            if not remote_ip:
+                continue
+
+            try:
+                count = int(item.get('count'))
+            except (TypeError, ValueError):
+                count = 0
+
+            cleaned.append({
+                'ip': remote_ip,
+                'count': max(count, 0),
+            })
+
+        cleaned.sort(key=lambda row: row['count'], reverse=True)
+        return cleaned[:20]
+
+    def _snapshot_age_seconds(ts):
+        if not ts:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - ts
+        return max(0, int(delta.total_seconds()))
+
+    try:
+        device = Device.query.get(device_id)
+        if not device:
+            return _json_error_response(
+                code='DEVICE_NOT_FOUND',
+                message='Device not found',
+                status=404,
+                meta=_base_meta(monitoring_mode='unknown'),
+            )
+
+        monitoring_mode = (device.monitoring_mode or 'unknown').strip().lower()
+        if not device.device_type or device.device_type.lower() != 'server':
+            return _json_error_response(
+                code='NOT_SERVER_DEVICE',
+                message='Connection snapshot is only supported for server devices.',
+                status=400,
+                meta=_base_meta(monitoring_mode=monitoring_mode),
+            )
+
+        latest_agent_log = (
+            ServerHealthLog.query.filter(
+                ServerHealthLog.device_id == device.device_id,
+                ServerHealthLog.source == 'agent',
+            )
+            .order_by(ServerHealthLog.timestamp.desc())
+            .first()
+        )
+
+        raw_snapshot_rows = _sanitize_agent_snapshot(
+            latest_agent_log.network_top_remote_ips if latest_agent_log else []
+        )
+        known_map = _build_known_device_map([row['ip'] for row in raw_snapshot_rows])
+        snapshot_rows = [
+            _apply_resolution('ip', dict(row), known_map)
+            for row in raw_snapshot_rows
+        ]
+
+        connections = []
+        for row in snapshot_rows:
+            connections.append({
+                'remote_ip': row.get('ip'),
+                'remote_hostname': row.get('remote_hostname') or row.get('ip') or 'Unknown',
+                'connection_count': _to_int(row.get('count')),
+                'state': 'ESTABLISHED',
+                'remote_device_name': row.get('remote_device_name', 'Unknown Device'),
+                'remote_device_type': row.get('remote_device_type', 'unknown'),
+                'remote_device_id': row.get('remote_device_id'),
+            })
+
+        top_limit = 20
+        unique_remote_ips = _to_int(
+            latest_agent_log.network_connections_unique_ips if latest_agent_log else None,
+            default=len(snapshot_rows),
+        )
+        established_connections = _to_int(
+            latest_agent_log.network_connections_established if latest_agent_log else None,
+            default=sum(row.get('count', 0) for row in raw_snapshot_rows),
+        )
+        snapshot_ts = latest_agent_log.timestamp if latest_agent_log else None
+
+        actor = str(
+            session.get('username')
+            or session.get('user_id')
+            or request.remote_addr
+            or 'unknown'
+        )
+        logger.info(
+            "[ConnSnapshot] actor=%s device_id=%s device_ip=%s rows=%s total=%s unique_ips=%s",
+            actor,
+            device.device_id,
+            device.device_ip,
+            len(connections),
+            established_connections,
+            unique_remote_ips,
+        )
+
+        agent_snapshot = {
+            'top_remote_ips': snapshot_rows,
+            'unique_remote_ips_count': unique_remote_ips,
+            'timestamp': _iso_utc(snapshot_ts),
+        }
+        return jsonify({
+            'connections': connections,
+            'agent_snapshot': agent_snapshot,
+            'meta': _base_meta(
+                monitoring_mode=monitoring_mode,
+                snapshot_available=bool(snapshot_ts),
+                snapshot_age_seconds=_snapshot_age_seconds(snapshot_ts),
+                top_limit=top_limit,
+                total_connections=established_connections,
+                total_unique_remote_ips=unique_remote_ips,
+            ),
+        })
+    except Exception as exc:
+        logger.exception(
+            "[ConnSnapshot] failed device_id=%s",
+            device_id,
+        )
+        return _json_error_response(
+            code='CONNECTION_SNAPSHOT_FAILED',
+            message=f'Failed to load connection snapshot: {exc}',
+            status=500,
+            meta=_base_meta(monitoring_mode='unknown'),
+        )
+
 @devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST'])
 def toggle_device_monitoring(device_id):
     # Auth handled by middleware
@@ -777,7 +1146,7 @@ def bulk_add_devices():
                     skipped_count += 1
 
                 _upsert_device_snmp_config(
-                    device_id=device.device_id,
+                    device=device,
                     monitoring_mode='snmp' if data.get('snmp_working') else (device.monitoring_mode or 'ping'),
                     is_monitored=bool(device.is_monitored),
                     snmp_version=data.get('snmp_version') or device.snmp_version or '2c',

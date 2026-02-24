@@ -13,6 +13,8 @@ import subprocess
 import psutil
 import ipaddress
 import time
+import logging
+from urllib.parse import urlparse
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import io
@@ -20,13 +22,166 @@ import io
 tracking_bp = Blueprint('tracking_bp', __name__)
 
 @tracking_bp.before_request
-@require_login
 def _tracking_auth_guard():
-    return None
+    # Only enforce tracking blueprint specific auth on specific endpoints.
+    # The application-wide auth is handled by standard require_login decorators.
+    pass
 
 # Use centralized config for API key
 from config import Config
 SHARED_API_KEY = Config.API_KEY
+logger = logging.getLogger(__name__)
+
+
+class AgentHttpError(Exception):
+    def __init__(self, code, message, original=None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.original = original
+
+
+_agent_http_session = None
+_proxy_bypass_logged = False
+
+
+def _get_agent_http_session():
+    global _agent_http_session, _proxy_bypass_logged
+    if _agent_http_session is None:
+        session = requests.Session()
+        # Critical for monitoring: never inherit host proxy env for LAN agent calls.
+        session.trust_env = False
+        _agent_http_session = session
+        if not _proxy_bypass_logged:
+            logger.info("[AgentHTTP] proxy-bypass enabled (trust_env=False) for service.py polling")
+            _proxy_bypass_logged = True
+    return _agent_http_session
+
+
+def _map_agent_request_error(exc):
+    if isinstance(exc, requests.exceptions.ProxyError):
+        return "AGENT_PROXY_BLOCKED", "Agent request blocked by proxy settings"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return "AGENT_TIMEOUT", "Agent request timed out"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "AGENT_UNREACHABLE", "Could not connect to agent endpoint"
+    return "AGENT_REQUEST_FAILED", "Agent request failed"
+
+
+def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False):
+    parsed = urlparse(url)
+    started = time.monotonic()
+    session = _get_agent_http_session()
+    try:
+        response = session.request(
+            method=method,
+            url=url,
+            timeout=timeout,
+            headers=headers,
+            stream=stream,
+        )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "[AgentHTTP] method=%s host=%s path=%s result=ok status=%s latency_ms=%s",
+            method.upper(),
+            parsed.hostname,
+            parsed.path,
+            response.status_code,
+            latency_ms,
+        )
+        return response
+    except requests.exceptions.RequestException as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        code, message = _map_agent_request_error(exc)
+        logger.warning(
+            "[AgentHTTP] method=%s host=%s path=%s result=%s latency_ms=%s error=%s",
+            method.upper(),
+            parsed.hostname,
+            parsed.path,
+            code.lower(),
+            latency_ms,
+            exc,
+        )
+        raise AgentHttpError(code, message, original=exc) from exc
+
+
+def _agent_http_get(url, timeout=2.0, headers=None, stream=False):
+    return _agent_http_request("GET", url, timeout=timeout, headers=headers, stream=stream)
+
+
+def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=False):
+    parsed = urlparse(url)
+    started = time.monotonic()
+    session = _get_agent_http_session()
+    try:
+        response = session.request(
+            method="POST",
+            url=url,
+            timeout=timeout,
+            headers=headers,
+            json=json_data,
+            stream=stream,
+        )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "[AgentHTTP] method=POST host=%s path=%s result=ok status=%s latency_ms=%s",
+            parsed.hostname,
+            parsed.path,
+            response.status_code,
+            latency_ms,
+        )
+        return response
+    except requests.exceptions.RequestException as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        code, message = _map_agent_request_error(exc)
+        logger.warning(
+            "[AgentHTTP] method=POST host=%s path=%s result=%s latency_ms=%s error=%s",
+            parsed.hostname,
+            parsed.path,
+            code.lower(),
+            latency_ms,
+            exc,
+        )
+        raise AgentHttpError(code, message, original=exc) from exc
+
+
+def _agent_error_response(error, status=503):
+    return jsonify({
+        'success': False,
+        'error_code': error.code,
+        'error': error.message,
+    }), status
+
+
+def _json_error(error_code, message, status=400):
+    return jsonify({
+        'success': False,
+        'error_code': error_code,
+        'error': message,
+    }), status
+
+
+def _json_exception(error_code, message, exc=None, status=500):
+    if exc is not None:
+        logger.exception("[TrackingAPI] %s (%s): %s", message, error_code, exc)
+    else:
+        logger.error("[TrackingAPI] %s (%s)", message, error_code)
+    return _json_error(error_code, message, status)
+
+
+def _extract_tracking_api_key():
+    api_key = (request.headers.get('X-API-Key') or '').strip()
+    if api_key:
+        return api_key
+    payload = request.get_json(silent=True) or {}
+    return str(payload.get('api_key') or '').strip()
+
+
+def _require_tracking_api_key():
+    provided_key = _extract_tracking_api_key()
+    if not provided_key or provided_key != SHARED_API_KEY:
+        return _json_error('SESSION_EXPIRED', 'Unauthorized agent sync request.', 401)
+    return None
 
 def generate_placeholder_image(text="No Feed"):
     """Generate a placeholder image with text"""
@@ -83,6 +238,45 @@ class NetworkScanner:
     def __init__(self):
         self.timeout = 2.0  # Increased to 2.0s for reliability
         self.max_workers = 100
+
+    def _resolve_probe_profile(self, profile):
+        if profile == 'interactive':
+            return {
+                'identity_timeout': max(self.timeout, 2.5),
+                'stats_timeout': max(self.timeout, 3.0),
+                'health_timeout': max(self.timeout, 2.0),
+                'return_offline': True,
+            }
+        return {
+            'identity_timeout': self.timeout,
+            'stats_timeout': self.timeout,
+            'health_timeout': self.timeout,
+            'return_offline': False,
+        }
+
+    def _build_probe_result(
+        self,
+        availability_status,
+        tracking_status,
+        data=None,
+        metrics_available=False,
+        probe_error_code=None,
+        probe_method=None,
+        identity=None,
+    ):
+        payload = data if isinstance(data, dict) else {}
+        identity_payload = identity if isinstance(identity, dict) else None
+        return {
+            'status': tracking_status,
+            'tracking_status': tracking_status,
+            'availability_status': availability_status,
+            'metrics_available': bool(metrics_available),
+            'probe_error_code': probe_error_code,
+            'probe_method': probe_method,
+            'data': payload,
+            'identity': identity_payload,
+            'last_probe_at': datetime.utcnow().isoformat(),
+        }
     
     def get_mac_address(self, ip_address):
         """Get MAC address for an IP"""
@@ -130,132 +324,135 @@ class NetworkScanner:
         except:
             return False
     
-    def check_tracking_service(self, ip, port=5002):
-        """Check if tracking service is running"""
+    def check_tracking_service(self, ip, port=5002, profile='scan'):
+        """Check if tracking service is running and classify availability."""
+        probe_cfg = self._resolve_probe_profile(profile)
+        base_url = f"http://{ip}:{port}"
+        identity_data = {}
+        probe_error_code = None
+
         try:
-            identity_data = None
-            # Try identity endpoint first (avoid false negatives from raw port checks)
-            identity_response = None
+            # 1) Identity probe
             try:
-                identity_response = requests.get(
-                    f"http://{ip}:{port}/api/identity",
-                    timeout=self.timeout
+                identity_response = _agent_http_get(
+                    f"{base_url}/api/identity",
+                    timeout=probe_cfg['identity_timeout'],
                 )
-            except requests.exceptions.RequestException as e:
-                # Network/timeout/etc. We'll fall back to raw port check below.
-                identity_response = None
-            except Exception as e:
-                print(f"[DEBUG] Identity check exception on {ip}: {e}")
-                identity_response = None
-
-            if identity_response is not None:
                 if identity_response.status_code == 200:
-                    identity_data = identity_response.json()
-
-                    # Try to get full stats if authenticated
-                    try:
-                        stats_response = requests.get(
-                            f"http://{ip}:{port}/api/secure/stats",
-                            timeout=self.timeout,
-                            headers={'X-API-Key': SHARED_API_KEY}
-                        )
-
-                        if stats_response.status_code == 200:
-                            return {
-                                'status': 'tracking_active',
-                                'data': stats_response.json(),
-                                'identity': identity_data
-                            }
-                    except:
-                        pass
-
-                    # If stats failed but identity worked, return identity info
-                    return {
-                        'status': 'tracking_active', # It IS active, just maybe not authenticated yet
-                        'data': {'device_info': identity_data}, # Fallback data
-                        'identity': identity_data
-                    }
+                    identity_payload = identity_response.json()
+                    identity_data = identity_payload if isinstance(identity_payload, dict) else {}
                 else:
-                    # Identity endpoint missing or failed. Try stats for legacy agents.
-                    try:
-                        stats_response = requests.get(
-                            f"http://{ip}:{port}/api/secure/stats",
-                            timeout=self.timeout,
-                            headers={'X-API-Key': SHARED_API_KEY}
-                        )
-                        if stats_response.status_code == 200:
-                            return {
-                                'status': 'tracking_active',
-                                'data': stats_response.json(),
-                                'identity': None
-                            }
-                    except:
-                        pass
+                    probe_error_code = f"IDENTITY_HTTP_{identity_response.status_code}"
+            except AgentHttpError as error:
+                probe_error_code = error.code
+            except Exception as error:
+                logger.debug("[TrackingProbe] identity parse failure ip=%s err=%s", ip, error)
 
-                    # Fallback to a lightweight health check
-                    try:
-                        health_response = requests.get(
-                            f"http://{ip}:{port}/api/health",
-                            timeout=self.timeout
-                        )
-                        if health_response.status_code == 200:
-                            return {
-                                'status': 'tracking_active',
-                                'data': {'device_info': identity_data} if identity_data else {},
-                                'identity': identity_data,
-                                'health_only': True
-                            }
-                    except:
-                        pass
-
-                    print(f"[DEBUG] Identity check failed on {ip}: Status {identity_response.status_code}")
-                    return {
-                        'status': 'port_open_no_service',
-                        'data': None
-                    }
-
-            # Identity failed (timeout/connection). Try stats for legacy/slow agents.
+            # 2) Full stats probe
             try:
-                stats_response = requests.get(
-                    f"http://{ip}:{port}/api/secure/stats",
-                    timeout=self.timeout,
-                    headers={'X-API-Key': SHARED_API_KEY}
+                stats_response = _agent_http_get(
+                    f"{base_url}/api/secure/stats",
+                    timeout=probe_cfg['stats_timeout'],
+                    headers={'X-API-Key': SHARED_API_KEY},
                 )
                 if stats_response.status_code == 200:
-                    return {
-                        'status': 'tracking_active',
-                        'data': stats_response.json(),
-                        'identity': None
-                    }
-            except:
-                pass
+                    stats_payload = stats_response.json()
+                    stats_data = stats_payload if isinstance(stats_payload, dict) else {}
+                    if identity_data:
+                        device_info = stats_data.get('device_info')
+                        if isinstance(device_info, dict):
+                            for key, value in identity_data.items():
+                                device_info.setdefault(key, value)
+                        else:
+                            stats_data['device_info'] = identity_data
+                    return self._build_probe_result(
+                        availability_status='online',
+                        tracking_status='tracking_active',
+                        data=stats_data,
+                        metrics_available=True,
+                        probe_error_code=None,
+                        probe_method='stats',
+                        identity=identity_data,
+                    )
+                if not probe_error_code:
+                    probe_error_code = f"STATS_HTTP_{stats_response.status_code}"
+            except AgentHttpError as error:
+                probe_error_code = error.code
+            except Exception as error:
+                logger.debug("[TrackingProbe] stats parse failure ip=%s err=%s", ip, error)
 
-            # Fallback to health endpoint if stats/identity fail
+            # 3) Identity reachable but metrics unavailable -> degraded
+            if identity_data:
+                return self._build_probe_result(
+                    availability_status='degraded',
+                    tracking_status='tracking_active',
+                    data={'device_info': identity_data},
+                    metrics_available=False,
+                    probe_error_code=probe_error_code,
+                    probe_method='identity',
+                    identity=identity_data,
+                )
+
+            # 4) Health fallback -> degraded
             try:
-                health_response = requests.get(
-                    f"http://{ip}:{port}/api/health",
-                    timeout=self.timeout
+                health_response = _agent_http_get(
+                    f"{base_url}/api/health",
+                    timeout=probe_cfg['health_timeout'],
                 )
                 if health_response.status_code == 200:
-                    return {
-                        'status': 'tracking_active',
-                        'data': {'device_info': identity_data} if identity_data else {},
-                        'identity': identity_data,
-                        'health_only': True
-                    }
-            except:
-                pass
+                    return self._build_probe_result(
+                        availability_status='degraded',
+                        tracking_status='tracking_active',
+                        data={'device_info': identity_data} if identity_data else {},
+                        metrics_available=False,
+                        probe_error_code=probe_error_code,
+                        probe_method='health',
+                        identity=identity_data,
+                    )
+                if not probe_error_code:
+                    probe_error_code = f"HEALTH_HTTP_{health_response.status_code}"
+            except AgentHttpError as error:
+                probe_error_code = error.code
+            except Exception as error:
+                logger.debug("[TrackingProbe] health parse failure ip=%s err=%s", ip, error)
 
-            # Identity/stats failed (timeout/connection). Do a raw port check to classify.
+            # 5) Port open but service signature missing -> degraded
             if self.check_port_open(ip, port):
-                return {
-                    'status': 'port_open_no_service',
-                    'data': None
-                }
+                return self._build_probe_result(
+                    availability_status='degraded',
+                    tracking_status='port_open_no_service',
+                    data={},
+                    metrics_available=False,
+                    probe_error_code=probe_error_code or 'AGENT_SERVICE_NOT_IDENTIFIED',
+                    probe_method='port',
+                    identity=identity_data,
+                )
 
+            # 6) Fully unreachable
+            offline_result = self._build_probe_result(
+                availability_status='offline',
+                tracking_status='offline',
+                data={},
+                metrics_available=False,
+                probe_error_code=probe_error_code or 'AGENT_UNREACHABLE',
+                probe_method='none',
+                identity=identity_data,
+            )
+            if probe_cfg.get('return_offline'):
+                return offline_result
             return None
-        except Exception as e:
-            print(f"[DEBUG] check_tracking_service error on {ip}: {e}")
+        except Exception as error:
+            logger.warning("[TrackingProbe] ip=%s unexpected_error=%s", ip, error)
+            if probe_cfg.get('return_offline'):
+                return self._build_probe_result(
+                    availability_status='offline',
+                    tracking_status='offline',
+                    data={},
+                    metrics_available=False,
+                    probe_error_code='AGENT_REQUEST_FAILED',
+                    probe_method='none',
+                    identity=identity_data,
+                )
             return None
     
     def scan_single_ip(self, ip):
@@ -264,6 +461,9 @@ class NetworkScanner:
             service_info = self.check_tracking_service(ip)
             if not service_info:
                 return None
+
+            tracking_status = service_info.get('tracking_status') or service_info.get('status', 'unknown')
+            availability_status = service_info.get('availability_status', 'offline')
 
             # After a successful HTTP/port check, ARP cache is warm—MAC lookup is more reliable.
             mac = self.get_mac_address(ip)
@@ -276,15 +476,19 @@ class NetworkScanner:
             device_info = {
                 'ip': ip,
                 'port': 5002,
-                'status': service_info.get('status', 'unknown'),
+                'status': tracking_status,
+                'availability_status': availability_status,
                 'mac_address': mac,
                 'unique_client_id': None,
                 'hostname': hostname,
                 'system': 'Unknown',
-                'tracking_data': service_info.get('data')
+                'tracking_data': service_info.get('data'),
+                'metrics_available': bool(service_info.get('metrics_available')),
+                'probe_error_code': service_info.get('probe_error_code'),
+                'probe_method': service_info.get('probe_method'),
             }
 
-            if service_info.get('status') == 'tracking_active' and service_info.get('data'):
+            if tracking_status == 'tracking_active' and service_info.get('data'):
                 device_data = service_info['data'].get('device_info', {})
                 # Extract identity info from the agent response
                 agent_mac = device_data.get('mac_address')
@@ -429,6 +633,61 @@ def device_to_dict(device):
         'last_seen': device.last_seen.isoformat() if device.last_seen else None,
         'status': check_device_status(device)
     }
+
+
+def _normalize_mac(raw_value):
+    if raw_value is None:
+        return None
+    mac = str(raw_value).strip().upper().replace('-', ':')
+    if mac in ('', 'N/A', 'UNKNOWN'):
+        return None
+    parts = mac.split(':')
+    if len(parts) != 6:
+        return None
+    if any(len(part) != 2 for part in parts):
+        return None
+    try:
+        int(''.join(parts), 16)
+    except ValueError:
+        return None
+    return ':'.join(parts)
+
+
+def _extract_identity_from_service_info(service_info):
+    if not isinstance(service_info, dict):
+        return {}
+    data = service_info.get('data') if isinstance(service_info.get('data'), dict) else {}
+    device_info = data.get('device_info') if isinstance(data.get('device_info'), dict) else {}
+    identity = service_info.get('identity') if isinstance(service_info.get('identity'), dict) else {}
+
+    raw_mac = (
+        device_info.get('mac_address')
+        or identity.get('mac_address')
+        or data.get('mac_address')
+    )
+    return {
+        'mac_address': _normalize_mac(raw_mac),
+        'hostname': (
+            device_info.get('hostname')
+            or identity.get('hostname')
+            or data.get('hostname')
+        ),
+        'unique_client_id': (
+            device_info.get('unique_client_id')
+            or identity.get('unique_client_id')
+            or data.get('unique_client_id')
+        ),
+    }
+
+
+def _find_tracked_device(mac_address=None, unique_client_id=None):
+    if unique_client_id:
+        existing = TrackedDevice.query.filter_by(unique_client_id=unique_client_id).first()
+        if existing:
+            return existing
+    if mac_address:
+        return TrackedDevice.query.filter_by(mac_address=mac_address).first()
+    return None
 
 PRODUCTIVE_KEYWORDS = [
     'code', 'studio', 'pycharm', 'intellij', 'eclipse', 'vim', 'emacs',
@@ -641,14 +900,19 @@ def refresh_tracking_snapshot(force=False, min_interval_seconds=15, force_log=Fa
             return 0
 
         scanner = NetworkScanner()
-        scanner.timeout = 1.2
+        scanner.timeout = 2.5
+        touched_devices = False
 
         for device in devices:
             if not device.ip_address:
                 continue
 
-            service_info = scanner.check_tracking_service(device.ip_address)
-            if not service_info or service_info.get('status') != 'tracking_active':
+            service_info = scanner.check_tracking_service(device.ip_address, profile='interactive')
+            if not service_info:
+                continue
+
+            availability_status = service_info.get('availability_status', 'offline')
+            if availability_status == 'offline':
                 continue
 
             tracking_data = service_info.get('data') or {}
@@ -658,29 +922,39 @@ def refresh_tracking_snapshot(force=False, min_interval_seconds=15, force_log=Fa
                 tracking_data.get('current_activity')
             )
 
-            if not has_metrics:
-                continue
-
-            # Update last seen and cache
+            # Reachable (online or degraded) updates last_seen for stable list status.
             device.last_seen = datetime.utcnow()
+            touched_devices = True
             cache_entry = real_time_data.get(device.mac_address, {})
             last_log_time = cache_entry.get('last_log_time', 0)
+            fallback_data = cache_entry.get('data') if isinstance(cache_entry.get('data'), dict) else {}
+            metrics_stale = False
+            cached_tracking_data = tracking_data
+            if not has_metrics and fallback_data:
+                cached_tracking_data = fallback_data
+                metrics_stale = True
+
             real_time_data[device.mac_address] = {
-                'data': tracking_data,
-                'status': 'online',
+                'data': cached_tracking_data,
+                'status': availability_status,
+                'availability_status': availability_status,
                 'device_info': device_to_dict(device),
                 'timestamp': time.time(),
-                'last_log_time': last_log_time
+                'last_log_time': last_log_time,
+                'metrics_available': bool(has_metrics),
+                'metrics_stale': metrics_stale,
+                'probe_method': service_info.get('probe_method'),
+                'probe_error_code': service_info.get('probe_error_code'),
             }
 
             # Throttled DB logging (force_log allows on-demand freshness)
-            if force_log or time.time() - last_log_time > 60:
+            if has_metrics and (force_log or time.time() - last_log_time > 60):
                 log_device_data(device.id, tracking_data)
                 real_time_data[device.mac_address]['last_log_time'] = time.time()
 
             refreshed += 1
 
-        if refreshed:
+        if refreshed or touched_devices:
             db.session.commit()
 
     except Exception as exc:
@@ -815,96 +1089,151 @@ real_time_data = {}
 @tracking_bp.route('/api/tracking/real-time/<mac_address>')
 def api_real_time_tracking(mac_address):
     """Real-time tracking data for device"""
-    # Auth handled by middleware
-
-    
     try:
         force_refresh = request.args.get('force') == '1'
+
         # Check cache first (CACHE HIT)
         if not force_refresh and mac_address in real_time_data:
             cached = real_time_data[mac_address]
-            # Valid for 5 seconds (prevents spamming the device)
             if time.time() - cached['timestamp'] < 5:
-                # If cached status was offline, returning it avoids a timeout wait
-                if cached.get('status') == 'offline':
-                     return jsonify({
+                cached_data = cached.get('data') if isinstance(cached.get('data'), dict) else {}
+                availability_status = cached.get('availability_status') or (
+                    'offline' if cached.get('status') == 'offline' else 'online'
+                )
+                probe_method = cached.get('probe_method')
+                probe_error_code = cached.get('probe_error_code')
+
+                if availability_status == 'offline':
+                    return jsonify({
                         'success': False,
+                        'error_code': probe_error_code or 'AGENT_UNREACHABLE',
                         'error': 'Device not responding (Cached)',
-                        'device_info': cached.get('device_info')
+                        'device_info': cached.get('device_info'),
+                        'availability_status': 'offline',
+                        'metrics_available': False,
+                        'metrics_stale': False,
+                        'probe': {
+                            'method': probe_method,
+                            'error_code': probe_error_code or 'AGENT_UNREACHABLE',
+                        },
                     }), 503
-                
+
                 return jsonify({
                     'success': True,
-                    'tracking_data': cached['data'],
+                    'tracking_data': cached_data,
                     'device_info': cached.get('device_info'),
                     'timestamp': datetime.fromtimestamp(cached['timestamp']).isoformat(),
-                    'cached': True
+                    'cached': True,
+                    'availability_status': availability_status,
+                    'metrics_available': bool(cached.get('metrics_available')),
+                    'metrics_stale': bool(cached.get('metrics_stale')),
+                    'probe': {
+                        'method': probe_method,
+                        'error_code': probe_error_code,
+                    },
                 })
 
         device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
         if not device or not device.ip_address:
-            # Cache the failure too
-            return jsonify({'success': False, 'error': 'Device not found'}), 404
-        
-        # Get live data from device
+            return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+
+        # Get live data from device using interactive probe profile.
         scanner = NetworkScanner()
-        # Slightly higher timeout for reliability on real-time stats
-        scanner.timeout = 1.5
-        service_info = scanner.check_tracking_service(device.ip_address)
-        
-        if service_info and service_info['status'] == 'tracking_active' and service_info['data']:
-            tracking_data = service_info['data']
-            
-            # Update device last seen
-            device.last_seen = datetime.utcnow()
-            
-            # FAST WRITE: Update in-memory cache (preserve throttling metadata)
+        scanner.timeout = 2.5
+        service_info = scanner.check_tracking_service(device.ip_address, profile='interactive')
+        availability_status = service_info.get('availability_status', 'offline') if isinstance(service_info, dict) else 'offline'
+
+        if service_info and availability_status in ('online', 'degraded'):
+            raw_tracking_data = service_info.get('data') or {}
+            has_metrics = bool(
+                raw_tracking_data.get('system_metrics') or
+                raw_tracking_data.get('today_stats') or
+                raw_tracking_data.get('current_activity')
+            )
+
             cached_entry = real_time_data.get(mac_address, {})
             last_log_time = cached_entry.get('last_log_time', 0)
+            fallback_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
+            tracking_data = raw_tracking_data
+            metrics_stale = False
+            if not has_metrics and fallback_data:
+                tracking_data = fallback_data
+                metrics_stale = True
+
+            now_utc = datetime.utcnow()
+            should_commit_last_seen = (
+                not device.last_seen or
+                (now_utc - device.last_seen).total_seconds() >= 30
+            )
+            device.last_seen = now_utc
+            device_info_payload = device_to_dict(device)
+
             real_time_data[mac_address] = {
                 'data': tracking_data,
-                'status': 'online',
-                'device_info': device_to_dict(device),
+                'status': availability_status,
+                'availability_status': availability_status,
+                'device_info': device_info_payload,
                 'timestamp': time.time(),
-                'last_log_time': last_log_time
+                'last_log_time': last_log_time,
+                'metrics_available': bool(has_metrics),
+                'metrics_stale': metrics_stale,
+                'probe_method': service_info.get('probe_method'),
+                'probe_error_code': service_info.get('probe_error_code'),
             }
-            
-            # Log activity and resources (only if we have metrics)
-            has_metrics = (
-                tracking_data.get('system_metrics') or
-                tracking_data.get('today_stats') or
-                tracking_data.get('current_activity')
-            )
-            # PERFORMANCE FIX: Throttled DB writes (once per 60s) to prevent lag
+
             if has_metrics and time.time() - last_log_time > 60:
                 log_device_data(device.id, tracking_data)
-                # Update the last_log_time in the cache
                 real_time_data[mac_address]['last_log_time'] = time.time()
-                # db.session.commit() # log_device_data already commits
-            
+            elif should_commit_last_seen:
+                db.session.commit()
+
             return jsonify({
                 'success': True,
                 'tracking_data': tracking_data,
-                'device_info': device_to_dict(device),  # Use serializable version
-                'timestamp': datetime.utcnow().isoformat()
+                'device_info': device_info_payload,
+                'timestamp': now_utc.isoformat(),
+                'availability_status': availability_status,
+                'metrics_available': bool(has_metrics),
+                'metrics_stale': metrics_stale,
+                'probe': {
+                    'method': service_info.get('probe_method'),
+                    'error_code': service_info.get('probe_error_code'),
+                },
             })
-        else:
-             # Cache the OFFLINE status for 5 seconds so we don't keep hitting the timeout
-            real_time_data[mac_address] = {
-                'data': None,
-                'status': 'offline',
-                'device_info': device_to_dict(device),
-                'timestamp': time.time()
-            }
 
-            return jsonify({
-                'success': False,
-                'error': 'Device not responding',
-                'device_info': device_to_dict(device)  # Use serializable version
-            }), 503
-            
+        probe_error_code = service_info.get('probe_error_code') if isinstance(service_info, dict) else None
+        probe_method = service_info.get('probe_method') if isinstance(service_info, dict) else None
+        real_time_data[mac_address] = {
+            'data': None,
+            'status': 'offline',
+            'availability_status': 'offline',
+            'device_info': device_to_dict(device),
+            'timestamp': time.time(),
+            'probe_error_code': probe_error_code or 'AGENT_UNREACHABLE',
+            'probe_method': probe_method,
+            'metrics_available': False,
+            'metrics_stale': False,
+        }
+
+        return jsonify({
+            'success': False,
+            'error_code': probe_error_code or 'AGENT_UNREACHABLE',
+            'error': 'Device not responding',
+            'device_info': device_to_dict(device),
+            'availability_status': 'offline',
+            'metrics_available': False,
+            'metrics_stale': False,
+            'probe': {
+                'method': probe_method,
+                'error_code': probe_error_code or 'AGENT_UNREACHABLE',
+            },
+        }), 503
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'REAL_TIME_TRACKING_FAILED',
+            'Failed to fetch real-time tracking data.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/history/activity/<int:device_id>')
 def api_activity_history(device_id):
@@ -939,7 +1268,11 @@ def api_activity_history(device_id):
             'data': log_dicts
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'ACTIVITY_HISTORY_FAILED',
+            'Failed to load activity history.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/history/resources/<int:device_id>')
 def api_resource_history(device_id):
@@ -974,7 +1307,11 @@ def api_resource_history(device_id):
             'data': log_dicts
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'RESOURCE_HISTORY_FAILED',
+            'Failed to load resource history.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/history/applications/<int:device_id>')
 def api_application_history(device_id):
@@ -1023,7 +1360,11 @@ def api_application_history(device_id):
             'raw_data': log_dicts[:100]  # Last 100 entries
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'APPLICATION_HISTORY_FAILED',
+            'Failed to load application history.',
+            e,
+        )
 
 
 
@@ -1047,11 +1388,11 @@ def api_stream_screenshot(mac_address):
         while consecutive_errors < max_errors:
             try:
                 # Make request with stream=True to get chunks
-                response = requests.get(
+                response = _agent_http_get(
                     f"http://{device.ip_address}:5002/stream",
                     timeout=5,
                     headers={'X-API-Key': SHARED_API_KEY},
-                    stream=True
+                    stream=True,
                 )
                 
                 if response.status_code == 200:
@@ -1066,17 +1407,10 @@ def api_stream_screenshot(mac_address):
                     print(f"Screenshot stream HTTP error {response.status_code} for {device.ip_address}")
                     yield generate_placeholder_image(f"Error {response.status_code}")
                     time.sleep(2)
-                    
-            except requests.exceptions.Timeout:
+            except AgentHttpError as e:
                 consecutive_errors += 1
-                print(f"Screenshot stream timeout for {device.ip_address}")
-                yield generate_placeholder_image("Timeout")
-                time.sleep(2)
-                
-            except requests.exceptions.ConnectionError:
-                consecutive_errors += 1
-                print(f"Screenshot stream connection error for {device.ip_address}")
-                yield generate_placeholder_image("Connection Error")
+                print(f"Screenshot stream agent error for {device.ip_address}: {e.code}")
+                yield generate_placeholder_image(e.code)
                 time.sleep(2)
                 
             except Exception as e:
@@ -1115,11 +1449,11 @@ def api_stream_camera(mac_address):
             try:
                 # Use start_camera endpoint which returns a stream
                 # Use context manager to ensure connection is closed
-                with requests.get(
+                with _agent_http_get(
                     f"http://{device.ip_address}:5002/start_camera",
                     timeout=5,
                     headers={'X-API-Key': SHARED_API_KEY},
-                    stream=True
+                    stream=True,
                 ) as response:
                 
                     if response.status_code == 200:
@@ -1134,17 +1468,10 @@ def api_stream_camera(mac_address):
                         print(f"Camera stream HTTP error {response.status_code} for {device.ip_address}")
                         yield generate_placeholder_image(f"Camera Error {response.status_code}")
                         time.sleep(2)
-                    
-            except requests.exceptions.Timeout:
+            except AgentHttpError as e:
                 consecutive_errors += 1
-                print(f"Camera stream timeout for {device.ip_address}")
-                yield generate_placeholder_image("Camera Timeout")
-                time.sleep(2)
-                
-            except requests.exceptions.ConnectionError:
-                consecutive_errors += 1
-                print(f"Camera stream connection error for {device.ip_address}")
-                yield generate_placeholder_image("Camera Offline")
+                print(f"Camera stream agent error for {device.ip_address}: {e.code}")
+                yield generate_placeholder_image(e.code)
                 time.sleep(2)
                 
             except Exception as e:
@@ -1169,17 +1496,17 @@ def api_stream_audio(mac_address):
 
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
-         return jsonify({'error': 'Device not found'}), 404
+         return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
     
     def generate():
         try:
             # Connect to the device's audio stream
             # stream=True is crucial here
-            with requests.get(
+            with _agent_http_get(
                 f"http://{device.ip_address}:5002/audio_stream.wav",
                 timeout=5,
                 headers={'X-API-Key': SHARED_API_KEY},
-                stream=True
+                stream=True,
             ) as response:
                 
                 if response.status_code == 200:
@@ -1192,6 +1519,9 @@ def api_stream_audio(mac_address):
                             yield chunk
                 else:
                     return
+        except AgentHttpError as e:
+            print(f"Audio stream agent error for {device.ip_address}: {e.code}")
+            return
         except Exception as e:
             print(f"Audio stream error for {device.ip_address}: {e}")
             return
@@ -1203,131 +1533,43 @@ def api_stream_audio(mac_address):
 @tracking_bp.route('/api/tracking/toggle-mic/<mac_address>', methods=['POST'])
 def api_toggle_mic(mac_address):
     """Toggle microphone state"""
-    # Auth handled by middleware
-
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
-        return jsonify({'success': False, 'error': 'Device not found'}), 404
-    
+        return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+
     try:
-        # We need to know current state to toggle. 
-        # But for "toggle", we can just call an endpoint on the device that handles logic,
-        # OR we can check status first. 
-        # Device doesn't have a "toggle_mic" endpoint yet, only start/stop/status.
-        # Let's check status first.
-        
-        status_resp = requests.get(
+        status_resp = _agent_http_get(
             f"http://{device.ip_address}:5002/mic_status",
             timeout=2,
-            headers={'X-API-Key': SHARED_API_KEY}
+            headers={'X-API-Key': SHARED_API_KEY},
         )
-        
+
         if status_resp.status_code != 200:
-             return jsonify({'success': False, 'error': 'Failed to check mic status'}), 502
-             
-        is_active = status_resp.json().get('active', False)
-        
+            return _json_error('AGENT_MIC_STATUS_FAILED', 'Failed to check mic status', 502)
+
+        is_active = bool(status_resp.json().get('active', False))
         if is_active:
-            # Stop it
-            action_resp = requests.get(
+            action_resp = _agent_http_get(
                 f"http://{device.ip_address}:5002/stop_mic",
                 timeout=2,
-                headers={'X-API-Key': SHARED_API_KEY}
+                headers={'X-API-Key': SHARED_API_KEY},
             )
-            action = "stopped"
-        else:
-            # Start it - actually we don't have a distinct "start" endpoint 
-            # because accessing the stream auto-starts it in the current implementation?
-            # Wait, looking at service.py... 
-            # "/audio_stream.wav" calls "start_microphone()" internally if needed.
-            # But the user might want to explicitly "Enable" it so it's ready?
-            # Actually, `service.py` logic:
-            # `stream_audio` -> `mic_manager.start_microphone()`
-            # So effectively, hitting the stream endpoint starts it.
-            # But we might want a visible "On/Off" state in UI.
-            # If we want to "Start" it without streaming yet, we might need a start endpoint.
-            # However, for now, let's assume "Active" means "Streaming or Ready".
-            # The current `stop_mic` stops the thread.
-            # The `audio_stream.wav` starts it.
-            
-            # If the user clicks "Start Mic", they usually immediately want to listen.
-            # So the UI will likely just connect to the stream.
-            # BUT, if we want to toggle it OFF, we definitively need `stop_mic`.
-            
-            # If we want to support a button that just says "Mic On" (even if nobody listening?)
-            # The current `service.py` doesn't have a standalone `/start_mic`. 
-            # It only starts on stream access.
-            # So "Toggle On" effectively does nothing until stream connects?
-            # Implementation detail: When client connects to /stream/audio/..., it calls device /audio_stream.wav, 
-            # which calls `start_microphone`. 
-            
-            # ISSUE: If I click "Stop Mic", it calls `/stop_mic`. 
-            # If I then click "Start Mic", what do I call? 
-            # If I just connect the stream, it starts.
-            # So maybe this route is only needed for STOPPING?
-            # Or maybe we want a dedicated START endpoint in service.py?
-            
-            # Let's stick to: This route handles STOP. 
-            # For START, the frontend just connects to stream.
-            # But wait, the user asked for "Toggle".
-            # If I return "started", the UI might show "Recording".
-            # Let's allow explicit stop. 
-            
-            # For consistency with Camera (which has start/stop/toggle):
-            # Camera has `toggle_camera_route` in service.py. 
-            # Mic does NOT.
-            # I should probably just implement the STOP logic here, 
-            # and let the frontend stream connection handle START.
-            
-            # However, if the user wants to "Enable" the mic remotely for *other* reasons (recording to disk?), 
-            # we might want a start. 
-            # For this task, "Start Mic stream" is the goal.
-            
-            pass 
+            if action_resp.status_code != 200:
+                return _json_error('AGENT_MIC_STOP_FAILED', 'Failed to stop microphone', 502)
+            time.sleep(0.2)
+            return jsonify({'success': True, 'action': 'stopped'})
 
-        # Let's implement full toggle logic here if possible, 
-        # but since we lack a standalone start, we'll just handle STOP 
-        # and maybe "dummy" start if needed (or assume stream start).
-        
-        if is_active:
-             # Stop
-             requests.get(f"http://{device.ip_address}:5002/stop_mic", headers={'X-API-Key': SHARED_API_KEY}, timeout=2)
-             time.sleep(0.5)
-             return jsonify({'success': True, 'action': 'stopped'})
-        else:
-             # We can't explicitly "start" without a stream client in the current service.py design 
-             # UNLESS we modify service.py to adds `start_mic`.
-             # BUT, the stream endpoint `stream_audio` DOES call `start_microphone`.
-             # So if the UI connects to stream, it starts.
-             # If we want a button "Toggle Mic", 
-             # Case 1: Active -> Click -> Stop.
-             # Case 2: Inactive -> Click -> Start? -> Needs to connect stream.
-             
-             # So actually, "Toggle Mic" button in UI translates to:
-             # If off: Create <audio> element and load source.
-             # If on: Destroy <audio> element AND call /stop_mic? 
-             # Yes.
-             
-             # So this endpoint might mainly be used for "Force Stop" or status check.
-             # Let's keep it compatible.
-             
-             # If we return "started", UI expects it to be active.
-             # But if no stream connects, it might auto-stop or just sit there?
-             # `MicrophoneManager` logic: `get_audio_stream` yields chunks. `start_microphone` starts thread.
-             # If thread interacts with PyAudio, it stays running until `stop_microphone`.
-             # So yes, we CAN start it. But we need a `start_mic` endpoint in service.py if we want it independent of stream.
-             # I didn't add `start_mic` in service.py, only `stream_audio`.
-             
-             # CHANGE OF PLAN: 
-             # I will only use this route to "Stop". 
-             # The Frontend will "Start" by simply playing the audio.
-             # The "Toggle" button in UI effectively means "Connect/Disconnect".
-             # But to be clean, "Disconnect" should also call "Stop" on backend to free resources.
-             
-             return jsonify({'success': True, 'action': 'ready'}) # "Ready" implies "Go ahead and stream"
+        # Mic startup is handled when /audio_stream.wav is requested by the player.
+        return jsonify({'success': True, 'action': 'ready'})
 
+    except AgentHttpError as e:
+        return _agent_error_response(e, status=503)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'TOGGLE_MIC_FAILED',
+            'Failed to toggle microphone state.',
+            e,
+        )
 
 
 @tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
@@ -1341,11 +1583,11 @@ def proxy_camera_stream(mac_address):
         try:
             # Connect to the service's /start_camera stream
             # Note: stream=True is crucial for MJPEG
-            resp = requests.get(
+            resp = _agent_http_get(
                 f"http://{device.ip_address}:5002/start_camera",
                 stream=True,
                 timeout=5, # Connection timeout
-                headers={'X-API-Key': SHARED_API_KEY}
+                headers={'X-API-Key': SHARED_API_KEY},
             )
             
             if resp.status_code != 200:
@@ -1358,7 +1600,12 @@ def proxy_camera_stream(mac_address):
             # Stream the content
             for chunk in resp.iter_content(chunk_size=4096):
                 yield chunk
-                
+        except AgentHttpError as e:
+            print(f"Camera proxy agent error for {mac_address}: {e.code}")
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + 
+                   generate_placeholder_image(e.code) + 
+                   b'\r\n')
         except Exception as e:
             print(f"Camera proxy error for {mac_address}: {e}")
             yield (b'--frame\r\n'
@@ -1376,22 +1623,27 @@ def api_toggle_camera(mac_address):
 
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
-        return jsonify({'success': False, 'error': 'Device not found'}), 404
+        return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
     
     try:
-        response = requests.post(
+        response = _agent_http_post(
             f"http://{device.ip_address}:5002/toggle_camera",
             timeout=5,
-            headers={'X-API-Key': SHARED_API_KEY}
+            headers={'X-API-Key': SHARED_API_KEY},
         )
         
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'success': False, 'error': f'Device returned {response.status_code}'}), 502
-            
+            return _json_error('AGENT_CAMERA_TOGGLE_FAILED', f'Device returned {response.status_code}', 502)
+    except AgentHttpError as e:
+        return _agent_error_response(e, status=503)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'TOGGLE_CAMERA_FAILED',
+            'Failed to toggle camera state.',
+            e,
+        )
 
 
 @tracking_bp.route('/api/tracking/stop-camera/<mac_address>', methods=['POST'])
@@ -1400,23 +1652,28 @@ def api_stop_camera(mac_address):
     
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
-        return jsonify({"success": False, "error": "Device not found"}), 404
+        return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
     
     try:
-        response = requests.get(
+        response = _agent_http_get(
             f"http://{device.ip_address}:5002/stop_camera",
             timeout=3,
-            headers={'X-API-Key': SHARED_API_KEY}
+            headers={'X-API-Key': SHARED_API_KEY},
         )
         
         if response.status_code == 200:
             return jsonify({"success": True, "message": "Camera stopped"})
         else:
-            return jsonify({"success": False, "error": "Failed to stop camera"}), 500
-            
+            return _json_error('AGENT_CAMERA_STOP_FAILED', 'Failed to stop camera', 502)
+    except AgentHttpError as e:
+        return _agent_error_response(e, status=503)
     except Exception as e:
         print(f"Error stopping camera: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _json_exception(
+            'STOP_CAMERA_FAILED',
+            'Failed to stop camera stream.',
+            e,
+        )
 
 
 
@@ -1433,130 +1690,213 @@ def api_scan_devices():
     try:
         scanner = NetworkScanner()
         devices_found = scanner.scan_for_trackable_devices()
-        
+
         saved_devices = TrackedDevice.query.all()
-        saved_macs = {device.mac_address: device for device in saved_devices}
-        
+        saved_macs = {str(device.mac_address).upper(): device for device in saved_devices if device.mac_address}
+
         enhanced_devices = []
         updated_ips = []
-        
+        auto_saved_devices = []
+
         for device in devices_found:
-            mac = device.get('mac_address', 'Unknown').upper()
-            
-            # AUTO-SAVE LOGIC: If tracking is active and device not saved, save it automatically
-            if mac not in saved_macs and mac != 'N/A' and device['status'] == 'tracking_active':
+            mac = _normalize_mac(device.get('mac_address'))
+            status = device.get('status')
+            unique_client_id = (device.get('unique_client_id') or '').strip() or None
+            scanned_hostname = (device.get('hostname') or '').strip() or None
+
+            existing_by_identity = _find_tracked_device(mac_address=mac, unique_client_id=unique_client_id)
+            if existing_by_identity and mac and mac not in saved_macs:
+                saved_macs[mac] = existing_by_identity
+
+            if status == 'tracking_active' and mac and mac not in saved_macs:
                 try:
                     new_device = TrackedDevice(
                         mac_address=mac,
-                        device_name=device.get('hostname', f"Device_{mac[-4:]}"),
+                        unique_client_id=unique_client_id,
+                        device_name=scanned_hostname or f"Device_{mac[-5:].replace(':', '')}",
                         employee_name="Auto-Discovered",
-                        hostname=device.get('hostname'),
-                        ip_address=device['ip'],
+                        hostname=scanned_hostname,
+                        ip_address=device.get('ip'),
                         department="Unassigned",
                         notes="Auto-discovered by scanner"
                     )
                     db.session.add(new_device)
-                    # Update local cache so we don't duplicate if list has dupes
-                    saved_macs[mac] = new_device 
-                    print(f"[AUTO-SAVE] Added new device: {mac} ({device['ip']})")
+                    db.session.flush()
+                    saved_macs[mac] = new_device
+                    auto_saved_devices.append({
+                        'device_name': new_device.device_name,
+                        'mac_address': mac,
+                        'ip_address': new_device.ip_address,
+                    })
+                    print(f"[AUTO-SAVE] Added new device: {mac} ({device.get('ip')})")
                 except Exception as e:
                     print(f"[AUTO-SAVE] Error saving {mac}: {e}")
 
-            if mac in saved_macs and mac != 'N/A':
-                saved_device = saved_macs[mac]
-                # Auto-update IP if changed
-                if device['ip'] != saved_device.ip_address:
-                    saved_device.ip_address = device['ip']
+            saved_device = saved_macs.get(mac) if mac else None
+            if saved_device:
+                if device.get('ip') and device.get('ip') != saved_device.ip_address:
+                    old_ip = saved_device.ip_address
+                    saved_device.ip_address = device.get('ip')
                     saved_device.last_seen = datetime.utcnow()
                     updated_ips.append({
                         'device_name': saved_device.device_name,
-                        'old_ip': saved_device.ip_address,
-                        'new_ip': device['ip']
+                        'old_ip': old_ip,
+                        'new_ip': device.get('ip')
                     })
-            
+
+                if scanned_hostname and scanned_hostname != saved_device.hostname:
+                    saved_device.hostname = scanned_hostname
+
+                if unique_client_id and not saved_device.unique_client_id:
+                    saved_device.unique_client_id = unique_client_id
+
             device_dict = {
-                'ip': device['ip'],
-                'port': device['port'],
-                'status': device['status'],
-                'mac_address': mac,
+                'ip': device.get('ip'),
+                'port': device.get('port', 5002),
+                'status': status,
+                'availability_status': device.get('availability_status', 'offline'),
+                'mac_address': mac or 'N/A',
                 'hostname': device.get('hostname', 'Unknown'),
                 'system': device.get('system', 'Unknown'),
                 'tracking_data': device.get('tracking_data'),
-                'is_saved': mac in saved_macs and mac != 'N/A'
+                'is_saved': bool(saved_device),
+                'metrics_available': bool(device.get('metrics_available')),
+                'probe_error_code': device.get('probe_error_code'),
+                'probe_method': device.get('probe_method'),
             }
-            
-            if device_dict['is_saved'] and mac in saved_macs:
-                device_dict['saved_info'] = device_to_dict(saved_macs[mac])  # Use serializable version
-            
+
+            if saved_device:
+                device_dict['saved_info'] = device_to_dict(saved_device)
+
             enhanced_devices.append(device_dict)
-        
+
         # Commit all changes (new devices + IP updates)
         db.session.commit()
-        
+
         tracking_active = [d for d in enhanced_devices if d['status'] == 'tracking_active']
         port_only = [d for d in enhanced_devices if d['status'] == 'port_open_no_service']
-        
+
         return jsonify({
             'success': True,
             'devices_found': enhanced_devices,
             'total_found': len(enhanced_devices),
             'tracking_active': len(tracking_active),
             'port_only': len(port_only),
-            'new_devices': len([d for d in enhanced_devices if not d['is_saved']]),
-            'updated_ips': updated_ips
+            'new_devices': len(auto_saved_devices),
+            'auto_saved_devices': auto_saved_devices,
+            'updated_ips': updated_ips,
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        db.session.rollback()
+        return _json_exception(
+            'TRACKING_SCAN_FAILED',
+            'Failed to complete tracking network scan.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/save-device', methods=['POST'])
 def api_save_device():
     """Save/update device"""
     
     try:
-        data = request.json
-        mac_address = data['mac_address'].upper()
-        
-        if mac_address == 'N/A' or mac_address == 'UNKNOWN':
-            return jsonify({'success': False, 'error': 'Cannot save device with unknown MAC address'})
-        
-        device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
-        
+        data = request.json or {}
+        ip_address = (data.get('ip_address') or '').strip() or None
+        hostname = (data.get('hostname') or '').strip() or None
+        unique_client_id = (data.get('unique_client_id') or '').strip() or None
+        mac_address = _normalize_mac(data.get('mac_address'))
+
+        if not ip_address and not mac_address:
+            return _json_error(
+                'DEVICE_IDENTITY_REQUIRED',
+                'Provide at least IP address or MAC address to register a device.',
+                400,
+            )
+
+        # If MAC is missing and IP is provided, resolve identity from service.py endpoint.
+        if not mac_address and ip_address:
+            scanner = NetworkScanner()
+            service_info = scanner.check_tracking_service(ip_address)
+            identity = _extract_identity_from_service_info(service_info)
+            mac_address = identity.get('mac_address')
+            hostname = hostname or identity.get('hostname')
+            unique_client_id = unique_client_id or identity.get('unique_client_id')
+
+        if not mac_address:
+            return _json_error(
+                'IDENTITY_RESOLUTION_FAILED',
+                'Could not resolve MAC from service. Ensure service.py is running on the target IP:5002.',
+                400,
+            )
+
+        device_name = (data.get('device_name') or '').strip() or hostname or f"Device_{mac_address[-5:].replace(':', '')}"
+        employee_name = (data.get('employee_name') or '').strip() or None
+        department = (data.get('department') or '').strip() or None
+        notes = (data.get('notes') or '').strip() or None
+
+        device = _find_tracked_device(mac_address=mac_address, unique_client_id=unique_client_id)
+
         if device:
-            device.device_name = data['device_name']
-            device.employee_name = data.get('employee_name')
-            device.hostname = data.get('hostname')
-            device.ip_address = data.get('ip_address')
-            device.department = data.get('department')
-            device.notes = data.get('notes')
+            if device.mac_address != mac_address:
+                mac_collision = TrackedDevice.query.filter(
+                    TrackedDevice.mac_address == mac_address,
+                    TrackedDevice.id != device.id
+                ).first()
+                if mac_collision:
+                    return _json_error(
+                        'MAC_ALREADY_EXISTS',
+                        f'MAC {mac_address} is already assigned to another tracked device.',
+                        409,
+                    )
+                device.mac_address = mac_address
+
+            device.device_name = device_name
+            device.employee_name = employee_name
+            device.hostname = hostname
+            device.ip_address = ip_address
+            device.unique_client_id = unique_client_id or device.unique_client_id
+            device.department = department
+            device.notes = notes
             device.updated_at = datetime.utcnow()
         else:
             device = TrackedDevice(
                 mac_address=mac_address,
-                device_name=data['device_name'],
-                employee_name=data.get('employee_name'),
-                hostname=data.get('hostname'),
-                ip_address=data.get('ip_address'),
-                department=data.get('department'),
-                notes=data.get('notes')
+                unique_client_id=unique_client_id,
+                device_name=device_name,
+                employee_name=employee_name,
+                hostname=hostname,
+                ip_address=ip_address,
+                department=department,
+                notes=notes
             )
             db.session.add(device)
-        
+
         db.session.commit()
-        return jsonify({'success': True, 'message': 'Device saved successfully'})
+        return jsonify({
+            'success': True,
+            'message': 'Device saved successfully',
+            'device': device_to_dict(device)
+        })
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)})
+        return _json_exception(
+            'SAVE_DEVICE_FAILED',
+            'Failed to save tracked device.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/delete-device', methods=['POST'])
 def api_delete_device():
     """Delete device"""
     
     try:
-        mac_address = request.json.get('mac_address')
+        payload = request.get_json(silent=True) or {}
+        mac_address = _normalize_mac(payload.get('mac_address'))
+        if not mac_address:
+            return _json_error('MAC_ADDRESS_REQUIRED', 'MAC address is required.', 400)
         device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
         
         if not device:
-            return jsonify({'success': False, 'error': 'Device not found'})
+            return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
         
         db.session.delete(device)
         db.session.commit()
@@ -1564,7 +1904,11 @@ def api_delete_device():
         return jsonify({'success': True, 'message': 'Device deleted successfully'})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)})
+        return _json_exception(
+            'DELETE_DEVICE_FAILED',
+            'Failed to delete tracked device.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/sync-ips', methods=['POST'])
 def api_sync_ips():
@@ -1573,39 +1917,178 @@ def api_sync_ips():
     try:
         scanner = NetworkScanner()
         devices_found = scanner.scan_for_trackable_devices()
-        
+
         saved_devices = TrackedDevice.query.all()
-        saved_macs = {device.mac_address: device for device in saved_devices}
-        
+        saved_macs = {str(device.mac_address).upper(): device for device in saved_devices if device.mac_address}
+
         updated_devices = []
-        
+        auto_saved_devices = []
+
         for device in devices_found:
-            mac = device.get('mac_address', 'Unknown').upper()
-            
-            if mac in saved_macs and mac != 'N/A':
-                saved_device = saved_macs[mac]
-                if device['ip'] != saved_device.ip_address:
+            mac = _normalize_mac(device.get('mac_address'))
+            status = device.get('status')
+            unique_client_id = (device.get('unique_client_id') or '').strip() or None
+            scanned_hostname = (device.get('hostname') or '').strip() or None
+            scanned_ip = device.get('ip')
+
+            existing_by_identity = _find_tracked_device(mac_address=mac, unique_client_id=unique_client_id)
+            if existing_by_identity and mac and mac not in saved_macs:
+                saved_macs[mac] = existing_by_identity
+
+            if status == 'tracking_active' and mac and mac not in saved_macs:
+                new_device = TrackedDevice(
+                    mac_address=mac,
+                    unique_client_id=unique_client_id,
+                    device_name=scanned_hostname or f"Device_{mac[-5:].replace(':', '')}",
+                    employee_name="Auto-Discovered",
+                    hostname=scanned_hostname,
+                    ip_address=scanned_ip,
+                    department="Unassigned",
+                    notes="Auto-discovered during sync"
+                )
+                db.session.add(new_device)
+                db.session.flush()
+                saved_macs[mac] = new_device
+                auto_saved_devices.append({
+                    'device_name': new_device.device_name,
+                    'mac_address': mac,
+                    'ip_address': scanned_ip
+                })
+
+            saved_device = saved_macs.get(mac) if mac else None
+            if saved_device:
+                if scanned_ip and scanned_ip != saved_device.ip_address:
                     old_ip = saved_device.ip_address
-                    saved_device.ip_address = device['ip']
+                    saved_device.ip_address = scanned_ip
                     saved_device.last_seen = datetime.utcnow()
                     updated_devices.append({
                         'device_name': saved_device.device_name,
                         'old_ip': old_ip,
-                        'new_ip': device['ip']
+                        'new_ip': scanned_ip
                     })
+
+                if scanned_hostname and scanned_hostname != saved_device.hostname:
+                    saved_device.hostname = scanned_hostname
+
+                if unique_client_id and not saved_device.unique_client_id:
+                    saved_device.unique_client_id = unique_client_id
         
-        if updated_devices:
+        if updated_devices or auto_saved_devices:
             db.session.commit()
         
         return jsonify({
             'success': True,
             'updated_devices': updated_devices,
-            'message': f'Updated {len(updated_devices)} device(s)'
+            'auto_saved_devices': auto_saved_devices,
+            'message': f'Updated {len(updated_devices)} device(s), auto-saved {len(auto_saved_devices)} new device(s)'
         })
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'SYNC_IPS_FAILED',
+            'Failed to sync tracked device IPs.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/register', methods=['GET'])
+def api_tracking_register():
+    """Compatibility registration endpoint for service auto-discovery."""
+    auth_error = _require_tracking_api_key()
+    if auth_error:
+        return auth_error
+
+    return jsonify({
+        'success': True,
+        'server_name': 'Device Monitoring Tactical',
+        'status': 'active',
+        'version': '1.0',
+        'timestamp': datetime.utcnow().isoformat(),
+    })
+
+
+@tracking_bp.route('/api/tracking/sync', methods=['POST'])
+def api_tracking_sync():
+    """Compatibility sync endpoint for service agents."""
+    auth_error = _require_tracking_api_key()
+    if auth_error:
+        return auth_error
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        mac_address = _normalize_mac(payload.get('mac_address'))
+        if not mac_address:
+            return _json_error('MAC_ADDRESS_REQUIRED', 'MAC address is required for sync.', 400)
+
+        hostname = (payload.get('hostname') or '').strip() or None
+        ip_address = (payload.get('ip_address') or request.remote_addr or '').strip() or None
+        unique_client_id = (payload.get('unique_client_id') or '').strip() or None
+        now_utc = datetime.utcnow()
+
+        device = _find_tracked_device(mac_address=mac_address, unique_client_id=unique_client_id)
+        if not device:
+            device_name = hostname or f"Agent_{mac_address[-5:].replace(':', '')}"
+            device = TrackedDevice(
+                mac_address=mac_address,
+                unique_client_id=unique_client_id,
+                device_name=device_name,
+                employee_name='Auto-Discovered',
+                hostname=hostname,
+                ip_address=ip_address,
+                department='Unassigned',
+                notes='Auto-registered by service agent sync',
+                last_seen=now_utc,
+            )
+            db.session.add(device)
+            db.session.flush()
+        else:
+            if ip_address:
+                device.ip_address = ip_address
+            if hostname:
+                device.hostname = hostname
+            if unique_client_id and not device.unique_client_id:
+                device.unique_client_id = unique_client_id
+            if not device.device_name and hostname:
+                device.device_name = hostname
+            device.last_seen = now_utc
+            device.updated_at = now_utc
+
+        current_stats = payload.get('current_stats')
+        if isinstance(current_stats, dict):
+            has_metrics = bool(
+                current_stats.get('system_metrics') or
+                current_stats.get('today_stats') or
+                current_stats.get('current_activity')
+            )
+            cached_entry = real_time_data.get(mac_address, {})
+            real_time_data[mac_address] = {
+                'data': current_stats,
+                'status': 'online' if has_metrics else 'degraded',
+                'availability_status': 'online' if has_metrics else 'degraded',
+                'device_info': device_to_dict(device),
+                'timestamp': time.time(),
+                'last_log_time': cached_entry.get('last_log_time', 0),
+                'metrics_available': has_metrics,
+                'metrics_stale': False,
+                'probe_method': 'sync',
+                'probe_error_code': None,
+            }
+
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': 'Sync received',
+            'device': device_to_dict(device),
+            'synced_at': now_utc.isoformat(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception(
+            'TRACKING_SYNC_FAILED',
+            'Failed to process tracking sync payload.',
+            e,
+        )
 
 # ============================================================
 # LIVE TRACKING ROUTES
@@ -1625,78 +2108,209 @@ def live_tracking():
 
 @tracking_bp.route('/api/tracking/live-summary')
 def api_live_summary():
-    """Get live summary data for all devices"""
+    """Get live summary data for all devices pulling from the background-synced DB cache"""
     
     try:
+        from extensions import redis_client
         devices = TrackedDevice.query.all()
         summary_data = []
         
-        for device in devices:
-            if device.ip_address:
-                scanner = NetworkScanner()
-                service_info = scanner.check_tracking_service(device.ip_address)
-                
-                if service_info and service_info['status'] == 'tracking_active':
-                    device_data = {
-                        'id': device.id,
-                        'device_name': device.device_name,
-                        'employee_name': device.employee_name,
-                        'status': 'online',
-                        'tracking_data': service_info['data']
-                    }
-                else:
-                    device_data = {
-                        'id': device.id,
-                        'device_name': device.device_name,
-                        'employee_name': device.employee_name,
-                        'status': 'offline'
-                    }
-                
-                summary_data.append(device_data)
+        # MGET High-Speed Cache
+        redis_results = []
+        if redis_client and devices:
+            try:
+                keys = [f"tracking:probe:{d.mac_address}" for d in devices]
+                redis_results = redis_client.mget(keys)
+            except Exception:
+                redis_results = [None] * len(devices)
+        else:
+            redis_results = [None] * len(devices)
+
+        for i, device in enumerate(devices):
+            tracking_info = {}
+            metrics_available = False
+            availability_status = 'offline'
+            probe_error_code = device.probe_error_code
+            probe_method = device.probe_method
+            last_probe_at = device.last_probe_at.isoformat() if device.last_probe_at else None
+            is_from_redis = False
+
+            # Try Redis first (High Speed Cache)
+            if redis_results and i < len(redis_results) and redis_results[i]:
+                try:
+                    payload = json.loads(redis_results[i])
+                    if isinstance(payload, dict):
+                        candidate_tracking = payload.get('tracking_data')
+                        if isinstance(candidate_tracking, dict):
+                            tracking_info = candidate_tracking
+                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
+                            # Backward-compatible support for older payload shape
+                            tracking_info = payload
+
+                        status_from_cache = str(
+                            payload.get('availability_status') or payload.get('status') or ''
+                        ).strip().lower()
+                        if status_from_cache in ('online', 'degraded', 'offline'):
+                            availability_status = status_from_cache
+                        elif tracking_info:
+                            availability_status = 'online'
+
+                        metrics_available = bool(
+                            payload.get('metrics_available', False) or
+                            tracking_info.get('system_metrics') or
+                            tracking_info.get('today_stats') or
+                            tracking_info.get('current_activity')
+                        )
+                        probe_error_code = payload.get('probe_error_code')
+                        probe_method = payload.get('probe_method') or 'redis'
+                        last_probe_at = payload.get('last_probe_at') or datetime.utcnow().isoformat()
+                        is_from_redis = True
+                except Exception:
+                    pass
+
+            # DB Fallback (Durable State)
+            if not is_from_redis:
+                if device.tracking_data:
+                    try:
+                        tracking_info = json.loads(device.tracking_data)
+                    except Exception:
+                        pass
+                availability_status = str(device.availability_status or 'offline').strip().lower()
+                if availability_status not in ('online', 'degraded', 'offline'):
+                    availability_status = 'offline'
+                metrics_available = bool(device.metrics_available)
+                probe_error_code = device.probe_error_code
+                probe_method = device.probe_method
+                last_probe_at = device.last_probe_at.isoformat() if device.last_probe_at else None
+
+            if not probe_error_code and availability_status == 'offline':
+                probe_error_code = 'DEVICE_NO_IP' if not device.ip_address else 'AGENT_UNREACHABLE'
+            
+            device_data = {
+                'id': device.id,
+                'device_name': device.device_name,
+                'employee_name': device.employee_name,
+                'mac_address': device.mac_address,
+                'ip_address': device.ip_address,
+                'status': availability_status,
+                'availability_status': availability_status,
+                'probe_error_code': probe_error_code,
+                'probe_method': probe_method,
+                'metrics_available': metrics_available,
+                'last_probe_at': last_probe_at,
+                'tracking_data': tracking_info,
+            }
+            summary_data.append(device_data)
         
         return jsonify({
             'success': True,
             'total_devices': len(devices),
             'online_devices': len([d for d in summary_data if d['status'] == 'online']),
+            'degraded_devices': len([d for d in summary_data if d['status'] == 'degraded']),
             'devices': summary_data
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'LIVE_SUMMARY_FAILED',
+            'Failed to load live tracking summary.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/live-status/<mac_address>')
 def api_live_status(mac_address):
-    """Get simplified live status for a device"""
+    """Get simplified live status for a device directly from DB cache"""
     
     try:
+        from extensions import redis_client
+        
         device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
         if not device or not device.ip_address:
-            return jsonify({'success': False, 'error': 'Device not found'}), 404
+            return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
         
-        scanner = NetworkScanner()
-        service_info = scanner.check_tracking_service(device.ip_address)
+        tracking_info = {}
+        availability_status = 'offline'
+        metrics_available = False
+        probe_error_code = device.probe_error_code
+        probe_method = device.probe_method
+        last_probe_at = device.last_probe_at.isoformat() if device.last_probe_at else None
+        is_from_redis = False
         
-        if service_info and service_info['status'] == 'tracking_active':
-            tracking_data = service_info['data']
-            
-            return jsonify({
-                'success': True,
-                'status': 'online',
-                'device_name': device.device_name,
-                'activity': tracking_data.get('current_activity', {}),
-                'resources': tracking_data.get('system_metrics', {}),
-                'timestamp': datetime.utcnow().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': True,
-                'status': 'offline',
-                'device_name': device.device_name,
-                'timestamp': datetime.utcnow().isoformat()
-            })
+        # Redis Primary Try
+        if redis_client:
+            try:
+                val = redis_client.get(f"tracking:probe:{mac_address}")
+                if val:
+                    payload = json.loads(val)
+                    if isinstance(payload, dict):
+                        candidate_tracking = payload.get('tracking_data')
+                        if isinstance(candidate_tracking, dict):
+                            tracking_info = candidate_tracking
+                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
+                            # Backward-compatible support for older payload shape
+                            tracking_info = payload
+
+                        status_from_cache = str(
+                            payload.get('availability_status') or payload.get('status') or ''
+                        ).strip().lower()
+                        if status_from_cache in ('online', 'degraded', 'offline'):
+                            availability_status = status_from_cache
+                        elif tracking_info:
+                            availability_status = 'online'
+
+                        metrics_available = bool(
+                            payload.get('metrics_available', False) or
+                            tracking_info.get('system_metrics') or
+                            tracking_info.get('today_stats') or
+                            tracking_info.get('current_activity')
+                        )
+                        probe_error_code = payload.get('probe_error_code')
+                        probe_method = payload.get('probe_method') or 'redis'
+                        last_probe_at = payload.get('last_probe_at') or datetime.utcnow().isoformat()
+                        is_from_redis = True
+            except Exception:
+                pass
+                
+        # DB Fallback
+        if not is_from_redis:
+            if device.tracking_data:
+                try:
+                    tracking_info = json.loads(device.tracking_data)
+                except Exception:
+                    pass
+            availability_status = str(device.availability_status or 'offline').strip().lower()
+            if availability_status not in ('online', 'degraded', 'offline'):
+                availability_status = 'offline'
+            metrics_available = bool(device.metrics_available)
+            probe_error_code = device.probe_error_code
+            probe_method = device.probe_method
+            last_probe_at = device.last_probe_at.isoformat() if device.last_probe_at else None
+
+        if not probe_error_code and availability_status == 'offline':
+            probe_error_code = 'DEVICE_NO_IP' if not device.ip_address else 'AGENT_UNREACHABLE'
+
+        return jsonify({
+            'success': True,
+            'status': availability_status,
+            'availability_status': availability_status,
+            'device_name': device.device_name,
+            'activity': tracking_info.get('current_activity', {}),
+            'resources': tracking_info.get('system_metrics', {}),
+            'metrics_available': metrics_available,
+            'probe': {
+                'method': probe_method,
+                'error_code': probe_error_code,
+            },
+            'timestamp': datetime.utcnow().isoformat(),
+            'last_probe_at': last_probe_at,
+        })
             
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'LIVE_STATUS_FAILED',
+            'Failed to load live status.',
+            e,
+        )
 
 # ============================================================
 # ALERT FUNCTIONS
@@ -1743,15 +2357,18 @@ def api_live_alerts():
     try:
         devices = TrackedDevice.query.all()
         all_alerts = []
-        
+        scanner = NetworkScanner()
+        scanner.timeout = 2.5
+
         for device in devices:
             if device.ip_address:
-                scanner = NetworkScanner()
-                service_info = scanner.check_tracking_service(device.ip_address)
-                
-                if service_info and service_info['status'] == 'tracking_active':
+                service_info = scanner.check_tracking_service(device.ip_address, profile='interactive')
+                availability_status = service_info.get('availability_status', 'offline') if isinstance(service_info, dict) else 'offline'
+                tracking_payload = service_info.get('data') if isinstance(service_info, dict) else {}
+
+                if availability_status in ('online', 'degraded') and isinstance(tracking_payload, dict):
                     alerts = check_live_alerts(
-                        service_info['data'], 
+                        tracking_payload,
                         device_to_dict(device)  # Use serializable version
                     )
                     
@@ -1767,7 +2384,11 @@ def api_live_alerts():
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'LIVE_ALERTS_FAILED',
+            'Failed to load live alerts.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/maintenance/<mac_address>', methods=['POST'])
 def api_toggle_device_maintenance(mac_address):
@@ -1775,7 +2396,7 @@ def api_toggle_device_maintenance(mac_address):
 
     data = request.get_json(silent=True) or {}
     if 'enabled' not in data:
-        return jsonify({'success': False, 'error': 'Missing enabled flag'}), 400
+        return _json_error('MISSING_ENABLED_FLAG', 'Missing enabled flag', 400)
 
     enabled = data.get('enabled')
     if isinstance(enabled, str):
@@ -1785,11 +2406,19 @@ def api_toggle_device_maintenance(mac_address):
 
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device:
-        return jsonify({'success': False, 'error': 'Device not found'}), 404
+        return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
 
-    device.maintenance_mode = enabled
-    device.updated_at = datetime.utcnow()
-    db.session.commit()
+    try:
+        device.maintenance_mode = enabled
+        device.updated_at = datetime.utcnow()
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception(
+            'MAINTENANCE_UPDATE_FAILED',
+            'Failed to update maintenance mode.',
+            e,
+        )
 
     return jsonify({
         'success': True,
@@ -1841,8 +2470,11 @@ def api_productivity_metrics():
         })
         
     except Exception as e:
-        print(f"Error calculating metrics: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'PRODUCTIVITY_METRICS_FAILED',
+            'Failed to calculate productivity metrics.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/metrics/security')
 def api_security_metrics():
@@ -1958,8 +2590,11 @@ def api_security_metrics():
         })
 
     except Exception as e:
-        print(f"Error calculating security metrics: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'SECURITY_METRICS_FAILED',
+            'Failed to calculate security metrics.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/metrics/performance')
 def api_performance_metrics():
@@ -1996,8 +2631,11 @@ def api_performance_metrics():
             'timestamp': datetime.utcnow().isoformat()
         })
     except Exception as e:
-        print(f"Error calculating performance metrics: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'PERFORMANCE_METRICS_FAILED',
+            'Failed to calculate performance metrics.',
+            e,
+        )
 
 @tracking_bp.route('/api/tracking/metrics/details/<metric_type>')
 def api_metric_details(metric_type):
@@ -2115,5 +2753,8 @@ def api_metric_details(metric_type):
         return jsonify({'success': True, 'type': metric_type, 'data': details})
 
     except Exception as e:
-        print(f"Error getting metric details: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _json_exception(
+            'METRIC_DETAILS_FAILED',
+            'Failed to load metric details.',
+            e,
+        )
