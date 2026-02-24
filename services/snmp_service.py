@@ -128,6 +128,17 @@ class SnmpOids:
     IF_HC_IN_OCTETS = '1.3.6.1.2.1.31.1.1.1.6'
     IF_HC_OUT_OCTETS = '1.3.6.1.2.1.31.1.1.1.10'
 
+    # Printer MIB (RFC 3805) — Consumables & Status
+    HR_PRINTER_STATUS = '1.3.6.1.2.1.25.3.5.1.1'          # hrPrinterStatus table
+    PRT_MARKER_SUPPLIES_DESC = '1.3.6.1.2.1.43.11.1.1.6'  # prtMarkerSuppliesDescription
+    PRT_MARKER_SUPPLIES_MAX = '1.3.6.1.2.1.43.11.1.1.8'   # prtMarkerSuppliesMaxCapacity
+    PRT_MARKER_SUPPLIES_LEVEL = '1.3.6.1.2.1.43.11.1.1.9' # prtMarkerSuppliesLevel
+    PRT_MARKER_LIFE_COUNT = '1.3.6.1.2.1.43.10.2.1.4'     # prtMarkerLifeCount (total pages)
+    PRT_INPUT_DESC = '1.3.6.1.2.1.43.8.2.1.13'             # prtInputDescription (tray name)
+    PRT_INPUT_STATUS = '1.3.6.1.2.1.43.8.2.1.11'           # prtInputStatus
+    PRT_INPUT_MAX_CAPACITY = '1.3.6.1.2.1.43.8.2.1.9'      # prtInputMaxCapacity
+    PRT_INPUT_CURRENT_LEVEL = '1.3.6.1.2.1.43.8.2.1.10'    # prtInputCurrentLevel
+
 
 # Default GETBULK max-repetitions (rows per PDU response)
 BULK_MAX_REPETITIONS = 25
@@ -574,6 +585,149 @@ class SnmpService:
         except Exception as e:
             log.error(f"[SNMP] Health check error for {host}: {e}")
             return metrics
+
+    # ─────────────────────────────────────────────
+    # Printer Metrics via Printer-MIB (Phase 1 MVP)
+    # ─────────────────────────────────────────────
+    def get_printer_metrics(self, host: str, community: str = 'public',
+                            version: str = '2c', port: int = 161) -> Dict[str, Any]:
+        """
+        Get printer health metrics: supplies (toner/ink), page counts, tray status.
+        Uses GETBULK for table walks.  Returns structured dict for PrinterMetrics model.
+        """
+        if not PYSNMP_AVAILABLE:
+            return {'error': 'pysnmp not installed', 'error_code': 'SNMP_NOT_INSTALLED'}
+
+        result = {
+            'status': None, 'status_code': None,
+            'toner_black': None, 'toner_cyan': None,
+            'toner_magenta': None, 'toner_yellow': None,
+            'page_count_total': None, 'page_count_color': None, 'page_count_bw': None,
+            'paper_tray_status': [], 'job_queue_length': None,
+        }
+        use_bulk = self._use_bulk(version)
+
+        # ── 1. Printer Status (scalar GET) ──
+        try:
+            err_i, err_s, err_idx, var_binds = next(
+                getCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    ObjectType(ObjectIdentity(SnmpOids.HR_PRINTER_STATUS)),
+                )
+            )
+            if not classify_snmp_error(err_i, err_s, err_idx):
+                status_val = int(var_binds[0][1])
+                STATUS_MAP = {1: 'other', 2: 'unknown', 3: 'idle', 4: 'printing', 5: 'warmup'}
+                result['status_code'] = status_val
+                result['status'] = STATUS_MAP.get(status_val, 'unknown')
+        except Exception as e:
+            log.debug(f"[SNMP] Printer status unavailable for {host}: {e}")
+
+        # ── 2. Supplies (toner / ink) ──
+        try:
+            supply_oids = [
+                ObjectType(ObjectIdentity(SnmpOids.PRT_MARKER_SUPPLIES_DESC)),
+                ObjectType(ObjectIdentity(SnmpOids.PRT_MARKER_SUPPLIES_MAX)),
+                ObjectType(ObjectIdentity(SnmpOids.PRT_MARKER_SUPPLIES_LEVEL)),
+            ]
+            if use_bulk:
+                supply_iter = bulkCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    0, BULK_MAX_REPETITIONS, *supply_oids, lexicographicMode=False
+                )
+            else:
+                supply_iter = nextCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    *supply_oids, lexicographicMode=False
+                )
+
+            for (err_i, err_s, err_idx, var_binds) in supply_iter:
+                if classify_snmp_error(err_i, err_s, err_idx):
+                    break
+                if len(var_binds) < 3:
+                    continue
+                desc = str(var_binds[0][1]).lower()
+                max_cap = int(var_binds[1][1])
+                cur_level = int(var_binds[2][1])
+                pct = round((cur_level / max_cap) * 100) if max_cap > 0 else (0 if cur_level == 0 else -1)
+
+                if 'black' in desc or 'bk' in desc:
+                    result['toner_black'] = pct
+                elif 'cyan' in desc:
+                    result['toner_cyan'] = pct
+                elif 'magenta' in desc:
+                    result['toner_magenta'] = pct
+                elif 'yellow' in desc:
+                    result['toner_yellow'] = pct
+        except Exception as e:
+            log.debug(f"[SNMP] Supplies walk failed for {host}: {e}")
+
+        # ── 3. Page Counts ──
+        try:
+            page_oids = [ObjectType(ObjectIdentity(SnmpOids.PRT_MARKER_LIFE_COUNT))]
+            if use_bulk:
+                page_iter = bulkCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    0, BULK_MAX_REPETITIONS, *page_oids, lexicographicMode=False
+                )
+            else:
+                page_iter = nextCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    *page_oids, lexicographicMode=False
+                )
+            counts = []
+            for (err_i, err_s, err_idx, var_binds) in page_iter:
+                if classify_snmp_error(err_i, err_s, err_idx):
+                    break
+                counts.append(int(var_binds[0][1]))
+            if counts:
+                result['page_count_total'] = counts[0]  # First marker is usually total
+        except Exception as e:
+            log.debug(f"[SNMP] Page count walk failed for {host}: {e}")
+
+        # ── 4. Paper Tray Status ──
+        try:
+            tray_oids = [
+                ObjectType(ObjectIdentity(SnmpOids.PRT_INPUT_DESC)),
+                ObjectType(ObjectIdentity(SnmpOids.PRT_INPUT_MAX_CAPACITY)),
+                ObjectType(ObjectIdentity(SnmpOids.PRT_INPUT_CURRENT_LEVEL)),
+            ]
+            if use_bulk:
+                tray_iter = bulkCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    0, BULK_MAX_REPETITIONS, *tray_oids, lexicographicMode=False
+                )
+            else:
+                tray_iter = nextCmd(
+                    self._engine, self._get_community_data(community, version),
+                    self._get_transport_target(host, port), ContextData(),
+                    *tray_oids, lexicographicMode=False
+                )
+            trays = []
+            for (err_i, err_s, err_idx, var_binds) in tray_iter:
+                if classify_snmp_error(err_i, err_s, err_idx):
+                    break
+                if len(var_binds) < 3:
+                    continue
+                t_desc = str(var_binds[0][1])
+                t_max = int(var_binds[1][1])
+                t_cur = int(var_binds[2][1])
+                t_pct = round((t_cur / t_max) * 100) if t_max > 0 else None
+                trays.append({'name': t_desc, 'max_capacity': t_max, 'current_level': t_cur, 'capacity_pct': t_pct})
+            result['paper_tray_status'] = trays
+        except Exception as e:
+            log.debug(f"[SNMP] Tray walk failed for {host}: {e}")
+
+        result['polled_at'] = datetime.utcnow().isoformat()
+        return result
 
 
 # Singleton instance

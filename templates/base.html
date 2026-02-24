@@ -1801,6 +1801,14 @@
                         class="sidebar-link {% if request.endpoint and 'devices_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="server"></i><span class="link-text">Devices</span>
                     </a>
+                    <a href="{{ url_for('sites.sites_list_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'sites' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="building"></i><span class="link-text">Sites</span>
+                    </a>
+                    <a href="{{ url_for('departments.departments_list_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'departments' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="sitemap"></i><span class="link-text">Departments</span>
+                    </a>
                     <a href="{{ url_for('scanning_bp.scanner_page') }}"
                         class="sidebar-link {% if request.endpoint and 'scanning_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="scan-search"></i><span class="link-text">Scanner</span>

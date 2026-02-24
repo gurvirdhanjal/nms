@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}{{ site.site_name }} Dashboard - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Site Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-building me-2"></i>{{ site.site_name }}</h2>
+            <p class="text-muted mb-0">
+                <i class="fas fa-map-marker-alt me-2"></i>{{ site.address or 'No address specified' }}
+                <span class="ms-3"><i class="fas fa-clock me-2"></i>{{ site.timezone }}</span>
+            </p>
+        </div>
+        <a href="/sites" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Sites
+        </a>
+    </div>
+
+    <!-- Site Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Total Devices</h6>
+                            <h3 class="mb-0">{{ stats.device_count }}</h3>
+                        </div>
+                        <div class="text-primary">
+                            <i class="fas fa-server fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card bg-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Online</h6>
+                            <h3 class="mb-0">{{ stats.online_count }}</h3>
+                        </div>
+                        <div class="text-success">
+                            <i class="fas fa-check-circle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card bg-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Offline</h6>
+                            <h3 class="mb-0">{{ stats.offline_count }}</h3>
+                        </div>
+                        <div class="text-danger">
+                            <i class="fas fa-times-circle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card bg-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-1">Warnings</h6>
+                            <h3 class="mb-0">{{ stats.warning_count }}</h3>
+                        </div>
+                        <div class="text-warning">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-bell me-2"></i>Recent Alerts
+                </div>
+                <div class="card-body">
+                    {% if recent_alerts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Device</th>
+                                    <th>Metric</th>
+                                    <th>Message</th>
+                                    <th>Time</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in recent_alerts %}
+                                <tr>
+                                    <td>
+                                        {% if alert.severity == 'CRITICAL' %}
+                                        <span class="badge bg-danger">{{ alert.severity }}</span>
+                                        {% elif alert.severity == 'WARNING' %}
+                                        <span class="badge bg-warning">{{ alert.severity }}</span>
+                                        {% else %}
+                                        <span class="badge bg-info">{{ alert.severity }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <strong>{{ alert.device.device_name if alert.device else 'Unknown' }}</strong><br>
+                                        <small class="text-muted">{{ alert.device_ip }}</small>
+                                    </td>
+                                    <td>{{ alert.metric_name or '-' }}</td>
+                                    <td>{{ alert.message }}</td>
+                                    <td>{{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') if alert.timestamp else '-' }}</td>
+                                    <td>
+                                        {% if alert.resolved %}
+                                        <span class="badge bg-success">Resolved</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">Active</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No recent alerts for this site.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aggregate Metrics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-line me-2"></i>Aggregate Metrics
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Average CPU Usage</h6>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar {% if metrics.avg_cpu >= 80 %}bg-danger{% elif metrics.avg_cpu >= 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ metrics.avg_cpu or 0 }}%"
+                                     aria-valuenow="{{ metrics.avg_cpu or 0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ "%.1f"|format(metrics.avg_cpu or 0) }}%
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Average Memory Usage</h6>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar {% if metrics.avg_memory >= 85 %}bg-danger{% elif metrics.avg_memory >= 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ metrics.avg_memory or 0 }}%"
+                                     aria-valuenow="{{ metrics.avg_memory or 0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ "%.1f"|format(metrics.avg_memory or 0) }}%
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Average Disk Usage</h6>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar {% if metrics.avg_disk >= 90 %}bg-danger{% elif metrics.avg_disk >= 75 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ metrics.avg_disk or 0 }}%"
+                                     aria-valuenow="{{ metrics.avg_disk or 0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ "%.1f"|format(metrics.avg_disk or 0) }}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Average Latency</h6>
+                            <h4>{{ "%.1f"|format(metrics.avg_latency or 0) }} ms</h4>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Average Packet Loss</h6>
+                            <h4>{{ "%.1f"|format(metrics.avg_packet_loss or 0) }}%</h4>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Total Health Logs (24h)</h6>
+                            <h4>{{ metrics.total_health_logs or 0 }}</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Devices List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-list me-2"></i>Devices at This Site
+                </div>
+                <div class="card-body">
+                    {% if devices %}
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="devicesTable">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>IP Address</th>
+                                    <th>Department</th>
+                                    <th>Health</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in devices %}
+                                <tr>
+                                    <td>
+                                        {% if device.device_id in online_device_ids %}
+                                        <span class="status-indicator status-online"></span>
+                                        {% else %}
+                                        <span class="status-indicator status-offline"></span>
+                                        {% endif %}
+                                    </td>
+                                    <td><strong>{{ device.device_name }}</strong></td>
+                                    <td>{{ device.device_type }}</td>
+                                    <td>{{ device.device_ip }}</td>
+                                    <td>
+                                        {% if device.department %}
+                                        {{ device.department.name }}
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if device.health_alert_strikes >= 2 or device.latency_strikes >= 2 or device.packet_loss_strikes >= 2 %}
+                                        <span class="badge bg-warning">Warning</span>
+                                        {% elif device.device_id in online_device_ids %}
+                                        <span class="badge bg-success">Healthy</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="/device/{{ device.device_id }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye"></i> View
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No devices assigned to this site.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize DataTables if available
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('devicesTable');
+    if (table && typeof $.fn.dataTable !== 'undefined') {
+        $(table).DataTable({
+            pageLength: 25,
+            order: [[1, 'asc']], // Sort by name
+            language: {
+                search: "Filter devices:"
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

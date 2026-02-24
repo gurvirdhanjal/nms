@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Departments - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-sitemap me-2"></i>Departments</h2>
+        <button class="btn btn-primary" onclick="showCreateDepartmentModal()">
+            <i class="fas fa-plus me-2"></i>Create Department
+        </button>
+    </div>
+
+    <!-- Departments Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="departmentsTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Site</th>
+                            <th>Devices</th>
+                            <th>Users</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Department Modal -->
+<div class="modal fade" id="departmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="departmentModalTitle">Create Department</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="departmentForm">
+                    <input type="hidden" id="departmentId">
+                    
+                    <div class="mb-3">
+                        <label for="departmentName" class="form-label">Department Name *</label>
+                        <input type="text" class="form-control" id="departmentName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="siteId" class="form-label">Site (Optional)</label>
+                        <select class="form-select" id="siteId">
+                            <option value="">-- No Site --</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveDepartment()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let departmentsData = [];
+let sitesData = [];
+let departmentModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    departmentModal = new bootstrap.Modal(document.getElementById('departmentModal'));
+    loadSites();
+    loadDepartments();
+});
+
+async function loadSites() {
+    try {
+        const response = await fetch('/api/sites');
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            sitesData = result.data;
+            populateSiteDropdown();
+        }
+    } catch (error) {
+        console.error('Error loading sites:', error);
+    }
+}
+
+function populateSiteDropdown() {
+    const select = document.getElementById('siteId');
+    const currentOptions = select.innerHTML;
+    
+    sitesData.forEach(site => {
+        const option = document.createElement('option');
+        option.value = site.id;
+        option.textContent = site.site_name;
+        select.appendChild(option);
+    });
+}
+
+async function loadDepartments() {
+    try {
+        const response = await fetch('/api/departments');
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            departmentsData = result.data;
+            renderDepartmentsTable();
+        } else {
+            showAlert('Error loading departments: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error loading departments: ' + error.message, 'danger');
+    }
+}
+
+function renderDepartmentsTable() {
+    const tbody = document.querySelector('#departmentsTable tbody');
+    tbody.innerHTML = '';
+    
+    departmentsData.forEach(dept => {
+        const site = sitesData.find(s => s.id === dept.site_id);
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${escapeHtml(dept.name)}</strong></td>
+            <td>${escapeHtml(dept.description || '-')}</td>
+            <td>${site ? escapeHtml(site.site_name) : '-'}</td>
+            <td><span class="badge bg-info">${dept.device_count}</span></td>
+            <td><span class="badge bg-secondary">${dept.user_count}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editDepartment(${dept.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteDepartment(${dept.id}, '${escapeHtml(dept.name)}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function showCreateDepartmentModal() {
+    document.getElementById('departmentModalTitle').textContent = 'Create Department';
+    document.getElementById('departmentForm').reset();
+    document.getElementById('departmentId').value = '';
+    departmentModal.show();
+}
+
+function editDepartment(deptId) {
+    const dept = departmentsData.find(d => d.id === deptId);
+    if (!dept) return;
+    
+    document.getElementById('departmentModalTitle').textContent = 'Edit Department';
+    document.getElementById('departmentId').value = dept.id;
+    document.getElementById('departmentName').value = dept.name;
+    document.getElementById('description').value = dept.description || '';
+    document.getElementById('siteId').value = dept.site_id || '';
+    
+    departmentModal.show();
+}
+
+async function saveDepartment() {
+    const deptId = document.getElementById('departmentId').value;
+    const data = {
+        name: document.getElementById('departmentName').value,
+        description: document.getElementById('description').value || null,
+        site_id: document.getElementById('siteId').value || null
+    };
+    
+    try {
+        const url = deptId ? `/api/departments/${deptId}` : '/api/departments';
+        const method = deptId ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            showAlert(`Department ${deptId ? 'updated' : 'created'} successfully`, 'success');
+            departmentModal.hide();
+            loadDepartments();
+        } else {
+            showAlert('Error: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error saving department: ' + error.message, 'danger');
+    }
+}
+
+async function deleteDepartment(deptId, deptName) {
+    if (!confirm(`Are you sure you want to delete department "${deptName}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/departments/${deptId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            showAlert('Department deleted successfully', 'success');
+            loadDepartments();
+        } else {
+            showAlert('Error: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error deleting department: ' + error.message, 'danger');
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

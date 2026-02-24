@@ -1,0 +1,641 @@
+{% extends "base.html" %}
+
+{% block title %}Printer Details - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header with Back Button -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+            <a href="/printers" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Printers
+            </a>
+            <h2 id="printerName"><i class="fas fa-print me-2"></i>Loading...</h2>
+        </div>
+        <button class="btn btn-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt me-2"></i>Refresh
+        </button>
+    </div>
+
+    <!-- Printer Status Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-info-circle me-2"></i>Printer Information
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-borderless">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted" style="width: 150px;"><strong>Status:</strong></td>
+                                <td id="printerStatus">-</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted"><strong>IP Address:</strong></td>
+                                <td id="printerIP">-</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted"><strong>Device Type:</strong></td>
+                                <td id="printerType">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-borderless">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted" style="width: 150px;"><strong>Site:</strong></td>
+                                <td id="printerSite">-</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted"><strong>Department:</strong></td>
+                                <td id="printerDepartment">-</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted"><strong>Last Updated:</strong></td>
+                                <td id="lastUpdated">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toner Levels Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-tint me-2"></i>Toner Levels
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div id="tonerBarsContainer">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <canvas id="tonerChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Count History Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-chart-line me-2"></i>Page Count History (Last 7 Days)
+        </div>
+        <div class="card-body">
+            <canvas id="pageCountChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Recent Print Jobs Card -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-file-alt me-2"></i>Recent Print Jobs (Last 50)</span>
+            <span class="badge bg-primary" id="jobCount">0</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="printJobsTable">
+                    <thead>
+                        <tr>
+                            <th>Date/Time</th>
+                            <th>User</th>
+                            <th>Document</th>
+                            <th>Pages</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="noJobsMessage" class="alert alert-info" style="display: none;">
+                No print jobs found for this printer.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js Library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+let printerId = null;
+let printerData = null;
+let metricsData = [];
+let sitesData = [];
+let departmentsData = [];
+let tonerChart = null;
+let pageCountChart = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Extract printer ID from URL
+    const pathParts = window.location.pathname.split('/');
+    printerId = pathParts[pathParts.length - 1];
+    
+    if (!printerId || isNaN(printerId)) {
+        showAlert('Invalid printer ID', 'danger');
+        return;
+    }
+    
+    loadData();
+});
+
+async function loadData() {
+    try {
+        // Load sites and departments for display
+        await Promise.all([
+            loadSites(),
+            loadDepartments()
+        ]);
+        
+        // Load printer details
+        await loadPrinterDetails();
+        
+        // Load metrics history
+        await loadMetricsHistory();
+        
+        // Load recent print jobs
+        await loadPrintJobs();
+        
+    } catch (error) {
+        console.error('Error loading data:', error);
+        showAlert('Error loading printer data: ' + error.message, 'danger');
+    }
+}
+
+async function loadSites() {
+    try {
+        const response = await fetch('/api/sites');
+        const result = await response.json();
+        if (result.status === 'ok') {
+            sitesData = result.data;
+        }
+    } catch (error) {
+        console.error('Error loading sites:', error);
+    }
+}
+
+async function loadDepartments() {
+    try {
+        const response = await fetch('/api/departments');
+        const result = await response.json();
+        if (result.status === 'ok') {
+            departmentsData = result.data;
+        }
+    } catch (error) {
+        console.error('Error loading departments:', error);
+    }
+}
+
+async function loadPrinterDetails() {
+    const response = await fetch(`/api/printers/${printerId}`);
+    const result = await response.json();
+    
+    if (result.status !== 'ok') {
+        throw new Error(result.message || 'Failed to load printer details');
+    }
+    
+    printerData = result.data;
+    renderPrinterDetails();
+}
+
+async function loadMetricsHistory() {
+    const response = await fetch(`/api/printer/${printerId}/metrics?hours=168`); // 7 days
+    const result = await response.json();
+    
+    if (result.status === 'ok') {
+        metricsData = result.data;
+        renderTonerLevels();
+        renderPageCountChart();
+    }
+}
+
+async function loadPrintJobs() {
+    const response = await fetch(`/api/printer/${printerId}/jobs?per_page=50`);
+    const result = await response.json();
+    
+    if (result.status === 'ok') {
+        renderPrintJobs(result.data);
+        document.getElementById('jobCount').textContent = result.meta.total;
+    }
+}
+
+function renderPrinterDetails() {
+    document.getElementById('printerName').innerHTML = 
+        `<i class="fas fa-print me-2"></i>${escapeHtml(printerData.device_name)}`;
+    
+    // Status
+    const status = getPrinterStatus(printerData.latest_metrics);
+    const statusClass = getStatusClass(status);
+    const statusIcon = getStatusIcon(status);
+    document.getElementById('printerStatus').innerHTML = 
+        `<span class="badge bg-${statusClass}"><i class="${statusIcon} me-1"></i>${status}</span>`;
+    
+    // Basic info
+    document.getElementById('printerIP').textContent = printerData.device_ip || '-';
+    document.getElementById('printerType').textContent = formatDeviceType(printerData.device_type);
+    
+    // Site and Department
+    document.getElementById('printerSite').textContent = getSiteName(printerData.site_id);
+    document.getElementById('printerDepartment').textContent = getDepartmentName(printerData.department_id);
+    
+    // Last updated
+    if (printerData.latest_metrics && printerData.latest_metrics.timestamp) {
+        const timestamp = new Date(printerData.latest_metrics.timestamp);
+        document.getElementById('lastUpdated').textContent = formatDateTime(timestamp);
+    } else {
+        document.getElementById('lastUpdated').textContent = 'Never';
+    }
+}
+
+function renderTonerLevels() {
+    const container = document.getElementById('tonerBarsContainer');
+    container.innerHTML = '';
+    
+    if (!metricsData || metricsData.length === 0) {
+        container.innerHTML = '<p class="text-muted">No toner data available</p>';
+        return;
+    }
+    
+    const latestMetrics = metricsData[0];
+    const toners = [
+        { name: 'Black', level: latestMetrics.toner_black, color: '#000000' },
+        { name: 'Cyan', level: latestMetrics.toner_cyan, color: '#00FFFF' },
+        { name: 'Magenta', level: latestMetrics.toner_magenta, color: '#FF00FF' },
+        { name: 'Yellow', level: latestMetrics.toner_yellow, color: '#FFFF00' }
+    ];
+    
+    toners.forEach(toner => {
+        if (toner.level !== null && toner.level >= 0) {
+            container.innerHTML += renderTonerBar(toner.name, toner.level, toner.color);
+        }
+    });
+    
+    // Render toner chart
+    renderTonerChart(toners);
+}
+
+function renderTonerBar(color, level, hexColor) {
+    const barClass = level < 20 ? 'bg-danger' : level < 40 ? 'bg-warning' : 'bg-success';
+    
+    return `
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong style="color: ${hexColor};">${color}</strong>
+                <strong>${level}%</strong>
+            </div>
+            <div class="progress" style="height: 20px;">
+                <div class="progress-bar ${barClass}" 
+                     role="progressbar" 
+                     style="width: ${level}%"
+                     aria-valuenow="${level}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderTonerChart(toners) {
+    const ctx = document.getElementById('tonerChart');
+    
+    if (tonerChart) {
+        tonerChart.destroy();
+    }
+    
+    const validToners = toners.filter(t => t.level !== null && t.level >= 0);
+    
+    if (validToners.length === 0) {
+        ctx.parentElement.innerHTML = '<p class="text-muted text-center">No toner data available</p>';
+        return;
+    }
+    
+    tonerChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: validToners.map(t => t.name),
+            datasets: [{
+                data: validToners.map(t => t.level),
+                backgroundColor: validToners.map(t => t.color),
+                borderColor: '#1e1e2a',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#f5f7fa',
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Current Toner Levels',
+                    color: '#f5f7fa',
+                    font: {
+                        size: 14,
+                        weight: 'bold'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderPageCountChart() {
+    const ctx = document.getElementById('pageCountChart');
+    
+    if (pageCountChart) {
+        pageCountChart.destroy();
+    }
+    
+    if (!metricsData || metricsData.length === 0) {
+        ctx.parentElement.innerHTML = '<p class="text-muted text-center">No page count data available</p>';
+        return;
+    }
+    
+    // Sort by timestamp ascending
+    const sortedMetrics = [...metricsData].sort((a, b) => 
+        new Date(a.timestamp) - new Date(b.timestamp)
+    );
+    
+    // Filter last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentMetrics = sortedMetrics.filter(m => 
+        new Date(m.timestamp) >= sevenDaysAgo && m.page_count_total !== null
+    );
+    
+    if (recentMetrics.length === 0) {
+        ctx.parentElement.innerHTML = '<p class="text-muted text-center">No page count data available for the last 7 days</p>';
+        return;
+    }
+    
+    pageCountChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: recentMetrics.map(m => formatDate(new Date(m.timestamp))),
+            datasets: [{
+                label: 'Total Pages',
+                data: recentMetrics.map(m => m.page_count_total),
+                borderColor: '#00d4aa',
+                backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#f5f7fa',
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                title: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#b8b8c8',
+                        maxRotation: 45,
+                        minRotation: 45
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.08)'
+                    }
+                },
+                y: {
+                    ticks: {
+                        color: '#b8b8c8'
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.08)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderPrintJobs(jobs) {
+    const tbody = document.querySelector('#printJobsTable tbody');
+    const noJobsMsg = document.getElementById('noJobsMessage');
+    
+    tbody.innerHTML = '';
+    
+    if (!jobs || jobs.length === 0) {
+        noJobsMsg.style.display = 'block';
+        document.getElementById('printJobsTable').style.display = 'none';
+        return;
+    }
+    
+    noJobsMsg.style.display = 'none';
+    document.getElementById('printJobsTable').style.display = 'table';
+    
+    jobs.forEach(job => {
+        const row = document.createElement('tr');
+        
+        const timestamp = job.submission_time ? formatDateTime(new Date(job.submission_time)) : '-';
+        const user = escapeHtml(job.user_account || '-');
+        const document = escapeHtml(job.document_name || '-');
+        const pages = job.page_count !== null ? job.page_count : '-';
+        const status = job.status || 'unknown';
+        const statusBadge = getJobStatusBadge(status);
+        
+        row.innerHTML = `
+            <td>${timestamp}</td>
+            <td>${user}</td>
+            <td>${document}</td>
+            <td>${pages}</td>
+            <td>${statusBadge}</td>
+        `;
+        
+        tbody.appendChild(row);
+    });
+}
+
+function getJobStatusBadge(status) {
+    const statusMap = {
+        'completed': { class: 'success', icon: 'check-circle', text: 'Completed' },
+        'printing': { class: 'info', icon: 'spinner fa-spin', text: 'Printing' },
+        'failed': { class: 'danger', icon: 'times-circle', text: 'Failed' },
+        'cancelled': { class: 'secondary', icon: 'ban', text: 'Cancelled' },
+        'submitted': { class: 'warning', icon: 'clock', text: 'Submitted' }
+    };
+    
+    const statusInfo = statusMap[status.toLowerCase()] || { class: 'secondary', icon: 'question-circle', text: status };
+    
+    return `<span class="badge bg-${statusInfo.class}"><i class="fas fa-${statusInfo.icon} me-1"></i>${statusInfo.text}</span>`;
+}
+
+function getPrinterStatus(metrics) {
+    if (!metrics) {
+        return 'Unknown';
+    }
+    
+    const timestamp = new Date(metrics.timestamp);
+    const now = new Date();
+    const minutesAgo = (now - timestamp) / 1000 / 60;
+    
+    if (minutesAgo > 10) {
+        return 'Offline';
+    }
+    
+    if (metrics.status) {
+        const status = metrics.status.toLowerCase();
+        if (status.includes('error') || status.includes('jam')) {
+            return 'Error';
+        }
+        if (status.includes('printing')) {
+            return 'Printing';
+        }
+        if (status.includes('idle') || status.includes('ready')) {
+            return 'Ready';
+        }
+    }
+    
+    return 'Online';
+}
+
+function getStatusClass(status) {
+    const statusMap = {
+        'Ready': 'success',
+        'Online': 'success',
+        'Printing': 'info',
+        'Error': 'danger',
+        'Offline': 'secondary',
+        'Unknown': 'secondary'
+    };
+    return statusMap[status] || 'secondary';
+}
+
+function getStatusIcon(status) {
+    const iconMap = {
+        'Ready': 'fas fa-check-circle',
+        'Online': 'fas fa-check-circle',
+        'Printing': 'fas fa-spinner fa-spin',
+        'Error': 'fas fa-exclamation-triangle',
+        'Offline': 'fas fa-times-circle',
+        'Unknown': 'fas fa-question-circle'
+    };
+    return iconMap[status] || 'fas fa-question-circle';
+}
+
+function getSiteName(siteId) {
+    if (!siteId) return '-';
+    const site = sitesData.find(s => s.id === siteId);
+    return site ? site.site_name : '-';
+}
+
+function getDepartmentName(deptId) {
+    if (!deptId) return '-';
+    const dept = departmentsData.find(d => d.id === deptId);
+    return dept ? dept.name : '-';
+}
+
+function formatDeviceType(type) {
+    if (!type) return '-';
+    return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function formatDateTime(date) {
+    return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatDate(date) {
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function refreshData() {
+    showAlert('Refreshing printer data...', 'info');
+    loadData();
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+
+<style>
+.table {
+    color: var(--ui-text);
+}
+
+.table thead th {
+    border-bottom: 2px solid var(--ui-border);
+    color: var(--ui-text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+.table tbody td {
+    border-bottom: 1px solid var(--ui-border);
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--ui-accent-soft);
+}
+
+.progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.badge {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.7rem;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Sites - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-building me-2"></i>Sites</h2>
+        <button class="btn btn-primary" onclick="showCreateSiteModal()">
+            <i class="fas fa-plus me-2"></i>Create Site
+        </button>
+    </div>
+
+    <!-- Sites Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="sitesTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Address</th>
+                            <th>Timezone</th>
+                            <th>Contact</th>
+                            <th>Devices</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Site Modal -->
+<div class="modal fade" id="siteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="siteModalTitle">Create Site</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="siteForm">
+                    <input type="hidden" id="siteId">
+                    
+                    <div class="mb-3">
+                        <label for="siteName" class="form-label">Site Name *</label>
+                        <input type="text" class="form-control" id="siteName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="siteCode" class="form-label">Site Code</label>
+                        <input type="text" class="form-control" id="siteCode">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Address</label>
+                        <textarea class="form-control" id="address" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label">Timezone</label>
+                        <input type="text" class="form-control" id="timezone" value="UTC">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contactName" class="form-label">Contact Name</label>
+                        <input type="text" class="form-control" id="contactName">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contactEmail" class="form-label">Contact Email</label>
+                        <input type="email" class="form-control" id="contactEmail">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contactPhone" class="form-label">Contact Phone</label>
+                        <input type="tel" class="form-control" id="contactPhone">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSite()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let sitesData = [];
+let siteModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    siteModal = new bootstrap.Modal(document.getElementById('siteModal'));
+    loadSites();
+});
+
+async function loadSites() {
+    try {
+        const response = await fetch('/api/sites');
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            sitesData = result.data;
+            renderSitesTable();
+        } else {
+            showAlert('Error loading sites: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error loading sites: ' + error.message, 'danger');
+    }
+}
+
+function renderSitesTable() {
+    const tbody = document.querySelector('#sitesTable tbody');
+    tbody.innerHTML = '';
+    
+    sitesData.forEach(site => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${escapeHtml(site.site_name)}</strong></td>
+            <td>${escapeHtml(site.site_code || '-')}</td>
+            <td>${escapeHtml(site.address || '-')}</td>
+            <td>${escapeHtml(site.timezone)}</td>
+            <td>
+                ${site.contact_name ? escapeHtml(site.contact_name) : '-'}<br>
+                ${site.contact_email ? `<small>${escapeHtml(site.contact_email)}</small>` : ''}
+            </td>
+            <td><span class="badge bg-info">${site.device_count}</span></td>
+            <td>
+                <a href="/sites/${site.id}/dashboard" class="btn btn-sm btn-outline-info" title="View Dashboard">
+                    <i class="fas fa-chart-line"></i>
+                </a>
+                <button class="btn btn-sm btn-outline-primary" onclick="editSite(${site.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSite(${site.id}, '${escapeHtml(site.site_name)}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function showCreateSiteModal() {
+    document.getElementById('siteModalTitle').textContent = 'Create Site';
+    document.getElementById('siteForm').reset();
+    document.getElementById('siteId').value = '';
+    document.getElementById('timezone').value = 'UTC';
+    siteModal.show();
+}
+
+function editSite(siteId) {
+    const site = sitesData.find(s => s.id === siteId);
+    if (!site) return;
+    
+    document.getElementById('siteModalTitle').textContent = 'Edit Site';
+    document.getElementById('siteId').value = site.id;
+    document.getElementById('siteName').value = site.site_name;
+    document.getElementById('siteCode').value = site.site_code || '';
+    document.getElementById('address').value = site.address || '';
+    document.getElementById('timezone').value = site.timezone;
+    document.getElementById('contactName').value = site.contact_name || '';
+    document.getElementById('contactEmail').value = site.contact_email || '';
+    document.getElementById('contactPhone').value = site.contact_phone || '';
+    
+    siteModal.show();
+}
+
+async function saveSite() {
+    const siteId = document.getElementById('siteId').value;
+    const data = {
+        site_name: document.getElementById('siteName').value,
+        site_code: document.getElementById('siteCode').value || null,
+        address: document.getElementById('address').value || null,
+        timezone: document.getElementById('timezone').value,
+        contact_name: document.getElementById('contactName').value || null,
+        contact_email: document.getElementById('contactEmail').value || null,
+        contact_phone: document.getElementById('contactPhone').value || null
+    };
+    
+    try {
+        const url = siteId ? `/api/sites/${siteId}` : '/api/sites';
+        const method = siteId ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            showAlert(`Site ${siteId ? 'updated' : 'created'} successfully`, 'success');
+            siteModal.hide();
+            loadSites();
+        } else {
+            showAlert('Error: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error saving site: ' + error.message, 'danger');
+    }
+}
+
+async function deleteSite(siteId, siteName) {
+    if (!confirm(`Are you sure you want to delete site "${siteName}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/sites/${siteId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            showAlert('Site deleted successfully', 'success');
+            loadSites();
+        } else {
+            showAlert('Error: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error deleting site: ' + error.message, 'danger');
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

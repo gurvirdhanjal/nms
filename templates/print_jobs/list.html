@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}Print Jobs Audit - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-print me-2"></i>Print Jobs Audit Trail</h2>
+        <button class="btn btn-success" onclick="exportToCSV()">
+            <i class="fas fa-download me-2"></i>Export to CSV
+        </button>
+    </div>
+
+    <!-- Filters Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-filter me-2"></i>Filters
+        </div>
+        <div class="card-body">
+            <form id="filterForm" class="row g-3">
+                <div class="col-md-3">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input type="datetime-local" class="form-control" id="startDate">
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <input type="datetime-local" class="form-control" id="endDate">
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="userFilter" class="form-label">User</label>
+                    <input type="text" class="form-control" id="userFilter" placeholder="Search by user...">
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="printerFilter" class="form-label">Printer</label>
+                    <select class="form-select" id="printerFilter">
+                        <option value="">-- All Printers --</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="siteFilter" class="form-label">Site</label>
+                    <select class="form-select" id="siteFilter">
+                        <option value="">-- All Sites --</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="departmentFilter" class="form-label">Department</label>
+                    <select class="form-select" id="departmentFilter">
+                        <option value="">-- All Departments --</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-6 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary me-2" onclick="applyFilters()">
+                        <i class="fas fa-search me-2"></i>Apply Filters
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                        <i class="fas fa-times me-2"></i>Clear
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <h5 class="text-muted">Total Jobs</h5>
+                    <h3 id="totalJobs">0</h3>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-muted">Total Pages</h5>
+                    <h3 id="totalPages" class="text-primary">0</h3>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-muted">Unique Users</h5>
+                    <h3 id="uniqueUsers">0</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Jobs Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="printJobsTable">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="submission_time">
+                                Timestamp <i class="fas fa-sort"></i>
+                            </th>
+                            <th class="sortable" data-sort="user_account">
+                                User <i class="fas fa-sort"></i>
+                            </th>
+                            <th>Document</th>
+                            <th class="sortable" data-sort="printer_name">
+                                Printer <i class="fas fa-sort"></i>
+                            </th>
+                            <th class="sortable" data-sort="page_count">
+                                Pages <i class="fas fa-sort"></i>
+                            </th>
+                            <th>Size</th>
+                            <th>Status</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div>
+                    <span id="paginationInfo">Showing 0 of 0 jobs</span>
+                </div>
+                <nav>
+                    <ul class="pagination mb-0" id="pagination">
+                        <!-- Populated by JavaScript -->
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 50;
+let currentFilters = {};
+let currentSort = { field: 'submission_time', order: 'desc' };
+let printersData = [];
+let sitesData = [];
+let departmentsData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadFilterOptions();
+    loadPrintJobs();
+    
+    // Add sorting click handlers
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.addEventListener('click', function() {
+            const sortField = this.dataset.sort;
+            if (currentSort.field === sortField) {
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = sortField;
+                currentSort.order = 'desc';
+            }
+            updateSortIcons();
+            loadPrintJobs();
+        });
+    });
+});
+
+async function loadFilterOptions() {
+    try {
+        // Load printers
+        const printersResponse = await fetch('/api/devices?device_type=printer');
+        const printersResult = await printersResponse.json();
+        if (printersResult.status === 'ok') {
+            printersData = printersResult.data;
+            populatePrinterDropdown();
+        }
+        
+        // Load sites
+        const sitesResponse = await fetch('/api/sites');
+        const sitesResult = await sitesResponse.json();
+        if (sitesResult.status === 'ok') {
+            sitesData = sitesResult.data;
+            populateSiteDropdown();
+        }
+        
+        // Load departments
+        const deptsResponse = await fetch('/api/departments');
+        const deptsResult = await deptsResponse.json();
+        if (deptsResult.status === 'ok') {
+            departmentsData = deptsResult.data;
+            populateDepartmentDropdown();
+        }
+    } catch (error) {
+        console.error('Error loading filter options:', error);
+    }
+}
+
+function populatePrinterDropdown() {
+    const select = document.getElementById('printerFilter');
+    printersData.forEach(printer => {
+        const option = document.createElement('option');
+        option.value = printer.device_id;
+        option.textContent = printer.device_name;
+        select.appendChild(option);
+    });
+}
+
+function populateSiteDropdown() {
+    const select = document.getElementById('siteFilter');
+    sitesData.forEach(site => {
+        const option = document.createElement('option');
+        option.value = site.id;
+        option.textContent = site.site_name;
+        select.appendChild(option);
+    });
+}
+
+function populateDepartmentDropdown() {
+    const select = document.getElementById('departmentFilter');
+    departmentsData.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = dept.name;
+        select.appendChild(option);
+    });
+}
+
+function applyFilters() {
+    currentFilters = {};
+    
+    const startDate = document.getElementById('startDate').value;
+    if (startDate) {
+        currentFilters.start_date = new Date(startDate).toISOString();
+    }
+    
+    const endDate = document.getElementById('endDate').value;
+    if (endDate) {
+        currentFilters.end_date = new Date(endDate).toISOString();
+    }
+    
+    const user = document.getElementById('userFilter').value;
+    if (user) {
+        currentFilters.user = user;
+    }
+    
+    const printer = document.getElementById('printerFilter').value;
+    if (printer) {
+        currentFilters.printer_id = printer;
+    }
+    
+    const site = document.getElementById('siteFilter').value;
+    if (site) {
+        currentFilters.site_id = site;
+    }
+    
+    const department = document.getElementById('departmentFilter').value;
+    if (department) {
+        currentFilters.department_id = department;
+    }
+    
+    currentPage = 1;
+    loadPrintJobs();
+}
+
+function clearFilters() {
+    document.getElementById('filterForm').reset();
+    currentFilters = {};
+    currentPage = 1;
+    loadPrintJobs();
+}
+
+async function loadPrintJobs() {
+    try {
+        const params = new URLSearchParams({
+            page: currentPage,
+            page_size: pageSize,
+            ...currentFilters
+        });
+        
+        const response = await fetch(`/api/print-jobs?${params}`);
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            renderPrintJobsTable(result.data);
+            updatePagination(result.meta);
+            updateSummary(result.meta);
+        } else {
+            showAlert('Error loading print jobs: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error loading print jobs: ' + error.message, 'danger');
+    }
+}
+
+function renderPrintJobsTable(jobs) {
+    const tbody = document.querySelector('#printJobsTable tbody');
+    tbody.innerHTML = '';
+    
+    if (jobs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No print jobs found</td></tr>';
+        return;
+    }
+    
+    jobs.forEach(job => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${formatDateTime(job.submission_time)}</td>
+            <td><strong>${escapeHtml(job.user_account || 'Unknown')}</strong></td>
+            <td>${escapeHtml(job.document_name || '-')}</td>
+            <td>${escapeHtml(job.printer_name)}</td>
+            <td><span class="badge bg-primary">${job.page_count || 0}</span></td>
+            <td>${formatBytes(job.size_bytes)}</td>
+            <td>${formatStatus(job.status)}</td>
+            <td><span class="badge bg-secondary">${escapeHtml(job.collection_source || '-')}</span></td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function updatePagination(meta) {
+    const paginationInfo = document.getElementById('paginationInfo');
+    const start = (meta.page - 1) * meta.page_size + 1;
+    const end = Math.min(meta.page * meta.page_size, meta.total);
+    paginationInfo.textContent = `Showing ${start}-${end} of ${meta.total} jobs`;
+    
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+    
+    // Previous button
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${meta.page === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${meta.page - 1}); return false;">Previous</a>`;
+    pagination.appendChild(prevLi);
+    
+    // Page numbers
+    const maxPages = 5;
+    let startPage = Math.max(1, meta.page - Math.floor(maxPages / 2));
+    let endPage = Math.min(meta.total_pages, startPage + maxPages - 1);
+    
+    if (endPage - startPage < maxPages - 1) {
+        startPage = Math.max(1, endPage - maxPages + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === meta.page ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a>`;
+        pagination.appendChild(li);
+    }
+    
+    // Next button
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${meta.page === meta.total_pages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${meta.page + 1}); return false;">Next</a>`;
+    pagination.appendChild(nextLi);
+}
+
+function updateSummary(meta) {
+    document.getElementById('totalJobs').textContent = meta.total.toLocaleString();
+    document.getElementById('totalPages').textContent = meta.total_page_count.toLocaleString();
+    
+    // Load unique users count from stats endpoint
+    loadStats();
+}
+
+async function loadStats() {
+    try {
+        const params = new URLSearchParams(currentFilters);
+        const response = await fetch(`/api/print-jobs/stats?${params}`);
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            document.getElementById('uniqueUsers').textContent = result.data.unique_users.toLocaleString();
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+function changePage(page) {
+    currentPage = page;
+    loadPrintJobs();
+}
+
+function updateSortIcons() {
+    document.querySelectorAll('.sortable i').forEach(icon => {
+        icon.className = 'fas fa-sort';
+    });
+    
+    const activeTh = document.querySelector(`.sortable[data-sort="${currentSort.field}"]`);
+    if (activeTh) {
+        const icon = activeTh.querySelector('i');
+        icon.className = currentSort.order === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+    }
+}
+
+async function exportToCSV() {
+    try {
+        const params = new URLSearchParams(currentFilters);
+        const response = await fetch(`/api/print-jobs/export?${params}`);
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `print_jobs_export_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showAlert('Export completed successfully', 'success');
+        } else {
+            showAlert('Error exporting data', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error exporting data: ' + error.message, 'danger');
+    }
+}
+
+function formatDateTime(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleString();
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '-';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
+}
+
+function formatStatus(status) {
+    if (!status) return '<span class="badge bg-secondary">Unknown</span>';
+    
+    const statusMap = {
+        'completed': 'success',
+        'printing': 'info',
+        'submitted': 'warning',
+        'failed': 'danger',
+        'cancelled': 'secondary'
+    };
+    
+    const badgeClass = statusMap[status.toLowerCase()] || 'secondary';
+    return `<span class="badge bg-${badgeClass}">${escapeHtml(status)}</span>`;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+
+<style>
+.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable:hover {
+    background-color: var(--ui-accent-soft);
+}
+
+.sortable i {
+    font-size: 0.8rem;
+    margin-left: 0.25rem;
+}
+</style>
+{% endblock %}

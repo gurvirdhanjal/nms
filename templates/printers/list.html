@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+
+{% block title %}Printers - Device Monitoring System{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-print me-2"></i>Printer Monitoring</h2>
+        <button class="btn btn-primary" onclick="refreshPrinters()">
+            <i class="fas fa-sync-alt me-2"></i>Refresh
+        </button>
+    </div>
+
+    <!-- Filters Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-filter me-2"></i>Filters
+        </div>
+        <div class="card-body">
+            <form id="filterForm" class="row g-3">
+                <div class="col-md-4">
+                    <label for="siteFilter" class="form-label">Site</label>
+                    <select class="form-select" id="siteFilter">
+                        <option value="">-- All Sites --</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-4">
+                    <label for="departmentFilter" class="form-label">Department</label>
+                    <select class="form-select" id="departmentFilter">
+                        <option value="">-- All Departments --</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary me-2" onclick="applyFilters()">
+                        <i class="fas fa-search me-2"></i>Apply Filters
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                        <i class="fas fa-times me-2"></i>Clear
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <h5 class="text-muted">Total Printers</h5>
+                    <h3 id="totalPrinters">0</h3>
+                </div>
+                <div class="col-md-3">
+                    <h5 class="text-muted">Online</h5>
+                    <h3 id="onlinePrinters" class="text-success">0</h3>
+                </div>
+                <div class="col-md-3">
+                    <h5 class="text-muted">Offline</h5>
+                    <h3 id="offlinePrinters" class="text-danger">0</h3>
+                </div>
+                <div class="col-md-3">
+                    <h5 class="text-muted">Low Toner</h5>
+                    <h3 id="lowTonerPrinters" class="text-warning">0</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Printers Grid -->
+    <div id="printersGrid" class="row">
+        <!-- Populated by JavaScript -->
+    </div>
+</div>
+
+<script>
+let currentFilters = {};
+let printersData = [];
+let sitesData = [];
+let departmentsData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadFilterOptions();
+    loadPrinters();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(loadPrinters, 30000);
+});
+
+async function loadFilterOptions() {
+    try {
+        // Load sites
+        const sitesResponse = await fetch('/api/sites');
+        const sitesResult = await sitesResponse.json();
+        if (sitesResult.status === 'ok') {
+            sitesData = sitesResult.data;
+            populateSiteDropdown();
+        }
+        
+        // Load departments
+        const deptsResponse = await fetch('/api/departments');
+        const deptsResult = await deptsResponse.json();
+        if (deptsResult.status === 'ok') {
+            departmentsData = deptsResult.data;
+            populateDepartmentDropdown();
+        }
+    } catch (error) {
+        console.error('Error loading filter options:', error);
+    }
+}
+
+function populateSiteDropdown() {
+    const select = document.getElementById('siteFilter');
+    sitesData.forEach(site => {
+        const option = document.createElement('option');
+        option.value = site.id;
+        option.textContent = site.site_name;
+        select.appendChild(option);
+    });
+}
+
+function populateDepartmentDropdown() {
+    const select = document.getElementById('departmentFilter');
+    departmentsData.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = dept.name;
+        select.appendChild(option);
+    });
+}
+
+function applyFilters() {
+    currentFilters = {};
+    
+    const site = document.getElementById('siteFilter').value;
+    if (site) {
+        currentFilters.site_id = site;
+    }
+    
+    const department = document.getElementById('departmentFilter').value;
+    if (department) {
+        currentFilters.department_id = department;
+    }
+    
+    loadPrinters();
+}
+
+function clearFilters() {
+    document.getElementById('filterForm').reset();
+    currentFilters = {};
+    loadPrinters();
+}
+
+function refreshPrinters() {
+    loadPrinters();
+    showAlert('Refreshing printer data...', 'info');
+}
+
+async function loadPrinters() {
+    try {
+        const params = new URLSearchParams(currentFilters);
+        const response = await fetch(`/api/printers?${params}`);
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+            printersData = result.data;
+            
+            // Load latest metrics for each printer
+            await loadPrinterMetrics();
+            
+            renderPrintersGrid();
+            updateSummary();
+        } else {
+            showAlert('Error loading printers: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error loading printers: ' + error.message, 'danger');
+    }
+}
+
+async function loadPrinterMetrics() {
+    // Load latest metrics for all printers
+    const metricsPromises = printersData.map(async (printer) => {
+        try {
+            const response = await fetch(`/api/printer/${printer.device_id}/latest`);
+            const result = await response.json();
+            if (result.status === 'ok' && result.data) {
+                printer.latest_metrics = result.data;
+            } else {
+                printer.latest_metrics = null;
+            }
+        } catch (error) {
+            console.error(`Error loading metrics for printer ${printer.device_id}:`, error);
+            printer.latest_metrics = null;
+        }
+    });
+    
+    await Promise.all(metricsPromises);
+}
+
+function renderPrintersGrid() {
+    const grid = document.getElementById('printersGrid');
+    grid.innerHTML = '';
+    
+    if (printersData.length === 0) {
+        grid.innerHTML = '<div class="col-12"><div class="alert alert-info">No printers found</div></div>';
+        return;
+    }
+    
+    printersData.forEach(printer => {
+        const card = createPrinterCard(printer);
+        grid.appendChild(card);
+    });
+}
+
+function createPrinterCard(printer) {
+    const col = document.createElement('div');
+    col.className = 'col-md-6 col-lg-4 mb-4';
+    
+    const metrics = printer.latest_metrics;
+    const status = getPrinterStatus(metrics);
+    const statusClass = getStatusClass(status);
+    const statusIcon = getStatusIcon(status);
+    
+    col.innerHTML = `
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${escapeHtml(printer.device_name)}</strong>
+                    <br>
+                    <small class="text-muted">${escapeHtml(printer.device_ip)}</small>
+                </div>
+                <span class="badge bg-${statusClass}">
+                    <i class="${statusIcon} me-1"></i>${status}
+                </span>
+            </div>
+            <div class="card-body">
+                ${metrics ? renderMetrics(metrics) : '<p class="text-muted">No metrics available</p>'}
+                
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <small class="text-muted">Site:</small>
+                        <small><strong>${getSiteName(printer.site_id)}</strong></small>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">Department:</small>
+                        <small><strong>${getDepartmentName(printer.department_id)}</strong></small>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="/printer/${printer.device_id}" class="btn btn-sm btn-outline-primary w-100">
+                    <i class="fas fa-eye me-1"></i>View Details
+                </a>
+            </div>
+        </div>
+    `;
+    
+    return col;
+}
+
+function renderMetrics(metrics) {
+    let html = '';
+    
+    // Toner levels
+    html += '<div class="mb-3">';
+    html += '<h6 class="text-muted mb-2">Toner Levels</h6>';
+    
+    if (metrics.toner_black !== null && metrics.toner_black >= 0) {
+        html += renderTonerBar('Black', metrics.toner_black, '#000000');
+    }
+    if (metrics.toner_cyan !== null && metrics.toner_cyan >= 0) {
+        html += renderTonerBar('Cyan', metrics.toner_cyan, '#00FFFF');
+    }
+    if (metrics.toner_magenta !== null && metrics.toner_magenta >= 0) {
+        html += renderTonerBar('Magenta', metrics.toner_magenta, '#FF00FF');
+    }
+    if (metrics.toner_yellow !== null && metrics.toner_yellow >= 0) {
+        html += renderTonerBar('Yellow', metrics.toner_yellow, '#FFFF00');
+    }
+    
+    html += '</div>';
+    
+    // Page counts and queue
+    html += '<div class="row text-center">';
+    
+    if (metrics.page_count_total !== null) {
+        html += `
+            <div class="col-6 mb-2">
+                <small class="text-muted d-block">Total Pages</small>
+                <strong>${metrics.page_count_total.toLocaleString()}</strong>
+            </div>
+        `;
+    }
+    
+    if (metrics.job_queue_length !== null) {
+        html += `
+            <div class="col-6 mb-2">
+                <small class="text-muted d-block">Queue Length</small>
+                <strong>${metrics.job_queue_length}</strong>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    
+    return html;
+}
+
+function renderTonerBar(color, level, hexColor) {
+    const barClass = level < 20 ? 'bg-danger' : level < 40 ? 'bg-warning' : 'bg-success';
+    
+    return `
+        <div class="mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <small style="color: ${hexColor}; font-weight: 600;">${color}</small>
+                <small><strong>${level}%</strong></small>
+            </div>
+            <div class="progress" style="height: 8px;">
+                <div class="progress-bar ${barClass}" 
+                     role="progressbar" 
+                     style="width: ${level}%"
+                     aria-valuenow="${level}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getPrinterStatus(metrics) {
+    if (!metrics) {
+        return 'Unknown';
+    }
+    
+    // Check if metrics are recent (within last 10 minutes)
+    const timestamp = new Date(metrics.timestamp);
+    const now = new Date();
+    const minutesAgo = (now - timestamp) / 1000 / 60;
+    
+    if (minutesAgo > 10) {
+        return 'Offline';
+    }
+    
+    // Check status from metrics
+    if (metrics.status) {
+        const status = metrics.status.toLowerCase();
+        if (status.includes('error') || status.includes('jam')) {
+            return 'Error';
+        }
+        if (status.includes('printing')) {
+            return 'Printing';
+        }
+        if (status.includes('idle') || status.includes('ready')) {
+            return 'Ready';
+        }
+    }
+    
+    return 'Online';
+}
+
+function getStatusClass(status) {
+    const statusMap = {
+        'Ready': 'success',
+        'Online': 'success',
+        'Printing': 'info',
+        'Error': 'danger',
+        'Offline': 'secondary',
+        'Unknown': 'secondary'
+    };
+    return statusMap[status] || 'secondary';
+}
+
+function getStatusIcon(status) {
+    const iconMap = {
+        'Ready': 'fas fa-check-circle',
+        'Online': 'fas fa-check-circle',
+        'Printing': 'fas fa-spinner fa-spin',
+        'Error': 'fas fa-exclamation-triangle',
+        'Offline': 'fas fa-times-circle',
+        'Unknown': 'fas fa-question-circle'
+    };
+    return iconMap[status] || 'fas fa-question-circle';
+}
+
+function getSiteName(siteId) {
+    if (!siteId) return '-';
+    const site = sitesData.find(s => s.id === siteId);
+    return site ? site.site_name : '-';
+}
+
+function getDepartmentName(deptId) {
+    if (!deptId) return '-';
+    const dept = departmentsData.find(d => d.id === deptId);
+    return dept ? dept.name : '-';
+}
+
+function updateSummary() {
+    let total = printersData.length;
+    let online = 0;
+    let offline = 0;
+    let lowToner = 0;
+    
+    printersData.forEach(printer => {
+        const status = getPrinterStatus(printer.latest_metrics);
+        
+        if (status === 'Ready' || status === 'Online' || status === 'Printing') {
+            online++;
+        } else if (status === 'Offline' || status === 'Unknown') {
+            offline++;
+        }
+        
+        // Check for low toner
+        const metrics = printer.latest_metrics;
+        if (metrics) {
+            const toners = [
+                metrics.toner_black,
+                metrics.toner_cyan,
+                metrics.toner_magenta,
+                metrics.toner_yellow
+            ];
+            
+            const hasLowToner = toners.some(level => level !== null && level >= 0 && level < 20);
+            if (hasLowToner) {
+                lowToner++;
+            }
+        }
+    });
+    
+    document.getElementById('totalPrinters').textContent = total;
+    document.getElementById('onlinePrinters').textContent = online;
+    document.getElementById('offlinePrinters').textContent = offline;
+    document.getElementById('lowTonerPrinters').textContent = lowToner;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+
+<style>
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+}
+
+.progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.65rem;
+}
+</style>
+{% endblock %}

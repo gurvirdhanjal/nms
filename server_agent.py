@@ -6,22 +6,52 @@ import requests
 import os
 import uuid
 import sys
+import json
+import sqlite3
 import logging
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 # ==========================
-# CONFIGURATION
+# CONFIGURATION (defaults — overridden by config.json)
 # ==========================
 
 NMS_SERVER_URL = "http://127.0.0.1:5001/api/agent/metrics"
-AGENT_TOKEN = "8f42v73054r1749f8g58848be5e6502c"  # Updated to match config.py default
+AGENT_TOKEN = "8f42v73054r1749f8g58848be5e6502c"
 INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT = 5
 TOP_PROCESSES_LIMIT = 5
 _HARDWARE_SPECS_CACHE = None
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
+BUFFER_MAX_RECORDS = 1000  # Maximum buffered payloads before FIFO eviction
+
+
+def load_config():
+    """Load configuration from config.json if it exists, overriding defaults."""
+    global NMS_SERVER_URL, AGENT_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
+    global TOP_PROCESSES_LIMIT, BUFFER_MAX_RECORDS
+
+    if platform.system() == "Windows":
+        config_dir = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "nms-agent")
+    else:
+        config_dir = "/etc/nms-agent"
+
+    config_path = os.environ.get("NMS_AGENT_CONFIG", os.path.join(config_dir, "config.json"))
+    if not os.path.exists(config_path):
+        return  # Use defaults
+
+    try:
+        with open(config_path, 'r') as f:
+            cfg = json.load(f)
+        NMS_SERVER_URL = cfg.get('nms_server_url', NMS_SERVER_URL)
+        AGENT_TOKEN = cfg.get('agent_token', AGENT_TOKEN)
+        INTERVAL_SECONDS = cfg.get('interval_seconds', INTERVAL_SECONDS)
+        REQUEST_TIMEOUT = cfg.get('request_timeout', REQUEST_TIMEOUT)
+        TOP_PROCESSES_LIMIT = cfg.get('top_processes_limit', TOP_PROCESSES_LIMIT)
+        BUFFER_MAX_RECORDS = cfg.get('buffer_max_records', BUFFER_MAX_RECORDS)
+    except Exception:
+        pass  # Config parse failure — fall back to defaults
 
 if platform.system() == "Windows":
     _program_data = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
@@ -323,12 +353,14 @@ def get_cpu_metrics():
     cpu_times = psutil.cpu_times_percent(interval=None)
     iowait = getattr(cpu_times, "iowait", None)
     steal = getattr(cpu_times, "steal", None)
+    per_core = psutil.cpu_percent(percpu=True)
     return {
         "cpu_percent": cpu_percent,
         "cpu_iowait_percent": round(iowait, 2) if iowait is not None else None,
         "cpu_steal_percent": round(steal, 2) if steal is not None else None,
         "cpu_cores": psutil.cpu_count(logical=True),
-        "cpu_cores_physical": psutil.cpu_count(logical=False)
+        "cpu_cores_physical": psutil.cpu_count(logical=False),
+        "cpu_per_core": per_core,
     }
 
 def get_load_average():
@@ -892,16 +924,108 @@ def send_metrics(payload):
     response.raise_for_status()
 
 # ==========================
+# LOCAL SQLITE BUFFER (dead-drop queue)
+# ==========================
+
+class MetricsBuffer:
+    """
+    Local SQLite-backed queue for metrics that failed to send.
+    On successful reconnection, buffered payloads are drained and sent.
+    FIFO eviction when buffer exceeds BUFFER_MAX_RECORDS.
+    """
+
+    def __init__(self):
+        if platform.system() == "Windows":
+            buf_dir = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "nms-agent")
+        else:
+            buf_dir = "/var/lib/nms-agent"
+        os.makedirs(buf_dir, exist_ok=True)
+        self._db_path = os.path.join(buf_dir, "metrics_buffer.db")
+        self._init_db()
+
+    def _init_db(self):
+        conn = sqlite3.connect(self._db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS buffered_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+    def enqueue(self, payload_json: str):
+        """Store a failed payload for later delivery."""
+        conn = sqlite3.connect(self._db_path)
+        conn.execute(
+            "INSERT INTO buffered_metrics (payload, created_at) VALUES (?, ?)",
+            (payload_json, datetime.now(timezone.utc).isoformat())
+        )
+        # FIFO eviction
+        count = conn.execute("SELECT COUNT(*) FROM buffered_metrics").fetchone()[0]
+        if count > BUFFER_MAX_RECORDS:
+            excess = count - BUFFER_MAX_RECORDS
+            conn.execute(f"""
+                DELETE FROM buffered_metrics WHERE id IN (
+                    SELECT id FROM buffered_metrics ORDER BY id ASC LIMIT {excess}
+                )
+            """)
+        conn.commit()
+        conn.close()
+
+    def drain(self, send_fn, batch_size=10):
+        """
+        Attempt to send all buffered payloads using send_fn.
+        Removes successfully sent records. Stops on first failure.
+        Returns number of records drained.
+        """
+        conn = sqlite3.connect(self._db_path)
+        drained = 0
+        while True:
+            rows = conn.execute(
+                "SELECT id, payload FROM buffered_metrics ORDER BY id ASC LIMIT ?",
+                (batch_size,)
+            ).fetchall()
+            if not rows:
+                break
+            for row_id, payload_json in rows:
+                try:
+                    payload = json.loads(payload_json)
+                    send_fn(payload)
+                    conn.execute("DELETE FROM buffered_metrics WHERE id = ?", (row_id,))
+                    drained += 1
+                except Exception:
+                    conn.commit()
+                    conn.close()
+                    return drained  # Stop on first failure
+            conn.commit()
+        conn.close()
+        return drained
+
+    @property
+    def count(self):
+        conn = sqlite3.connect(self._db_path)
+        c = conn.execute("SELECT COUNT(*) FROM buffered_metrics").fetchone()[0]
+        conn.close()
+        return c
+
+
+# ==========================
 # MAIN LOOP
 # ==========================
 
 def main():
+    load_config()  # Load config.json overrides
     setup_logging()
     device_uuid = get_or_create_device_uuid()
+    buffer = MetricsBuffer()
     _LOG.info("NMS Core Agent started on %s", get_hostname())
     _LOG.info("Target: %s", NMS_SERVER_URL)
     _LOG.info("Interval: %s seconds", INTERVAL_SECONDS)
     _LOG.info("Device UUID: %s", device_uuid)
+    if buffer.count > 0:
+        _LOG.info("Buffered metrics from previous session: %d", buffer.count)
     _LOG.info("-" * 60)
 
     iteration = 0
@@ -942,13 +1066,23 @@ def main():
                 iteration,
                 datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
             )
+
+            # Drain any buffered metrics from previous failures
+            buffered = buffer.count
+            if buffered > 0:
+                _LOG.info("Draining %d buffered metric(s)...", buffered)
+                drained = buffer.drain(send_metrics)
+                _LOG.info("Drained %d of %d buffered metric(s)", drained, buffered)
+
         except requests.exceptions.ConnectionError:
             _LOG.error(
-                "Connection failed - NMS server unreachable at %s",
+                "Connection failed - buffering metrics locally at %s",
                 datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
             )
+            buffer.enqueue(json.dumps(metrics))
         except requests.exceptions.Timeout:
-            _LOG.error("Request timeout at %s", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+            _LOG.error("Request timeout — buffering metrics at %s", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+            buffer.enqueue(json.dumps(metrics))
         except requests.exceptions.HTTPError as e:
             _LOG.error("HTTP Error: %s - %s", e.response.status_code, e.response.text)
         except Exception as e:

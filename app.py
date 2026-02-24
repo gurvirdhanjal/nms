@@ -157,7 +157,8 @@ def create_app(test_config=None):
     # ---------------------------
     with app.app_context():
         from models import (
-            User, Device, DashboardEvent, DailyDeviceStats, 
+            User, Device, Site, Department, PrinterMetrics, PrintJobAudit,
+            DashboardEvent, DailyDeviceStats, 
             DeviceInterface, InterfaceTrafficHistory, DeviceSnmpConfig,
             SwitchTopology, TrackedDevice,
             DeviceScanHistory, NetworkScan, PortScanResult,
@@ -229,6 +230,10 @@ def create_app(test_config=None):
     from routes.server_metrics import server_metrics_bp
     from routes.discovery_settings import discovery_settings_bp
     from routes.sse import sse_bp
+    from routes.sites import sites_bp
+    from routes.printer import printer_bp
+    from routes.departments import departments_bp
+    from routes.print_jobs import print_jobs_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -249,6 +254,10 @@ def create_app(test_config=None):
         server_metrics_bp,
         discovery_settings_bp,
         sse_bp,
+        sites_bp,
+        printer_bp,
+        departments_bp,
+        print_jobs_bp,
     ]
 
     for bp in protected_blueprints:
@@ -258,60 +267,10 @@ def create_app(test_config=None):
     for bp in protected_blueprints:
         app.register_blueprint(bp)
 
+    # API v1 — uses API key auth (not session), registered separately
+    from routes.api_v1 import api_v1_bp
+    app.register_blueprint(api_v1_bp)
+
     return app
 
-
-# ---------------------------
-# Scheduler setup
-# ---------------------------
-from services.scheduler import MonitoringScheduler
-
-
-def open_browser():
-    webbrowser.open_new("http://localhost:5001")
-
-
-# ---------------------------
-# Main entry point
-# ---------------------------
-if __name__ == "__main__":
-    try:
-        app = create_app()
-        scheduler = MonitoringScheduler(app)
-        from services.interface_poller import interface_poller
-        
-        print("Starting Device Monitoring System...")
-        print("Access URL: http://localhost:5001")
-        print("Default admin: admin / admin123")
-
-
-
-        scheduler.start_scheduled_monitoring()
-        interface_poller.start_polling(app)
-
-        if os.environ.get("DISABLE_BROWSER_OPEN", "0") != "1":
-            threading.Timer(2.0, open_browser).start()
-
-
-
-        # Hydrate collector with DB history
-        from routes.monitoring import monitor
-        monitor.hydrate_collector(app)
-
-        app.run(
-            host="0.0.0.0",
-            port=5001,
-            debug=False,          # ❗ NEVER TRUE IN EXE
-            use_reloader=False
-        )
-
-    except KeyboardInterrupt:
-        print("Shutting down...")
-    except Exception as e:
-        print(f"Startup error: {e}")
-    finally:
-        if 'scheduler' in locals():
-            scheduler.stop_scheduled_monitoring()
-            print("Scheduler stopped.")
-        if 'interface_poller' in locals():
-            interface_poller.stop_polling()
+# end of file

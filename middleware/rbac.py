@@ -2,7 +2,10 @@
 
 Current role model:
     - admin: full access
-    - user: standard read/write user access (no admin operations)
+    - manager: department-scoped read/write + user management within dept
+    - operator: department-scoped read/write (no user management)
+    - viewer: department-scoped read-only
+    - user: legacy standard user (maps to operator)
 """
 
 from functools import wraps
@@ -12,10 +15,48 @@ from flask import current_app, flash, jsonify, redirect, request, session, url_f
 
 ROLE_PERMISSIONS = {
     'admin': {'*'},
-    'user': {
+    'manager': {
+        'dashboard.view',
+        'reports.view', 'reports.export',
+        'devices.view', 'devices.edit',
+        'monitoring.view',
+        'scanning.view', 'scanning.run',
+        'tracking.view',
+        'snmp.view',
+        'server_metrics.view',
+        'service_checks.view',
+        'file_transfer.view',
+        'maintenance.view', 'maintenance.edit',
+        'users.view',  # can view dept users
+    },
+    'operator': {
+        'dashboard.view',
+        'reports.view',
+        'devices.view', 'devices.edit',
+        'monitoring.view',
+        'scanning.view', 'scanning.run',
+        'tracking.view',
+        'snmp.view',
+        'server_metrics.view',
+        'service_checks.view',
+        'file_transfer.view',
+        'maintenance.view',
+    },
+    'viewer': {
         'dashboard.view',
         'reports.view',
         'devices.view',
+        'monitoring.view',
+        'tracking.view',
+        'snmp.view',
+        'server_metrics.view',
+        'service_checks.view',
+    },
+    # Legacy role — treated as operator
+    'user': {
+        'dashboard.view',
+        'reports.view',
+        'devices.view', 'devices.edit',
         'monitoring.view',
         'scanning.view',
         'tracking.view',
@@ -102,3 +143,36 @@ def require_permission(permission):
         return wrapper
 
     return decorator
+
+
+def apply_department_scope(query, model=None):
+    """
+    Filter a SQLAlchemy query to only return records visible to the current user.
+
+    Rules:
+        admin  → sees everything (no filter)
+        others → sees only records matching their department_id
+    """
+    from flask import session as flask_session
+
+    role = current_role()
+    if role == 'admin':
+        return query
+
+    dept_id = flask_session.get('department_id')
+    if dept_id is None:
+        # Fallback: try to load from DB if session doesn't have it
+        user_id = flask_session.get('user_id')
+        if user_id:
+            from models.user import User
+            user = User.query.get(user_id)
+            dept_id = getattr(user, 'department_id', None) if user else None
+
+    if dept_id is None:
+        # No department assigned — show nothing for safety
+        return query.filter(False)
+
+    if model and hasattr(model, 'department_id'):
+        return query.filter(model.department_id == dept_id)
+
+    return query

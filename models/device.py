@@ -48,6 +48,12 @@ class Device(db.Model):
     subnet_cidr = db.Column(db.String(50), nullable=True, index=True)  # e.g. "172.16.1.0/24"
     location = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
+
+    # Multi-Site Support (Phase 1)
+    site_id = db.Column(db.Integer, db.ForeignKey('sites.id', ondelete='SET NULL'), nullable=True, index=True)
+
+    # Department Isolation (Phase 1 RBAC)
+    department_id = db.Column(db.Integer, db.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True, index=True)
     
     # Monitoring Configuration
     monitoring_mode = db.Column(db.String(20), default='ping') # ping, snmp, agent, wmi
@@ -137,5 +143,8 @@ class Device(db.Model):
             'hardware_specs': self.hardware_specs,
             'device_username': self.device_username,
             'subnet_cidr': self.subnet_cidr,
+            'site_id': self.site_id,
+            'department_id': self.department_id,
+            'location': self.location,
             # device_password_hash intentionally excluded for security
         }

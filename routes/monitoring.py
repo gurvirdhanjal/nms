@@ -12,6 +12,19 @@ monitor = DeviceMonitor()
 logger = logging.getLogger(__name__)
 
 
+from extensions import db, event_manager
+from services.device_monitor import DeviceMonitor
+import asyncio
+import time
+import logging
+from sqlalchemy.exc import OperationalError
+from middleware.rbac import require_login
+
+monitoring_bp = Blueprint('monitoring_bp', __name__, url_prefix='')
+monitor = DeviceMonitor()
+logger = logging.getLogger(__name__)
+
+
 @monitoring_bp.before_request
 @require_login
 def _monitoring_auth_guard():
@@ -23,24 +36,18 @@ def dashboard():
     import ipaddress
     
     # Get basic stats for dashboard - SHOW ALL DEVICES
-    try:
-        # No more filtering by local range. Show everything in DB.
-        # local_range = monitor.scanner.get_local_ip_range()
-        # network = ipaddress.IPv4Network(local_range, strict=False)
-        
-        all_devices = Device.query.all()
-        # filtered_devices = []
-        # for d in all_devices: ...
-        
-        # Use all devices
-        total_devices = len(all_devices)
-        monitored_devices = len([d for d in all_devices if d.is_monitored])
-        
-    except Exception as e:
-        print(f"DEBUG: Dashboard stats error: {e}")
-        # Fallback to DB counts (show all devices)
-        total_devices = Device.query.count()
-        monitored_devices = total_devices  # Count all devices, not just monitored
+    
+    # No more filtering by local range. Show everything in DB.
+    # local_range = monitor.scanner.get_local_ip_range()
+    # network = ipaddress.IPv4Network(local_range, strict=False)
+    
+    all_devices = Device.query.all()
+    # filtered_devices = []
+    # for d in all_devices: ...
+    
+    # Use all devices
+    total_devices = len(all_devices)
+    monitored_devices = len([d for d in all_devices if d.is_monitored])
     
     return render_template('dashboard.html', 
                          total_devices=total_devices,
