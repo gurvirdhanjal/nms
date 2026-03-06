@@ -29,18 +29,24 @@ class NotificationService:
         if severity not in ("CRITICAL", "WARNING"):
             return
 
-        rate_key = (device.device_id, metric, severity)
+        device_id = getattr(device, 'device_id', None)
+        if device_id is None:
+            device_id = getattr(device, 'id', None)
+        device_name = getattr(device, 'device_name', None) or 'Unknown Device'
+        device_ip = getattr(device, 'device_ip', None) or getattr(device, 'ip_address', None) or 'Unknown IP'
+
+        rate_key = (device_id, metric, severity)
         if cls._is_rate_limited(rate_key):
-            print(f"[NOTE] Alert email suppressed for {device.device_ip} (Rate Limit)")
+            print(f"[NOTE] Alert email suppressed for {device_ip} (Rate Limit)")
             return
 
-        subject = f"[{severity}] Device {device.device_name} ({device.device_ip}) Alert"
+        subject = f"[{severity}] Device {device_name} ({device_ip}) Alert"
 
         body = f"""
         {severity} ALERT DETECTED
         
-        Device: {device.device_name}
-        IP Address: {device.device_ip}
+        Device: {device_name}
+        IP Address: {device_ip}
         Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
         
         Issue: {metric.upper()}
@@ -55,9 +61,9 @@ class NotificationService:
 
         if cls._send_email(subject, body):
             cls._last_sent[rate_key] = datetime.utcnow()
-            print(f"[EMAIL] Sent {severity.lower()} alert for {device.device_ip}")
+            print(f"[EMAIL] Sent {severity.lower()} alert for {device_ip}")
         else:
-            print(f"[EMAIL] Failed to send alert for {device.device_ip}")
+            print(f"[EMAIL] Failed to send alert for {device_ip}")
 
     @classmethod
     def send_critical_alert(cls, device, metric, value, message):

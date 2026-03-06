@@ -5,7 +5,7 @@ from models.device import Device
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from utils.server_health import compute_server_health, is_server_device
-from middleware.rbac import require_login
+from middleware.rbac import require_login, scoped_query
 
 server_metrics_bp = Blueprint('server_metrics_bp', __name__)
 
@@ -92,9 +92,28 @@ def _resolve_top_remote_ips(rows):
     return rows
 
 
+def _scoped_server_devices():
+    scoped_devices = scoped_query(Device).all()
+    servers = [device for device in scoped_devices if is_server_device(getattr(device, 'device_type', None))]
+    server_ids = [device.device_id for device in servers]
+    return servers, server_ids
+
+
 @server_metrics_bp.route('/api/server/fleet-metrics')
 def get_fleet_metrics():
     try:
+        scoped_servers, scoped_server_ids = _scoped_server_devices()
+        if not scoped_server_ids:
+            return jsonify({
+                'health': {'total': 0, 'healthy': 0, 'warning': 0, 'critical': 0, 'offline': 0},
+                'aggregates': {'cpu': 0, 'memory': 0, 'disk': 0},
+                'p95': {'cpu': 0, 'memory': 0},
+                'alerts': [],
+                'trends': {'cpu': [], 'memory': [], 'labels': []}
+            })
+
+        server_map = {device.device_id: device for device in scoped_servers}
+
         # 1. Identify active servers (last 24h)
         cutoff = datetime.utcnow() - timedelta(hours=24)
         
@@ -104,7 +123,8 @@ def get_fleet_metrics():
             func.max(ServerHealthLog.id).label('max_id')
         ).filter(
             ServerHealthLog.source == 'agent',
-            ServerHealthLog.timestamp >= cutoff
+            ServerHealthLog.timestamp >= cutoff,
+            ServerHealthLog.device_id.in_(scoped_server_ids),
         ).group_by(ServerHealthLog.device_id).subquery()
 
         latest_logs = db.session.query(ServerHealthLog).join(
@@ -150,7 +170,7 @@ def get_fleet_metrics():
             if log.disk_usage and log.disk_usage > 90: alerts.append(f"Disk {log.disk_usage:.1f}%")
             
             if alerts:
-                device = Device.query.get(log.device_id)
+                device = server_map.get(log.device_id)
                 critical_servers.append({
                     'name': device.device_name if device else f"ID {log.device_id}",
                     'alerts': alerts
@@ -174,17 +194,25 @@ def get_fleet_metrics():
         # 3. Trends (24h Aggregate Sparklines)
         # Group by hour and take average of all servers.
         # DB session timezone is forced to UTC at connection time.
-        hour_bucket = func.date_trunc('hour', ServerHealthLog.timestamp).label('hour')
+        backend = db.engine.url.get_backend_name()
+        if backend == 'sqlite':
+            hour_bucket = func.strftime('%Y-%m-%dT%H:00:00', ServerHealthLog.timestamp).label('hour')
+        else:
+            hour_bucket = func.date_trunc('hour', ServerHealthLog.timestamp).label('hour')
         trend_query = db.session.query(
             hour_bucket,
             func.avg(ServerHealthLog.cpu_usage).label('avg_cpu'),
             func.avg(ServerHealthLog.memory_usage).label('avg_mem')
         ).filter(
             ServerHealthLog.source == 'agent',
-            ServerHealthLog.timestamp >= cutoff
+            ServerHealthLog.timestamp >= cutoff,
+            ServerHealthLog.device_id.in_(scoped_server_ids),
         ).group_by(hour_bucket).order_by(hour_bucket).all()
 
-        trend_labels = [_iso_utc(row.hour) for row in trend_query]
+        trend_labels = [
+            row.hour if isinstance(row.hour, str) else _iso_utc(row.hour)
+            for row in trend_query
+        ]
         trend_cpu = [float(row.avg_cpu) if row.avg_cpu else 0 for row in trend_query]
         trend_mem = [float(row.avg_mem) if row.avg_mem else 0 for row in trend_query]
 
@@ -215,12 +243,27 @@ def get_fleet_metrics():
 def get_server_health_summary():
     # Original logic continues below...
     try:
+        _, scoped_server_ids = _scoped_server_devices()
+        if not scoped_server_ids:
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat(),
+                'counts': {
+                    'total': 0,
+                    'healthy': 0,
+                    'warning': 0,
+                    'critical': 0,
+                    'offline': 0
+                },
+                'servers': []
+            })
+
         # Latest agent log per device
         latest_subq = db.session.query(
             ServerHealthLog.device_id,
             func.max(ServerHealthLog.id).label('max_id')
         ).filter(
-            ServerHealthLog.source == 'agent'
+            ServerHealthLog.source == 'agent',
+            ServerHealthLog.device_id.in_(scoped_server_ids),
         ).group_by(ServerHealthLog.device_id).subquery()
         
         # ... (rest of the existing function)
@@ -245,9 +288,7 @@ def get_server_health_summary():
                 'servers': []
             })
 
-        servers = Device.query.filter(
-            Device.device_id.in_(agent_device_ids)
-        ).all()
+        servers = Device.query.filter(Device.device_id.in_(agent_device_ids)).all()
 
         counts = {
             'total': 0,
@@ -317,7 +358,7 @@ def get_server_metrics(device_id):
         cutoff = datetime.utcnow() - timedelta(hours=24)
 
     try:
-        device = Device.query.get(device_id)
+        device = scoped_query(Device).filter(Device.device_id == device_id).first()
         if not device:
              return jsonify({'error': 'Device not found'}), 404
         if not is_server_device(device.device_type):

@@ -17,6 +17,8 @@ import { renderConnectionIndicator, initConnectionIndicator } from './connection
 import { timeAgo, setupTacticalDropdown, formatPercent, formatNumber } from './utils.js';
 import { initSSE } from './sseClient.js';
 import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
+import { enforceSnapshotMeta } from './rbacGuard.js';
+import { renderScopeSummary } from './scopeSummary.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -74,6 +76,7 @@ function initDashboard() {
 
         // 2. Initialize Discovery UI
         initDiscovery();
+        renderScopeSummary(document.getElementById('dashboardScopeSummary'), window.__RBAC_CONTEXT__ || {});
 
         // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
         // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
@@ -315,6 +318,10 @@ async function refreshAll(options = {}) {
             alertsStatus: 'active',
             alertsLimit: 200
         }));
+
+        if (enforceSnapshotMeta(snapshot?.meta)) {
+            return;
+        }
 
         const sectionErrors = snapshot?.errors || {};
         const nextState = { isLoading: false };
@@ -805,8 +812,8 @@ function renderAvailabilityHeatmap(heatmap, targetEl) {
         const className = hasData ? getAvailabilityClass(value) : 'avail-unknown';
         const timeLabel = formatAvailabilityHour(entry.time);
         const tooltip = hasData
-            ? `${timeLabel} • ${formatPercent(value)} (${online}/${total})`
-            : `${timeLabel} • No data`;
+            ? `${timeLabel} - ${formatPercent(value)} (${online}/${total})`
+            : `${timeLabel} - No data`;
         return `<div class="availability-cell ${className}" title="${tooltip}"></div>`;
     });
 
@@ -1041,9 +1048,10 @@ function renderSubnetModalDetails(details) {
     const servers = Number(summary.servers) || 0;
     const healthPctRaw = Number(summary.health_pct);
     const healthPct = Number.isFinite(healthPctRaw)
-        ? healthPctRaw
+        ? Math.round(healthPctRaw * 10) / 10
         : (total > 0 ? Math.round((online / total) * 1000) / 10 : 0);
     const healthLabel = formatSubnetHealthLabel(healthPct);
+    const healthTone = healthPct < 50 ? 'critical' : (healthPct < 90 ? 'warning' : 'healthy');
     const subnetLabel = normalizeSubnetValue(payload.subnet);
     const generatedAt = payload.generated_at ? new Date(payload.generated_at).toLocaleString() : '-';
 
@@ -1057,11 +1065,24 @@ function renderSubnetModalDetails(details) {
     setText('subnet-modal-total', total);
     setText('subnet-modal-online', online);
     setText('subnet-modal-offline', offline);
-    setText('subnet-modal-health', `${healthLabel} (${healthPct}%)`);
+    setText('subnet-modal-health', `${healthPct}%`);
     setText('subnet-modal-monitored', monitored);
     setText('subnet-modal-servers', servers);
     setText('subnet-modal-types', formatTopBreakdown(payload.top_types));
     setText('subnet-modal-vendors', formatTopBreakdown(payload.top_vendors));
+    setText('subnet-modal-health-pill', `Health: ${healthLabel} (${healthPct}%)`);
+
+    const healthValueEl = document.getElementById('subnet-modal-health');
+    if (healthValueEl) {
+        healthValueEl.classList.remove('value-critical', 'value-warning', 'value-healthy');
+        healthValueEl.classList.add(`value-${healthTone}`);
+    }
+
+    const healthPillEl = document.getElementById('subnet-modal-health-pill');
+    if (healthPillEl) {
+        healthPillEl.classList.remove('health-critical', 'health-warning', 'health-healthy');
+        healthPillEl.classList.add(`health-${healthTone}`);
+    }
 
     const tbody = document.getElementById('subnet-modal-devices-body');
     if (!tbody) return;
@@ -1076,27 +1097,35 @@ function renderSubnetModalDetails(details) {
             const ip = escapeHtml(device.device_ip || '-');
             const type = escapeHtml(normalizeDeviceTypeLabel(device.device_type));
             const vendor = escapeHtml(device.manufacturer || 'Unknown');
-            const monitoredText = device.is_monitored ? 'Yes' : 'No';
+            const monitoredText = device.is_monitored ? 'On' : 'Off';
+            const monitoredClass = device.is_monitored ? 'is-on' : 'is-off';
             const statusRaw = String(device.status || 'unknown').toLowerCase();
             const statusLabel = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
             const statusClass = statusRaw === 'online'
-                ? 'text-success'
-                : (statusRaw === 'offline' ? 'text-danger' : 'text-secondary');
-            const lastSeen = device.last_seen ? timeAgo(device.last_seen) : '-';
+                ? 'status-online'
+                : (statusRaw === 'offline'
+                    ? 'status-offline'
+                    : (statusRaw === 'degraded' ? 'status-degraded' : 'status-unknown'));
+            const lastSeen = escapeHtml(device.last_seen ? timeAgo(device.last_seen) : '-');
+
             return `
                 <td>
-                    <div class="fw-bold">${name}</div>
-                    <div class="small ${statusClass}">${statusLabel} • Last seen: ${lastSeen}</div>
+                    <div class="subnet-device-name">${name}</div>
+                    <div class="subnet-device-meta">
+                        <span class="subnet-status-dot ${statusClass}" aria-hidden="true"></span>
+                        <span class="subnet-device-status-chip ${statusClass}">${statusLabel.toUpperCase()}</span>
+                        <span aria-hidden="true">•</span>
+                        <span>Seen ${lastSeen}</span>
+                    </div>
                 </td>
-                <td><code>${ip}</code></td>
+                <td><span class="subnet-ip-pill">${ip}</span></td>
                 <td>${type}</td>
                 <td>${vendor}</td>
-                <td>${monitoredText}</td>
+                <td><span class="subnet-monitored-chip ${monitoredClass}">${monitoredText}</span></td>
             `;
         }
     });
 }
-
 function getSubnetModal() {
     const el = document.getElementById('subnetDetailsModal');
     if (!el || !window.bootstrap) return null;
@@ -1390,3 +1419,4 @@ document.addEventListener('visibilitychange', () => {
         stopPolling();
     }
 });
+

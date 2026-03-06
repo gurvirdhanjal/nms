@@ -836,6 +836,35 @@ class MaintenanceService:
         except Exception as e:
             db.session.rollback()
             return {'success': False, 'error': str(e)}
+
+    def run_tracking_history_integrity_check(self, lookback_days: int = 7) -> Dict:
+        """Run tracking history sample integrity checks and persist audit records."""
+        try:
+            from services.tracking_history import run_tracking_integrity_checks
+
+            return run_tracking_integrity_checks(lookback_days=lookback_days)
+        except Exception as e:
+            db.session.rollback()
+            return {'success': False, 'error': str(e)}
+
+    def run_tracking_history_retention(
+        self,
+        raw_days: int = 30,
+        hourly_days: int = 365,
+        daily_days: int = 1095,
+    ) -> Dict:
+        """Run tracking history retention for raw logs/samples and rollups."""
+        try:
+            from services.tracking_history import run_tracking_retention
+
+            return run_tracking_retention(
+                raw_days=raw_days,
+                hourly_days=hourly_days,
+                daily_days=daily_days,
+            )
+        except Exception as e:
+            db.session.rollback()
+            return {'success': False, 'error': str(e)}
     
     def aggregate_daily_stats(self, target_date: date = None) -> Dict:
         """
@@ -955,13 +984,17 @@ class MaintenanceService:
         for task_name, task_result in retention_result.get('tasks', {}).items():
             results['tasks'][f'server_health_{task_name}'] = task_result
 
-        # 3. Cleanup old scan history
+        # 3. Tracking history integrity + retention
+        results['tasks']['tracking_history_integrity'] = self.run_tracking_history_integrity_check()
+        results['tasks']['tracking_history_retention'] = self.run_tracking_history_retention()
+
+        # 4. Cleanup old scan history
         results['tasks']['cleanup_scans'] = self.cleanup_old_scan_history()
         
-        # 4. Cleanup old interface metrics
+        # 5. Cleanup old interface metrics
         results['tasks']['cleanup_metrics'] = self.cleanup_old_interface_metrics()
         
-        # 5. Cleanup old resolved events
+        # 6. Cleanup old resolved events
         results['tasks']['cleanup_events'] = self.cleanup_old_events()
         
         # Summary

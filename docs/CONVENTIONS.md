@@ -77,3 +77,58 @@ This document outlines the coding standards, architectural patterns, and operati
 -   **Branching:** Use descriptive branch names (e.g., `feature/add-snmp-v3`, `bugfix/fix-login-error`).
 -   **Commits:** Write clear, concise commit messages.
 -   **Review:** All changes should be reviewed before merging.
+
+## 6. Test Program and Quality Gate
+
+### Test Layout
+- Python unit tests: `tests/unit/**`
+- Python integration tests: `tests/integration/**`
+- Python performance tests: `tests/performance/**`
+- JS tests: `static/js/tracking/console/__tests__/**`
+
+### Pytest Markers
+- `unit`
+- `integration`
+- `performance`
+
+### JS Test Rules
+- Use Vitest + jsdom for console modules.
+- Keep logic in testable files under `static/js/tracking/console/`.
+- Frontend coverage thresholds are enforced in `vitest.config.mjs` at `>=95%`.
+
+### Quality Gate Workflow
+Run from repository root:
+```bash
+python scripts/run_quality_gate.py
+```
+
+The gate runs:
+1. `pytest -m \"unit or integration\"` with backend module coverage
+2. `pytest -m performance`
+3. `npm run test:js:coverage`
+4. `npm run test:js:perf`
+
+Output summary:
+- `artifacts/quality_gate_summary.json`
+
+## RBAC Dashboard Testing Conventions (2026-03-05)
+
+- New Python suites:
+  - `tests/unit/rbac/test_ui_capabilities.py`
+  - `tests/unit/services/test_scope_resolution.py`
+  - `tests/unit/services/test_snapshot_meta_builder.py`
+  - `tests/integration/dashboard/*`
+  - `tests/integration/templates/*`
+  - `tests/integration/routes/test_file_transfer_backend_unchanged.py`
+  - `tests/performance/test_dashboard_scope_perf.py`
+- New JS suites:
+  - `static/js/dashboard/__tests__/rbacGuard.unit.test.js`
+  - `static/js/dashboard/__tests__/scopeSummary.dom.integration.test.js`
+  - `static/js/tracking/__tests__/deviceLive.filesRemoved.dom.test.js`
+- `vitest.config.mjs` includes dashboard and tracking RBAC/removal suites.
+- Quality gate runner executes:
+  - Python unit+integration coverage run
+  - Python performance marker run
+  - JS unit run (`npm run test:js`)
+  - JS coverage run (`npm run test:js:coverage`)
+  - JS perf run (`npm run test:js:perf`)

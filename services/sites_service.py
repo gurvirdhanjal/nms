@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from extensions import db
 from models.site import Site
 from models.device import Device
+from models.department import Department
 
 
 class SitesService:
@@ -129,7 +130,7 @@ class SitesService:
 
     def delete_site(self, site_id: int) -> bool:
         """
-        Delete site if no devices assigned.
+        Delete site and clean up related departments/devices.
         
         Args:
             site_id: Site ID
@@ -138,20 +139,30 @@ class SitesService:
             True if deleted successfully
             
         Raises:
-            ValueError: If site not found or has devices assigned
+            ValueError: If site not found
         """
         try:
             site = Site.query.get(site_id)
             if not site:
                 raise ValueError(f"Site with ID {site_id} not found")
-            
-            # Check for associated devices
-            device_count = Device.query.filter_by(site_id=site_id).count()
-            if device_count > 0:
-                raise ValueError(
-                    f"Cannot delete site '{site.site_name}': "
-                    f"{device_count} device(s) are assigned to this site"
+
+            dept_ids = [
+                row[0]
+                for row in db.session.query(Department.id).filter_by(site_id=site_id).all()
+            ]
+            if dept_ids:
+                from models.user import User
+                User.query.filter(User.department_id.in_(dept_ids)).update(
+                    {'department_id': None}, synchronize_session='fetch'
                 )
+                Device.query.filter(Device.department_id.in_(dept_ids)).update(
+                    {'department_id': None}, synchronize_session='fetch'
+                )
+                Department.query.filter(Department.id.in_(dept_ids)).delete(synchronize_session='fetch')
+            
+            Device.query.filter_by(site_id=site_id).update(
+                {'site_id': None}, synchronize_session='fetch'
+            )
             
             db.session.delete(site)
             db.session.commit()
@@ -171,6 +182,21 @@ class SitesService:
         Returns:
             List of Device objects
         """
+        site = Site.query.get(site_id)
+        if not site:
+            return []
+            
+        departments = site.departments.all() if hasattr(site, 'departments') else []
+        dept_ids = [d.id for d in departments]
+        
+        if dept_ids:
+            return Device.query.filter(
+                db.or_(
+                    Device.site_id == site_id,
+                    Device.department_id.in_(dept_ids)
+                )
+            ).order_by(Device.device_name).all()
+            
         return Device.query.filter_by(site_id=site_id).order_by(Device.device_name).all()
 
     def get_site_stats(self, site_id: int) -> Dict:
@@ -187,7 +213,22 @@ class SitesService:
         from datetime import datetime, timedelta
         
         # Get all devices for site
-        devices = Device.query.filter_by(site_id=site_id).all()
+        site = Site.query.get(site_id)
+        if not site:
+            devices = []
+        else:
+            departments = site.departments.all() if hasattr(site, 'departments') else []
+            dept_ids = [d.id for d in departments]
+            if dept_ids:
+                devices = Device.query.filter(
+                    db.or_(
+                        Device.site_id == site_id,
+                        Device.department_id.in_(dept_ids)
+                    )
+                ).all()
+            else:
+                devices = Device.query.filter_by(site_id=site_id).all()
+                
         device_count = len(devices)
         
         if device_count == 0:
@@ -214,7 +255,7 @@ class SitesService:
         
         # Count devices with warnings (high strikes)
         warning_count = Device.query.filter(
-            Device.site_id == site_id,
+            Device.device_id.in_(device_ids),
             db.or_(
                 Device.health_alert_strikes >= 2,
                 Device.latency_strikes >= 2,

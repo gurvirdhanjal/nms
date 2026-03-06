@@ -32,7 +32,7 @@ class PrinterMetrics(db.Model):
     job_queue_length = db.Column(db.Integer, nullable=True)
 
     # Relationships
-    device = db.relationship('Device', backref=db.backref('printer_metrics', lazy='dynamic'))
+    device = db.relationship('Device', backref=db.backref('printer_metrics', lazy='dynamic', cascade='all, delete-orphan'))
 
     __table_args__ = (
         db.Index('idx_printer_metrics_device_ts', 'device_id', 'timestamp'),
@@ -91,7 +91,7 @@ class PrintJobAudit(db.Model):
     collection_source = db.Column(db.String(50), nullable=True)  # wef, syslog, snmp
 
     # Relationships
-    device = db.relationship('Device', foreign_keys=[device_id], backref=db.backref('print_jobs', lazy='dynamic'))
+    device = db.relationship('Device', foreign_keys=[device_id], backref=db.backref('print_jobs', lazy='dynamic', cascade='all, delete-orphan'))
     print_server = db.relationship('Device', foreign_keys=[print_server_id])
 
     __table_args__ = (

@@ -2,32 +2,291 @@
 
 {% block title %}Departments - Device Monitoring System{% endblock %}
 
+{% block extra_css %}
+<style>
+    .entity-management-page {
+        padding-inline: var(--e-space-2);
+    }
+
+    .entity-management-page .entity-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.56rem;
+        margin-bottom: var(--e-space-3);
+    }
+
+    .entity-management-page .entity-title {
+        margin: 0;
+        font-size: 1rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-family: var(--t-mono);
+        color: var(--e-text-primary);
+    }
+
+    .entity-management-page .entity-subtitle {
+        margin: 0.14rem 0 0;
+        color: var(--e-text-muted);
+        font-size: 0.7rem;
+    }
+
+    .entity-management-page .entity-card {
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .entity-management-page .entity-card .card-header {
+        padding: 0.5rem 0.72rem;
+        font-size: 0.66rem;
+        letter-spacing: 0.1em;
+    }
+
+    .entity-management-page .entity-table-wrap {
+        max-height: calc(100vh - 280px);
+        overflow: auto;
+    }
+
+    .entity-management-page .entity-table thead th {
+        padding: 0.38rem 0.56rem !important;
+    }
+
+    .entity-management-page .entity-table tbody td {
+        padding: 0.44rem 0.58rem !important;
+        font-size: 0.75rem;
+        vertical-align: middle;
+        line-height: 1.25;
+    }
+
+    .entity-management-page .entity-table tbody td.metric {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-family: var(--t-mono);
+    }
+
+    .entity-management-page .entity-actions {
+        display: inline-flex;
+        gap: 0.28rem;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    .entity-management-page .entity-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.34rem;
+        align-items: center;
+        margin-bottom: 0.52rem;
+    }
+
+    .entity-management-page .entity-toolbar .tactical-input,
+    .entity-management-page .entity-toolbar .tactical-select {
+        width: 280px;
+        max-width: 100%;
+        height: 30px;
+        padding: 0 0.58rem;
+        font-size: 0.74rem;
+    }
+
+    .entity-management-page .tactical-btn {
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        padding: 0.34rem 0.7rem;
+        line-height: 1.2;
+    }
+
+    .entity-management-page .tactical-btn-sm {
+        padding: 0.22rem 0.52rem;
+        font-size: 0.62rem;
+    }
+
+    .entity-management-page .entity-actions .tactical-btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        min-width: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-color: var(--e-border);
+    }
+
+    .entity-management-page .entity-actions .tactical-btn i {
+        font-size: 0.76rem;
+    }
+
+    .entity-management-page .entity-count-badge {
+        min-width: 30px;
+        justify-content: center;
+        font-family: var(--t-mono);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .entity-management-page .ip-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.08);
+        padding: 0.08rem 0.38rem;
+        font-family: var(--t-mono);
+        font-size: 0.69rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--e-text-secondary);
+    }
+
+    .entity-management-page .selection-row {
+        cursor: pointer;
+    }
+
+    .entity-management-page .selection-row.is-selected {
+        background: rgba(23, 203, 181, 0.09) !important;
+        box-shadow: inset 2px 0 0 var(--tactical-accent-dim);
+    }
+
+    .entity-management-page .selection-row.is-locked {
+        opacity: 0.78;
+    }
+
+    .entity-management-page .form-check-input {
+        width: 16px;
+        height: 16px;
+        border-color: var(--e-border);
+        background-color: rgba(148, 163, 184, 0.06);
+    }
+
+    .entity-management-page .entity-empty {
+        text-align: center;
+        color: var(--e-text-muted);
+        padding: 0.96rem 0.56rem;
+        font-size: 0.74rem;
+    }
+
+    .entity-management-page .entity-error {
+        display: none;
+        margin-bottom: 0.58rem;
+        background: var(--s-critical-bg);
+        border: 1px solid var(--s-critical-bd);
+        border-left: 3px solid var(--s-critical);
+        border-radius: 4px;
+        padding: 0.46rem 0.62rem;
+        font-size: 0.72rem;
+        color: #f5a0a8;
+    }
+
+    .entity-management-page .entity-error.visible {
+        display: block;
+    }
+
+    .entity-management-page .form-label {
+        margin-bottom: 0.24rem;
+        font-size: 0.66rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--e-text-muted);
+    }
+
+    .entity-management-page .mb-3 {
+        margin-bottom: 0.56rem !important;
+    }
+
+    .entity-management-page textarea.tactical-input {
+        min-height: 74px;
+        height: auto;
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+        line-height: 1.35;
+    }
+
+    .entity-management-page .modal .modal-header {
+        padding: 0.56rem 0.74rem;
+    }
+
+    .entity-management-page .modal .modal-body {
+        padding: 0.62rem 0.74rem;
+    }
+
+    .entity-management-page .modal .modal-footer {
+        padding: 0.48rem 0.74rem;
+        gap: 0.34rem;
+    }
+
+    .entity-management-page #assignDevicesModal .modal-dialog {
+        max-width: 1024px;
+    }
+
+    .entity-management-page .assign-context {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.34rem;
+        margin-bottom: 0.46rem;
+    }
+
+    .entity-management-page .assign-context-item {
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.07);
+        padding: 0.24rem 0.4rem;
+        font-size: 0.72rem;
+        color: var(--e-text-secondary);
+    }
+
+    .entity-management-page .assign-context-item strong {
+        color: var(--e-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        font-size: 0.62rem;
+        margin-right: 0.3rem;
+    }
+
+    .entity-management-page .form-check-label {
+        font-size: 0.72rem;
+        color: var(--e-text-secondary);
+    }
+
+    @media (max-width: 768px) {
+        .entity-management-page .assign-context {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fas fa-sitemap me-2"></i>Departments</h2>
-        <button class="btn btn-primary" onclick="showCreateDepartmentModal()">
+<div class="container-fluid mt-3 dashboard-enterprise entity-management-page">
+    <div class="entity-header">
+        <div>
+            <h2 class="entity-title"><i class="fas fa-sitemap me-2"></i>Departments</h2>
+            <p class="entity-subtitle">Manage department ownership, site mapping, and device assignment scope.</p>
+        </div>
+        <button class="tactical-btn tactical-btn-primary" onclick="showCreateDepartmentModal()">
             <i class="fas fa-plus me-2"></i>Create Department
         </button>
     </div>
 
-    <!-- Departments Table -->
-    <div class="card">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="departmentsTable">
+    <div id="page-error" class="entity-error" role="alert"></div>
+
+    <div class="tactical-card entity-card">
+        <div class="card-header">
+            <span><i class="fas fa-list me-2"></i>Departments Inventory</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive entity-table-wrap">
+                <table class="tactical-table table-hover entity-table mb-0" id="departmentsTable">
                     <thead>
                         <tr>
                             <th>Name</th>
                             <th>Description</th>
                             <th>Site</th>
-                            <th>Devices</th>
-                            <th>Users</th>
-                            <th>Actions</th>
+                            <th class="text-end">Devices</th>
+                            <th class="text-end">Users</th>
+                            <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- Populated by JavaScript -->
+                        <tr>
+                            <td colspan="6" class="entity-empty">Loading department records...</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -36,9 +295,9 @@
 </div>
 
 <!-- Create/Edit Department Modal -->
-<div class="modal fade" id="departmentModal" tabindex="-1">
+<div class="modal fade tactical-modal" id="departmentModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content tactical-card">
             <div class="modal-header">
                 <h5 class="modal-title" id="departmentModalTitle">Create Department</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -49,25 +308,89 @@
                     
                     <div class="mb-3">
                         <label for="departmentName" class="form-label">Department Name *</label>
-                        <input type="text" class="form-control" id="departmentName" required>
+                        <input type="text" class="tactical-input w-100" id="departmentName" required>
                     </div>
                     
                     <div class="mb-3">
                         <label for="description" class="form-label">Description</label>
-                        <textarea class="form-control" id="description" rows="3"></textarea>
+                        <textarea class="form-control tactical-input w-100" id="description" rows="3"></textarea>
                     </div>
                     
                     <div class="mb-3">
                         <label for="siteId" class="form-label">Site (Optional)</label>
-                        <select class="form-select" id="siteId">
+                        <select class="tactical-select w-100" id="siteId">
                             <option value="">-- No Site --</option>
                         </select>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveDepartment()">Save</button>
+                <button type="button" class="tactical-btn tactical-btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="tactical-btn tactical-btn-primary" onclick="saveDepartment()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Devices Modal -->
+<div class="modal fade tactical-modal" id="assignDevicesModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content tactical-card">
+            <div class="modal-header">
+                <h5 class="modal-title">Assign Inventory Devices</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="assign-context">
+                    <div class="assign-context-item"><strong>Department</strong><span id="assignDeptName">-</span></div>
+                    <div class="assign-context-item"><strong>Site</strong><span id="assignDeptSite">-</span></div>
+                </div>
+                <div class="alert alert-warning d-none" id="assignDevicesNoSiteAlert">
+                    This department has no site assigned. Devices will not appear under any site until a site is selected.
+                </div>
+                <div class="alert alert-info d-none" id="subnetInfoAlert">
+                    <!-- Subnet filtering info will be displayed here -->
+                </div>
+                <div class="alert alert-warning d-none" id="subnetWarningAlert">
+                    <!-- Subnet warnings will be displayed here -->
+                </div>
+                <div class="entity-toolbar">
+                    <input type="text" class="tactical-input" id="deviceSearch" placeholder="Search devices..." oninput="renderInventoryDevices()">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="showAssignedDevices" onchange="renderInventoryDevices()">
+                        <label class="form-check-label" for="showAssignedDevices">
+                            Show devices assigned to other departments
+                        </label>
+                    </div>
+                    <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="selectAllAvailableDevices()">Select all available</button>
+                    <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="clearSelectedDevices()">Clear selection</button>
+                    <span class="text-muted small" id="deviceSelectionSummary"></span>
+                </div>
+                <div id="inventoryLoading" class="text-muted small mb-2 d-none">Loading devices...</div>
+                <div class="table-responsive" style="max-height: 50vh; overflow: auto;">
+                    <table class="tactical-table table-hover align-middle mb-0" id="inventoryDevicesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>Name</th>
+                                <th>IP</th>
+                                <th>Type</th>
+                                <th>Department</th>
+                                <th>Site</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">No devices loaded</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="tactical-btn tactical-btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="tactical-btn tactical-btn-primary" onclick="assignSelectedDevicesToDepartment()">Assign Selected</button>
             </div>
         </div>
     </div>
@@ -76,31 +399,99 @@
 <script>
 let departmentsData = [];
 let sitesData = [];
+let inventoryDevices = [];
+let inventoryLoaded = false;
+let selectedDeviceIds = new Set();
+let currentAssignDeptId = null;
 let departmentModal;
+let assignDevicesModal;
+
+function setPageError(message) {
+    const el = document.getElementById('page-error');
+    if (!el) return;
+    if (!message) {
+        el.textContent = '';
+        el.classList.remove('visible');
+        return;
+    }
+    el.textContent = message;
+    el.classList.add('visible');
+}
+
+function normalizeHttpError(response, payload, fallbackMessage) {
+    const payloadMessage = payload && (
+        payload.message ||
+        payload.error ||
+        (payload.error && payload.error.message)
+    );
+    return payloadMessage || `${fallbackMessage} (${response.status})`;
+}
+
+async function requestJson(url, options = {}, fallbackMessage = 'Request failed') {
+    const config = Object.assign({ credentials: 'same-origin' }, options);
+    const response = await fetch(url, config);
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+    let payload;
+    if (contentType.includes('application/json')) {
+        payload = await response.json();
+    } else {
+        const text = await response.text();
+        const snippet = (text || '').slice(0, 140).replace(/\s+/g, ' ').trim();
+        throw new Error(`${fallbackMessage}: ${snippet || `HTTP ${response.status}`}`);
+    }
+
+    if (!response.ok) {
+        const error = new Error(normalizeHttpError(response, payload, fallbackMessage));
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+    }
+    if (payload && typeof payload === 'object' && payload.status && !['ok', 'success'].includes(payload.status)) {
+        const error = new Error(payload.message || payload.error || fallbackMessage);
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+    }
+    return payload;
+}
+
+function typeToAlertClass(type) {
+    if (type === 'danger') return 'danger';
+    if (type === 'warning') return 'warning';
+    if (type === 'success') return 'success';
+    return 'info';
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     departmentModal = new bootstrap.Modal(document.getElementById('departmentModal'));
+    assignDevicesModal = new bootstrap.Modal(document.getElementById('assignDevicesModal'));
     loadSites();
     loadDepartments();
+    const assignModalEl = document.getElementById('assignDevicesModal');
+    assignModalEl.addEventListener('hidden.bs.modal', () => {
+        selectedDeviceIds.clear();
+        currentAssignDeptId = null;
+        inventoryLoaded = false; // Reset to reload filtered devices next time
+        document.getElementById('deviceSearch').value = '';
+        document.getElementById('showAssignedDevices').checked = false;
+        renderInventoryDevices();
+    });
 });
 
 async function loadSites() {
     try {
-        const response = await fetch('/api/sites');
-        const result = await response.json();
-        
-        if (result.status === 'ok') {
-            sitesData = result.data;
-            populateSiteDropdown();
-        }
+        const result = await requestJson('/api/sites', {}, 'Failed to load sites');
+        sitesData = result.data || [];
+        populateSiteDropdown();
     } catch (error) {
-        console.error('Error loading sites:', error);
+        showAlert(`Error loading sites: ${error.message}`, 'danger');
     }
 }
 
 function populateSiteDropdown() {
     const select = document.getElementById('siteId');
-    const currentOptions = select.innerHTML;
+    select.innerHTML = '<option value="">-- No Site --</option>';
     
     sitesData.forEach(site => {
         const option = document.createElement('option');
@@ -112,23 +503,26 @@ function populateSiteDropdown() {
 
 async function loadDepartments() {
     try {
-        const response = await fetch('/api/departments');
-        const result = await response.json();
-        
-        if (result.status === 'ok') {
-            departmentsData = result.data;
-            renderDepartmentsTable();
-        } else {
-            showAlert('Error loading departments: ' + result.message, 'danger');
-        }
+        const result = await requestJson('/api/departments', {}, 'Failed to load departments');
+        departmentsData = result.data || [];
+        setPageError('');
+        renderDepartmentsTable();
     } catch (error) {
-        showAlert('Error loading departments: ' + error.message, 'danger');
+        setPageError(`Unable to load departments. ${error.message}`);
+        showAlert(`Error loading departments: ${error.message}`, 'danger');
+        departmentsData = [];
+        renderDepartmentsTable();
     }
 }
 
 function renderDepartmentsTable() {
     const tbody = document.querySelector('#departmentsTable tbody');
     tbody.innerHTML = '';
+
+    if (!departmentsData.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="entity-empty">No departments available.</td></tr>';
+        return;
+    }
     
     departmentsData.forEach(dept => {
         const site = sitesData.find(s => s.id === dept.site_id);
@@ -137,19 +531,257 @@ function renderDepartmentsTable() {
             <td><strong>${escapeHtml(dept.name)}</strong></td>
             <td>${escapeHtml(dept.description || '-')}</td>
             <td>${site ? escapeHtml(site.site_name) : '-'}</td>
-            <td><span class="badge bg-info">${dept.device_count}</span></td>
-            <td><span class="badge bg-secondary">${dept.user_count}</span></td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="editDepartment(${dept.id})">
+            <td class="metric"><span class="tactical-badge tactical-badge-info entity-count-badge">${dept.device_count || 0}</span></td>
+            <td class="metric"><span class="tactical-badge tactical-badge-secondary entity-count-badge">${dept.user_count || 0}</span></td>
+            <td class="text-end">
+                <div class="entity-actions">
+                <button class="tactical-btn tactical-btn-success tactical-btn-sm" onclick="showAssignDevicesModal(${dept.id})" title="Assign Devices">
+                    <i class="fas fa-layer-group"></i>
+                </button>
+                <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="editDepartment(${dept.id})" title="Edit department">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteDepartment(${dept.id}, '${escapeHtml(dept.name)}')">
+                <button class="tactical-btn tactical-btn-danger tactical-btn-sm" onclick="deleteDepartment(${dept.id}, '${escapeHtml(dept.name)}')" title="Delete department">
                     <i class="fas fa-trash"></i>
                 </button>
+                </div>
             </td>
         `;
         tbody.appendChild(row);
     });
+}
+
+async function loadInventoryDevices() {
+    if (inventoryLoaded) return;
+    const loading = document.getElementById('inventoryLoading');
+    loading.classList.remove('d-none');
+    try {
+        const result = await requestJson('/api/devices', {}, 'Failed to load inventory devices');
+        inventoryDevices = Array.isArray(result) ? result : (result.devices || []);
+        inventoryLoaded = true;
+    } catch (error) {
+        showAlert('Error loading inventory devices: ' + error.message, 'danger');
+    } finally {
+        loading.classList.add('d-none');
+    }
+}
+
+async function loadFilteredInventoryDevices(deptId) {
+    const loading = document.getElementById('inventoryLoading');
+    const subnetInfoAlert = document.getElementById('subnetInfoAlert');
+    const subnetWarningAlert = document.getElementById('subnetWarningAlert');
+    
+    loading.classList.remove('d-none');
+    
+    // Hide alerts initially
+    if (subnetInfoAlert) subnetInfoAlert.classList.add('d-none');
+    if (subnetWarningAlert) subnetWarningAlert.classList.add('d-none');
+    
+    try {
+        const result = await requestJson(`/api/departments/${deptId}/assignable-devices`, {}, 'Failed to load assignable devices');
+        inventoryDevices = result.data || [];
+        inventoryLoaded = true;
+        
+        // Show subnet information
+        if (result.site_subnets && result.site_subnets.length > 0) {
+            if (subnetInfoAlert) {
+                const subnetList = result.site_subnets.join(', ');
+                subnetInfoAlert.innerHTML = `<i class="fas fa-info-circle me-2"></i>Showing devices from subnets: <strong>${escapeHtml(subnetList)}</strong> (${result.total_assignable} of ${result.total_filtered} devices match)`;
+                subnetInfoAlert.classList.remove('d-none');
+            }
+        }
+        
+        // Show warning if present
+        if (result.warning) {
+            if (subnetWarningAlert) {
+                subnetWarningAlert.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${escapeHtml(result.warning)}`;
+                subnetWarningAlert.classList.remove('d-none');
+            }
+        }
+    } catch (error) {
+        showAlert('Error loading filtered devices: ' + error.message, 'danger');
+    } finally {
+        loading.classList.add('d-none');
+    }
+}
+
+function getFilteredInventoryDevices() {
+    const search = (document.getElementById('deviceSearch').value || '').toLowerCase();
+    const showAssigned = document.getElementById('showAssignedDevices').checked;
+
+    return inventoryDevices.filter(device => {
+        const haystack = [
+            device.device_name || '',
+            device.device_ip || '',
+            device.hostname || '',
+            device.macaddress || '',
+            device.device_type || '',
+            device.manufacturer || ''
+        ].join(' ').toLowerCase();
+
+        if (search && !haystack.includes(search)) {
+            return false;
+        }
+
+        if (!showAssigned) {
+            return !device.department_id || device.department_id === currentAssignDeptId;
+        }
+
+        return true;
+    });
+}
+
+function renderInventoryDevices() {
+    const tbody = document.querySelector('#inventoryDevicesTable tbody');
+    if (!tbody) return;
+
+    if (!inventoryLoaded) {
+        tbody.innerHTML = '<tr><td colspan="7" class="entity-empty">No devices loaded</td></tr>';
+        updateSelectionSummary(0);
+        return;
+    }
+
+    const deptMap = new Map(departmentsData.map(d => [d.id, d.name]));
+    const siteMap = new Map(sitesData.map(s => [s.id, s.site_name]));
+    const devices = getFilteredInventoryDevices();
+
+    tbody.innerHTML = '';
+
+    if (!devices.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="entity-empty">No devices found</td></tr>';
+        updateSelectionSummary(0);
+        return;
+    }
+
+    devices.forEach(device => {
+        const assignedDeptId = device.department_id;
+        const assignedDeptName = assignedDeptId ? (deptMap.get(assignedDeptId) || `Dept #${assignedDeptId}`) : '-';
+        const assignedSiteName = device.site_id ? (siteMap.get(device.site_id) || `Site #${device.site_id}`) : '-';
+        const isCurrentDept = assignedDeptId === currentAssignDeptId;
+        const isOtherDept = assignedDeptId && assignedDeptId !== currentAssignDeptId;
+        const isSelectable = !assignedDeptId;
+        const isChecked = selectedDeviceIds.has(device.device_id);
+        const statusBadge = isCurrentDept
+            ? '<span class="tactical-badge tactical-badge-success">In this dept</span>'
+            : (isOtherDept ? '<span class="tactical-badge tactical-badge-secondary">Assigned elsewhere</span>' : '<span class="tactical-badge tactical-badge-info">Available</span>');
+
+        const row = document.createElement('tr');
+        row.className = `selection-row${isChecked ? ' is-selected' : ''}${isSelectable ? '' : ' is-locked'}`;
+        row.innerHTML = `
+            <td>
+                <input type="checkbox" class="form-check-input" ${isSelectable ? '' : 'disabled'}
+                    ${isChecked ? 'checked' : ''}
+                    onchange="toggleDeviceSelection(${device.device_id}, this.checked, this)">
+            </td>
+            <td>${escapeHtml(device.device_name || 'Unnamed')}</td>
+            <td><span class="ip-pill">${escapeHtml(device.device_ip || '-')}</span></td>
+            <td>${escapeHtml(device.device_type || '-')}</td>
+            <td>${escapeHtml(assignedDeptName)}</td>
+            <td>${escapeHtml(assignedSiteName)}</td>
+            <td>${statusBadge}</td>
+        `;
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('input, button, a, label')) return;
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (!cb || cb.disabled) return;
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', {bubbles: true}));
+        });
+        tbody.appendChild(row);
+    });
+
+    updateSelectionSummary(devices.length);
+}
+
+function updateSelectionSummary(visibleCount) {
+    const summary = document.getElementById('deviceSelectionSummary');
+    if (!summary) return;
+    const selectedCount = selectedDeviceIds.size;
+    summary.textContent = `${selectedCount} selected / ${visibleCount} visible`;
+}
+
+function toggleDeviceSelection(deviceId, checked, checkboxEl) {
+    const device = inventoryDevices.find(d => d.device_id === deviceId);
+    if (!device || device.department_id) {
+        return;
+    }
+    if (checked) {
+        selectedDeviceIds.add(deviceId);
+    } else {
+        selectedDeviceIds.delete(deviceId);
+    }
+    const row = checkboxEl && checkboxEl.closest ? checkboxEl.closest('tr') : null;
+    if (row) {
+        row.classList.toggle('is-selected', Boolean(checked));
+    }
+    updateSelectionSummary(getFilteredInventoryDevices().length);
+}
+
+function selectAllAvailableDevices() {
+    const devices = getFilteredInventoryDevices();
+    devices.forEach(device => {
+        if (!device.department_id) {
+            selectedDeviceIds.add(device.device_id);
+        }
+    });
+    renderInventoryDevices();
+}
+
+function clearSelectedDevices() {
+    selectedDeviceIds.clear();
+    renderInventoryDevices();
+}
+
+async function showAssignDevicesModal(deptId) {
+    const dept = departmentsData.find(d => d.id === deptId);
+    if (!dept) return;
+
+    currentAssignDeptId = deptId;
+    document.getElementById('assignDeptName').textContent = dept.name;
+    const site = sitesData.find(s => s.id === dept.site_id);
+    document.getElementById('assignDeptSite').textContent = site ? site.site_name : 'No site assigned';
+
+    const noSiteAlert = document.getElementById('assignDevicesNoSiteAlert');
+    if (dept.site_id) {
+        noSiteAlert.classList.add('d-none');
+    } else {
+        noSiteAlert.classList.remove('d-none');
+    }
+
+    // Load filtered devices from new endpoint
+    await loadFilteredInventoryDevices(deptId);
+    renderInventoryDevices();
+    assignDevicesModal.show();
+}
+
+async function assignSelectedDevicesToDepartment() {
+    if (!currentAssignDeptId) return;
+    const deviceIds = Array.from(selectedDeviceIds);
+    if (!deviceIds.length) {
+        showAlert('Select at least one available device to assign.', 'warning');
+        return;
+    }
+
+    try {
+        const result = await requestJson(`/api/departments/${currentAssignDeptId}/assign`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_ids: deviceIds})
+        }, 'Failed to assign devices');
+
+        showAlert(result.message, 'success');
+        const idSet = new Set(deviceIds);
+        inventoryDevices.forEach(device => {
+            if (idSet.has(device.device_id)) {
+                device.department_id = currentAssignDeptId;
+            }
+        });
+        selectedDeviceIds.clear();
+        assignDevicesModal.hide();
+        loadDepartments();
+    } catch (error) {
+        showAlert('Error assigning devices: ' + error.message, 'danger');
+    }
 }
 
 function showCreateDepartmentModal() {
@@ -184,21 +816,15 @@ async function saveDepartment() {
         const url = deptId ? `/api/departments/${deptId}` : '/api/departments';
         const method = deptId ? 'PUT' : 'POST';
         
-        const response = await fetch(url, {
+        await requestJson(url, {
             method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'ok') {
-            showAlert(`Department ${deptId ? 'updated' : 'created'} successfully`, 'success');
-            departmentModal.hide();
-            loadDepartments();
-        } else {
-            showAlert('Error: ' + result.message, 'danger');
-        }
+        }, `Failed to ${deptId ? 'update' : 'create'} department`);
+
+        showAlert(`Department ${deptId ? 'updated' : 'created'} successfully`, 'success');
+        departmentModal.hide();
+        loadDepartments();
     } catch (error) {
         showAlert('Error saving department: ' + error.message, 'danger');
     }
@@ -210,34 +836,40 @@ async function deleteDepartment(deptId, deptName) {
     }
     
     try {
-        const response = await fetch(`/api/departments/${deptId}`, {
+        const result = await requestJson(`/api/departments/${deptId}`, {
             method: 'DELETE'
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'ok') {
-            showAlert('Department deleted successfully', 'success');
-            loadDepartments();
-        } else {
-            showAlert('Error: ' + result.message, 'danger');
-        }
+        }, 'Failed to delete department');
+        showAlert(result.message || 'Department deleted successfully', 'success');
+        loadDepartments();
     } catch (error) {
+        if (Number(error.status) === 409) {
+            const baseMessage = error.message || 'Cannot delete department: devices or users are assigned to it';
+            showAlert(`${baseMessage}. Remove devices/users from this department first. Deleting the site is not required.`, 'warning');
+            return;
+        }
         showAlert('Error deleting department: ' + error.message, 'danger');
     }
 }
 
 function showAlert(message, type) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-    alertDiv.style.zIndex = '9999';
-    alertDiv.innerHTML = `
-        ${message}
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'position-fixed top-0 end-0 p-3';
+        container.style.zIndex = '1080';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${typeToAlertClass(type)} alert-dismissible fade show mb-2`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        ${escapeHtml(message)}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.body.appendChild(alertDiv);
-    
-    setTimeout(() => alertDiv.remove(), 5000);
+    container.prepend(toast);
+    setTimeout(() => toast.remove(), 4500);
 }
 
 function escapeHtml(text) {

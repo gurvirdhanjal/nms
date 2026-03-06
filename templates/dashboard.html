@@ -73,11 +73,6 @@
     }
 
     /* Global dashboard horizontal breathing space */
-    .tactical-theme {
-        padding-left: 24px;
-        padding-right: 24px;
-    }
-
     .tactical-table thead th {
         position: sticky;
         top: 0;
@@ -85,13 +80,6 @@
         z-index: 2;
     }
 
-    /* Large screens get a bit more space */
-    @media (min-width: 1400px) {
-        .tactical-theme {
-            padding-left: 40px;
-            padding-right: 40px;
-        }
-    }
 
     .overall-health-card {
         border: 1px solid rgba(148, 163, 184, 0.20);
@@ -518,8 +506,6 @@
     }
 
     .dashboard-enterprise.tactical-theme {
-        padding-left: var(--e-space-4);
-        padding-right: var(--e-space-4);
         line-height: 1.38;
     }
 
@@ -1058,39 +1044,325 @@
         text-align: center;
     }
 
-    .dashboard-enterprise .subnet-detail-kpis {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
+    #subnetDetailsModal .subnet-details-modal {
+        border: 1px solid var(--e-border) !important;
+        background: var(--e-bg-panel) !important;
     }
 
-    .dashboard-enterprise .subnet-detail-kpi {
-        border: 1px solid var(--e-border);
-        border-radius: 6px;
-        padding: 0.5rem 0.6rem;
-        background: rgba(148, 163, 184, 0.05);
+    #subnetDetailsModal .modal-header {
+        padding: 0.56rem 0.74rem 0.46rem;
+        border-bottom: 1px solid var(--e-border);
     }
 
-    .dashboard-enterprise .subnet-detail-kpi .label {
-        font-size: 0.62rem;
+    #subnetDetailsModal .modal-title {
+        font-size: 0.79rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        color: var(--e-text-primary);
+    }
+
+    #subnetDetailsModal .modal-title i {
+        color: var(--e-text-muted);
+        font-size: 0.74rem;
+    }
+
+    #subnetDetailsModal .modal-body.subnet-details-modal-body {
+        padding: 0.48rem 0.74rem 0.66rem !important;
+    }
+
+    #subnetDetailsModal .subnet-modal-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.4rem;
+        margin-bottom: 0.34rem;
+    }
+
+    #subnetDetailsModal #subnet-modal-updated {
+        margin-bottom: 0;
+        font-size: 0.66rem;
         color: var(--e-text-muted);
     }
 
-    .dashboard-enterprise .subnet-detail-kpi .value {
+    #subnetDetailsModal .subnet-modal-health-pill {
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        padding: 0.18rem 0.44rem;
+        background: rgba(148, 163, 184, 0.06);
         font-family: var(--t-mono);
-        font-size: 0.96rem;
+        font-variant-numeric: tabular-nums;
+        font-size: 0.64rem;
+        color: var(--e-text-secondary);
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    #subnetDetailsModal .subnet-modal-health-pill.health-critical {
+        color: var(--s-critical);
+        border-color: var(--s-critical-bd);
+        background: var(--s-critical-bg);
+    }
+
+    #subnetDetailsModal .subnet-modal-health-pill.health-warning {
+        color: var(--s-warning);
+        border-color: var(--s-warning-bd);
+        background: var(--s-warning-bg);
+    }
+
+    #subnetDetailsModal .subnet-modal-health-pill.health-healthy {
+        color: var(--s-healthy);
+        border-color: var(--s-healthy-bd);
+        background: var(--s-healthy-bg);
+    }
+
+    #subnetDetailsModal .subnet-detail-kpis {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 0.28rem;
+        margin-bottom: 0.36rem;
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi {
+        border: 1px solid var(--e-border);
+        border-radius: 6px;
+        padding: 0.24rem 0.4rem;
+        background: rgba(148, 163, 184, 0.045);
+        min-height: 46px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 0.14rem;
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi .label {
+        font-size: 0.52rem;
         font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.11em;
+        color: var(--e-text-muted);
+        line-height: 1.1;
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi .value {
+        font-family: var(--t-mono);
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--e-text-primary);
+        line-height: 1.1;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi .value.value-critical {
+        color: var(--s-critical);
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi .value.value-warning {
+        color: var(--s-warning);
+    }
+
+    #subnetDetailsModal .subnet-detail-kpi .value.value-healthy {
+        color: var(--s-healthy);
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.28rem;
+        margin-bottom: 0.42rem;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown-item {
+        display: grid;
+        grid-template-columns: minmax(0, 92px) minmax(0, 1fr);
+        align-items: baseline;
+        gap: 0.28rem;
+        border: 1px solid var(--e-border);
+        border-radius: 6px;
+        padding: 0.24rem 0.4rem;
+        background: rgba(148, 163, 184, 0.03);
+        min-height: 34px;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown-label {
+        font-size: 0.56rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--e-text-muted);
+        white-space: nowrap;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown-value {
+        font-size: 0.66rem;
+        color: var(--e-text-secondary);
+        text-align: right;
+        line-height: 1.28;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #subnetDetailsModal .subnet-modal-device-scroll {
+        max-height: min(52vh, 420px);
+        border: 1px solid var(--e-border);
+        border-radius: 6px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    #subnetDetailsModal .subnet-modal-device-scroll .tactical-table tbody td {
+        padding: 0.34rem 0.52rem;
+        font-size: 0.74rem;
+        line-height: 1.2;
+    }
+
+    #subnetDetailsModal .subnet-modal-device-scroll .tactical-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 0.36rem 0.52rem;
+        font-size: 0.66rem;
+    }
+
+    #subnetDetailsModal .subnet-device-name {
+        font-size: 0.78rem;
+        font-weight: 600;
         color: var(--e-text-primary);
         line-height: 1.2;
     }
 
-    .dashboard-enterprise .subnet-modal-device-scroll {
-        max-height: 360px;
-        overflow-y: auto;
-        overscroll-behavior: contain;
+    #subnetDetailsModal .subnet-device-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.24rem;
+        font-size: 0.61rem;
+        line-height: 1.15;
+        color: var(--e-text-muted);
+        margin-top: 0.15rem;
+    }
+
+    #subnetDetailsModal .subnet-device-status {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+    }
+
+    #subnetDetailsModal .subnet-device-status-chip {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--e-border);
+        border-radius: 3px;
+        padding: 0.07rem 0.34rem;
+        font-family: var(--t-mono);
+        font-size: 0.58rem;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    #subnetDetailsModal .subnet-device-status.status-online {
+        color: var(--s-healthy);
+    }
+
+    #subnetDetailsModal .subnet-device-status.status-degraded {
+        color: var(--s-warning);
+    }
+
+    #subnetDetailsModal .subnet-device-status.status-offline {
+        color: var(--s-critical);
+    }
+
+    #subnetDetailsModal .subnet-device-status.status-unknown {
+        color: var(--s-unknown);
+    }
+
+    #subnetDetailsModal .subnet-device-status-chip.status-online {
+        color: #7acfb8;
+        border-color: var(--s-healthy-bd);
+        background: var(--s-healthy-bg);
+    }
+
+    #subnetDetailsModal .subnet-device-status-chip.status-degraded {
+        color: #f2d47a;
+        border-color: var(--s-warning-bd);
+        background: var(--s-warning-bg);
+    }
+
+    #subnetDetailsModal .subnet-device-status-chip.status-offline {
+        color: #f5a0a8;
+        border-color: var(--s-critical-bd);
+        background: var(--s-critical-bg);
+    }
+
+    #subnetDetailsModal .subnet-device-status-chip.status-unknown {
+        color: var(--e-text-muted);
+        border-color: var(--e-border);
+        background: rgba(148, 163, 184, 0.08);
+    }
+
+    #subnetDetailsModal .subnet-ip-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.08);
+        padding: 0.08rem 0.34rem;
+        font-family: var(--t-mono);
+        font-size: 0.66rem;
+        line-height: 1;
+        color: var(--e-text-secondary);
+    }
+
+    #subnetDetailsModal .subnet-status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: 0 0 auto;
+    }
+
+    #subnetDetailsModal .subnet-status-dot.status-online {
+        background: var(--s-healthy);
+    }
+
+    #subnetDetailsModal .subnet-status-dot.status-degraded {
+        background: var(--s-warning);
+    }
+
+    #subnetDetailsModal .subnet-status-dot.status-offline {
+        background: var(--s-critical);
+    }
+
+    #subnetDetailsModal .subnet-status-dot.status-unknown {
+        background: var(--s-unknown);
+    }
+
+    #subnetDetailsModal .subnet-monitored-chip {
+        display: inline-block;
+        min-width: 44px;
+        text-align: center;
+        border-radius: 3px;
+        border: 1px solid var(--e-border);
+        padding: 0.06rem 0.24rem;
+        font-size: 0.54rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+
+    #subnetDetailsModal .subnet-monitored-chip.is-on {
+        color: var(--s-healthy);
+        border-color: var(--s-healthy-bd);
+        background: var(--s-healthy-bg);
+    }
+
+    #subnetDetailsModal .subnet-monitored-chip.is-off {
+        color: var(--e-text-muted);
+        border-color: var(--e-border);
+        background: rgba(148, 163, 184, 0.04);
     }
 
     #overall-health-card.enterprise-header-strip {
@@ -1199,6 +1471,10 @@
             grid-template-columns: repeat(2, minmax(100px, 1fr));
         }
 
+        #subnetDetailsModal .subnet-detail-kpis {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
         #device-kpi-row,
         #fleet-overview-row {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1229,6 +1505,24 @@
             padding: 0.48rem 0.66rem;
             gap: 0.36rem;
         }
+
+        #subnetDetailsModal .subnet-modal-meta-row {
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        #subnetDetailsModal .subnet-modal-breakdown {
+            grid-template-columns: 1fr;
+        }
+
+        #subnetDetailsModal .subnet-modal-breakdown-item {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.22rem;
+        }
+
+        #subnetDetailsModal .subnet-modal-breakdown-value {
+            text-align: left;
+        }
     }
 
     @media (max-width: 576px) {
@@ -1246,6 +1540,18 @@
         #fleet-overview-row .tactical-stat-card {
             min-height: 90px;
             padding: 0.68rem 0.72rem;
+        }
+
+        #subnetDetailsModal .modal-header {
+            padding: 0.58rem 0.66rem 0.48rem;
+        }
+
+        #subnetDetailsModal .modal-body.subnet-details-modal-body {
+            padding: 0.48rem 0.66rem 0.68rem !important;
+        }
+
+        #subnetDetailsModal .subnet-detail-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 
@@ -1670,12 +1976,13 @@
 
 {% block content %}
 
-<div class="container-fluid tactical-theme dashboard-enterprise">
+<div class="container-fluid dashboard-enterprise">
     <!-- Dashboard Header -->
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h2 class="enterprise-section-title mb-0">Network Operations Center</h2>
             <div class="enterprise-section-sub">Real-time infrastructure monitoring</div>
+            <div id="dashboardScopeSummary" class="enterprise-section-sub">Scope: {{ rbac_context.scope_label }}</div>
         </div>
         <div class="d-flex align-items-center gap-2">
             <div class="dropdown d-inline-block" id="time-range-container">
@@ -1965,10 +2272,6 @@
         }
 
         /* v5.0: focus pulse removed — state changes are instant */
-        #device-breakdown .breakdown-panel.scroll-focus {
-            /* no animation */
-        }
-
         .device-kpi-card,
         .server-kpi-card {
             cursor: pointer;
@@ -2783,17 +3086,21 @@
 {% endblock %}
 
 {% block modals %}
-<div class="modal fade" id="subnetDetailsModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade subnet-details-modal-shell" id="subnetDetailsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content tactical-card">
+        <div class="modal-content tactical-card subnet-details-modal">
             <div class="modal-header border-bottom-0">
                 <h5 class="modal-title">
                     <i class="fas fa-project-diagram me-2"></i><span id="subnet-modal-title">Subnet Details</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
-            <div class="modal-body pt-0">
-                <div class="enterprise-section-sub mb-2" id="subnet-modal-updated">Updated: -</div>
+            <div class="modal-body pt-0 subnet-details-modal-body">
+                <div class="subnet-modal-meta-row">
+                    <div class="enterprise-section-sub" id="subnet-modal-updated">Updated: -</div>
+                    <div class="subnet-modal-health-pill" id="subnet-modal-health-pill">Health: -</div>
+                </div>
                 <div class="subnet-detail-kpis">
                     <div class="subnet-detail-kpi">
                         <div class="label">Total Devices</div>
@@ -2820,9 +3127,15 @@
                         <div class="value" id="subnet-modal-servers">0</div>
                     </div>
                 </div>
-                <div class="enterprise-section-sub mb-2">
-                    Device types: <span id="subnet-modal-types">-</span> |
-                    Vendors: <span id="subnet-modal-vendors">-</span>
+                <div class="subnet-modal-breakdown">
+                    <div class="subnet-modal-breakdown-item">
+                        <span class="subnet-modal-breakdown-label">Device Types</span>
+                        <span class="subnet-modal-breakdown-value" id="subnet-modal-types">-</span>
+                    </div>
+                    <div class="subnet-modal-breakdown-item">
+                        <span class="subnet-modal-breakdown-label">Vendors</span>
+                        <span class="subnet-modal-breakdown-value" id="subnet-modal-vendors">-</span>
+                    </div>
                 </div>
                 <div class="table-responsive subnet-modal-device-scroll">
                     <table class="tactical-table table-hover mb-0">
@@ -2837,7 +3150,8 @@
                         </thead>
                         <tbody id="subnet-modal-devices-body">
                             <tr>
-                                <td colspan="5" class="text-center text-secondary p-3">Select a subnet to view details.</td>
+                                <td colspan="5" class="text-center text-secondary p-3">Select a subnet to view details.
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -2958,3 +3272,4 @@
 {% block extra_js %}
 <script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v=2.9"></script>
 {% endblock %}
+

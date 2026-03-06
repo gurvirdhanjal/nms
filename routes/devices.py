@@ -1,9 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, abort
 from werkzeug.security import generate_password_hash
 from extensions import db
 from services.network_scanner import NetworkScanner
 from services.device_identity import upsert_device_from_identity, compute_subnet_cidr
-from middleware.rbac import require_login
+from middleware.rbac import require_login, require_permission, has_permission
 from datetime import datetime, timezone
 import asyncio
 import json
@@ -273,6 +273,7 @@ def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device
     return filtered_query
 
 @devices_bp.route('/devices')
+@require_login
 def device_management():
     try:
         from models.device import Device
@@ -290,7 +291,9 @@ def device_management():
         active_subnet = (request.args.get('subnet') or '').strip()
         active_status = _normalize_status_filter(request.args.get('status'))
 
-        base_query = Device.query
+        # RBAC: scope devices to the current user's department/site (admins see all)
+        from middleware.rbac import scoped_query
+        base_query = scoped_query(Device)
         filtered_query = _apply_device_filters(
             base_query,
             Device=Device,
@@ -331,11 +334,11 @@ def device_management():
             }
 
         if 'edit_id' in request.args:
-            device = Device.query.get(request.args.get('edit_id'))
+            device = scoped_query(Device).get(request.args.get('edit_id'))
             print(f"DEBUG: Editing device {device}")  # Debug line
 
         if 'delete_id' in request.args:
-            device = Device.query.get(request.args.get('delete_id'))
+            device = scoped_query(Device).get(request.args.get('delete_id'))
             if device:
                 _delete_device_with_dependencies(device)
                 db.session.commit()
@@ -462,6 +465,7 @@ def check_connectivity():
         return jsonify({'success': False, 'message': str(e)})
 
 @devices_bp.route('/devices/save', methods=['POST'])
+@require_permission('devices.edit')
 def save_device():
     try:
         from models.device import Device
@@ -476,6 +480,19 @@ def save_device():
         manufacturer = request.form.get('manufacturer', 'Unknown')
         location = request.form.get('location', '')
         description = request.form.get('description', '')
+        
+        # Site & Department
+        site_id = request.form.get('site_id') or None
+        department_id = request.form.get('department_id') or None
+        if site_id:
+            site_id = int(site_id)
+        if department_id:
+            department_id = int(department_id)
+            from models.department import Department
+            department = Department.query.get(department_id)
+            if not department:
+                return jsonify({'success': False, 'message': 'Department not found'}), 400
+            site_id = department.site_id
         
         # Monitoring Config
         is_monitored = request.form.get('is_monitored') == 'on'
@@ -494,9 +511,14 @@ def save_device():
         snmp_priv_password = request.form.get('snmp_priv_password', '')
 
         # Agent
-        agent_token = request.form.get('agent_token', '')
-        agent_interval = int(request.form.get('agent_interval', 300))
-        agent_os_type = request.form.get('agent_os_type', '')
+        agent_token = (request.form.get('agent_token', '') or '').strip()
+        try:
+            agent_interval = int(request.form.get('agent_interval', 300))
+        except (TypeError, ValueError):
+            agent_interval = 300
+        if agent_interval <= 0:
+            agent_interval = 300
+        agent_os_type = (request.form.get('agent_os_type', '') or '').strip()
 
         # WMI
         wmi_username = request.form.get('wmi_username', '')
@@ -534,13 +556,16 @@ def save_device():
         try:
             if device_id:
                 # Update existing device
-                device = Device.query.get(device_id)
+                from middleware.rbac import scoped_query
+                device = scoped_query(Device).get(device_id)
                 device.device_name = device_name
                 device.device_ip = device_ip
                 device.device_type = device_type
                 
                 device.location = location
                 device.description = description
+                device.site_id = site_id
+                device.department_id = department_id
                 device.monitoring_mode = monitoring_mode
                 
                 # SNMP
@@ -555,8 +580,9 @@ def save_device():
                 device.snmp_priv_proto = snmp_priv_proto
                 device.snmp_priv_password = snmp_priv_password
                 
-                # Agent
-                device.agent_token = agent_token
+                # Agent: preserve existing token unless a new non-empty token is provided.
+                if agent_token:
+                    device.agent_token = agent_token
                 device.agent_interval = agent_interval
                 device.agent_os_type = agent_os_type
                 
@@ -592,6 +618,8 @@ def save_device():
                     device_type=device_type,
                     location=location,
                     description=description,
+                    site_id=site_id,
+                    department_id=department_id,
                     monitoring_mode=monitoring_mode,
                     subnet_cidr=compute_subnet_cidr(device_ip),
                     
@@ -649,6 +677,18 @@ def save_device():
                 snmp_priv_password=snmp_priv_password,
             )
             db.session.commit()
+            
+            # Audit logging
+            from middleware.rbac import create_audit_log
+            action = 'update' if device_id else 'create'
+            create_audit_log(
+                action=action,
+                entity_type='device',
+                entity_id=device.device_id,
+                entity_name=device.device_name or device.device_ip,
+                description=f"Device {action}d: {device.device_name or device.device_ip} ({device.device_ip})"
+            )
+            
             return redirect(url_for('devices_bp.device_management'))
         except Exception as e:
             db.session.rollback()
@@ -671,6 +711,7 @@ def api_device_subnets():
     return jsonify(subnets)
 
 @devices_bp.route('/api/devices')
+@require_login
 def api_devices():
     from models.device import Device
     from models.scan_history import DeviceScanHistory
@@ -680,8 +721,12 @@ def api_devices():
     subnet = (request.args.get('subnet') or '').strip()
     status = _normalize_status_filter(request.args.get('status'))
     
+    # RBAC: scope API results to current user's department/site
+    from middleware.rbac import scoped_query
+    base_q = scoped_query(Device)
+    
     query = _apply_device_filters(
-        Device.query,
+        base_q,
         Device=Device,
         DeviceScanHistory=DeviceScanHistory,
         search=search,
@@ -750,17 +795,18 @@ def api_filtered_device_ids():
     """Return matching device IDs for current filters (for cross-page bulk selection)."""
     from models.device import Device
     from models.scan_history import DeviceScanHistory
+    from middleware.rbac import scoped_query
 
     search = (request.args.get('search') or '').strip()
     device_type = (request.args.get('device_type') or '').strip().lower()
     subnet = (request.args.get('subnet') or '').strip()
     status = _normalize_status_filter(request.args.get('status'))
 
-    max_ids = request.args.get('max_ids', default=2000, type=int) or 2000
-    max_ids = max(1, min(max_ids, 5000))
+    max_ids = request.args.get('max_ids', default=100000, type=int) or 100000
+    max_ids = max(1, min(max_ids, 100000))
 
     query = _apply_device_filters(
-        Device.query,
+        scoped_query(Device),
         Device=Device,
         DeviceScanHistory=DeviceScanHistory,
         search=search,
@@ -791,13 +837,35 @@ def api_filtered_device_ids():
     })
 
 @devices_bp.route('/api/devices/<int:device_id>')
+@require_login
 def api_device_detail(device_id):
     from models.device import Device
-    device = Device.query.get(device_id)
+    from models.snmp_config import DeviceSnmpConfig
+    from middleware.rbac import scoped_query
+    device = scoped_query(Device).get(device_id)
     if device:
-        return jsonify(device.to_dict())
+        snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device.device_id).first()
+        device_data = device.to_dict()
+        device_data.update({
+            'monitoring_mode': (device.monitoring_mode or 'ping'),
+            'agent_interval': int(device.agent_interval or 300),
+            'agent_os_type': (device.agent_os_type or ''),
+            'snmp_config': {
+                'snmp_version': (snmp_config.snmp_version if snmp_config else None),
+                'snmp_port': (snmp_config.snmp_port if snmp_config else None),
+                'community_string': (snmp_config.community_string if snmp_config else None),
+                'security_name': (snmp_config.security_name if snmp_config else None),
+                'auth_protocol': (snmp_config.auth_protocol if snmp_config else None),
+                'auth_password': (snmp_config.auth_password if snmp_config else None),
+                'priv_protocol': (snmp_config.priv_protocol if snmp_config else None),
+                'priv_password': (snmp_config.priv_password if snmp_config else None),
+            },
+        })
+        if has_permission('devices.edit'):
+            device_data['agent_token'] = (device.agent_token or '')
+        return jsonify({'success': True, 'device': device_data})
     else:
-        return jsonify({'error': 'Device not found'}), 404
+        return jsonify({'success': False, 'error': 'Device not found'}), 404
 
 @devices_bp.route('/devices/<int:device_id>/details')
 def device_details_page(device_id):
@@ -805,8 +873,9 @@ def device_details_page(device_id):
     from models.interfaces import DeviceInterface
     from models.server_health import ServerHealthLog
     from models.snmp_config import DeviceSnmpConfig
+    from middleware.rbac import scoped_query
 
-    device = Device.query.get_or_404(device_id)
+    device = scoped_query(Device).get_or_404(device_id)
 
     snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
 
@@ -1064,12 +1133,11 @@ def get_device_connections(device_id):
         )
 
 @devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST'])
+@require_permission('devices.edit')
 def toggle_device_monitoring(device_id):
-    # Auth handled by middleware
-
-    
     from models.device import Device
-    device = Device.query.get(device_id)
+    from middleware.rbac import scoped_query
+    device = scoped_query(Device).get(device_id)
     if device:
         device.is_monitored = not device.is_monitored
         db.session.commit()
@@ -1078,10 +1146,8 @@ def toggle_device_monitoring(device_id):
         return jsonify({'error': 'Device not found'}), 404
 
 @devices_bp.route('/api/devices/bulk_add', methods=['POST'])
+@require_permission('devices.edit')
 def bulk_add_devices():
-    # Auth handled by middleware
-
-    
     try:
         from models.device import Device
         
@@ -1145,6 +1211,8 @@ def bulk_add_devices():
                 else:
                     skipped_count += 1
 
+                db.session.flush()
+
                 _upsert_device_snmp_config(
                     device=device,
                     monitoring_mode='snmp' if data.get('snmp_working') else (device.monitoring_mode or 'ping'),
@@ -1163,6 +1231,15 @@ def bulk_add_devices():
 
         db.session.commit()
         
+        # Audit logging
+        from middleware.rbac import create_audit_log
+        if added_count > 0 or updated_count > 0:
+            create_audit_log(
+                action='bulk_add',
+                entity_type='device',
+                description=f"Bulk device operation: {added_count} added, {updated_count} updated, {skipped_count} skipped"
+            )
+        
         return jsonify({
             'success': True,
             'added': added_count,
@@ -1176,12 +1253,11 @@ def bulk_add_devices():
         return jsonify({'error': str(e)}), 500
 
 @devices_bp.route('/api/devices/bulk_delete', methods=['POST'])
+@require_permission('devices.edit')
 def bulk_delete_devices():
-    # Auth handled by middleware
-
-    
     try:
         from models.device import Device
+        from middleware.rbac import scoped_query
         
         data = request.get_json()
         if not data or 'device_ids' not in data:
@@ -1214,7 +1290,7 @@ def bulk_delete_devices():
         for dev_id in device_ids:
             try:
                 with db.session.begin_nested():
-                    device_query = Device.query.filter(Device.device_id == dev_id)
+                    device_query = scoped_query(Device).filter(Device.device_id == dev_id)
                     try:
                         device = device_query.with_for_update().first()
                     except Exception:
@@ -1235,6 +1311,15 @@ def bulk_delete_devices():
             stopped_scans
         )
         
+        # Audit logging
+        from middleware.rbac import create_audit_log
+        if deleted_count > 0:
+            create_audit_log(
+                action='bulk_delete',
+                entity_type='device',
+                description=f"Bulk device deletion: {deleted_count} devices deleted"
+            )
+        
         return jsonify({
             'success': True,
             'deleted': deleted_count,
@@ -1247,6 +1332,7 @@ def bulk_delete_devices():
         return jsonify({'error': str(e)}), 500
 
 @devices_bp.route('/api/devices/<int:device_id>/update_type', methods=['POST'])
+@require_permission('devices.edit')
 def update_device_type(device_id):
     try:
         data = request.get_json()
@@ -1256,7 +1342,8 @@ def update_device_type(device_id):
             return jsonify({'error': 'Missing device_type'}), 400
             
         from models.device import Device
-        device = Device.query.get(device_id)
+        from middleware.rbac import scoped_query
+        device = scoped_query(Device).get(device_id)
         if not device:
             return jsonify({'error': 'Device not found'}), 404
             
@@ -1383,12 +1470,11 @@ def reclassify_all():
         'db_uri': current_app.config.get('SQLALCHEMY_DATABASE_URI', 'unknown')
     })
 @devices_bp.route('/api/devices/<int:device_id>', methods=['POST'])
+@require_permission('devices.edit')
 def update_device(device_id):
-    # Auth handled by middleware
-
-        
     from models.device import Device
-    device = Device.query.get_or_404(device_id)
+    from middleware.rbac import scoped_query
+    device = scoped_query(Device).get_or_404(device_id)
     data = request.json or {}
     
     if 'switch_brand' in data:
@@ -1406,3 +1492,245 @@ def update_device(device_id):
         
     db.session.commit()
     return jsonify({"success": True, "device": device.to_dict()})
+
+
+# ============================================================================
+# PHASE 4: Agent Token Management Endpoints
+# ============================================================================
+
+@devices_bp.route('/devices/<int:device_id>/regenerate_token', methods=['POST'])
+@require_permission('devices.edit')
+def regenerate_agent_token(device_id):
+    """
+    Regenerate agent token for a device.
+    
+    Uses scoped_query to ensure users can only manage tokens for devices
+    in their scope (site for managers, department for operators).
+    """
+    from models.device import Device
+    from middleware.rbac import generate_agent_token, scoped_query
+    
+    device = scoped_query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+    
+    device.agent_token = generate_agent_token()
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'device_id': device.device_id,
+        'agent_token': device.agent_token
+    })
+
+
+@devices_bp.route('/devices/<int:device_id>/get_token', methods=['GET'])
+@require_permission('devices.edit')
+def get_agent_token(device_id):
+    """
+    Get agent token for a device (for display/copy).
+    
+    Uses scoped_query to ensure users can only view tokens for devices
+    in their scope (site for managers, department for operators).
+    """
+    from models.device import Device
+    from middleware.rbac import scoped_query
+    
+    device = scoped_query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+    
+    return jsonify({
+        'device_id': device.device_id,
+        'agent_token': device.agent_token or 'Not generated'
+    })
+
+
+# ============================================================================
+# PHASE 5: Site Alignment Diagnostic Tools (Admin)
+# ============================================================================
+
+@devices_bp.route('/api/devices/site-alignment-check', methods=['GET'])
+@require_permission('devices.view')
+def check_site_alignment():
+    """
+    Identify devices whose site assignment doesn't match their subnet mapping.
+    Returns list of devices that may need manual reassignment.
+    
+    This is a READ-ONLY diagnostic tool - no automatic changes are made.
+    """
+    from models.subnet import Subnet
+    from models.device import Device
+    from middleware.rbac import scoped_query
+    
+    misaligned_devices = []
+    
+    # Get all devices with IP addresses (respecting user scope)
+    devices = scoped_query(Device).filter(Device.device_ip != None).all()
+    
+    for device in devices:
+        best_subnet = Subnet.get_best_match(device.device_ip)
+        
+        if best_subnet:
+            suggested_site_id = best_subnet.site_id
+            current_site_id = device.site_id
+            
+            # Check for mismatch
+            if current_site_id != suggested_site_id:
+                misaligned_devices.append({
+                    'device_id': device.device_id,
+                    'device_name': device.device_name,
+                    'device_ip': device.device_ip,
+                    'device_type': device.device_type,
+                    'current_site_id': current_site_id,
+                    'suggested_site_id': suggested_site_id,
+                    'subnet_cidr': best_subnet.cidr,
+                    'reason': f'IP {device.device_ip} is in subnet {best_subnet.cidr} mapped to site {suggested_site_id}'
+                })
+        elif device.site_id is not None:
+            # Device has site but IP is not in any mapped subnet
+            misaligned_devices.append({
+                'device_id': device.device_id,
+                'device_name': device.device_name,
+                'device_ip': device.device_ip,
+                'device_type': device.device_type,
+                'current_site_id': device.site_id,
+                'suggested_site_id': None,
+                'subnet_cidr': None,
+                'reason': f'IP {device.device_ip} is not in any mapped subnet'
+            })
+    
+    return jsonify({
+        'status': 'ok',
+        'total_devices': len(devices),
+        'misaligned_count': len(misaligned_devices),
+        'misaligned_devices': misaligned_devices
+    })
+
+
+@devices_bp.route('/api/devices/<int:device_id>/suggest-site', methods=['GET'])
+@require_permission('devices.view')
+def suggest_site_for_device(device_id):
+    """
+    Get site suggestion for a specific device based on subnet mapping.
+    Returns current site, suggested site, and reasoning.
+    """
+    from models.subnet import Subnet
+    from models.device import Device
+    from middleware.rbac import scoped_query
+    
+    device = scoped_query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+    
+    if not device.device_ip:
+        return jsonify({
+            'status': 'ok',
+            'device_id': device_id,
+            'current_site_id': device.site_id,
+            'suggested_site_id': None,
+            'reason': 'Device has no IP address',
+            'action_needed': False
+        })
+    
+    best_subnet = Subnet.get_best_match(device.device_ip)
+    
+    if not best_subnet:
+        return jsonify({
+            'status': 'ok',
+            'device_id': device_id,
+            'device_ip': device.device_ip,
+            'current_site_id': device.site_id,
+            'suggested_site_id': None,
+            'reason': f'IP {device.device_ip} is not in any mapped subnet',
+            'action_needed': device.site_id is not None,
+            'recommendation': 'Map subnet to a site or manually verify site assignment'
+        })
+    
+    suggested_site_id = best_subnet.site_id
+    current_site_id = device.site_id
+    
+    if current_site_id == suggested_site_id:
+        return jsonify({
+            'status': 'ok',
+            'device_id': device_id,
+            'device_ip': device.device_ip,
+            'current_site_id': current_site_id,
+            'suggested_site_id': suggested_site_id,
+            'subnet_cidr': best_subnet.cidr,
+            'reason': 'Site assignment matches subnet mapping',
+            'action_needed': False
+        })
+    
+    return jsonify({
+        'status': 'ok',
+        'device_id': device_id,
+        'device_ip': device.device_ip,
+        'current_site_id': current_site_id,
+        'suggested_site_id': suggested_site_id,
+        'subnet_cidr': best_subnet.cidr,
+        'reason': f'IP {device.device_ip} is in subnet {best_subnet.cidr} mapped to site {suggested_site_id}',
+        'action_needed': True,
+        'recommendation': f'Consider reassigning device to site {suggested_site_id}'
+    })
+
+
+@devices_bp.route('/api/devices/<int:device_id>/reassign-site', methods=['POST'])
+@require_permission('devices.edit')
+def reassign_device_site(device_id):
+    """
+    Manually reassign a device to a different site.
+    Requires explicit admin action - never automatic.
+    """
+    from models.device import Device
+    from models.site import Site
+    from middleware.rbac import create_audit_log, scoped_query
+    
+    device = scoped_query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+    
+    data = request.get_json()
+    
+    new_site_id = data.get('site_id')
+    reason = data.get('reason', '').strip()
+    
+    if new_site_id is None:
+        return jsonify({'status': 'error', 'message': 'site_id is required'}), 400
+    
+    # Validate site exists
+    new_site = Site.query.get(new_site_id)
+    if not new_site:
+        return jsonify({'status': 'error', 'message': f'Site {new_site_id} not found'}), 404
+    
+    old_site_id = device.site_id
+    old_department_id = device.department_id
+    
+    # Update site (and clear department since it may not belong to new site)
+    device.site_id = new_site_id
+    device.department_id = None  # Clear department - admin must reassign
+    
+    db.session.commit()
+    
+    # Audit log
+    create_audit_log(
+        action='reassign_site',
+        entity_type='device',
+        entity_id=device_id,
+        entity_name=device.device_name,
+        description=f'Reassigned device from site {old_site_id} to site {new_site_id}',
+        changes={
+            'old_site_id': old_site_id,
+            'new_site_id': new_site_id,
+            'old_department_id': old_department_id,
+            'new_department_id': None,
+            'reason': reason
+        }
+    )
+    
+    return jsonify({
+        'status': 'ok',
+        'message': f'Device reassigned to site {new_site_id}',
+        'device': device.to_dict(),
+        'warning': 'Department assignment cleared - please reassign to appropriate department'
+    })

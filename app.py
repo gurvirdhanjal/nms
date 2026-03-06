@@ -98,6 +98,14 @@ def create_app(test_config=None):
             print("[WARN] Flask-Compress is not installed; compression is disabled.")
 
     # ---------------------------
+    # Global RBAC Write Protection
+    # ---------------------------
+    @app.before_request
+    def global_authorization_guard():
+        from middleware.rbac import enforce_write_permission
+        enforce_write_permission()
+
+    # ---------------------------
     # Static cache headers
     # ---------------------------
     @app.after_request
@@ -160,55 +168,63 @@ def create_app(test_config=None):
             User, Device, Site, Department, PrinterMetrics, PrintJobAudit,
             DashboardEvent, DailyDeviceStats, 
             DeviceInterface, InterfaceTrafficHistory, DeviceSnmpConfig,
-            SwitchTopology, TrackedDevice,
+            SwitchTopology, TrackedDevice, TrackedDeviceIpHistory,
+            AuditLog,
             DeviceScanHistory, NetworkScan, PortScanResult,
-            ServerHealthLog, ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState
+            ServerHealthLog, ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState,
+            Subnet,
+            RestrictedSitePolicy, TrackingAgentKeyBinding, RestrictedSiteEvent, RestrictedSiteAlertState,
+            RestrictedSiteDomainMeta,
         )
         from models.discovery_config import DiscoveryConfig
         from utils.db_migrations import ensure_server_health_columns
 
-        db.create_all()
-        ensure_server_health_columns()
-
-        # ---------------------------
-        # Prime Discovery Service (Singleton)
-        # ---------------------------
         from services.discovery_service import get_discovery_service
         ds = get_discovery_service()
-        print(f"[OK] Discovery Service primed: {id(ds)}")
-
-        # ---------------------------
-        # Safe admin creation
-        # ---------------------------
-        admin_email = "gurvirdhanjal004@gmail.com"
-
-        admin_email = "gurvirdhanjal004@gmail.com"
         
-        # Check by USERNAME, not email, to ensure we update the existing admin
-        admin_user = User.query.filter_by(username="admin").first()
-        
-        if admin_user:
-            # Update email if it changed
-            if admin_user.email != admin_email:
-                admin_user.email = admin_email
-                db.session.commit()
-                print(f"[OK] Updated admin email to {admin_email}")
-        else:
-            # Create new admin
+        if not os.environ.get('FLASK_RUN_FROM_CLI'):
+            db.create_all()
+            ensure_server_health_columns()
+    
+            # ---------------------------
+            # Prime Discovery Service (Singleton)
+            # ---------------------------
+            print(f"[OK] Discovery Service primed: {id(ds)}")
+    
+            # ---------------------------
+            # Safe admin creation
+            # ---------------------------
+            admin_email = "gurvirdhanjal004@gmail.com"
+            
+            # Check by USERNAME, not email, to ensure we update the existing admin
             try:
-                new_admin = User(
-                    username="admin",
-                    email=admin_email,
-                    role="admin",
-                    password=bcrypt.generate_password_hash("admin123").decode("utf-8"),
-                    is_active=True
-                )
-                db.session.add(new_admin)
-                db.session.commit()
-                print("[OK] Default admin user created.")
-            except IntegrityError:
+                admin_user = User.query.filter_by(username="admin").first()
+                
+                if admin_user:
+                    # Update email if it changed
+                    if admin_user.email != admin_email:
+                        admin_user.email = admin_email
+                        db.session.commit()
+                        print(f"[OK] Updated admin email to {admin_email}")
+                else:
+                    # Create new admin
+                    try:
+                        new_admin = User(
+                            username="admin",
+                            email=admin_email,
+                            role="admin",
+                            password=bcrypt.generate_password_hash("admin123").decode("utf-8"),
+                            is_active=True
+                        )
+                        db.session.add(new_admin)
+                        db.session.commit()
+                        print("[OK] Default admin user created.")
+                    except IntegrityError:
+                        db.session.rollback()
+                        print("[WARN] Admin creation failed (IntegrityError).")
+            except Exception as e:
                 db.session.rollback()
-                print("[WARN] Admin creation failed (IntegrityError).")
+                print(f"[DB] Skipping admin verification due to incomplete schema: {e}")
 
     # ---------------------------
     # Register blueprints
@@ -234,6 +250,9 @@ def create_app(test_config=None):
     from routes.printer import printer_bp
     from routes.departments import departments_bp
     from routes.print_jobs import print_jobs_bp
+    from routes.subnets import subnets_bp
+    from routes.audit import audit_bp
+    from routes.device_console import device_console_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -258,6 +277,9 @@ def create_app(test_config=None):
         printer_bp,
         departments_bp,
         print_jobs_bp,
+        subnets_bp,
+        audit_bp,
+        device_console_bp,
     ]
 
     for bp in protected_blueprints:
@@ -270,6 +292,11 @@ def create_app(test_config=None):
     # API v1 — uses API key auth (not session), registered separately
     from routes.api_v1 import api_v1_bp
     app.register_blueprint(api_v1_bp)
+
+    @app.context_processor
+    def inject_rbac_context():
+        from middleware.rbac import get_ui_rbac_context
+        return {'rbac_context': get_ui_rbac_context()}
 
     return app
 

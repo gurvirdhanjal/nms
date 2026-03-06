@@ -9,6 +9,8 @@ import sys
 import json
 import sqlite3
 import logging
+import hashlib
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
@@ -16,7 +18,7 @@ from logging.handlers import RotatingFileHandler
 # CONFIGURATION (defaults — overridden by config.json)
 # ==========================
 
-NMS_SERVER_URL = "http://127.0.0.1:5001/api/agent/metrics"
+NMS_SERVER_URL = "http://127.0.0.1:5000/api/agent/metrics"
 AGENT_TOKEN = "8f42v73054r1749f8g58848be5e6502c"
 INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT = 5
@@ -26,11 +28,18 @@ LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
 BUFFER_MAX_RECORDS = 1000  # Maximum buffered payloads before FIFO eviction
 
+_CONFIG_PATH = None
+_CONFIG_SOURCE = "defaults"
+_CONFIG_LOAD_ERROR = None
+_LAST_ENDPOINT_DIAG_AT = 0.0
+_ENDPOINT_DIAG_COOLDOWN_SECONDS = 300
+
 
 def load_config():
     """Load configuration from config.json if it exists, overriding defaults."""
     global NMS_SERVER_URL, AGENT_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
     global TOP_PROCESSES_LIMIT, BUFFER_MAX_RECORDS
+    global _CONFIG_PATH, _CONFIG_SOURCE, _CONFIG_LOAD_ERROR
 
     if platform.system() == "Windows":
         config_dir = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "nms-agent")
@@ -38,7 +47,10 @@ def load_config():
         config_dir = "/etc/nms-agent"
 
     config_path = os.environ.get("NMS_AGENT_CONFIG", os.path.join(config_dir, "config.json"))
+    _CONFIG_PATH = config_path
     if not os.path.exists(config_path):
+        _CONFIG_SOURCE = "defaults"
+        _CONFIG_LOAD_ERROR = None
         return  # Use defaults
 
     try:
@@ -50,8 +62,159 @@ def load_config():
         REQUEST_TIMEOUT = cfg.get('request_timeout', REQUEST_TIMEOUT)
         TOP_PROCESSES_LIMIT = cfg.get('top_processes_limit', TOP_PROCESSES_LIMIT)
         BUFFER_MAX_RECORDS = cfg.get('buffer_max_records', BUFFER_MAX_RECORDS)
+        _CONFIG_SOURCE = "file"
+        _CONFIG_LOAD_ERROR = None
+    except Exception as exc:
+        _CONFIG_SOURCE = "defaults_on_error"
+        _CONFIG_LOAD_ERROR = f"{type(exc).__name__}: {exc}"
+        try:
+            sys.stderr.write(
+                f"[nms-agent] Failed to load config {config_path}: {_CONFIG_LOAD_ERROR}\n"
+            )
+        except Exception:
+            pass
+
+
+def _token_fingerprint(token):
+    token_value = (token or "").strip()
+    if token_value.lower().startswith("bearer "):
+        token_value = token_value[7:].strip()
+    if not token_value:
+        return "empty"
+    digest = hashlib.sha256(token_value.encode("utf-8")).hexdigest()[:12]
+    tail = token_value[-4:] if len(token_value) >= 4 else token_value
+    return f"sha256:{digest} tail:{tail} len:{len(token_value)}"
+
+
+def _resolve_config_path_for_write():
+    if _CONFIG_PATH:
+        return _CONFIG_PATH
+    if platform.system() == "Windows":
+        config_dir = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "nms-agent")
+    else:
+        config_dir = "/etc/nms-agent"
+    return os.environ.get("NMS_AGENT_CONFIG", os.path.join(config_dir, "config.json"))
+
+
+def _persist_agent_token_to_config(new_token):
+    global _CONFIG_SOURCE, _CONFIG_LOAD_ERROR
+    config_path = _resolve_config_path_for_write()
+    config_data = {}
+
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if isinstance(loaded, dict):
+                config_data = loaded
+        except Exception as exc:
+            _LOG.warning("Cannot parse existing config at %s: %s", config_path, exc)
+
+    config_data["nms_server_url"] = config_data.get("nms_server_url", NMS_SERVER_URL)
+    config_data["interval_seconds"] = config_data.get("interval_seconds", INTERVAL_SECONDS)
+    config_data["request_timeout"] = config_data.get("request_timeout", REQUEST_TIMEOUT)
+    config_data["agent_token"] = new_token
+
+    try:
+        _ensure_parent_dir(config_path)
+        tmp_path = f"{config_path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(config_data, handle, indent=2)
+            handle.write("\n")
+        os.replace(tmp_path, config_path)
+        _CONFIG_SOURCE = "file"
+        _CONFIG_LOAD_ERROR = None
+        return True
+    except Exception as exc:
+        _LOG.warning("Failed to persist agent token at %s: %s", config_path, exc)
+        return False
+
+
+def _handle_server_token_update(response):
+    global AGENT_TOKEN
+    try:
+        payload = response.json()
     except Exception:
-        pass  # Config parse failure — fall back to defaults
+        return
+
+    if not isinstance(payload, dict):
+        return
+
+    updated_token = (payload.get("agent_token") or "").strip()
+    if not updated_token:
+        return
+    if updated_token == (AGENT_TOKEN or "").strip():
+        return
+
+    old_fingerprint = _token_fingerprint(AGENT_TOKEN)
+    AGENT_TOKEN = updated_token
+    persisted = _persist_agent_token_to_config(updated_token)
+    if persisted:
+        _LOG.warning(
+            "Agent token updated via bootstrap: %s -> %s",
+            old_fingerprint,
+            _token_fingerprint(updated_token),
+        )
+    else:
+        _LOG.warning(
+            "Agent token updated in memory only (persist failed): %s -> %s",
+            old_fingerprint,
+            _token_fingerprint(updated_token),
+        )
+
+
+def _parse_server_url(url):
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return None
+    if not parsed.scheme or not parsed.hostname:
+        return None
+    port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    path = parsed.path or "/"
+    return {
+        "scheme": parsed.scheme.lower(),
+        "host": parsed.hostname,
+        "port": port,
+        "path": path,
+    }
+
+
+def _log_endpoint_diagnostics(reason, status_code=None):
+    global _LAST_ENDPOINT_DIAG_AT
+    now = time.time()
+    if reason != "startup" and (now - _LAST_ENDPOINT_DIAG_AT) < _ENDPOINT_DIAG_COOLDOWN_SECONDS:
+        return
+    _LAST_ENDPOINT_DIAG_AT = now
+
+    target = _parse_server_url(NMS_SERVER_URL)
+    if not target:
+        _LOG.warning("Target URL parse failed: %s", NMS_SERVER_URL)
+        return
+
+    _LOG.info(
+        "Target endpoint parsed: scheme=%s host=%s port=%s path=%s",
+        target["scheme"],
+        target["host"],
+        target["port"],
+        target["path"],
+    )
+
+    if target["path"] != "/api/agent/metrics":
+        _LOG.warning(
+            "Target path is %s (expected /api/agent/metrics).",
+            target["path"],
+        )
+
+    if status_code == 401:
+        _LOG.warning(
+            "Port check: %s:%s responded with HTTP 401, so host/port is reachable; this is an auth/token mismatch.",
+            target["host"],
+            target["port"],
+        )
 
 if platform.system() == "Windows":
     _program_data = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
@@ -909,10 +1072,19 @@ def collect_metrics():
 
 def send_metrics(payload):
     """Send metrics to NMS server"""
+    token = (AGENT_TOKEN or "").strip()
+    # Accept config values that were copied as "Bearer <token>".
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
     headers = {
-        "Authorization": f"Bearer {AGENT_TOKEN}",
         "Content-Type": "application/json"
     }
+    if token:
+        # Current backend expects X-Agent-Token (RBAC phase 4).
+        headers["X-Agent-Token"] = token
+        # Keep Bearer for backward compatibility with older receivers.
+        headers["Authorization"] = f"Bearer {token}"
 
     response = requests.post(
         NMS_SERVER_URL,
@@ -921,6 +1093,7 @@ def send_metrics(payload):
         timeout=REQUEST_TIMEOUT
     )
 
+    _handle_server_token_update(response)
     response.raise_for_status()
 
 # ==========================
@@ -1021,7 +1194,12 @@ def main():
     device_uuid = get_or_create_device_uuid()
     buffer = MetricsBuffer()
     _LOG.info("NMS Core Agent started on %s", get_hostname())
+    _LOG.info("Config source: %s (%s)", _CONFIG_SOURCE, _CONFIG_PATH or "n/a")
+    if _CONFIG_LOAD_ERROR:
+        _LOG.warning("Config load error: %s", _CONFIG_LOAD_ERROR)
     _LOG.info("Target: %s", NMS_SERVER_URL)
+    _log_endpoint_diagnostics("startup")
+    _LOG.info("Agent token fingerprint: %s", _token_fingerprint(AGENT_TOKEN))
     _LOG.info("Interval: %s seconds", INTERVAL_SECONDS)
     _LOG.info("Device UUID: %s", device_uuid)
     if buffer.count > 0:
@@ -1075,6 +1253,7 @@ def main():
                 _LOG.info("Drained %d of %d buffered metric(s)", drained, buffered)
 
         except requests.exceptions.ConnectionError:
+            _log_endpoint_diagnostics("connection_error")
             _LOG.error(
                 "Connection failed - buffering metrics locally at %s",
                 datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -1084,7 +1263,18 @@ def main():
             _LOG.error("Request timeout — buffering metrics at %s", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
             buffer.enqueue(json.dumps(metrics))
         except requests.exceptions.HTTPError as e:
-            _LOG.error("HTTP Error: %s - %s", e.response.status_code, e.response.text)
+            status_code = getattr(e.response, 'status_code', 'unknown')
+            response_text = getattr(e.response, 'text', 'no response body')
+            if status_code == 401:
+                _log_endpoint_diagnostics("http_401", status_code=401)
+                _LOG.error(
+                    "HTTP 401 for %s token=%s body=%s",
+                    NMS_SERVER_URL,
+                    _token_fingerprint(AGENT_TOKEN),
+                    response_text,
+                )
+            else:
+                _LOG.error("HTTP Error: %s - %s", status_code, response_text)
         except Exception as e:
             _LOG.exception("Unhandled error: %s", e)
 
@@ -1102,4 +1292,3 @@ if __name__ == "__main__":
         if not _LOG.handlers:
             setup_logging()
         _LOG.exception("Fatal error: %s", e)
-

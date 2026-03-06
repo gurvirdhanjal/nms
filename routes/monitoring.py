@@ -41,7 +41,11 @@ def dashboard():
     # local_range = monitor.scanner.get_local_ip_range()
     # network = ipaddress.IPv4Network(local_range, strict=False)
     
-    all_devices = Device.query.all()
+    # RBAC: scope dashboard counts to current user's department/site (admins see all)
+    from middleware.rbac import scoped_query
+    all_devices_query = scoped_query(Device)
+    
+    all_devices = all_devices_query.all()
     # filtered_devices = []
     # for d in all_devices: ...
     
@@ -70,10 +74,11 @@ def get_monitoring_status():
     from models.scan_history import DeviceScanHistory
     from sqlalchemy import func
     from datetime import datetime
+    from middleware.rbac import scoped_query
     device_type = request.args.get('device_type')
     status_filter = request.args.get('status')
     
-    query = Device.query
+    query = scoped_query(Device)
     device_ip = request.args.get('device_ip')
     raw_device_ids = request.args.getlist('device_ids')
     max_status_device_ids = 500
@@ -443,7 +448,7 @@ def get_monitoring_statistics():
         #   local_range = monitor.scanner.get_local_ip_range()
         #   ...
         
-        all_devices = Device.query.all()
+        all_devices = scoped_query(Device).all()
         total_devices = len(all_devices)
         monitored_devices = len([d for d in all_devices if d.is_monitored])
         devices_to_scan = all_devices # Scan everything

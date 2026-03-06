@@ -5,7 +5,7 @@ Provides endpoints for SNMP configuration and polling.
 from flask import Blueprint, jsonify, request
 from datetime import datetime
 from extensions import db
-from middleware.rbac import require_login
+from middleware.rbac import require_login, require_role
 
 snmp_bp = Blueprint('snmp_bp', __name__, url_prefix='/api/snmp')
 
@@ -147,6 +147,7 @@ def test_snmp():
 # POST /api/snmp/config
 # ============================================================
 @snmp_bp.route('/config', methods=['POST'])
+@require_role('admin')
 def save_snmp_config():
     """
     Save SNMP configuration for a device.
@@ -166,28 +167,67 @@ def save_snmp_config():
         if not device:
             return jsonify({'error': 'Device not found'}), 404
         
+        # Track changes for audit log
+        changes = {}
+        is_new = False
+        
         # Find or create config using relationship
         if not device.snmp_config:
             device.snmp_config = DeviceSnmpConfig()
+            is_new = True
         snmp_config = device.snmp_config
         
-        # Update fields
+        # Update fields and track changes
         if 'community_string' in data:
-            snmp_config.community_string = data['community_string']
+            old_value = snmp_config.community_string if not is_new else None
+            new_value = data['community_string']
+            if old_value != new_value:
+                # Don't log actual community string for security
+                changes['community_string'] = {'before': '***' if old_value else None, 'after': '***'}
+            snmp_config.community_string = new_value
         if 'snmp_version' in data:
-            snmp_config.snmp_version = data['snmp_version']
+            old_value = snmp_config.snmp_version if not is_new else None
+            new_value = data['snmp_version']
+            if old_value != new_value:
+                changes['snmp_version'] = {'before': old_value, 'after': new_value}
+            snmp_config.snmp_version = new_value
         if 'snmp_port' in data:
-            snmp_config.snmp_port = data['snmp_port']
+            old_value = snmp_config.snmp_port if not is_new else None
+            new_value = data['snmp_port']
+            if old_value != new_value:
+                changes['snmp_port'] = {'before': old_value, 'after': new_value}
+            snmp_config.snmp_port = new_value
         if 'poll_interval_seconds' in data:
-            snmp_config.poll_interval_seconds = data['poll_interval_seconds']
+            old_value = snmp_config.poll_interval_seconds if not is_new else None
+            new_value = data['poll_interval_seconds']
+            if old_value != new_value:
+                changes['poll_interval_seconds'] = {'before': old_value, 'after': new_value}
+            snmp_config.poll_interval_seconds = new_value
         if 'is_enabled' in data:
-            snmp_config.is_enabled = data['is_enabled']
+            old_value = snmp_config.is_enabled if not is_new else None
+            new_value = data['is_enabled']
+            if old_value != new_value:
+                changes['is_enabled'] = {'before': old_value, 'after': new_value}
+            snmp_config.is_enabled = new_value
         
         try:
             db.session.commit()
         except Exception as commit_error:
             db.session.rollback()
             raise commit_error
+        
+        # Audit logging
+        from middleware.rbac import create_audit_log
+        action = 'create' if is_new else 'update'
+        device_name = device.device_name or device.device_ip
+        create_audit_log(
+            action=action,
+            entity_type='snmp_config',
+            entity_id=device_id,
+            entity_name=f'SNMP Config for {device_name}',
+            description=f'{"Created" if is_new else "Updated"} SNMP configuration for device {device_name}',
+            changes=changes if changes else None
+        )
         
         return jsonify({
             'success': True,

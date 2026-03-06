@@ -1,160 +1,160 @@
-"""
-Pytest configuration and fixtures for Phase 1 MVP testing.
-
-This module provides:
-- Test database setup and isolation
-- Session and transaction fixtures
-- Common test data fixtures
-"""
-
 import pytest
-import os
 import sys
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.pool import StaticPool
+from pathlib import Path
+from datetime import datetime
 
-# Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from extensions import db as _db
 from app import create_app
+from extensions import db
+from models.department import Department
+from models.site import Site
+from models.user import User
 
 
 @pytest.fixture(scope='session')
-def app():
-    """Create Flask application for testing."""
-    app = create_app()
-    app.config['TESTING'] = True
-    # Use the configured database (PostgreSQL)
-    # Don't override SQLALCHEMY_DATABASE_URI - use the one from config
-    app.config['WTF_CSRF_ENABLED'] = False
-    
-    # Don't create/drop all tables - use existing database
+def app(tmp_path_factory):
+    db_dir = tmp_path_factory.mktemp('db')
+    db_file = db_dir / 'test_device_console.db'
+    app = create_app(
+        {
+            'TESTING': True,
+            'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_file}',
+            'WTF_CSRF_ENABLED': False,
+        }
+    )
+
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
     yield app
 
-
-@pytest.fixture(scope='function')
-def db_session(app):
-    """
-    Provide database session with automatic rollback.
-    
-    Each test gets a fresh session that is rolled back after the test completes,
-    ensuring test isolation and preventing production data contamination.
-    """
     with app.app_context():
-        connection = _db.engine.connect()
-        transaction = connection.begin()
-        
-        # Create a session bound to the connection
-        session = scoped_session(
-            sessionmaker(bind=connection)
+        db.session.remove()
+        db.drop_all()
+
+
+@pytest.fixture(autouse=True)
+def _app_context(app):
+    with app.app_context():
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_db(app, _app_context):
+    with app.app_context():
+        db.session.remove()
+        db.drop_all()
+        db.create_all()
+
+        site_alpha = Site(site_name='Alpha Site', site_code='ALPHA')
+        site_beta = Site(site_name='Beta Site', site_code='BETA')
+        db.session.add_all([site_alpha, site_beta])
+        db.session.flush()
+
+        dept_alpha = Department(name='Alpha Department', site_id=site_alpha.id)
+        dept_beta = Department(name='Beta Department', site_id=site_beta.id)
+        db.session.add_all([dept_alpha, dept_beta])
+        db.session.flush()
+
+        db.session.add_all(
+            [
+                User(id=1, username='test-admin', password='x', role='admin', email='test-admin@example.com', is_active=True),
+                User(
+                    id=2,
+                    username='test-manager',
+                    password='x',
+                    role='manager',
+                    email='test-manager@example.com',
+                    is_active=True,
+                    site_id=site_alpha.id,
+                ),
+                User(
+                    id=3,
+                    username='test-viewer',
+                    password='x',
+                    role='viewer',
+                    email='test-viewer@example.com',
+                    is_active=True,
+                    site_id=site_alpha.id,
+                    department_id=dept_alpha.id,
+                ),
+                User(
+                    id=4,
+                    username='test-operator',
+                    password='x',
+                    role='operator',
+                    email='test-operator@example.com',
+                    is_active=True,
+                    site_id=site_alpha.id,
+                    department_id=dept_alpha.id,
+                ),
+            ]
         )
-        
-        # Override the db.session with our test session
-        _db.session = session
-        
-        yield session
-        
-        # Rollback and cleanup
-        session.close()
-        transaction.rollback()
-        connection.close()
+        db.session.commit()
+    yield
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture()
 def client(app):
-    """Provide Flask test client."""
     return app.test_client()
 
 
-@pytest.fixture(scope='function')
-def runner(app):
-    """Provide Flask CLI test runner."""
-    return app.test_cli_runner()
+@pytest.fixture()
+def admin_client(app):
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess['logged_in'] = True
+        sess['role'] = 'admin'
+        sess['username'] = 'test-admin'
+        sess['user_id'] = 1
+        sess['last_activity'] = datetime.utcnow().isoformat()
+    return client
 
 
-# ============================================================================
-# Phase 1 MVP Fixtures
-# ============================================================================
-
-@pytest.fixture
-def sample_site(db_session):
-    """Create a sample site for testing."""
-    from models.site import Site
-    site = Site(
-        site_name='Test Site',
-        site_code='TST',
-        address='123 Test Street',
-        timezone='UTC',
-        contact_name='Test Contact',
-        contact_email='test@example.com'
-    )
-    db_session.add(site)
-    db_session.commit()
-    return site
+@pytest.fixture()
+def manager_client(app):
+    client = app.test_client()
+    manager = User.query.get(2)
+    with client.session_transaction() as sess:
+        sess['logged_in'] = True
+        sess['role'] = 'manager'
+        sess['username'] = 'test-manager'
+        sess['user_id'] = 2
+        sess['site_id'] = manager.site_id
+        sess['department_id'] = manager.department_id
+        sess['last_activity'] = datetime.utcnow().isoformat()
+    return client
 
 
-@pytest.fixture
-def sample_department(db_session):
-    """Create a sample department for testing."""
-    from models.department import Department
-    dept = Department(
-        name='Test Department',
-        description='Test department description'
-    )
-    db_session.add(dept)
-    db_session.commit()
-    return dept
+@pytest.fixture()
+def viewer_client(app):
+    client = app.test_client()
+    viewer = User.query.get(3)
+    with client.session_transaction() as sess:
+        sess['logged_in'] = True
+        sess['role'] = 'viewer'
+        sess['username'] = 'test-viewer'
+        sess['user_id'] = 3
+        sess['site_id'] = viewer.site_id
+        sess['department_id'] = viewer.department_id
+        sess['last_activity'] = datetime.utcnow().isoformat()
+    return client
 
 
-@pytest.fixture
-def sample_device(db_session):
-    """Create a sample device for testing."""
-    from models.device import Device
-    device = Device(
-        device_name='Test Device',
-        device_ip='192.168.1.100',
-        device_type='workstation',
-        status='online'
-    )
-    db_session.add(device)
-    db_session.commit()
-    return device
-
-
-@pytest.fixture
-def sample_printer(db_session):
-    """Create a sample printer device for testing."""
-    from models.device import Device
-    printer = Device(
-        device_name='Test Printer',
-        device_ip='192.168.1.200',
-        device_type='printer',
-        status='online'
-    )
-    db_session.add(printer)
-    db_session.commit()
-    return printer
-
-
-@pytest.fixture
-def sample_print_job(db_session, sample_printer):
-    """Create a sample print job for testing."""
-    from models.printer import PrintJobAudit
-    from datetime import datetime
-    
-    job = PrintJobAudit(
-        device_id=sample_printer.device_id,
-        job_id='TEST-JOB-001',
-        document_name='test_document.pdf',
-        user_account='testuser',
-        printer_name='Test Printer',
-        page_count=5,
-        submission_time=datetime.utcnow(),
-        status='completed',
-        collection_source='test'
-    )
-    db_session.add(job)
-    db_session.commit()
-    return job
+@pytest.fixture()
+def operator_client(app):
+    client = app.test_client()
+    operator = User.query.get(4)
+    with client.session_transaction() as sess:
+        sess['logged_in'] = True
+        sess['role'] = 'operator'
+        sess['username'] = 'test-operator'
+        sess['user_id'] = 4
+        sess['site_id'] = operator.site_id
+        sess['department_id'] = operator.department_id
+        sess['last_activity'] = datetime.utcnow().isoformat()
+    return client

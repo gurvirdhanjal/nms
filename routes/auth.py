@@ -86,18 +86,52 @@ def login():
             session['user_id'] = authenticated_user.id
             session['role'] = authenticated_user.role
             session['auth_source'] = authenticated_user.auth_source
+            session['site_id'] = authenticated_user.site_id
+            session['department_id'] = authenticated_user.department_id
             session['session_id'] = f"{authenticated_user.id}_{datetime.utcnow().timestamp()}"
             session['last_activity'] = datetime.utcnow().isoformat()
             session['login_time'] = datetime.utcnow().isoformat()
             session.permanent = False
             update_last_activity()
+            
+            # Audit log successful login
+            from middleware.rbac import create_audit_log
+            create_audit_log(
+                action='login',
+                entity_type='authentication',
+                entity_id=authenticated_user.id,
+                entity_name=authenticated_user.username,
+                description=f"User '{authenticated_user.username}' logged in successfully via {authenticated_user.auth_source}"
+            )
+            
             return redirect(url_for('monitoring_bp.dashboard'))
 
         print("DEBUG: Returning Invalid Credentials error.")
+        
+        # Audit log failed login attempt
+        from middleware.rbac import create_audit_log
+        create_audit_log(
+            action='login_failed',
+            entity_type='authentication',
+            entity_name=username,
+            description=f"Failed login attempt for username '{username}'"
+        )
+        
         return render_template('auth/login.html', error="Invalid credentials!", ldap_enabled=ldap_enabled)
     else:
         message = request.args.get('message')
         return render_template('auth/login.html', message=message, ldap_enabled=ldap_enabled)
+
+
+def is_first_user():
+    """
+    Check if this is the first user registration.
+    
+    Returns:
+        True if no users exist in the database, False otherwise
+    """
+    from models.user import User
+    return User.query.count() == 0
 
 
 def _upsert_ldap_user(username, ldap_result):
@@ -136,8 +170,23 @@ def _upsert_ldap_user(username, ldap_result):
 
     return user
 
+
 @auth_bp.route('/logout')
 def logout():
+    # Audit log logout before clearing session
+    from middleware.rbac import create_audit_log
+    username = session.get('username', 'unknown')
+    user_id = session.get('user_id')
+    
+    if session.get('logged_in'):
+        create_audit_log(
+            action='logout',
+            entity_type='authentication',
+            entity_id=user_id,
+            entity_name=username,
+            description=f"User '{username}' logged out"
+        )
+    
     session.clear()
     return redirect(url_for('auth_bp.login', message="You have been logged out."))
 # file name: routes/auth.py (updated session_status)
@@ -172,14 +221,12 @@ def session_status():
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     from models.user import User
-    # Only allow registration if no admin exists
-    if User.query.filter_by(role="admin").count() > 0:
-        return render_template('auth/register.html', error="Admin user already exists! Please contact administrator for new accounts.")
+    from flask import flash
     
     if request.method == 'POST':
         username = request.form.get('username')
         password = bcrypt.generate_password_hash(request.form.get('password')).decode('utf-8')
-        role = request.form.get('role', 'user')
+        submitted_role = request.form.get('role', 'user')
         email = request.form.get('email')
         phone_number = request.form.get('phone_number')
         
@@ -188,6 +235,18 @@ def register():
         
         if User.query.filter_by(email=email).first():
             return render_template('auth/register.html', error="Email already exists!")
+        
+        # Determine role based on user count
+        if is_first_user():
+            # First user gets admin role
+            role = 'admin'
+            flash('You have been registered as the first admin user.', 'success')
+        else:
+            # All subsequent users are forced to viewer role
+            role = 'viewer'
+            if submitted_role != 'viewer':
+                log.warning(f"User '{username}' attempted to register with role '{submitted_role}' but was forced to 'viewer'")
+            flash('You have been registered with viewer role. Contact an administrator to change your role.', 'info')
         
         user = User(
             username=username, 

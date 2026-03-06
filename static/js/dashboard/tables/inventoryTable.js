@@ -62,8 +62,8 @@ export function renderInventoryTable(devices) {
                 <div class="fw-bold">${device.device_name}</div>
                 <div class="small text-secondary">${device.device_type || 'Unknown'}</div>
                 ${(device.maintenance_mode || device.status === 'Maintenance')
-                ? '<div class="mt-1 small text-warning"><i class="fas fa-wrench"></i> Maintenance</div>'
-                : healthBadge}
+                    ? '<div class="mt-1 small text-warning"><i class="fas fa-wrench"></i> Maintenance</div>'
+                    : healthBadge}
             </td>
             <td>
                 ${(device.device_type === 'Switch') ? `
@@ -79,9 +79,19 @@ export function renderInventoryTable(devices) {
             </td>
             <td class="font-monospace">${device.device_ip}</td>
             <td>
-                <button class="btn btn-sm btn-outline-primary btn-save-device" data-id="${device.device_id}">
-                    <i class="fas fa-save"></i>
-                </button>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary btn-save-device" data-id="${device.device_id}" title="Save Selection">
+                        <i class="fas fa-save"></i>
+                    </button>
+                    <!-- Edit Button -->
+                    <button class="btn btn-outline-secondary btn-edit-device" data-id="${device.device_id}" title="Edit Device">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <!-- Toggle Monitoring Button -->
+                    <button class="btn ${device.is_monitored ? 'btn-outline-success' : 'btn-outline-secondary'} btn-toggle-monitor" data-id="${device.device_id}" title="${device.is_monitored ? 'Pause Monitoring' : 'Resume Monitoring'}">
+                        <i class="fas ${device.is_monitored ? 'fa-chart-line' : 'fa-pause'}"></i>
+                    </button>
+                </div>
             </td>
         `;
         },
@@ -167,16 +177,37 @@ export function initInventoryInteractions() {
             return;
         }
 
+        const editBtn = e.target.closest('.btn-edit-device');
+        if (editBtn) {
+            window.location.href = `/devices?edit_id=${editBtn.dataset.id}`;
+            return;
+        }
+
+        const toggleBtn = e.target.closest('.btn-toggle-monitor');
+        if (toggleBtn) {
+            const deviceId = toggleBtn.dataset.id;
+            fetch(`/api/devices/${deviceId}/toggle_monitoring`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Just reload or update icon
+                        location.reload();
+                    }
+                });
+            return;
+        }
+
         // Navigate to full device detail page from expanded panel rows
         const row = e.target.closest('tr.inventory-row');
         if (row &&
+            !e.target.closest('a') && // Do not intercept clicks on anchor tags to let them behave naturally
             !e.target.closest('td:first-child') &&
             !e.target.closest('td:last-child') &&
             !e.target.closest('select') &&
             !e.target.closest('input') &&
             row.dataset.id
         ) {
-            window.location.href = `/devices?edit_id=${row.dataset.id}`;
+            window.location.href = `/devices/${row.dataset.id}/details`;
         }
     });
 }

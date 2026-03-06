@@ -498,8 +498,6 @@ def _ensure_unique_client_id_column(inspector=None):
         db.session.rollback()
         print(f"[DB] Migration warning (unique_client_id): {exc}")
 
-        print(f"[DB] Migration warning (unique_client_id): {exc}")
-
 def _ensure_tracked_device_maintenance_columns(inspector=None):
     """Add maintenance_mode to tracked_devices table."""
     try:
@@ -519,6 +517,149 @@ def _ensure_tracked_device_maintenance_columns(inspector=None):
     except Exception as exc:
         db.session.rollback()
         print(f"[DB] Migration warning (tracked_devices maintenance): {exc}")
+
+
+def _ensure_tracking_history_tables():
+    """Create tracking history tables that may not exist in old deployments."""
+    try:
+        from models.tracked_device import (
+            TrackingSample,
+            TrackingHistoryIntegrityAudit,
+            TrackedDeviceAvailabilityEvent,
+            TrackedDeviceIpHistory,
+            TrackingHourlyRollup,
+            TrackingDailyRollup,
+        )
+
+        TrackingSample.__table__.create(bind=db.engine, checkfirst=True)
+        TrackingHistoryIntegrityAudit.__table__.create(bind=db.engine, checkfirst=True)
+        TrackedDeviceAvailabilityEvent.__table__.create(bind=db.engine, checkfirst=True)
+        TrackedDeviceIpHistory.__table__.create(bind=db.engine, checkfirst=True)
+        TrackingHourlyRollup.__table__.create(bind=db.engine, checkfirst=True)
+        TrackingDailyRollup.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception as exc:
+        print(f"[DB] Migration warning (tracking history tables): {exc}")
+
+
+def _ensure_tracking_history_columns_and_indexes(inspector=None):
+    """Add tracking-history hardening columns and indexes for existing databases."""
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        tables = set(inspector.get_table_names())
+        statements = []
+
+        if 'tracked_devices' in tables:
+            tracked_cols = {col['name'] for col in inspector.get_columns('tracked_devices')}
+            if 'is_archived' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN is_archived BOOLEAN DEFAULT FALSE")
+            if 'archived_at' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN archived_at TIMESTAMP")
+            if 'archived_reason' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN archived_reason TEXT")
+            if 'archived_by' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN archived_by VARCHAR(100)")
+            if 'site_id' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN site_id INTEGER")
+            if 'department_id' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN department_id INTEGER")
+            if 'last_agent_sync_at' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN last_agent_sync_at TIMESTAMP")
+            if 'last_agent_sync_ip' not in tracked_cols:
+                statements.append("ALTER TABLE tracked_devices ADD COLUMN last_agent_sync_ip VARCHAR(45)")
+
+        for table_name in ('device_activity_logs', 'device_resource_logs', 'device_application_logs'):
+            if table_name not in tables:
+                continue
+            cols = {col['name'] for col in inspector.get_columns(table_name)}
+            if 'sample_id' not in cols:
+                statements.append(f"ALTER TABLE {table_name} ADD COLUMN sample_id INTEGER")
+
+        if statements:
+            for stmt in statements:
+                db.session.execute(text(stmt))
+            db.session.commit()
+            print(f"[DB] Applied tracking history column migrations: {len(statements)} change(s).")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (tracking history columns): {exc}")
+
+    try:
+        inspector = inspect(db.engine)
+        tables = set(inspector.get_table_names())
+        index_statements = []
+
+        if 'tracked_devices' in tables:
+            index_statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_tracked_devices_is_archived ON tracked_devices (is_archived)"
+            )
+            index_statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_tracked_devices_site_id ON tracked_devices (site_id)"
+            )
+            index_statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_tracked_devices_department_id ON tracked_devices (department_id)"
+            )
+            index_statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_tracked_devices_last_agent_sync_at ON tracked_devices (last_agent_sync_at)"
+            )
+
+        if 'tracking_samples' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_tracking_samples_device_sampled_id ON tracking_samples (device_id, sampled_at DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_samples_device_received_id ON tracking_samples (device_id, received_at DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_samples_source_received ON tracking_samples (source, received_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_samples_received_minute_bucket ON tracking_samples (received_minute_bucket)",
+            ])
+
+        if 'device_activity_logs' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_activity_logs_device_ts_id ON device_activity_logs (device_id, timestamp DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_device_activity_logs_sample_id ON device_activity_logs (sample_id)",
+            ])
+        if 'device_resource_logs' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_resource_logs_device_ts_id ON device_resource_logs (device_id, timestamp DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_device_resource_logs_sample_id ON device_resource_logs (sample_id)",
+            ])
+        if 'device_application_logs' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_device_application_logs_device_ts_id ON device_application_logs (device_id, timestamp DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_device_application_logs_sample_id ON device_application_logs (sample_id)",
+            ])
+        if 'tracked_device_availability_events' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_tracking_availability_device_observed_id ON tracked_device_availability_events (device_id, observed_at DESC, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_availability_device_status_observed ON tracked_device_availability_events (device_id, status, observed_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_availability_observed_at ON tracked_device_availability_events (observed_at DESC)",
+            ])
+        if 'tracked_device_ip_history' in tables:
+            index_statements.extend([
+                "CREATE INDEX IF NOT EXISTS idx_tracking_ip_history_device_changed ON tracked_device_ip_history (device_id, changed_at_utc DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_tracking_ip_history_agent_key_changed ON tracked_device_ip_history (agent_key_id, changed_at_utc DESC)",
+            ])
+
+        backend = db.engine.url.get_backend_name()
+        if backend == 'postgresql':
+            if 'device_activity_logs' in tables:
+                index_statements.append(
+                    "CREATE INDEX IF NOT EXISTS idx_device_activity_logs_timestamp_brin ON device_activity_logs USING BRIN (timestamp)"
+                )
+            if 'device_resource_logs' in tables:
+                index_statements.append(
+                    "CREATE INDEX IF NOT EXISTS idx_device_resource_logs_timestamp_brin ON device_resource_logs USING BRIN (timestamp)"
+                )
+            if 'device_application_logs' in tables:
+                index_statements.append(
+                    "CREATE INDEX IF NOT EXISTS idx_device_application_logs_timestamp_brin ON device_application_logs USING BRIN (timestamp)"
+                )
+
+        for stmt in index_statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (tracking history indexes): {exc}")
 
 
 def _ensure_user_ldap_columns(inspector=None):
@@ -574,6 +715,36 @@ def _ensure_user_ldap_columns(inspector=None):
         db.session.rollback()
         print(f"[DB] Migration warning (user LDAP): {exc}")
 
+
+def _ensure_restricted_site_tables():
+    """Create restricted-site policy, event, and key-binding tables."""
+    try:
+        from models.restricted_site_policy import (
+            RestrictedSiteAlertState,
+            RestrictedSiteEvent,
+            RestrictedSitePolicy,
+            TrackingAgentKeyBinding,
+        )
+
+        RestrictedSitePolicy.__table__.create(bind=db.engine, checkfirst=True)
+        TrackingAgentKeyBinding.__table__.create(bind=db.engine, checkfirst=True)
+        RestrictedSiteEvent.__table__.create(bind=db.engine, checkfirst=True)
+        RestrictedSiteAlertState.__table__.create(bind=db.engine, checkfirst=True)
+
+        policy = RestrictedSitePolicy.query.get(1)
+        if policy is None:
+            policy = RestrictedSitePolicy(id=1)
+            policy.apply_domains([])
+            policy.recompute_version()
+            db.session.add(policy)
+            db.session.commit()
+        elif not policy.policy_version:
+            policy.recompute_version()
+            db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (restricted-site tables): {exc}")
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -586,4 +757,9 @@ def ensure_server_health_columns():
     _ensure_device_resource_columns(inspector)
     _ensure_unique_client_id_column(inspector)
     _ensure_tracked_device_maintenance_columns(inspector)
-    _ensure_user_ldap_columns(inspector)
+    _ensure_tracking_history_tables()
+    _ensure_tracking_history_columns_and_indexes(inspector)
+    _ensure_restricted_site_tables()
+    # temporarily disabling this to allow Subnet migrations to run without triggering
+    # SQLAlchemy mapper InvalidRequestErrors for the missing site_id column
+    # _ensure_user_ldap_columns(inspector)

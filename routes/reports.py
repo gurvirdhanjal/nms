@@ -175,8 +175,9 @@ def _count_devices(device_ids):
     if device_ids:
         return max(len(device_ids), 1)
     from models.device import Device
+    from middleware.rbac import scoped_query
 
-    return max(Device.query.count(), 1)
+    return max(scoped_query(Device).count(), 1)
 
 
 def _estimate_report_rows(report_type, start_date, end_date, device_ids=None):

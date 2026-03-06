@@ -20,7 +20,7 @@ class MaintenanceWindow(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
 
-    device = db.relationship('Device', backref=db.backref('maintenance_windows', lazy=True))
+    device = db.relationship('Device', backref=db.backref('maintenance_windows', lazy=True, cascade='all, delete-orphan'))
 
     def __repr__(self):
         return (

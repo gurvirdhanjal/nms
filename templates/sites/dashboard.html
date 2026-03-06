@@ -2,18 +2,241 @@
 
 {% block title %}{{ site.site_name }} Dashboard - Device Monitoring System{% endblock %}
 
+{% block extra_css %}
+<style>
+    .site-dashboard-page {
+        padding-inline: var(--e-space-2);
+    }
+
+    .site-dashboard-page h2 {
+        margin: 0;
+        font-size: 1.62rem;
+        color: var(--e-text-primary);
+    }
+
+    .site-dashboard-page .site-header-meta {
+        color: var(--e-text-muted);
+        font-size: 0.8rem;
+        margin-top: 0.22rem;
+    }
+
+    .site-dashboard-page .card {
+        background: var(--e-bg-panel);
+        border: 1px solid var(--e-border);
+        border-radius: 6px;
+        box-shadow: none;
+    }
+
+    .site-dashboard-page .card-header {
+        padding: 0.52rem 0.72rem;
+        border-bottom: 1px solid var(--e-border);
+        background: rgba(10, 13, 20, 0.75);
+        font-size: 0.68rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--e-text-secondary);
+    }
+
+    .site-dashboard-page .card-body {
+        padding: 0.64rem 0.74rem;
+    }
+
+    .site-dashboard-page .site-kpi-card .card-body {
+        min-height: 84px;
+        display: flex;
+        align-items: center;
+    }
+
+    .site-dashboard-page .site-kpi-card h6 {
+        font-size: 0.72rem;
+        color: var(--e-text-muted) !important;
+        margin-bottom: 0.16rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+    }
+
+    .site-dashboard-page .site-kpi-card h3 {
+        margin: 0;
+        font-family: var(--t-mono);
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--e-text-primary);
+    }
+
+    .site-dashboard-page .site-kpi-card i {
+        font-size: 1.34rem !important;
+        opacity: 0.92;
+    }
+
+    .site-dashboard-page .site-kpi-online {
+        border-color: var(--s-healthy-bd);
+        background: rgba(32, 201, 151, 0.09);
+    }
+
+    .site-dashboard-page .site-kpi-offline {
+        border-color: var(--s-critical-bd);
+        background: rgba(220, 53, 69, 0.09);
+    }
+
+    .site-dashboard-page .site-kpi-warning {
+        border-color: var(--s-warning-bd);
+        background: rgba(255, 193, 7, 0.08);
+    }
+
+    .site-dashboard-page .tactical-table thead th {
+        padding: 0.4rem 0.56rem !important;
+        font-size: 0.68rem;
+        letter-spacing: 0.09em;
+    }
+
+    .site-dashboard-page .tactical-table tbody td {
+        padding: 0.44rem 0.56rem !important;
+        font-size: 0.75rem;
+        vertical-align: middle;
+        line-height: 1.22;
+    }
+
+    .site-dashboard-page .site-meta-muted {
+        color: var(--e-text-muted);
+        font-size: 0.69rem;
+    }
+
+    .site-dashboard-page .ops-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 20px;
+        padding: 0.1rem 0.46rem;
+        border-radius: 3px;
+        border: 1px solid var(--e-border);
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-family: var(--t-mono);
+        line-height: 1;
+    }
+
+    .site-dashboard-page .ops-badge.severity-critical,
+    .site-dashboard-page .ops-badge.status-active {
+        color: #f5a0a8;
+        border-color: var(--s-critical-bd);
+        background: var(--s-critical-bg);
+    }
+
+    .site-dashboard-page .ops-badge.severity-warning {
+        color: #f2d47a;
+        border-color: var(--s-warning-bd);
+        background: var(--s-warning-bg);
+    }
+
+    .site-dashboard-page .ops-badge.severity-info,
+    .site-dashboard-page .ops-badge.status-resolved,
+    .site-dashboard-page .ops-badge.status-healthy {
+        color: #7acfb8;
+        border-color: var(--s-healthy-bd);
+        background: var(--s-healthy-bg);
+    }
+
+    .site-dashboard-page .ops-badge.status-unknown {
+        color: var(--e-text-muted);
+        border-color: var(--e-border);
+        background: rgba(148, 163, 184, 0.08);
+    }
+
+    .site-dashboard-page .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-height: 20px;
+        border: 1px solid var(--e-border);
+        border-radius: 3px;
+        padding: 0.08rem 0.46rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        line-height: 1;
+        font-family: var(--t-mono);
+    }
+
+    .site-dashboard-page .status-chip::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .site-dashboard-page .status-chip.status-online {
+        color: var(--s-healthy);
+        border-color: var(--s-healthy-bd);
+        background: var(--s-healthy-bg);
+    }
+
+    .site-dashboard-page .status-chip.status-offline {
+        color: var(--s-critical);
+        border-color: var(--s-critical-bd);
+        background: var(--s-critical-bg);
+    }
+
+    .site-dashboard-page .ip-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.08);
+        padding: 0.06rem 0.38rem;
+        font-family: var(--t-mono);
+        font-size: 0.69rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--e-text-secondary);
+    }
+
+    .site-dashboard-page code {
+        background: rgba(148, 163, 184, 0.08);
+        border: 1px solid var(--e-border);
+        border-radius: 4px;
+        color: var(--e-text-secondary);
+        padding: 0.06rem 0.34rem;
+        font-size: 0.69rem;
+    }
+
+    .site-dashboard-page .alert-message-truncate {
+        display: inline-block;
+        max-width: 480px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+
+    .site-dashboard-page #devicesTable .tactical-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-3 dashboard-enterprise site-dashboard-page">
     <!-- Site Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2><i class="fas fa-building me-2"></i>{{ site.site_name }}</h2>
-            <p class="text-muted mb-0">
+            <p class="site-header-meta mb-0">
                 <i class="fas fa-map-marker-alt me-2"></i>{{ site.address or 'No address specified' }}
                 <span class="ms-3"><i class="fas fa-clock me-2"></i>{{ site.timezone }}</span>
             </p>
         </div>
-        <a href="/sites" class="btn btn-secondary">
+        <a href="/sites" class="tactical-btn tactical-btn-outline">
             <i class="fas fa-arrow-left me-2"></i>Back to Sites
         </a>
     </div>
@@ -21,7 +244,7 @@
     <!-- Site Statistics Cards -->
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card">
+            <div class="card site-kpi-card site-kpi-total">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -37,7 +260,7 @@
         </div>
         
         <div class="col-md-3">
-            <div class="card bg-success">
+            <div class="card site-kpi-card site-kpi-online">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -53,7 +276,7 @@
         </div>
         
         <div class="col-md-3">
-            <div class="card bg-danger">
+            <div class="card site-kpi-card site-kpi-offline">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -69,7 +292,7 @@
         </div>
         
         <div class="col-md-3">
-            <div class="card bg-warning">
+            <div class="card site-kpi-card site-kpi-warning">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -95,7 +318,7 @@
                 <div class="card-body">
                     {% if recent_alerts %}
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="tactical-table table-hover site-alerts-table">
                             <thead>
                                 <tr>
                                     <th>Severity</th>
@@ -111,25 +334,25 @@
                                 <tr>
                                     <td>
                                         {% if alert.severity == 'CRITICAL' %}
-                                        <span class="badge bg-danger">{{ alert.severity }}</span>
+                                        <span class="ops-badge severity-critical">{{ alert.severity }}</span>
                                         {% elif alert.severity == 'WARNING' %}
-                                        <span class="badge bg-warning">{{ alert.severity }}</span>
+                                        <span class="ops-badge severity-warning">{{ alert.severity }}</span>
                                         {% else %}
-                                        <span class="badge bg-info">{{ alert.severity }}</span>
+                                        <span class="ops-badge severity-info">{{ alert.severity }}</span>
                                         {% endif %}
                                     </td>
                                     <td>
                                         <strong>{{ alert.device.device_name if alert.device else 'Unknown' }}</strong><br>
-                                        <small class="text-muted">{{ alert.device_ip }}</small>
+                                        <small class="site-meta-muted ip-pill">{{ alert.device_ip }}</small>
                                     </td>
-                                    <td>{{ alert.metric_name or '-' }}</td>
-                                    <td>{{ alert.message }}</td>
-                                    <td>{{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') if alert.timestamp else '-' }}</td>
+                                    <td><code>{{ alert.metric_name or '-' }}</code></td>
+                                    <td><span class="alert-message-truncate" title="{{ alert.message }}">{{ alert.message }}</span></td>
+                                    <td title="{{ alert.timestamp.isoformat() if alert.timestamp else '' }}">{{ alert.timestamp.strftime('%b %d %H:%M:%S') if alert.timestamp else '-' }}</td>
                                     <td>
                                         {% if alert.resolved %}
-                                        <span class="badge bg-success">Resolved</span>
+                                        <span class="ops-badge status-resolved">Resolved</span>
                                         {% else %}
-                                        <span class="badge bg-danger">Active</span>
+                                        <span class="ops-badge status-active">Active</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -218,6 +441,47 @@
         </div>
     </div>
 
+    <!-- Devices Per Department -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-sitemap me-2"></i>Devices by Department
+                </div>
+                <div class="card-body">
+                    {% if dept_device_stats %}
+                    <div class="table-responsive">
+                        <table class="table tactical-table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Department</th>
+                                    <th>Total</th>
+                                    <th>Online</th>
+                                    <th>Offline</th>
+                                    <th>Warnings</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in dept_device_stats %}
+                                <tr>
+                                    <td><strong>{{ row.name }}</strong></td>
+                                    <td>{{ row.device_count }}</td>
+                                    <td>{{ row.online_count }}</td>
+                                    <td>{{ row.offline_count }}</td>
+                                    <td>{{ row.warning_count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No department data available for this site.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Devices List -->
     <div class="row">
         <div class="col-12">
@@ -228,7 +492,7 @@
                 <div class="card-body">
                     {% if devices %}
                     <div class="table-responsive">
-                        <table class="table table-hover" id="devicesTable">
+                        <table class="table tactical-table table-hover" id="devicesTable">
                             <thead>
                                 <tr>
                                     <th>Status</th>
@@ -245,14 +509,14 @@
                                 <tr>
                                     <td>
                                         {% if device.device_id in online_device_ids %}
-                                        <span class="status-indicator status-online"></span>
+                                        <span class="status-chip status-online">Online</span>
                                         {% else %}
-                                        <span class="status-indicator status-offline"></span>
+                                        <span class="status-chip status-offline">Offline</span>
                                         {% endif %}
                                     </td>
                                     <td><strong>{{ device.device_name }}</strong></td>
                                     <td>{{ device.device_type }}</td>
-                                    <td>{{ device.device_ip }}</td>
+                                    <td><span class="ip-pill">{{ device.device_ip }}</span></td>
                                     <td>
                                         {% if device.department %}
                                         {{ device.department.name }}
@@ -262,16 +526,16 @@
                                     </td>
                                     <td>
                                         {% if device.health_alert_strikes >= 2 or device.latency_strikes >= 2 or device.packet_loss_strikes >= 2 %}
-                                        <span class="badge bg-warning">Warning</span>
+                                        <span class="ops-badge severity-warning">Warning</span>
                                         {% elif device.device_id in online_device_ids %}
-                                        <span class="badge bg-success">Healthy</span>
+                                        <span class="ops-badge status-healthy">Healthy</span>
                                         {% else %}
-                                        <span class="badge bg-secondary">Unknown</span>
+                                        <span class="ops-badge status-unknown">Unknown</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <a href="/device/{{ device.device_id }}" class="btn btn-sm btn-outline-primary">
-                                            <i class="fas fa-eye"></i> View
+                                        <a href="/device/{{ device.device_id }}" class="tactical-btn tactical-btn-outline tactical-btn-sm" title="View Device">
+                                            <i class="fas fa-eye"></i>
                                         </a>
                                     </td>
                                 </tr>

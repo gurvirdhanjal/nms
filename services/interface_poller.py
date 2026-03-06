@@ -19,16 +19,32 @@ class InterfacePoller:
         self._app = app
         if self._thread is None or not self._thread.is_alive():
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._run_loop, daemon=True)
+            self._thread = threading.Thread(
+                target=self._run_loop,
+                daemon=True,
+                name="interface-poller",
+            )
             self._thread.start()
             print("Interface Poller Service started.")
 
-    def stop_polling(self):
+    def stop_polling(self, timeout=2.0):
         """Stop the background polling thread"""
         self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=2)
+        thread = self._thread
+        if not thread:
+            return
+
+        try:
+            thread.join(timeout=max(0.0, float(timeout)))
+        except KeyboardInterrupt:
+            # Keep shutdown path clean even if Ctrl+C is pressed again.
+            pass
+
+        if thread.is_alive():
+            print("Interface Poller stop requested; thread still exiting.")
+        else:
             print("Interface Poller Service stopped.")
+            self._thread = None
 
     def _run_loop(self):
         """Main polling loop"""
@@ -48,14 +64,22 @@ class InterfacePoller:
             interval = 10
             if self._app:
                 interval = self._app.config.get('INTERFACE_POLL_INTERVAL', 10)
-            time.sleep(interval)
+            try:
+                wait_seconds = max(0.1, float(interval))
+            except (TypeError, ValueError):
+                wait_seconds = 10.0
+            self._stop_event.wait(wait_seconds)
 
     def _poll_all_devices(self):
         """Polls all monitored devices (no simulation fallback)."""
         devices = Device.query.filter_by(is_monitored=True).all()
         
         for device in devices:
+            if self._stop_event.is_set():
+                break
             for attempt in range(3):
+                if self._stop_event.is_set():
+                    break
                 try:
                     # TRY REAL SNMP POLL
                     # In a real scenario, we'd check if SNMP is enabled for this device.
@@ -66,13 +90,13 @@ class InterfacePoller:
                     db.session.commit()
 
                     # Yield to let other threads write
-                    time.sleep(0.05)
+                    self._stop_event.wait(0.05)
                     break
                 except OperationalError as e:
                     db.session.rollback()
                     if "database is locked" in str(e).lower() and attempt < 2:
                         # Backoff and retry
-                        time.sleep(0.2 * (attempt + 1))
+                        self._stop_event.wait(0.2 * (attempt + 1))
                         continue
                     print(f"Error polling device {device.device_id}: {e}")
                     break

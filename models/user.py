@@ -18,7 +18,8 @@ class User(db.Model):
     display_name = db.Column(db.String(100), nullable=True)
     external_id = db.Column(db.String(100), nullable=True)      # AD objectGUID
 
-    # Department isolation (Phase 1 RBAC)
+    # Manager/Department isolation (Phase 2 & 1 RBAC)
+    site_id = db.Column(db.Integer, db.ForeignKey('sites.id', ondelete='SET NULL'), nullable=True, index=True)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True, index=True)
 
     @property

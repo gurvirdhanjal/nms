@@ -33,6 +33,8 @@ import uuid
 import time
 import logging
 import ipaddress
+import re
+import subprocess
 from urllib.parse import urlparse
 
 
@@ -41,7 +43,10 @@ camera_active = False
 camera = None
 camera_lock = threading.Lock()
 typed_text_lock = threading.Lock()
+activity_metrics_lock = threading.Lock()
 maintenance_mode = False
+discovery_service = None
+restricted_site_monitor = None
 
 app = Flask(__name__)
 logging.basicConfig(
@@ -86,6 +91,20 @@ current_secure_stats = {
     "window": None,
     "top_processes": []
 }
+RESTRICTED_SOURCE_WINDOW = 'window_title'
+RESTRICTED_SOURCE_DNS = 'dns_cache'
+RESTRICTED_CONFIDENCE_HIGH = 'HIGH'
+RESTRICTED_CONFIDENCE_LOW = 'LOW'
+DEFAULT_RESTRICTED_POLICY = {
+    'enabled': False,
+    'blocked_domains': [],
+    'cooldown_seconds': 900,
+    'dns_poll_seconds': 60,
+    'window_poll_seconds': 10,
+    'dns_seen_ttl_seconds': 1800,
+    'policy_version': '',
+}
+HOSTNAME_RE = re.compile(r'(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b', re.IGNORECASE)
 # ============================================================
 # MISSING IMPORTS AND HELPER FUNCTIONS
 # ============================================================
@@ -137,35 +156,130 @@ def get_mac_address():
 
 _CACHED_IP = None
 _CACHED_IP_TIME = 0
+_CACHED_IP_SIGNATURE = ()
+_CACHED_IP_SOURCE = 'unknown'
 
-def get_local_ip():
-    """Get local IP address with priority for 172.16.2.x subnet (Cached with 5 min TTL)"""
-    global _CACHED_IP, _CACHED_IP_TIME
+def _collect_active_ipv4_candidates():
+    candidates = []
+    seen = set()
+    iface_stats = psutil.net_if_stats()
+
+    for interface, addrs in psutil.net_if_addrs().items():
+        stats = iface_stats.get(interface)
+        if stats and not stats.isup:
+            continue
+
+        for addr in addrs:
+            if addr.family != socket.AF_INET:
+                continue
+            ip = str(addr.address or '').strip()
+            if not ip or ip.startswith('127.') or ip.startswith('169.254.'):
+                continue
+            if ip in seen:
+                continue
+            seen.add(ip)
+            candidates.append(ip)
+
+    return candidates
+
+
+def _build_network_signature(candidates=None):
+    values = candidates if isinstance(candidates, list) else _collect_active_ipv4_candidates()
+    serialized = '|'.join(sorted(str(value).strip() for value in values if str(value).strip()))
+    if not serialized:
+        return ''
+    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+def get_local_ip(force_refresh=False, target_host=None):
+    """Get best local IPv4 and refresh on network changes."""
+    global _CACHED_IP, _CACHED_IP_TIME, _CACHED_IP_SIGNATURE, _CACHED_IP_SOURCE
     now = time.time()
-    if _CACHED_IP and (now - _CACHED_IP_TIME < 300):
+    current_candidates = _collect_active_ipv4_candidates()
+    current_signature = tuple(sorted(current_candidates))
+
+    if (
+        not force_refresh
+        and _CACHED_IP
+        and _CACHED_IP_TIME
+        and (now - _CACHED_IP_TIME < 300)
+        and current_signature == _CACHED_IP_SIGNATURE
+    ):
         return _CACHED_IP
-        
+
     try:
-        # First try to find the specific subnet
-        for interface, addrs in psutil.net_if_addrs().items():
-            for addr in addrs:
-                if addr.family == socket.AF_INET:
-                    if addr.address.startswith("172.16.2."):
-                        _CACHED_IP = addr.address
-                        return _CACHED_IP
-        
-        # Fallback to standard method
+        if target_host:
+            # Prefer the source IP that would be used to reach the target admin host.
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(1.0)
+            s.connect((str(target_host), 80))
+            target_ip = s.getsockname()[0]
+            s.close()
+            if target_ip and not target_ip.startswith('127.') and not target_ip.startswith('169.254.'):
+                _CACHED_IP = target_ip
+                _CACHED_IP_TIME = now
+                _CACHED_IP_SIGNATURE = current_signature
+                _CACHED_IP_SOURCE = 'route_to_admin'
+                return _CACHED_IP
+    except Exception:
+        pass
+
+    try:
+        preferred_prefix = (os.getenv('TRACKING_PREFERRED_SUBNET_PREFIX') or '172.16.2.').strip()
+        if preferred_prefix:
+            for ip in current_candidates:
+                if ip.startswith(preferred_prefix):
+                    _CACHED_IP = ip
+                    _CACHED_IP_TIME = now
+                    _CACHED_IP_SIGNATURE = current_signature
+                    _CACHED_IP_SOURCE = 'preferred_subnet'
+                    return _CACHED_IP
+
+        for ip in current_candidates:
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+            except Exception:
+                continue
+            if ip_obj.is_private and not ip_obj.is_loopback and not ip_obj.is_link_local:
+                _CACHED_IP = ip
+                _CACHED_IP_TIME = now
+                _CACHED_IP_SIGNATURE = current_signature
+                _CACHED_IP_SOURCE = 'private_interface'
+                return _CACHED_IP
+
+        if current_candidates:
+            _CACHED_IP = current_candidates[0]
+            _CACHED_IP_TIME = now
+            _CACHED_IP_SIGNATURE = current_signature
+            _CACHED_IP_SOURCE = 'candidate_fallback'
+            return _CACHED_IP
+
+        # Fallback to default route probing
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
         _CACHED_IP = ip
-        _CACHED_IP_TIME = time.time()
+        _CACHED_IP_TIME = now
+        _CACHED_IP_SIGNATURE = current_signature
+        _CACHED_IP_SOURCE = 'default_route'
         return _CACHED_IP
-    except:
+    except Exception:
         _CACHED_IP = "127.0.0.1"
-        _CACHED_IP_TIME = time.time()
+        _CACHED_IP_TIME = now
+        _CACHED_IP_SIGNATURE = current_signature
+        _CACHED_IP_SOURCE = 'loopback_fallback'
         return _CACHED_IP
+
+
+def get_local_ip_details(force_refresh=False, target_host=None):
+    candidates = _collect_active_ipv4_candidates()
+    ip_address = get_local_ip(force_refresh=force_refresh, target_host=target_host)
+    return {
+        'ip': ip_address,
+        'source': _CACHED_IP_SOURCE,
+        'candidates': candidates,
+        'network_signature': _build_network_signature(candidates),
+    }
 
 _CACHED_HOSTNAME = None
 
@@ -193,17 +307,17 @@ def get_exact_hostname():
                 # If domain joined, build FQDN
                 if comp_system.PartOfDomain and comp_system.Domain:
                     fqdn = f"{hostname}.{comp_system.Domain}".lower()
-                    print(f"✓ Detected domain-joined hostname: {fqdn}")
+                    print(f"[OK] Detected domain-joined hostname: {fqdn}")
                     _CACHED_HOSTNAME = fqdn
                     return _CACHED_HOSTNAME
                 
                 # Not domain joined, return computer name
-                print(f"✓ Detected standalone hostname: {hostname.lower()}")
+                print(f"[OK] Detected standalone hostname: {hostname.lower()}")
                 _CACHED_HOSTNAME = hostname.lower()
                 return _CACHED_HOSTNAME
                 
             except Exception as wmi_error:
-                print(f"⚠ WMI hostname detection failed: {wmi_error}, using fallback")
+                print(f"[WARN] WMI hostname detection failed: {wmi_error}, using fallback")
                 # Fallback to socket for Windows
                 return socket.gethostname().lower()
             
@@ -214,18 +328,18 @@ def get_exact_hostname():
                 
                 # Validate FQDN (should contain domain and not be localhost)
                 if '.' in fqdn and not fqdn.startswith('localhost'):
-                    print(f"✓ Detected FQDN: {fqdn}")
+                    print(f"[OK] Detected FQDN: {fqdn}")
                     _CACHED_HOSTNAME = fqdn.lower()
                     return _CACHED_HOSTNAME
                 
                 # FQDN not valid, try short hostname
                 hostname = socket.gethostname()
-                print(f"✓ Detected hostname: {hostname}")
+                print(f"[OK] Detected hostname: {hostname}")
                 _CACHED_HOSTNAME = hostname.lower()
                 return _CACHED_HOSTNAME
                 
             except Exception as socket_error:
-                print(f"⚠ Socket hostname detection failed: {socket_error}")
+                print(f"[WARN] Socket hostname detection failed: {socket_error}")
                 
                 # Linux-specific fallback: read /etc/hostname
                 if system == 'Linux':
@@ -233,7 +347,7 @@ def get_exact_hostname():
                         with open('/etc/hostname', 'r') as f:
                             hostname = f.read().strip()
                             if hostname:
-                                print(f"✓ Read hostname from /etc/hostname: {hostname}")
+                                print(f"[OK] Read hostname from /etc/hostname: {hostname}")
                                 _CACHED_HOSTNAME = hostname.lower()
                                 return _CACHED_HOSTNAME
                     except:
@@ -243,7 +357,7 @@ def get_exact_hostname():
                 for env_var in ['HOSTNAME', 'HOST', 'COMPUTERNAME']:
                     hostname = os.environ.get(env_var)
                     if hostname:
-                        print(f"✓ Got hostname from {env_var}: {hostname}")
+                        print(f"[OK] Got hostname from {env_var}: {hostname}")
                         _CACHED_HOSTNAME = hostname.lower()
                         return _CACHED_HOSTNAME
                 
@@ -251,21 +365,21 @@ def get_exact_hostname():
         
         else:
             # Unknown platform, use socket method
-            print(f"⚠ Unknown platform '{system}', using socket fallback")
+            print(f"[WARN] Unknown platform '{system}', using socket fallback")
             _CACHED_HOSTNAME = socket.gethostname().lower()
             return _CACHED_HOSTNAME
             
     except Exception as e:
         # Universal fallback for all errors
-        print(f"⚠ All hostname detection methods failed: {e}")
+        print(f"[WARN] All hostname detection methods failed: {e}")
         try:
             fallback = socket.gethostname().lower()
-            print(f"→ Using universal fallback: {fallback}")
+            print(f"-> Using universal fallback: {fallback}")
             _CACHED_HOSTNAME = fallback
             return _CACHED_HOSTNAME
         except:
             # Absolute last resort
-            print("→ Using hardcoded fallback: 'unknown-host'")
+            print("-> Using hardcoded fallback: 'unknown-host'")
             _CACHED_HOSTNAME = "unknown-host"
             return _CACHED_HOSTNAME
 
@@ -305,7 +419,7 @@ def register_or_update_employee():
             ''', (f"Employee_{hostname}", mac, ip, hostname, encrypted_system_info))
             
             db_conn.commit()
-        print(f"✓ Device registered: {hostname} ({mac})")
+        print(f"[OK] Device registered: {hostname} ({mac})")
         
     except Exception as e:
         print(f"Device registration error: {e}")
@@ -318,10 +432,10 @@ def verify_admin_key(admin_key):
     expected_key = hashlib.sha256(f"admin_{get_mac_address()}".encode()).hexdigest()
     return admin_key == expected_key
 
-def get_live_stats():
-    """Get live statistics for sync"""
+def build_live_stats_payload():
+    """Build live statistics payload for sync/background usage."""
     current_time = time.time()
-    idle_time = current_time - activity_metrics['system']['last_activity']
+    activity_snapshot = get_activity_snapshot(current_time)
     
     with current_stats_lock:
         core_stats = current_secure_stats.get('core', {})
@@ -329,13 +443,13 @@ def get_live_stats():
         memory = core_stats.get('memory_percent', 0.0) if core_stats else 0.0
         net_stats = current_secure_stats.get('network', {})
 
-    return jsonify({
+    return {
         "timestamp": datetime.now().isoformat(),
         "activity": {
-            "keyboard_active": (current_time - activity_metrics['keyboard']['last_activity']) < INACTIVITY_THRESHOLD,
-            "mouse_active": (current_time - activity_metrics['mouse']['last_activity']) < INACTIVITY_THRESHOLD,
-            "idle_seconds": round(idle_time, 2),
-            "total_active_today": activity_metrics['system']['total_duration']
+            "keyboard_active": activity_snapshot['keyboard_active'],
+            "mouse_active": activity_snapshot['mouse_active'],
+            "idle_seconds": round(activity_snapshot['idle_seconds'], 2),
+            "total_active_today": activity_snapshot['total_duration']
         },
         "system": {
             "cpu": cpu,
@@ -343,7 +457,11 @@ def get_live_stats():
             "current_app": system_monitor.current_app
         },
         "network": net_stats
-    })
+    }
+
+def get_live_stats():
+    """Get live statistics as Flask response."""
+    return jsonify(build_live_stats_payload())
 
 # ============================================================
 # ENHANCED SECURITY - Generate keys securely
@@ -379,6 +497,15 @@ activity_metrics = {
 }
 
 INACTIVITY_THRESHOLD = 5
+SNAPSHOT_INTERVAL_SECONDS = 300
+MOUSE_MOVE_MIN_DISTANCE = 2
+MOUSE_ACTIVITY_INTERVAL_SECONDS = 0.2
+MOUSE_COUNT_INTERVAL_SECONDS = 1.0
+
+last_snapshot_flush_at = time.time()
+_last_mouse_update = 0.0
+_last_mouse_count_update = 0.0
+_last_mouse_position = None
 
 if getattr(sys, 'frozen', False):
     # If frozen, save DB next to the executable
@@ -387,6 +514,54 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(BASE_DIR, 'secure_employee_monitor.db')
+AGENT_AUTH_PATH = os.path.join(BASE_DIR, 'agent_auth.json')
+
+_agent_auth_lock = threading.Lock()
+_agent_auth_cache = None
+
+
+def load_agent_auth():
+    global _agent_auth_cache
+    with _agent_auth_lock:
+        if _agent_auth_cache is not None:
+            return dict(_agent_auth_cache)
+        try:
+            if os.path.exists(AGENT_AUTH_PATH):
+                with open(AGENT_AUTH_PATH, 'r', encoding='utf-8') as auth_file:
+                    data = json.load(auth_file)
+                    if isinstance(data, dict):
+                        key_id = str(data.get('key_id') or '').strip()
+                        key_secret = str(data.get('agent_key') or '').strip()
+                        if key_id and key_secret:
+                            _agent_auth_cache = {'key_id': key_id, 'agent_key': key_secret}
+                            return dict(_agent_auth_cache)
+        except Exception as exc:
+            print(f"[AgentAuth] Failed to load agent auth file: {exc}")
+        _agent_auth_cache = {}
+        return {}
+
+
+def save_agent_auth(key_id, agent_key):
+    global _agent_auth_cache
+    record = {'key_id': str(key_id or '').strip(), 'agent_key': str(agent_key or '').strip()}
+    if not record['key_id'] or not record['agent_key']:
+        return False
+    with _agent_auth_lock:
+        try:
+            with open(AGENT_AUTH_PATH, 'w', encoding='utf-8') as auth_file:
+                json.dump(record, auth_file, ensure_ascii=True)
+            if platform.system() == "Windows":
+                try:
+                    import ctypes
+                    FILE_ATTRIBUTE_HIDDEN = 0x02
+                    ctypes.windll.kernel32.SetFileAttributesW(AGENT_AUTH_PATH, FILE_ATTRIBUTE_HIDDEN)
+                except Exception:
+                    pass
+            _agent_auth_cache = record
+            return True
+        except Exception as exc:
+            print(f"[AgentAuth] Failed to save agent auth file: {exc}")
+            return False
 
 # ============================================================
 # ENHANCED DATABASE WITH ENCRYPTION & WAL
@@ -502,9 +677,27 @@ def init_secure_database():
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS restricted_site_event_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL,
+                matched_rule TEXT NOT NULL,
+                source TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                process_name TEXT,
+                raw_evidence TEXT,
+                observed_at TIMESTAMP NOT NULL,
+                policy_version TEXT,
+                retry_count INTEGER DEFAULT 0,
+                sent_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_restricted_site_queue_sent ON restricted_site_event_queue (sent_at, id);')
+
         db_conn.commit()
-    print("✓ Secure database initialized")
+    print("[OK] Secure database initialized")
 
 def encrypt_data(data):
     """Encrypt sensitive data"""
@@ -588,31 +781,54 @@ system_monitor = SystemMonitor()
 # ENHANCED ACTIVITY TRACKING
 # ============================================================
 
+def get_typed_text_length():
+    with typed_text_lock:
+        return len(typed_text)
+
+def get_activity_snapshot(current_time=None):
+    now = current_time if current_time is not None else time.time()
+    with activity_metrics_lock:
+        keyboard_last = activity_metrics['keyboard']['last_activity']
+        mouse_last = activity_metrics['mouse']['last_activity']
+        system_last = activity_metrics['system']['last_activity']
+        snapshot = {
+            'keyboard_last_activity': keyboard_last,
+            'mouse_last_activity': mouse_last,
+            'system_last_activity': system_last,
+            'keyboard_duration': activity_metrics['keyboard']['duration'],
+            'mouse_duration': activity_metrics['mouse']['duration'],
+            'total_duration': activity_metrics['system']['total_duration'],
+            'keyboard_count': activity_metrics['keyboard']['count'],
+            'mouse_count': activity_metrics['mouse']['count'],
+        }
+    snapshot['keyboard_active'] = (now - keyboard_last) < INACTIVITY_THRESHOLD
+    snapshot['mouse_active'] = (now - mouse_last) < INACTIVITY_THRESHOLD
+    snapshot['idle_seconds'] = max(0.0, now - system_last)
+    return snapshot
+
 def update_enhanced_activity_times(delta=1.0):
     """Enhanced activity tracking with application monitoring"""
-    global activity_metrics
+    global activity_metrics, last_snapshot_flush_at
     
     current_time = time.time()
-    
-    # Update keyboard activity
-    if current_time - activity_metrics['keyboard']['last_activity'] < INACTIVITY_THRESHOLD:
-        activity_metrics['keyboard']['duration'] += delta
-    
-    # Update mouse activity  
-    if current_time - activity_metrics['mouse']['last_activity'] < INACTIVITY_THRESHOLD:
-        activity_metrics['mouse']['duration'] += delta
-    
-    # Update total active time
-    if (current_time - activity_metrics['keyboard']['last_activity'] < INACTIVITY_THRESHOLD or 
-        current_time - activity_metrics['mouse']['last_activity'] < INACTIVITY_THRESHOLD):
-        activity_metrics['system']['total_duration'] += delta
-        activity_metrics['system']['last_activity'] = current_time
+    with activity_metrics_lock:
+        keyboard_active = (current_time - activity_metrics['keyboard']['last_activity']) < INACTIVITY_THRESHOLD
+        mouse_active = (current_time - activity_metrics['mouse']['last_activity']) < INACTIVITY_THRESHOLD
+
+        if keyboard_active:
+            activity_metrics['keyboard']['duration'] += delta
+        if mouse_active:
+            activity_metrics['mouse']['duration'] += delta
+        if keyboard_active or mouse_active:
+            activity_metrics['system']['total_duration'] += delta
+            activity_metrics['system']['last_activity'] = current_time
     
     # Track application usage
     system_monitor.track_application_usage()
     
-    # Save data every 5 minutes (300 seconds) vs 30 seconds
-    if int(current_time) % 300 == 0:
+    # Flush snapshots on a deterministic interval.
+    if current_time - last_snapshot_flush_at >= SNAPSHOT_INTERVAL_SECONDS:
+        last_snapshot_flush_at = current_time
         save_enhanced_activity_snapshot()
         save_daily_summary_enhanced()
         system_monitor.save_application_usage()
@@ -621,9 +837,7 @@ def update_enhanced_activity_times(delta=1.0):
 def save_enhanced_activity_snapshot():
     """Save enhanced activity snapshot"""
     try:
-        current_time = time.time()
-        kb_active = 1 if (current_time - activity_metrics['keyboard']['last_activity']) < INACTIVITY_THRESHOLD else 0
-        mouse_active = 1 if (current_time - activity_metrics['mouse']['last_activity']) < INACTIVITY_THRESHOLD else 0
+        snapshot = get_activity_snapshot()
         
         with current_stats_lock:
             core_stats = current_secure_stats.get('core', {})
@@ -641,8 +855,8 @@ def save_enhanced_activity_snapshot():
                 (date, mac_address, hour, keyboard_events, mouse_events, active_seconds, cpu_avg, memory_avg)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (today, mac, current_hour, 
-                  activity_metrics['keyboard']['count'], 
-                  activity_metrics['mouse']['count'],
+                  snapshot['keyboard_count'], 
+                  snapshot['mouse_count'],
                   1, cpu, memory))
             
             db_conn.commit()
@@ -655,6 +869,8 @@ def save_daily_summary_enhanced():
     try:
         today = date.today().isoformat()
         mac = get_mac_address()
+        snapshot = get_activity_snapshot()
+        typed_characters_count = get_typed_text_length()
         
         with current_stats_lock:
             core_stats = current_secure_stats.get('core', {})
@@ -675,13 +891,13 @@ def save_daily_summary_enhanced():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 
                         datetime('now'), datetime('now'), ?, ?, ?, ?)
             ''', (today, mac, 
-                  activity_metrics['system']['total_duration'],
-                  activity_metrics['keyboard']['duration'],
-                  activity_metrics['mouse']['duration'],
-                  activity_metrics['system']['total_duration'],
-                  activity_metrics['keyboard']['count'],
-                  activity_metrics['mouse']['count'],
-                  len(typed_text),
+                  snapshot['total_duration'],
+                  snapshot['keyboard_duration'],
+                  snapshot['mouse_duration'],
+                  snapshot['total_duration'],
+                  snapshot['keyboard_count'],
+                  snapshot['mouse_count'],
+                  typed_characters_count,
                   apps_used,
                   cpu, memory, cpu, memory))
             
@@ -708,12 +924,13 @@ def load_daily_stats():
             row = cursor.fetchone()
             
         if row:
-            activity_metrics['system']['total_duration'] = row[0]
-            activity_metrics['keyboard']['duration'] = row[1]
-            activity_metrics['mouse']['duration'] = row[2]
-            activity_metrics['keyboard']['count'] = row[3]
-            activity_metrics['mouse']['count'] = row[4]
-            print(f"✓ Loaded daily stats: {round(row[0]/60, 1)} min active")
+            with activity_metrics_lock:
+                activity_metrics['system']['total_duration'] = row[0]
+                activity_metrics['keyboard']['duration'] = row[1]
+                activity_metrics['mouse']['duration'] = row[2]
+                activity_metrics['keyboard']['count'] = row[3]
+                activity_metrics['mouse']['count'] = row[4]
+            print(f"[OK] Loaded daily stats: {round(row[0]/60, 1)} min active")
             
     except Exception as e:
         print(f"Error loading daily stats: {e}")
@@ -750,9 +967,11 @@ def save_encrypted_typed_text():
 
 def on_key_press_enhanced(key):
     """Enhanced keyboard handler"""
-    activity_metrics['keyboard']['last_activity'] = time.time()
-    activity_metrics['keyboard']['count'] += 1
-    activity_metrics['system']['last_activity'] = time.time()
+    now = time.time()
+    with activity_metrics_lock:
+        activity_metrics['keyboard']['last_activity'] = now
+        activity_metrics['keyboard']['count'] += 1
+        activity_metrics['system']['last_activity'] = now
     
     try:
         char = key.char
@@ -771,22 +990,355 @@ def on_key_press_enhanced(key):
 def on_click_enhanced(x, y, button, pressed):
     """Enhanced mouse handler"""
     if pressed:
-        activity_metrics['mouse']['last_activity'] = time.time()
-        activity_metrics['mouse']['count'] += 1
-        activity_metrics['system']['last_activity'] = time.time()
-
-_last_mouse_update = 0
+        now = time.time()
+        with activity_metrics_lock:
+            activity_metrics['mouse']['last_activity'] = now
+            activity_metrics['mouse']['count'] += 1
+            activity_metrics['system']['last_activity'] = now
 
 def on_move_enhanced(x, y):
     """Enhanced mouse movement"""
-    global _last_mouse_update
+    global _last_mouse_update, _last_mouse_count_update, _last_mouse_position
     now = time.time()
-    if now - _last_mouse_update < 0.1:
-        return
-    _last_mouse_update = now
-    
-    activity_metrics['mouse']['last_activity'] = now
-    activity_metrics['system']['last_activity'] = now
+
+    with activity_metrics_lock:
+        if _last_mouse_position is not None:
+            delta_x = abs(x - _last_mouse_position[0])
+            delta_y = abs(y - _last_mouse_position[1])
+            if delta_x < MOUSE_MOVE_MIN_DISTANCE and delta_y < MOUSE_MOVE_MIN_DISTANCE:
+                return
+
+        if now - _last_mouse_update < MOUSE_ACTIVITY_INTERVAL_SECONDS:
+            return
+
+        _last_mouse_update = now
+        _last_mouse_position = (x, y)
+        activity_metrics['mouse']['last_activity'] = now
+        activity_metrics['system']['last_activity'] = now
+
+        if now - _last_mouse_count_update >= MOUSE_COUNT_INTERVAL_SECONDS:
+            activity_metrics['mouse']['count'] += 1
+            _last_mouse_count_update = now
+
+
+class RestrictedSiteMonitor:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._policy = dict(DEFAULT_RESTRICTED_POLICY)
+        self._policy_version = ''
+        self._dns_snapshot = set()
+        self._dns_seen_timestamps = {}
+        self._local_cooldown_timestamps = {}
+        self._browser_processes = {
+            'chrome.exe',
+            'msedge.exe',
+            'firefox.exe',
+            'opera.exe',
+            'brave.exe',
+        }
+        raw_suffixes = os.getenv('RESTRICTED_SITE_IGNORE_SUFFIXES', '.local,.lan,.internal')
+        self._ignored_suffixes = tuple(
+            token.strip().lower()
+            for token in str(raw_suffixes).split(',')
+            if token.strip()
+        ) + ('wpad',)
+
+    def _normalize_domain(self, value):
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        if '://' in text:
+            try:
+                parsed = urlparse(text)
+                text = parsed.hostname or ''
+            except Exception:
+                return None
+        else:
+            text = text.split('/', 1)[0].split('?', 1)[0]
+            if ':' in text:
+                text = text.split(':', 1)[0]
+        text = text.strip().strip('.')
+        if text.startswith('*.'):
+            text = text[2:]
+        if text.startswith('www.'):
+            text = text[4:]
+        text = text.strip().strip('.')
+        if not text or '.' not in text:
+            return None
+        if '*' in text:
+            return None
+        try:
+            ipaddress.ip_address(text)
+            return None
+        except Exception:
+            pass
+        labels = [label for label in text.split('.') if label]
+        if len(labels) < 2 or any(len(label) > 63 for label in labels):
+            return None
+        allowed = set('abcdefghijklmnopqrstuvwxyz0123456789-')
+        for label in labels:
+            if label.startswith('-') or label.endswith('-'):
+                return None
+            if any(ch not in allowed for ch in label):
+                return None
+        return '.'.join(labels)
+
+    def _domain_candidates_from_text(self, text):
+        if not text:
+            return []
+        values = []
+        for candidate in HOSTNAME_RE.findall(str(text).lower()):
+            normalized = self._normalize_domain(candidate)
+            if normalized:
+                values.append(normalized)
+        return sorted(set(values))
+
+    def _is_ignored_domain(self, domain):
+        if not domain:
+            return True
+        lowered = domain.lower()
+        if lowered in ('wpad',):
+            return True
+        for suffix in self._ignored_suffixes:
+            if lowered == suffix or lowered.endswith(suffix):
+                return True
+        return False
+
+    def _match_blocked_domain(self, domain):
+        blocked = self._policy.get('blocked_domains') or []
+        for rule in blocked:
+            if domain == rule or domain.endswith(f".{rule}"):
+                return rule
+        return None
+
+    def apply_policy(self, policy_payload):
+        payload = policy_payload if isinstance(policy_payload, dict) else {}
+        with self._lock:
+            blocked_domains = sorted(
+                {
+                    domain
+                    for domain in (
+                        self._normalize_domain(item)
+                        for item in (payload.get('blocked_domains') or [])
+                    )
+                    if domain and not self._is_ignored_domain(domain)
+                }
+            )
+            self._policy = {
+                'enabled': bool(payload.get('enabled', False)),
+                'blocked_domains': blocked_domains,
+                'cooldown_seconds': max(60, int(payload.get('cooldown_seconds', 900) or 900)),
+                'dns_poll_seconds': max(15, int(payload.get('dns_poll_seconds', 60) or 60)),
+                'window_poll_seconds': max(5, int(payload.get('window_poll_seconds', 10) or 10)),
+                'dns_seen_ttl_seconds': max(60, int(payload.get('dns_seen_ttl_seconds', 1800) or 1800)),
+                'policy_version': str(payload.get('policy_version') or ''),
+            }
+            self._policy_version = self._policy.get('policy_version') or self._policy_version
+
+    def get_policy_version(self):
+        with self._lock:
+            return self._policy_version or self._policy.get('policy_version') or ''
+
+    def get_dns_poll_seconds(self):
+        with self._lock:
+            return int(self._policy.get('dns_poll_seconds') or 60)
+
+    def get_window_poll_seconds(self):
+        with self._lock:
+            return int(self._policy.get('window_poll_seconds') or 10)
+
+    def is_enabled(self):
+        with self._lock:
+            return bool(self._policy.get('enabled')) and bool(self._policy.get('blocked_domains'))
+
+    def _should_emit_local(self, domain, now_ts):
+        with self._lock:
+            cooldown = int(self._policy.get('cooldown_seconds') or 900)
+            last_seen = self._local_cooldown_timestamps.get(domain)
+            if last_seen and (now_ts - last_seen) < cooldown:
+                return False
+            self._local_cooldown_timestamps[domain] = now_ts
+            return True
+
+    def _enqueue_event(self, domain, matched_rule, source, confidence, process_name=None, raw_evidence=None, observed_at=None):
+        observed_dt = observed_at if isinstance(observed_at, datetime) else datetime.utcnow()
+        policy_version = self.get_policy_version()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute(
+                '''
+                INSERT INTO restricted_site_event_queue
+                (domain, matched_rule, source, confidence, process_name, raw_evidence, observed_at, policy_version, retry_count, sent_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+                ''',
+                (
+                    domain,
+                    matched_rule,
+                    source,
+                    confidence,
+                    process_name,
+                    (raw_evidence or '')[:500],
+                    observed_dt.isoformat(),
+                    policy_version,
+                ),
+            )
+            db_conn.commit()
+
+    def handle_window_event(self, window_payload):
+        if not self.is_enabled() or not isinstance(window_payload, dict):
+            return 0
+        process_name = str(window_payload.get('app_name') or '').strip().lower()
+        title = str(window_payload.get('title') or '').strip()
+        if not process_name or process_name not in self._browser_processes:
+            return 0
+        if not title:
+            return 0
+
+        now_ts = time.time()
+        emitted = 0
+        for domain in self._domain_candidates_from_text(title):
+            if self._is_ignored_domain(domain):
+                continue
+            matched_rule = self._match_blocked_domain(domain)
+            if not matched_rule:
+                continue
+            if not self._should_emit_local(domain, now_ts):
+                continue
+            self._enqueue_event(
+                domain=domain,
+                matched_rule=matched_rule,
+                source=RESTRICTED_SOURCE_WINDOW,
+                confidence=RESTRICTED_CONFIDENCE_HIGH,
+                process_name=process_name,
+                raw_evidence=title,
+                observed_at=datetime.utcnow(),
+            )
+            emitted += 1
+        return emitted
+
+    def poll_dns_cache(self):
+        if not self.is_enabled():
+            return 0
+
+        try:
+            result = subprocess.run(
+                ["ipconfig", "/displaydns"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+        except Exception:
+            return 0
+
+        output = result.stdout or ''
+        if not output:
+            return 0
+
+        current_domains = {
+            domain
+            for domain in (self._normalize_domain(token) for token in HOSTNAME_RE.findall(output.lower()))
+            if domain and not self._is_ignored_domain(domain)
+        }
+
+        with self._lock:
+            new_domains = current_domains - self._dns_snapshot
+            self._dns_snapshot = current_domains
+            dns_seen_ttl = int(self._policy.get('dns_seen_ttl_seconds') or 1800)
+
+        now_ts = time.time()
+        emitted = 0
+        for domain in sorted(new_domains):
+            with self._lock:
+                last_seen_dns = self._dns_seen_timestamps.get(domain)
+                if last_seen_dns and (now_ts - last_seen_dns) < dns_seen_ttl:
+                    continue
+                self._dns_seen_timestamps[domain] = now_ts
+
+            matched_rule = self._match_blocked_domain(domain)
+            if not matched_rule:
+                continue
+            if not self._should_emit_local(domain, now_ts):
+                continue
+            self._enqueue_event(
+                domain=domain,
+                matched_rule=matched_rule,
+                source=RESTRICTED_SOURCE_DNS,
+                confidence=RESTRICTED_CONFIDENCE_LOW,
+                process_name=None,
+                raw_evidence=f"dns:{domain}",
+                observed_at=datetime.utcnow(),
+            )
+            emitted += 1
+
+        with self._lock:
+            stale_before = now_ts - max(dns_seen_ttl, 60)
+            self._dns_seen_timestamps = {
+                key: value for key, value in self._dns_seen_timestamps.items() if value >= stale_before
+            }
+        return emitted
+
+    def get_pending_events(self, limit=50):
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute(
+                '''
+                SELECT id, domain, matched_rule, source, confidence, process_name, raw_evidence, observed_at
+                FROM restricted_site_event_queue
+                WHERE sent_at IS NULL
+                ORDER BY id ASC
+                LIMIT ?
+                ''',
+                (max(1, int(limit)),),
+            )
+            rows = cursor.fetchall()
+
+        events = []
+        for row in rows:
+            event_id, domain, matched_rule, source, confidence, process_name, raw_evidence, observed_at = row
+            events.append(
+                {
+                    'id': int(event_id),
+                    'event': {
+                        'domain': domain,
+                        'matched_rule': matched_rule,
+                        'source': source,
+                        'confidence': confidence,
+                        'process_name': process_name,
+                        'raw_evidence': raw_evidence,
+                        'observed_at_utc': observed_at,
+                    },
+                }
+            )
+        return events
+
+    def mark_events_sent(self, event_ids):
+        ids = [int(item) for item in event_ids if item is not None]
+        if not ids:
+            return
+        placeholders = ','.join('?' for _ in ids)
+        now_value = datetime.utcnow().isoformat()
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute(
+                f"UPDATE restricted_site_event_queue SET sent_at = ? WHERE id IN ({placeholders})",
+                [now_value, *ids],
+            )
+            db_conn.commit()
+
+    def mark_events_failed(self, event_ids):
+        ids = [int(item) for item in event_ids if item is not None]
+        if not ids:
+            return
+        placeholders = ','.join('?' for _ in ids)
+        with db_lock:
+            cursor = db_conn.cursor()
+            cursor.execute(
+                f"UPDATE restricted_site_event_queue SET retry_count = COALESCE(retry_count, 0) + 1 WHERE id IN ({placeholders})",
+                ids,
+            )
+            db_conn.commit()
 
 # ============================================================
 # AUTO-DISCOVERY AND SYNC SERVICE
@@ -795,10 +1347,15 @@ def on_move_enhanced(x, y):
 class AutoDiscoveryService:
     def __init__(self):
         self.admin_servers = []
-        self.sync_interval = int(os.getenv('ADMIN_SYNC_INTERVAL_SECONDS', '1800') or '1800')
+        self.sync_interval = max(15, int(os.getenv('ADMIN_SYNC_INTERVAL_SECONDS', '60') or '60'))
         self.admin_server_url = self._normalize_admin_url(os.getenv('ADMIN_SERVER_URL'))
         self.admin_ports = self._parse_admin_ports(os.getenv('ADMIN_SERVER_PORTS', '5001,5000'))
         self.discovery_subnet = (os.getenv('ADMIN_DISCOVERY_SUBNET') or '').strip() or None
+        self.shared_api_key = (
+            os.getenv('TRACKING_API_KEY')
+            or os.getenv('ADMIN_SERVER_API_KEY')
+            or "8f42v73054r1749f8g58848be5e6502c"
+        ).strip()
 
         discovery_enabled_raw = os.getenv('ADMIN_DISCOVERY_ENABLED')
         if discovery_enabled_raw is None:
@@ -809,6 +1366,12 @@ class AutoDiscoveryService:
         self.last_discovery_reason = 'not_started'
         self._last_no_server_log = 0
         self.no_server_log_interval = int(os.getenv('ADMIN_DISCOVERY_LOG_INTERVAL_SECONDS', '300') or '300')
+        self.last_admin_server = None
+        self.policy_refresh_interval = int(os.getenv('RESTRICTED_POLICY_REFRESH_SECONDS', '300') or '300')
+        self.last_policy_refresh_at = 0
+        self.network_change_debounce_seconds = int(os.getenv('NETWORK_CHANGE_SYNC_DEBOUNCE_SECONDS', '15') or '15')
+        self.last_network_signature = _build_network_signature()
+        self.last_network_change_sync_at = 0
 
     def _normalize_admin_url(self, raw_url):
         if not raw_url:
@@ -838,13 +1401,23 @@ class AutoDiscoveryService:
                 ports.append(port)
         return ports or [5001, 5000]
 
+    def _admin_auth_headers(self):
+        headers = {'X-API-Key': self.shared_api_key}
+        auth_data = load_agent_auth()
+        key_id = str(auth_data.get('key_id') or '').strip()
+        agent_key = str(auth_data.get('agent_key') or '').strip()
+        if key_id and agent_key:
+            headers['X-Agent-Key-Id'] = key_id
+            headers['X-Agent-Key'] = agent_key
+        return headers
+
     def _probe_admin_server(self, base_url, source='discovery'):
         target = f"{base_url.rstrip('/')}/api/tracking/register"
         try:
             response = requests.get(
                 target,
                 timeout=2,
-                headers={'X-API-Key': API_KEY},
+                headers=self._admin_auth_headers(),
             )
             if response.status_code != 200:
                 return None
@@ -880,6 +1453,23 @@ class AutoDiscoveryService:
             return [], 'none'
         base_ip = '.'.join(ip_parts[:3]) + '.'
         return [f"{base_ip}{index}" for index in range(1, 255)], f"{base_ip}*"
+
+    def _has_network_changed(self):
+        signature = _build_network_signature()
+        if not signature:
+            return False
+        if not self.last_network_signature:
+            self.last_network_signature = signature
+            return False
+        if signature == self.last_network_signature:
+            return False
+
+        now_ts = time.time()
+        self.last_network_signature = signature
+        if (now_ts - self.last_network_change_sync_at) < self.network_change_debounce_seconds:
+            return False
+        self.last_network_change_sync_at = now_ts
+        return True
 
     def _log_no_admin_servers(self, reason):
         now = time.time()
@@ -941,6 +1531,62 @@ class AutoDiscoveryService:
 
         self.last_discovery_reason = f"no response in {range_label} on ports {','.join(str(port) for port in self.admin_ports)}"
         return []
+
+    def _handle_sync_response(self, response_json):
+        if not isinstance(response_json, dict):
+            return
+
+        binding = response_json.get('agent_binding') if isinstance(response_json.get('agent_binding'), dict) else {}
+        key_id = str(binding.get('key_id') or '').strip()
+        agent_key = str(binding.get('agent_key') or '').strip()
+        if key_id and agent_key:
+            if save_agent_auth(key_id, agent_key):
+                print("[AutoSync] Stored bound agent key from server bootstrap.")
+
+        policy_payload = response_json.get('restricted_sites_policy')
+        if isinstance(policy_payload, dict):
+            if not policy_payload.get('policy_version'):
+                policy_payload['policy_version'] = str(response_json.get('restricted_sites_policy_version') or '')
+            if restricted_site_monitor:
+                restricted_site_monitor.apply_policy(policy_payload)
+        elif restricted_site_monitor and response_json.get('restricted_sites_policy_version'):
+            # Only version changed but payload omitted. Force an explicit refresh.
+            self.refresh_restricted_policy(force=True)
+
+    def refresh_restricted_policy(self, force=False):
+        if restricted_site_monitor is None:
+            return False
+
+        now_ts = time.time()
+        if not force and (now_ts - self.last_policy_refresh_at) < self.policy_refresh_interval:
+            return False
+        if not self.last_admin_server:
+            return False
+
+        current_version = restricted_site_monitor.get_policy_version()
+        headers = self._admin_auth_headers()
+        try:
+            response = requests.get(
+                f"{self.last_admin_server.rstrip('/')}/api/tracking/restricted-sites/policy",
+                params={'current_version': current_version},
+                timeout=6,
+                headers=headers,
+            )
+            self.last_policy_refresh_at = now_ts
+            if response.status_code == 304:
+                return True
+            if response.status_code != 200:
+                return False
+            payload = response.json() if (response.headers.get('content-type') or '').lower().startswith('application/json') else {}
+            policy = payload.get('policy') if isinstance(payload, dict) else None
+            if isinstance(policy, dict):
+                if not policy.get('policy_version'):
+                    policy['policy_version'] = str(payload.get('policy_version') or '')
+                restricted_site_monitor.apply_policy(policy)
+                return True
+            return False
+        except Exception:
+            return False
     
     def sync_with_admin(self, admin_server):
         """Sync data with admin server"""
@@ -953,13 +1599,34 @@ class AutoDiscoveryService:
                     return False
                 base_url = f"http://{ip}:{port}"
 
+            parsed_target = urlparse(base_url)
+            target_host = parsed_target.hostname
+            ip_details = get_local_ip_details(force_refresh=True, target_host=target_host)
+            selected_ip = str(ip_details.get('ip') or '').strip()
+            ip_candidates = [str(value).strip() for value in (ip_details.get('candidates') or []) if str(value).strip()]
+            ip_source = str(ip_details.get('source') or '').strip() or 'unknown'
+            network_signature = str(ip_details.get('network_signature') or '').strip()
+
+            pending_event_rows = []
+            pending_event_ids = []
+            pending_events = []
+            if restricted_site_monitor:
+                pending_event_rows = restricted_site_monitor.get_pending_events(limit=50)
+                pending_event_ids = [row.get('id') for row in pending_event_rows]
+                pending_events = [row.get('event') for row in pending_event_rows if isinstance(row.get('event'), dict)]
+
             sync_data = {
                 'mac_address': get_mac_address(),
                 'hostname': get_exact_hostname(),
-                'ip_address': get_local_ip(),
+                'ip_address': selected_ip or None,
+                'ip_candidates': ip_candidates,
+                'ip_source': ip_source,
+                'network_signature': network_signature,
                 'unique_client_id': get_persistent_client_id(),
-                'current_stats': get_live_stats().get_json(),
-                'api_key': API_KEY
+                'current_stats': build_live_stats_payload(),
+                'api_key': self.shared_api_key,
+                'restricted_sites_policy_version': restricted_site_monitor.get_policy_version() if restricted_site_monitor else '',
+                'restricted_site_events': pending_events,
                 # Omitted `system_info` to dramatically shrink sync payloads per user feedback
             }
 
@@ -967,18 +1634,30 @@ class AutoDiscoveryService:
                 f"{base_url.rstrip('/')}/api/tracking/sync",
                 json=sync_data,
                 timeout=10,
-                headers={'X-API-Key': API_KEY}
+                headers=self._admin_auth_headers()
             )
 
             if response.status_code == 200:
+                self.last_admin_server = base_url.rstrip('/')
+                if pending_event_ids and restricted_site_monitor:
+                    restricted_site_monitor.mark_events_sent(pending_event_ids)
+                try:
+                    payload = response.json()
+                except Exception:
+                    payload = {}
+                self._handle_sync_response(payload)
                 print(f"[AutoSync] Synced with admin server: {admin_server.get('name', base_url)}")
                 return True
+            if pending_event_ids and restricted_site_monitor:
+                restricted_site_monitor.mark_events_failed(pending_event_ids)
             print(
                 f"[AutoSync] Sync failed with {admin_server.get('name', base_url)} "
                 f"(HTTP {response.status_code})"
             )
             return False
         except Exception as e:
+            if 'pending_event_ids' in locals() and pending_event_ids and restricted_site_monitor:
+                restricted_site_monitor.mark_events_failed(pending_event_ids)
             print(f"[AutoSync] Sync error: {e}")
             return False
 
@@ -1006,7 +1685,15 @@ class AutoDiscoveryService:
                     self._log_no_admin_servers(self.last_discovery_reason)
                     current_interval = min(current_interval * 1.5, max_interval) # Exponential backoff
 
-                time.sleep(current_interval)
+                self.refresh_restricted_policy(force=False)
+                sleep_remaining = float(current_interval)
+                while sleep_remaining > 0:
+                    if self._has_network_changed():
+                        print("[AutoSync] Network change detected; triggering immediate sync.")
+                        break
+                    step = min(1.0, sleep_remaining)
+                    time.sleep(step)
+                    sleep_remaining -= step
 
         threading.Thread(target=sync_worker, daemon=True).start()
 
@@ -1284,34 +1971,54 @@ def get_client_system_info():
 def get_secure_stats():
     """Get secure enhanced statistics"""
     current_time = time.time()
-    idle_time = current_time - activity_metrics['system']['last_activity']
+    activity_snapshot = get_activity_snapshot(current_time)
+    typed_characters_count = get_typed_text_length()
+    sampled_at_utc = datetime.utcnow()
+    sample_uuid = str(uuid.uuid4())
     
     # Get latest cached stats (thread-safe copy)
     with current_stats_lock:
         current_stats = current_secure_stats.copy()
+
+    app_usage_seconds = {}
+    for app_name, duration_seconds in (system_monitor.app_usage or {}).items():
+        try:
+            parsed_duration = max(0, int(float(duration_seconds)))
+        except (TypeError, ValueError):
+            continue
+        app_usage_seconds[str(app_name)] = parsed_duration
     
     return jsonify({
+        "meta": {
+            "sample_uuid": sample_uuid,
+            "sampled_at_utc": sampled_at_utc.isoformat(),
+            "sample_interval_seconds": 60,
+            "schema_version": "2",
+            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+        },
         "device_info": {
             "mac_address": get_mac_address(),
             "hostname": socket.gethostname(),
             "ip": get_local_ip(),
             "system": platform.system(),
-            "processor": platform.processor()
+            "processor": platform.processor(),
+            "unique_client_id": get_persistent_client_id(),
         },
         "current_activity": {
-            "keyboard_active": (current_time - activity_metrics['keyboard']['last_activity']) < INACTIVITY_THRESHOLD,
-            "mouse_active": (current_time - activity_metrics['mouse']['last_activity']) < INACTIVITY_THRESHOLD,
-            "idle_seconds": round(idle_time, 2),
+            "keyboard_active": activity_snapshot['keyboard_active'],
+            "mouse_active": activity_snapshot['mouse_active'],
+            "idle_seconds": round(activity_snapshot['idle_seconds'], 2),
             "current_application": system_monitor.current_app
         },
         "today_stats": {
-            "total_active_hours": round(activity_metrics['system']['total_duration'] / 3600, 2),
-            "keyboard_active_hours": round(activity_metrics['keyboard']['duration'] / 3600, 2),
-            "mouse_active_hours": round(activity_metrics['mouse']['duration'] / 3600, 2),
-            "keyboard_events": activity_metrics['keyboard']['count'],
-            "mouse_events": activity_metrics['mouse']['count'],
-            "characters_typed": len(typed_text),
-            "applications_used": list(system_monitor.app_usage.keys())
+            "total_active_hours": round(activity_snapshot['total_duration'] / 3600, 2),
+            "keyboard_active_hours": round(activity_snapshot['keyboard_duration'] / 3600, 2),
+            "mouse_active_hours": round(activity_snapshot['mouse_duration'] / 3600, 2),
+            "keyboard_events": activity_snapshot['keyboard_count'],
+            "mouse_events": activity_snapshot['mouse_count'],
+            "characters_typed": typed_characters_count,
+            "applications_used": list(system_monitor.app_usage.keys()),
+            "app_usage_seconds": app_usage_seconds,
         },
         "system_metrics": {
             "cpu_percent": current_stats.get('core', {}).get('cpu_percent', 0),
@@ -1397,7 +2104,7 @@ def toggle_maintenance_mode():
         maintenance_mode = enabled
         
         status = "enabled" if maintenance_mode else "disabled"
-        print(f"⚠️ Maintenance mode {status}")
+        print(f"[WARN] Maintenance mode {status}")
         
         return jsonify({
             "success": True,
@@ -1433,6 +2140,7 @@ class MicrophoneManager:
         self.sample_rate = sample_rate
         self.channels = channels
         self.chunk_size = chunk_size
+        self.bits_per_sample = 16
         self.audio = None
         self.stream = None
         self.lock = threading.Lock()
@@ -1444,6 +2152,10 @@ class MicrophoneManager:
         self.last_error = None
         self.last_error_time = None
         self.last_start_time = None
+        self.active_sample_rate = sample_rate
+        self.active_channels = channels
+        self.active_input_device_index = None
+        self.active_input_device_name = None
         # Circular buffer for audio chunks (store last ~2 seconds)
         self.audio_buffer = deque(maxlen=int(sample_rate / chunk_size * 2))
 
@@ -1487,19 +2199,100 @@ class MicrophoneManager:
 
             try:
                 self.audio = pyaudio.PyAudio()
-                self.stream = self.audio.open(
-                    format=pyaudio.paInt16,
-                    channels=self.channels,
-                    rate=self.sample_rate,
-                    input=True,
-                    frames_per_buffer=self.chunk_size
-                )
+                device_candidates = []
+                seen_device_indexes = set()
+
+                default_info = None
+                try:
+                    default_info = self.audio.get_default_input_device_info()
+                except Exception:
+                    default_info = None
+
+                if default_info:
+                    default_idx = int(default_info.get("index"))
+                    seen_device_indexes.add(default_idx)
+                    device_candidates.append({
+                        "index": default_idx,
+                        "name": default_info.get("name", f"Device {default_idx}"),
+                        "max_channels": int(default_info.get("maxInputChannels", 1)),
+                        "default_rate": int(default_info.get("defaultSampleRate", self.sample_rate)),
+                    })
+
+                for idx in range(self.audio.get_device_count()):
+                    info = self.audio.get_device_info_by_index(idx)
+                    max_input_channels = int(info.get("maxInputChannels", 0))
+                    if max_input_channels <= 0 or idx in seen_device_indexes:
+                        continue
+                    seen_device_indexes.add(idx)
+                    device_candidates.append({
+                        "index": idx,
+                        "name": info.get("name", f"Device {idx}"),
+                        "max_channels": max_input_channels,
+                        "default_rate": int(info.get("defaultSampleRate", self.sample_rate)),
+                    })
+
+                preferred_rates = [self.sample_rate, 44100, 48000, 32000, 22050]
+                tested = set()
+
+                for device in device_candidates:
+                    candidate_channels = min(max(1, self.channels), max(1, device["max_channels"]))
+                    rate_candidates = [device["default_rate"]] + preferred_rates
+
+                    for rate in rate_candidates:
+                        rate = int(rate)
+                        key = (device["index"], candidate_channels, rate)
+                        if key in tested:
+                            continue
+                        tested.add(key)
+
+                        try:
+                            self.audio.is_format_supported(
+                                rate=rate,
+                                input_device=device["index"],
+                                input_channels=candidate_channels,
+                                input_format=pyaudio.paInt16,
+                            )
+                        except Exception:
+                            continue
+
+                        try:
+                            self.stream = self.audio.open(
+                                format=pyaudio.paInt16,
+                                channels=candidate_channels,
+                                rate=rate,
+                                input=True,
+                                input_device_index=device["index"],
+                                frames_per_buffer=self.chunk_size,
+                            )
+                            self.active_sample_rate = rate
+                            self.active_channels = candidate_channels
+                            self.active_input_device_index = device["index"]
+                            self.active_input_device_name = device["name"]
+                            break
+                        except Exception:
+                            self.stream = None
+
+                    if self.stream:
+                        break
+
+                if not self.stream:
+                    if not device_candidates:
+                        raise RuntimeError("No input microphone devices detected")
+                    raise RuntimeError("Unable to open any compatible microphone input format.")
+
+                self.audio_buffer.clear()
+                self.chunk_counter = 0
+                self.last_chunk = None
                 self.is_running = True
                 self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
                 self.capture_thread.start()
                 self.last_error = None
                 self.last_start_time = time.time()
-                print("✓ Microphone initialized successfully (16kHz Mono)")
+                print(
+                    "Microphone initialized successfully "
+                    f"(device='{self.active_input_device_name}', "
+                    f"rate={self.active_sample_rate}, channels={self.active_channels})"
+                )
                 return True
             except Exception as e:
                 self._set_error(str(e))
@@ -1509,7 +2302,7 @@ class MicrophoneManager:
 
     def _capture_loop(self):
         """Background loop that captures audio chunks"""
-        print("✓ Microphone capture thread started")
+        print("[OK] Microphone capture thread started")
         while self.is_running:
             if maintenance_mode:
                 time.sleep(1)
@@ -1563,13 +2356,25 @@ class MicrophoneManager:
     def _cleanup(self):
         """Cleanup resources"""
         if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
+            try:
+                self.stream.stop_stream()
+            except Exception:
+                pass
+            try:
+                self.stream.close()
+            except Exception:
+                pass
         if self.audio:
-            self.audio.terminate()
+            try:
+                self.audio.terminate()
+            except Exception:
+                pass
         self.stream = None
         self.audio = None
+        self.capture_thread = None
         self.is_running = False
+        self.active_input_device_index = None
+        self.active_input_device_name = None
 
     def stop_microphone(self):
         """Stop microphone capture"""
@@ -1577,7 +2382,7 @@ class MicrophoneManager:
         if self.capture_thread:
             self.capture_thread.join(timeout=1)
         self._cleanup()
-        print("✓ Microphone stopped")
+        print("[OK] Microphone stopped")
 
 # Global Microphone Manager
 mic_manager = MicrophoneManager()
@@ -1626,7 +2431,7 @@ class ScreenCaptureManager:
         self.is_running = True
         self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.capture_thread.start()
-        print(f"✓ Screen capture background thread started (Target FPS: {self.target_fps})")
+        print(f"[OK] Screen capture background thread started (Target FPS: {self.target_fps})")
 
     def stop(self):
         """Stop background capture thread"""
@@ -1634,12 +2439,12 @@ class ScreenCaptureManager:
         if self.capture_thread:
             # Short timeout so we don't block
             self.capture_thread.join(timeout=1.0)
+            self.capture_thread = None
         with self.lock:
             self.latest_frame = None
-        if self.sct:
-            self.sct.close()
-            self.sct = None
-        print("✓ Screen capture stopped")
+        # mss uses thread-local handles; close it only from capture thread context.
+        self.sct = None
+        print("[OK] Screen capture stopped")
 
     def _capture_loop(self):
         """Background loop that captures screen frames using mss"""
@@ -1712,9 +2517,13 @@ def generate_screen_stream():
             time.sleep(0.2)  # Client poll rate
     except GeneratorExit:
         print("Screen stream client disconnected")
-    finally:
-        screen_manager.remove_client()
+    except Exception as e:
         print(f"Screen stream error: {e}")
+    finally:
+        try:
+            screen_manager.remove_client()
+        except Exception as e:
+            print(f"Screen stream cleanup error: {e}")
 
 
 # ============================================================
@@ -1763,7 +2572,7 @@ class CameraManager:
                     # Start background capture thread
                     self._start_capture_thread()
                     
-                    print(f"✓ Camera initialized successfully (Target FPS: {self.target_fps})")
+                    print(f"[OK] Camera initialized successfully (Target FPS: {self.target_fps})")
                     return True
                 else:
                     print("Failed to open camera")
@@ -1779,7 +2588,7 @@ class CameraManager:
         self.is_capturing = True
         self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.capture_thread.start()
-        print("✓ Camera capture thread started")
+        print("[OK] Camera capture thread started")
 
     def _capture_loop(self):
         """Background loop that captures camera frames"""
@@ -1870,7 +2679,7 @@ class CameraManager:
         
         with self.frame_lock:
             self.latest_frame_bytes = None
-        print("✓ Camera released")
+        print("[OK] Camera released")
 
     def is_active(self):
         """Check if camera is active"""
@@ -1960,24 +2769,34 @@ def camera_status():
 @require_api_key
 def stream_audio():
     """Stream microphone audio as WAV/PCM"""
+    if not mic_manager.start_microphone():
+        return jsonify({
+            "error": "Microphone unavailable",
+            "details": mic_manager.last_error,
+        }), 503
+
     def audio_gen():
-        # WAV Header for 16kHz, 16-bit, Mono (PCM)
-        # We can send raw PCM if the client expects it, OR use a simple WAV header
-        # For simplicity in this agent: Raw PCM stream logic suited for modern browsers/tools
-        
-        # Start microphone if needed
-        if not mic_manager.start_microphone():
-            return
-            
         try:
             for chunk in mic_manager.get_audio_stream():
                 yield chunk
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Audio stream error: {e}")
 
-    # Use a raw PCM mime type or wav. Browser support varies. 
-    # 'audio/x-raw; rate=16000; channels=1; format=s16le' is explicit
-    return Response(audio_gen(), mimetype='audio/x-raw; rate=16000; channels=1; format=s16le')
+    return Response(
+        audio_gen(),
+        mimetype=(
+            "audio/x-raw; "
+            f"rate={mic_manager.active_sample_rate}; "
+            f"channels={mic_manager.active_channels}; "
+            "format=s16le"
+        ),
+        headers={
+            "Cache-Control": "no-store",
+            "X-Audio-Sample-Rate": str(mic_manager.active_sample_rate),
+            "X-Audio-Channels": str(mic_manager.active_channels),
+            "X-Audio-Bits": str(mic_manager.bits_per_sample),
+        },
+    )
 
 @app.route('/mic_status', methods=['GET'])
 @require_api_key
@@ -1986,6 +2805,10 @@ def mic_status():
     return jsonify({
         "active": mic_manager.is_running,
         "sample_rate": mic_manager.sample_rate,
+        "active_sample_rate": mic_manager.active_sample_rate,
+        "active_channels": mic_manager.active_channels,
+        "active_input_device_index": mic_manager.active_input_device_index,
+        "active_input_device_name": mic_manager.active_input_device_name,
         "message": "Microphone is active" if mic_manager.is_running else "Microphone is inactive",
         "last_error": mic_manager.last_error,
         "last_error_time": datetime.fromtimestamp(mic_manager.last_error_time).isoformat() if mic_manager.last_error_time else None,
@@ -2079,7 +2902,8 @@ def toggle_camera_route():
 
 def initialize_enhanced_tracker():
     """Initialize enhanced tracking system"""
-    print("🚀 INITIALIZING ENHANCED TRACKING SYSTEM")
+    global discovery_service, restricted_site_monitor
+    print("[INIT] INITIALIZING ENHANCED TRACKING SYSTEM")
     print("=" * 60)
     
     # Initialize secure database
@@ -2090,6 +2914,9 @@ def initialize_enhanced_tracker():
     
     # Register device
     register_or_update_employee()
+
+    restricted_site_monitor = RestrictedSiteMonitor()
+    restricted_site_monitor.apply_policy(DEFAULT_RESTRICTED_POLICY)
     
     # Start enhanced input listeners
     start_enhanced_listeners()
@@ -2106,13 +2933,14 @@ def initialize_enhanced_tracker():
     # Start auto-discovery service
     discovery_service = AutoDiscoveryService()
     discovery_service.start_auto_sync()
+    discovery_service.refresh_restricted_policy(force=True)
     
-    print("✓ Enhanced tracking system initialized")
-    print("✓ Screen capture background thread active")
-    print("✓ Auto-sync service started (30min intervals)")
-    print("✓ Secure encryption enabled")
-    print("✓ Application usage tracking active")
-    print(f"📡 Service running on: http://{get_local_ip()}:5002")
+    print("[OK] Enhanced tracking system initialized")
+    print("[OK] Screen capture background thread active")
+    print(f"[OK] Auto-sync service started ({discovery_service.sync_interval}s intervals)")
+    print("[OK] Secure encryption enabled")
+    print("[OK] Application usage tracking active")
+    print(f"[INFO] Service running on: http://{get_local_ip()}:5002")
     print("=" * 60)
 
 def enhanced_activity_tracker():
@@ -2140,13 +2968,16 @@ def explicit_interval_monitor():
     next_net = 0
     next_proc = 0
     next_window = 0
+    next_dns = 0
+    next_policy_refresh = 0
     
     CORE_INTERVAL = 2.0    # CPU/RAM every 2s
     NET_INTERVAL = 5.0     # Network every 5s
     PROCESS_INTERVAL = 60  # Top processes every 60s
     WINDOW_INTERVAL = 10.0 # Window Title every 10s
+    POLICY_REFRESH_INTERVAL = 300.0
     
-    print("✓ Started explicit interval monitor")
+    print("[OK] Started explicit interval monitor")
     
     while True:
         try:
@@ -2174,11 +3005,31 @@ def explicit_interval_monitor():
                 next_proc = now + PROCESS_INTERVAL
                 
             # 4. Window Title (Medium Frequency)
-            if ENABLE_WINDOW_TITLES and now >= next_window: 
+            if ENABLE_WINDOW_TITLES and now >= next_window:
                 window = window_monitor.get_active_window(enabled=True)
                 with current_stats_lock:
                     current_secure_stats['window'] = window
-                next_window = now + WINDOW_INTERVAL
+                if restricted_site_monitor and window:
+                    restricted_site_monitor.handle_window_event(window)
+                window_interval = WINDOW_INTERVAL
+                if restricted_site_monitor:
+                    try:
+                        window_interval = float(restricted_site_monitor.get_window_poll_seconds() or WINDOW_INTERVAL)
+                    except Exception:
+                        window_interval = WINDOW_INTERVAL
+                next_window = now + max(5.0, window_interval)
+
+            if restricted_site_monitor and now >= next_dns:
+                restricted_site_monitor.poll_dns_cache()
+                try:
+                    dns_interval = float(restricted_site_monitor.get_dns_poll_seconds() or 60.0)
+                except Exception:
+                    dns_interval = 60.0
+                next_dns = now + max(15.0, dns_interval)
+
+            if discovery_service and now >= next_policy_refresh:
+                discovery_service.refresh_restricted_policy(force=False)
+                next_policy_refresh = now + POLICY_REFRESH_INTERVAL
             
             time.sleep(0.5) # Resolution sleep
             
@@ -2250,9 +3101,9 @@ if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0', port=5002, debug=False, use_reloader=False)
     except KeyboardInterrupt:
-        print("\n\n🛑 Shutting down enhanced tracker...")
+        print("\n\n[STOP] Shutting down enhanced tracker...")
         # Final data save
         save_daily_summary_enhanced()
         save_encrypted_typed_text()
         system_monitor.save_application_usage()
-        print("✓ All data securely saved")
+        print("[OK] All data securely saved")

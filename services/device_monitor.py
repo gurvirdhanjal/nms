@@ -80,33 +80,66 @@ class DeviceMonitor:
                 print(f"Error hydrating collector: {e}")
     
     async def monitor_stored_devices(self):
-        """Monitor all stored devices and save results"""
+        """Monitor all stored devices and save results concurrently"""
         from models.device import Device
         from models.scan_history import DeviceScanHistory
         from metrics.normalizer import MetricNormalizer
+        from services.alert_manager import AlertManager
         
-        # Snapshot IDs only; each loop fetches a fresh row to avoid stale ORM objects
-        device_ids = [row[0] for row in db.session.query(Device.device_id).all()]
+        # Get active device data (IDs and IPs)
+        devices_query = db.session.query(Device.device_id, Device.device_ip, Device.device_name, Device.maintenance_mode).all()
+        active_devices = [d for d in devices_query if not getattr(d, 'maintenance_mode', False)]
         
-        print(f"Monitoring {len(device_ids)} stored devices...")
+        print(f"Monitoring {len(active_devices)} stored devices...")
         
+        async def fetch_status(device_info):
+            device_id, device_ip, device_name, _ = device_info
+            
+            # 1. Try Standard Ping
+            status, latency, packet_loss = await self.scanner.ping_device(device_ip)
+            
+            # 2. Try Tactical Agent Port (5002) if Ping fails or timeout
+            if status == 'Offline':
+                try:
+                    agent_info = await self.scanner.check_tactical_agent(device_ip)
+                    if agent_info:
+                        status = 'Online'
+                        if latency is None:
+                            latency = 1.0  # Assumed healthy latency if agent replies
+                except:
+                    pass
+            
+            return {
+                'id': device_id,
+                'ip': device_ip,
+                'name': device_name,
+                'status': status,
+                'latency': latency,
+                'packet_loss': packet_loss
+            }
+
+        # Concurrently perform network I/O
+        tasks = [fetch_status(device_info) for device_info in active_devices]
+        
+        try:
+            results = await asyncio.gather(*tasks)
+        except Exception as e:
+            print(f"[ERROR] Failed during concurrent ping gather: {e}")
+            results = []
+
         scan_results = []
         sse_update_batch = []
         
-        for device_id in device_ids:
-            device = db.session.get(Device, device_id)
-            if not device:
-                continue
+        # Process database inserts sequentially
+        for res in results:
+            device_id = res['id']
+            device_ip = res['ip']
+            device_name = res['name']
+            status = res['status']
+            latency = res['latency']
+            packet_loss = res['packet_loss']
 
-            # Skip devices in maintenance window
-            if getattr(device, 'maintenance_mode', False):
-                continue
-
-            device_ip = device.device_ip
-            device_name = device.device_name
-            status, latency, packet_loss = await self.scanner.ping_device(device_ip)
-
-            # Device may have been deleted while awaiting network I/O.
+            # We fetch a fresh object solely for AlertManager rules processing.
             live_device = db.session.get(Device, device_id)
             if not live_device:
                 db.session.rollback()
@@ -119,15 +152,12 @@ class DeviceMonitor:
                 ping_time_ms=latency,
                 status=status,
                 scan_type='scheduled',
-                packet_loss=packet_loss  # NEW: Store packet loss
+                packet_loss=packet_loss
             )
             
-            # Normalize and collect metrics (now includes packet_loss)
             metrics = MetricNormalizer.normalize_ping(device_ip, status, latency, packet_loss=packet_loss)
             self.collector.add_metrics(metrics)
             
-            # Evaluate Alerts (Phase 1A)
-            from services.alert_manager import AlertManager
             is_online = (status == 'Online')
             try:
                 AlertManager.process_scan_result(live_device, is_online, latency, packet_loss, commit=False)
@@ -136,10 +166,7 @@ class DeviceMonitor:
                 db.session.rollback()
                 continue
 
-            # Accumulate SSE updates into a batch
-            # We can refactor this to be event-driven later
             if not is_online or (latency and latency > 100) or (packet_loss and packet_loss > 5):
-                # Simple accumulate for UI updates if impactful change
                 try:
                     sse_update_batch.append({
                         'device_id': device_id,
@@ -151,10 +178,8 @@ class DeviceMonitor:
                 except Exception as e:
                     print(f"Batch Accumulation Error: {e}")
 
-
             db.session.add(scan_record)
 
-            # Commit per device to prevent long-running transactions/locks
             try:
                 db.session.commit()
             except (StaleDataError, ObjectDeletedError) as e:
@@ -169,7 +194,7 @@ class DeviceMonitor:
                 'device_ip': device_ip,
                 'status': status,
                 'latency': latency,
-                'packet_loss': packet_loss,  # NEW: Include in results
+                'packet_loss': packet_loss,
                 'timestamp': datetime.utcnow()
             })
         

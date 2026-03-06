@@ -114,7 +114,7 @@ class DepartmentsService:
 
     def delete_department(self, department_id: int) -> bool:
         """
-        Delete department if no devices or users assigned.
+        Delete department and unassign devices/users automatically.
         
         Args:
             department_id: Department ID
@@ -123,28 +123,24 @@ class DepartmentsService:
             True if deleted successfully
             
         Raises:
-            ValueError: If department not found or has devices/users assigned
+            ValueError: If department not found
         """
         try:
             department = Department.query.get(department_id)
             if not department:
                 raise ValueError(f"Department with ID {department_id} not found")
             
-            # Check for associated devices
             device_count = Device.query.filter_by(department_id=department_id).count()
-            if device_count > 0:
-                raise ValueError(
-                    f"Cannot delete department '{department.name}': "
-                    f"{device_count} device(s) are assigned to this department"
+            if device_count:
+                Device.query.filter_by(department_id=department_id).update(
+                    {'department_id': None}, synchronize_session='fetch'
                 )
             
-            # Check for associated users
             from models.user import User
             user_count = User.query.filter_by(department_id=department_id).count()
-            if user_count > 0:
-                raise ValueError(
-                    f"Cannot delete department '{department.name}': "
-                    f"{user_count} user(s) are assigned to this department"
+            if user_count:
+                User.query.filter_by(department_id=department_id).update(
+                    {'department_id': None}, synchronize_session='fetch'
                 )
             
             db.session.delete(department)

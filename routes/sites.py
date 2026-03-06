@@ -2,9 +2,11 @@ from flask import Blueprint, request, jsonify, render_template
 from extensions import db
 from models.site import Site
 from models.device import Device
+from models.department import Department
 from models.dashboard import DashboardEvent
 from models.server_health import ServerHealthLog
 from services.sites_service import SitesService
+from middleware.rbac import require_role
 from datetime import datetime, timedelta
 from sqlalchemy import func
 
@@ -16,6 +18,7 @@ sites_bp = Blueprint('sites', __name__)
 # ============================================================================
 
 @sites_bp.route('/sites')
+@require_role('admin')
 def sites_list_page():
     """Render the sites management page."""
     return render_template('sites/list.html')
@@ -24,15 +27,29 @@ def sites_list_page():
 @sites_bp.route('/sites/<int:site_id>/dashboard')
 def site_dashboard(site_id):
     """Render the site dashboard page with statistics, alerts, metrics, and devices."""
+    from middleware.rbac import scoped_query
     # Get site
-    site = Site.query.get_or_404(site_id)
+    site = scoped_query(Site).get_or_404(site_id)
     
     # Get site statistics
     sites_service = SitesService()
     stats = sites_service.get_site_stats(site_id)
     
-    # Get recent alerts for devices at this site (last 50, unresolved first)
-    device_ids = [d.device_id for d in site.devices.all()]
+    # Get all devices for the site (directly assigned OR assigned via department)
+    departments = site.departments.all() if hasattr(site, 'departments') else []
+    dept_ids = [d.id for d in departments]
+    
+    if dept_ids:
+        all_site_devices = Device.query.filter(
+            db.or_(
+                Device.site_id == site_id,
+                Device.department_id.in_(dept_ids)
+            )
+        ).all()
+    else:
+        all_site_devices = Device.query.filter_by(site_id=site_id).all()
+        
+    device_ids = [d.device_id for d in all_site_devices]
     recent_alerts = []
     if device_ids:
         recent_alerts = DashboardEvent.query.filter(
@@ -77,8 +94,8 @@ def site_dashboard(site_id):
             metrics['avg_packet_loss'] = health_stats.avg_packet_loss or 0
             metrics['total_health_logs'] = health_stats.total_logs or 0
     
-    # Get all devices for the site
-    devices = site.devices.order_by(Device.device_name).all()
+    # Get all aggregated devices for the site
+    devices = sorted(all_site_devices, key=lambda d: (d.device_name or "").lower())
     
     # Determine which devices are online (have recent health logs)
     online_device_ids = set()
@@ -89,7 +106,49 @@ def site_dashboard(site_id):
             ServerHealthLog.timestamp >= cutoff
         ).distinct().all()
         online_device_ids = {d[0] for d in online_results}
-    
+
+    # Devices per department (including unassigned)
+    dept_stats_map = {}
+    for dept in departments:
+        dept_stats_map[dept.id] = {
+            'name': dept.name,
+            'device_count': 0,
+            'online_count': 0,
+            'offline_count': 0,
+            'warning_count': 0
+        }
+
+    unassigned_bucket = {
+        'name': 'Unassigned',
+        'device_count': 0,
+        'online_count': 0,
+        'offline_count': 0,
+        'warning_count': 0
+    }
+
+    for device in all_site_devices:
+        if device.department_id and device.department_id in dept_stats_map:
+            bucket = dept_stats_map[device.department_id]
+        else:
+            bucket = unassigned_bucket
+
+        bucket['device_count'] += 1
+        if device.device_id in online_device_ids:
+            bucket['online_count'] += 1
+        else:
+            bucket['offline_count'] += 1
+
+        if (
+            (device.health_alert_strikes or 0) >= 2
+            or (device.latency_strikes or 0) >= 2
+            or (device.packet_loss_strikes or 0) >= 2
+        ):
+            bucket['warning_count'] += 1
+
+    dept_device_stats = sorted(dept_stats_map.values(), key=lambda row: row['name'].lower())
+    if unassigned_bucket['device_count'] > 0:
+        dept_device_stats.append(unassigned_bucket)
+
     return render_template(
         'sites/dashboard.html',
         site=site,
@@ -97,7 +156,8 @@ def site_dashboard(site_id):
         recent_alerts=recent_alerts,
         metrics=metrics,
         devices=devices,
-        online_device_ids=online_device_ids
+        online_device_ids=online_device_ids,
+        dept_device_stats=dept_device_stats
     )
 
 
@@ -109,7 +169,8 @@ def site_dashboard(site_id):
 
 def list_sites():
     """List all sites with device counts."""
-    sites = Site.query.order_by(Site.site_name).all()
+    from middleware.rbac import scoped_query
+    sites = scoped_query(Site).order_by(Site.site_name).all()
     return jsonify({
         'status': 'ok',
         'data': [s.to_dict() for s in sites]
@@ -117,7 +178,7 @@ def list_sites():
 
 
 @sites_bp.route('/api/sites', methods=['POST'])
-
+@require_role('admin')
 def create_site():
     """Create a new site."""
     data = request.get_json()
@@ -141,6 +202,16 @@ def create_site():
     db.session.add(site)
     db.session.commit()
 
+    # Audit logging
+    from middleware.rbac import create_audit_log
+    create_audit_log(
+        action='create',
+        entity_type='site',
+        entity_id=site.id,
+        entity_name=site.site_name,
+        description=f'Created site "{site.site_name}"'
+    )
+
     return jsonify({'status': 'ok', 'data': site.to_dict()}), 201
 
 
@@ -148,12 +219,13 @@ def create_site():
 
 def get_site(site_id):
     """Get a single site by ID."""
-    site = Site.query.get_or_404(site_id)
+    from middleware.rbac import scoped_query
+    site = scoped_query(Site).get_or_404(site_id)
     return jsonify({'status': 'ok', 'data': site.to_dict()})
 
 
 @sites_bp.route('/api/sites/<int:site_id>', methods=['PUT'])
-
+@require_role('admin')
 def update_site(site_id):
     """Update an existing site."""
     site = Site.query.get_or_404(site_id)
@@ -177,21 +249,51 @@ def update_site(site_id):
 
 
 @sites_bp.route('/api/sites/<int:site_id>', methods=['DELETE'])
-
+@require_role('admin')
 def delete_site(site_id):
-    """Delete a site. Devices are unassigned (site_id set to NULL)."""
+    """Delete a site. Departments and device/user assignments are cleaned up."""
     site = Site.query.get_or_404(site_id)
+    site_name = site.site_name  # Store before deletion
+
+    dept_ids = [
+        row[0]
+        for row in db.session.query(Department.id).filter_by(site_id=site_id).all()
+    ]
+    if dept_ids:
+        # Unassign users/devices from departments before deleting them
+        from models.user import User
+        User.query.filter(User.department_id.in_(dept_ids)).update(
+            {'department_id': None}, synchronize_session='fetch'
+        )
+        Device.query.filter(Device.department_id.in_(dept_ids)).update(
+            {'department_id': None}, synchronize_session='fetch'
+        )
+        Department.query.filter(Department.id.in_(dept_ids)).delete(synchronize_session='fetch')
 
     # Unassign devices from this site
     Device.query.filter_by(site_id=site_id).update({'site_id': None})
 
     db.session.delete(site)
     db.session.commit()
-    return jsonify({'status': 'ok', 'message': f'Site "{site.site_name}" deleted'})
+    
+    # Audit logging
+    from middleware.rbac import create_audit_log
+    create_audit_log(
+        action='delete',
+        entity_type='site',
+        entity_id=site_id,
+        entity_name=site_name,
+        description=f'Deleted site "{site_name}"' + (f' (departments removed: {len(dept_ids)})' if dept_ids else '')
+    )
+    
+    message = f'Site "{site_name}" deleted'
+    if dept_ids:
+        message += f' (departments removed: {len(dept_ids)})'
+    return jsonify({'status': 'ok', 'message': message})
 
 
 @sites_bp.route('/api/sites/<int:site_id>/assign', methods=['POST'])
-
+@require_role('admin')
 def assign_devices_to_site(site_id):
     """Assign one or more devices to a site."""
     site = Site.query.get_or_404(site_id)
@@ -201,19 +303,40 @@ def assign_devices_to_site(site_id):
     if not device_ids:
         return jsonify({'status': 'error', 'message': 'device_ids array is required'}), 400
 
-    updated = Device.query.filter(Device.device_id.in_(device_ids)).update(
-        {'site_id': site_id}, synchronize_session='fetch'
+    locked_rows = (
+        db.session.query(Device.device_id)
+        .join(Department, Device.department_id == Department.id)
+        .filter(Device.device_id.in_(device_ids))
+        .filter(Device.department_id.isnot(None))
+        .filter(db.or_(Department.site_id.is_(None), Department.site_id != site_id))
+        .all()
     )
-    db.session.commit()
+    locked_ids = {row[0] for row in locked_rows}
+    eligible_ids = [dev_id for dev_id in device_ids if dev_id not in locked_ids]
+
+    updated = 0
+    if eligible_ids:
+        updated = Device.query.filter(Device.device_id.in_(eligible_ids)).update(
+            {'site_id': site_id}, synchronize_session='fetch'
+        )
+        db.session.commit()
+
+    skipped = len(locked_ids)
+    message = f'{updated} device(s) assigned to site "{site.site_name}"'
+    if skipped:
+        message += f', {skipped} skipped due to department site mismatch'
 
     return jsonify({
         'status': 'ok',
-        'message': f'{updated} device(s) assigned to site "{site.site_name}"'
+        'message': message,
+        'updated': updated,
+        'skipped': skipped,
+        'skipped_ids': list(locked_ids)[:20]
     })
 
 
 @sites_bp.route('/api/devices/unassign-site', methods=['POST'])
-
+@require_role('admin')
 def unassign_devices_from_site():
     """Remove site assignment from one or more devices."""
     data = request.get_json()

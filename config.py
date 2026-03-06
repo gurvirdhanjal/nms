@@ -17,6 +17,20 @@ else:
 # Load .env file from the execution directory (where the exe is)
 load_dotenv(os.path.join(EXEC_DIR, '.env'))
 
+
+def _env_int(name, default, minimum=None, maximum=None):
+    raw_value = os.environ.get(name, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = int(default)
+    if minimum is not None:
+        value = max(int(minimum), value)
+    if maximum is not None:
+        value = min(int(maximum), value)
+    return value
+
+
 class Config:
     # Runtime environment
     APP_ENV = os.environ.get('APP_ENV', os.environ.get('FLASK_ENV', 'development')).lower()
@@ -77,6 +91,14 @@ class Config:
                 'check_same_thread': False
             }
         })
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS.update({
+            'pool_size': _env_int('DB_POOL_SIZE', 20, minimum=5),
+            'max_overflow': _env_int('DB_POOL_MAX_OVERFLOW', 20, minimum=0),
+            'pool_timeout': _env_int('DB_POOL_TIMEOUT_SECONDS', 30, minimum=5),
+            'pool_recycle': _env_int('DB_POOL_RECYCLE_SECONDS', 1800, minimum=60),
+            'pool_use_lifo': os.environ.get('DB_POOL_USE_LIFO', 'true').lower() == 'true',
+        })
 
     # Compression (Flask-Compress)
     COMPRESS_ENABLED = os.environ.get('COMPRESS_ENABLED', 'true').lower() == 'true'
@@ -127,6 +149,36 @@ class Config:
     
     # API Settings (Agent communication)
     API_KEY = os.environ.get('TRACKING_API_KEY', '8f42v73054r1749f8g58848be5e6502c')
+    AGENT_ALLOW_SHARED_TOKEN_BOOTSTRAP = (
+        os.environ.get(
+            'AGENT_ALLOW_SHARED_TOKEN_BOOTSTRAP',
+            os.environ.get('TRACKING_ALLOW_SHARED_AGENT_KEY_BOOTSTRAP', 'true')
+        ).lower() == 'true'
+    )
+    TRACKING_ALLOW_SHARED_AGENT_KEY_BOOTSTRAP = (
+        os.environ.get('TRACKING_ALLOW_SHARED_AGENT_KEY_BOOTSTRAP', 'true').lower() == 'true'
+    )
+    TRACKING_AGENT_IP_REQUIRE_PRIVATE = (
+        os.environ.get('TRACKING_AGENT_IP_REQUIRE_PRIVATE', 'true').lower() == 'true'
+    )
+    TRACKING_RECONCILE_DRYRUN = os.environ.get('TRACKING_RECONCILE_DRYRUN', 'false').lower() == 'true'
+    SUPER_ADMIN_USERNAMES = os.environ.get('SUPER_ADMIN_USERNAMES', '')
+    TRACKING_RAW_RETENTION_DAYS = int(os.environ.get('TRACKING_RAW_RETENTION_DAYS', 30))
+    TRACKING_HOURLY_RETENTION_DAYS = int(os.environ.get('TRACKING_HOURLY_RETENTION_DAYS', 365))
+    TRACKING_DAILY_RETENTION_DAYS = int(os.environ.get('TRACKING_DAILY_RETENTION_DAYS', 1095))
+    TRACKING_INTEGRITY_CHECK_SCHEDULE = os.environ.get('TRACKING_INTEGRITY_CHECK_SCHEDULE', '03:30')
+    TRACKING_WORKSTATION_UI_V2 = os.environ.get('TRACKING_WORKSTATION_UI_V2', 'false').lower() == 'true'
+    TRACKING_HEARTBEAT_INTERVAL_SECONDS = int(
+        os.environ.get('TRACKING_HEARTBEAT_INTERVAL_SECONDS', 300)
+    )
+    TRACKING_AGENT_CHECKIN_WINDOW_SECONDS = int(
+        os.environ.get('TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180)
+    )
+    TRACKING_WORKSTATION_STALE_MINUTES = int(
+        os.environ.get('TRACKING_WORKSTATION_STALE_MINUTES', 15)
+    )
+    TRACKING_REPORT_MAX_DAYS = int(os.environ.get('TRACKING_REPORT_MAX_DAYS', 90))
+    TRACKING_REPORT_PAGE_MAX_LIMIT = int(os.environ.get('TRACKING_REPORT_PAGE_MAX_LIMIT', 200))
 
     # API Key for mobile/external clients
     MOBILE_API_KEY = os.environ.get('MOBILE_API_KEY')

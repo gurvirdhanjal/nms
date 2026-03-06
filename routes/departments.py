@@ -3,6 +3,7 @@ from extensions import db
 from models.department import Department
 from models.device import Device
 from models.user import User
+from middleware.rbac import require_role, require_permission
 
 departments_bp = Blueprint('departments', __name__)
 
@@ -24,7 +25,8 @@ def departments_list_page():
 @departments_bp.route('/api/departments', methods=['GET'])
 def list_departments():
     """List all departments with device and user counts."""
-    departments = Department.query.order_by(Department.name).all()
+    from middleware.rbac import scoped_query
+    departments = scoped_query(Department).order_by(Department.name).all()
     return jsonify({
         'status': 'ok',
         'data': [d.to_dict() for d in departments]
@@ -34,11 +36,13 @@ def list_departments():
 @departments_bp.route('/api/departments/<int:dept_id>', methods=['GET'])
 def get_department(dept_id):
     """Get a single department by ID."""
-    department = Department.query.get_or_404(dept_id)
+    from middleware.rbac import scoped_query
+    department = scoped_query(Department).get_or_404(dept_id)
     return jsonify({'status': 'ok', 'data': department.to_dict()})
 
 
 @departments_bp.route('/api/departments', methods=['POST'])
+@require_role('admin', 'manager')
 def create_department():
     """Create a new department."""
     data = request.get_json()
@@ -58,16 +62,31 @@ def create_department():
     db.session.add(department)
     db.session.commit()
 
+    # Audit logging
+    from middleware.rbac import create_audit_log
+    create_audit_log(
+        action='create',
+        entity_type='department',
+        entity_id=department.id,
+        entity_name=department.name,
+        description=f'Created department "{department.name}"'
+    )
+
     return jsonify({'status': 'ok', 'data': department.to_dict()}), 201
 
 
 @departments_bp.route('/api/departments/<int:dept_id>', methods=['PUT'])
+@require_role('admin', 'manager')
 def update_department(dept_id):
     """Update an existing department."""
-    department = Department.query.get_or_404(dept_id)
+    from middleware.rbac import scoped_query
+    department = scoped_query(Department).get_or_404(dept_id)
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+    previous_site_id = department.site_id
+    site_changed = False
 
     if 'name' in data:
         # Check uniqueness for new name
@@ -80,52 +99,115 @@ def update_department(dept_id):
         department.description = data['description']
     
     if 'site_id' in data:
-        department.site_id = data['site_id']
+        raw_site_id = data.get('site_id')
+        if raw_site_id in (None, ''):
+            new_site_id = None
+        else:
+            try:
+                new_site_id = int(raw_site_id)
+            except (TypeError, ValueError):
+                return jsonify({'status': 'error', 'message': 'Invalid site_id'}), 400
+        if previous_site_id != new_site_id:
+            department.site_id = new_site_id
+            site_changed = True
+
+    if site_changed:
+        Device.query.filter_by(department_id=dept_id).update(
+            {'site_id': department.site_id}, synchronize_session='fetch'
+        )
 
     db.session.commit()
     return jsonify({'status': 'ok', 'data': department.to_dict()})
 
 
 @departments_bp.route('/api/departments/<int:dept_id>', methods=['DELETE'])
+@require_role('admin', 'manager')
 def delete_department(dept_id):
-    """Delete a department. Returns 409 if devices or users are assigned."""
-    department = Department.query.get_or_404(dept_id)
+    """Delete a department. Devices/users are unassigned automatically."""
+    from middleware.rbac import scoped_query
+    department = scoped_query(Department).get_or_404(dept_id)
+    dept_name = department.name  # Store before deletion
 
-    # Check if any devices are assigned
     device_count = Device.query.filter_by(department_id=dept_id).count()
-    if device_count > 0:
-        return jsonify({
-            'status': 'error',
-            'message': f'Cannot delete department: {device_count} device(s) are assigned to it'
-        }), 409
-
-    # Check if any users are assigned
     user_count = User.query.filter_by(department_id=dept_id).count()
-    if user_count > 0:
-        return jsonify({
-            'status': 'error',
-            'message': f'Cannot delete department: {user_count} user(s) are assigned to it'
-        }), 409
+
+    if device_count:
+        Device.query.filter_by(department_id=dept_id).update(
+            {'department_id': None}, synchronize_session='fetch'
+        )
+    if user_count:
+        User.query.filter_by(department_id=dept_id).update(
+            {'department_id': None}, synchronize_session='fetch'
+        )
 
     db.session.delete(department)
     db.session.commit()
-    return jsonify({'status': 'ok', 'message': f'Department "{department.name}" deleted'})
+    
+    # Audit logging
+    from middleware.rbac import create_audit_log
+    create_audit_log(
+        action='delete',
+        entity_type='department',
+        entity_id=dept_id,
+        entity_name=dept_name,
+        description=f'Deleted department "{dept_name}"' + (f' (unassigned devices={device_count}, users={user_count})' if device_count or user_count else '')
+    )
+    
+    message = f'Department "{dept_name}" deleted'
+    if device_count or user_count:
+        message += f' (unassigned devices={device_count}, users={user_count})'
+    return jsonify({'status': 'ok', 'message': message})
 
 
 @departments_bp.route('/api/departments/<int:dept_id>/assign', methods=['POST'])
+@require_permission('devices.edit')
 def assign_devices_to_department(dept_id):
     """Assign one or more devices to a department."""
-    department = Department.query.get_or_404(dept_id)
+    from middleware.rbac import scoped_query
+    from models.subnet import Subnet
+    
+    department = scoped_query(Department).get_or_404(dept_id)
     data = request.get_json()
     device_ids = data.get('device_ids', [])
 
     if not device_ids:
         return jsonify({'status': 'error', 'message': 'device_ids array is required'}), 400
 
+    # CRITICAL FIX: Validate that devices belong to subnets mapped to the department's site
+    if department.site_id:
+        devices_to_assign = Device.query.filter(Device.device_id.in_(device_ids)).all()
+        invalid_devices = []
+        
+        for device in devices_to_assign:
+            if device.device_ip and not Subnet.is_ip_in_site_subnets(device.device_ip, department.site_id):
+                invalid_devices.append({
+                    'device_id': device.device_id,
+                    'device_ip': device.device_ip,
+                    'device_name': device.device_name
+                })
+        
+        if invalid_devices:
+            return jsonify({
+                'status': 'error',
+                'message': f'{len(invalid_devices)} device(s) do not belong to subnets mapped to this site',
+                'invalid_devices': invalid_devices
+            }), 400
+
+    # Proceed with assignment
     updated = Device.query.filter(Device.device_id.in_(device_ids)).update(
-        {'department_id': dept_id}, synchronize_session='fetch'
+        {'department_id': dept_id, 'site_id': department.site_id}, synchronize_session='fetch'
     )
     db.session.commit()
+
+    # Audit logging
+    from middleware.rbac import create_audit_log
+    create_audit_log(
+        action='assign',
+        entity_type='department',
+        entity_id=dept_id,
+        entity_name=department.name,
+        description=f'Assigned {updated} device(s) to department "{department.name}"'
+    )
 
     return jsonify({
         'status': 'ok',
@@ -133,7 +215,74 @@ def assign_devices_to_department(dept_id):
     })
 
 
+@departments_bp.route('/api/departments/<int:dept_id>/assignable-devices', methods=['GET'])
+@require_permission('devices.view')
+def get_assignable_devices_for_department(dept_id):
+    """
+    Get list of devices that can be assigned to this department.
+    Only returns devices from subnets mapped to the department's site.
+    """
+    from middleware.rbac import scoped_query
+    from models.subnet import Subnet
+    
+    department = scoped_query(Department).get_or_404(dept_id)
+    
+    # If department has no site, return all unassigned devices
+    if not department.site_id:
+        devices = Device.query.filter(
+            db.or_(
+                Device.department_id == None,
+                Device.department_id == dept_id
+            )
+        ).all()
+        return jsonify({
+            'status': 'ok',
+            'data': [d.to_dict() for d in devices],
+            'warning': 'Department has no site assigned. Showing all devices.'
+        })
+    
+    # Get subnets for this site
+    site_subnets = Subnet.get_subnets_for_site(department.site_id)
+    
+    if not site_subnets:
+        return jsonify({
+            'status': 'ok',
+            'data': [],
+            'warning': f'No subnets mapped to site ID {department.site_id}. Please map subnets first.'
+        })
+    
+    # Build list of CIDR blocks
+    subnet_cidrs = [s.cidr for s in site_subnets]
+    
+    # Get all devices (unassigned or already in this department)
+    all_devices = Device.query.filter(
+        db.or_(
+            Device.department_id == None,
+            Device.department_id == dept_id
+        )
+    ).all()
+    
+    # Filter devices by subnet membership
+    assignable_devices = []
+    for device in all_devices:
+        if device.device_ip:
+            for subnet in site_subnets:
+                if subnet.contains_ip(device.device_ip):
+                    assignable_devices.append(device)
+                    break
+    
+    return jsonify({
+        'status': 'ok',
+        'data': [d.to_dict() for d in assignable_devices],
+        'site_subnets': subnet_cidrs,
+        'total_filtered': len(all_devices),
+        'total_assignable': len(assignable_devices)
+    })
+
+
+
 @departments_bp.route('/api/devices/unassign-department', methods=['POST'])
+@require_permission('devices.edit')
 def unassign_devices_from_department():
     """Remove department assignment from one or more devices."""
     data = request.get_json()

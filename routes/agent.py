@@ -5,6 +5,7 @@ from models.server_health import ServerHealthLog
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
+from middleware.rbac import require_agent_token
 
 agent_bp = Blueprint('agent_bp', __name__)
 
@@ -33,20 +34,10 @@ def _extract_hardware_specs(payload):
     return specs or None
 
 @agent_bp.route('/api/agent/metrics', methods=['POST'])
+@require_agent_token
 def receive_metrics():
-    # 1. Verify Token
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Missing or invalid Authorization header'}), 401
-    
-    token = auth_header.split(' ')[1]
-    expected_token = current_app.config.get('API_KEY') # Matches TRACKING_API_KEY in .env
-
-    if token != expected_token:
-        # Also check MOBILE_API_KEY as fallback if configured differently
-        mobile_key = current_app.config.get('MOBILE_API_KEY')
-        if not mobile_key or token != mobile_key:
-             return jsonify({'error': 'Invalid token'}), 403
+    # Get device from decorator (already validated)
+    device = request.agent_device
 
     # Enforce Postgres-only ingestion if configured
     if current_app.config.get('REQUIRE_POSTGRES_ONLY'):
@@ -54,7 +45,7 @@ def receive_metrics():
         if backend != 'postgresql':
             return jsonify({'error': f'Agent ingestion disabled for backend: {backend}'}), 503
 
-    # 2. Parse Payload
+    # Parse Payload
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Invalid JSON'}), 400
@@ -64,29 +55,8 @@ def receive_metrics():
     if payload_ip and payload_ip.startswith('127.'):
         payload_ip = None
     ip_address = payload_ip or request.remote_addr
-    print(f"[Agent] Incoming metrics from {ip_address} host={hostname}")
-    # Use remote addr if agent didn't send IP (though agent usually sends what it sees)
-    # But for "Server Agent", we rely on what we can match.
-    # The user script doesn't explicitly send "ip" in top level, calls it implicitly via request
-    # script: collect_metrics() -> hostname, os_info, etc. No explicit IP.
-    # So we use request.remote_addr
-    # Prefer agent-provided IP when available
-
-    # 3. Find Device
-    # Match by IP first (most reliable for "manually config server")
-    device = Device.query.filter_by(device_ip=ip_address).first()
-    
-    if not device:
-        # Try finding by hostname
-        if hostname:
-            device = Device.query.filter(Device.device_name.ilike(hostname)).first()
-            if not device:
-                device = Device.query.filter(Device.hostname.ilike(hostname)).first()
-
-    if not device:
-        return jsonify({'error': f'Device not found for IP {ip_address} or Hostname {hostname}. Please add it to devices first.'}), 404
-
-    # 4. Save Metrics
+    print(f"[Agent] Incoming metrics from {ip_address} host={hostname} device_id={device.device_id}")
+    # 3. Save Metrics (device already validated by decorator)
     try:
         # Ensure the device still exists (may have been deleted concurrently)
         try:
@@ -308,7 +278,7 @@ def receive_metrics():
             db.session.rollback()
             return jsonify({'error': f'Device no longer exists. {commit_err}'}), 409
 
-        # 6. Evaluate Server Health Alerts (strikes-based)
+        # 4. Evaluate Server Health Alerts (strikes-based)
         try:
             from services.alert_manager import AlertManager
             AlertManager.check_server_health(device, log, commit=True)
@@ -316,8 +286,14 @@ def receive_metrics():
             print(f"[Agent] Alert check failed for {device.device_ip}: {alert_err}")
 
         print(f"[Agent] Metrics saved for device_id={device.device_id} ip={device.device_ip}")
-        
-        return jsonify({'success': True}), 200
+
+        response_payload = {'success': True}
+        bootstrap_token = getattr(request, 'agent_bootstrap_assigned_token', None)
+        if bootstrap_token:
+            response_payload['agent_token'] = bootstrap_token
+            response_payload['auth_mode'] = getattr(request, 'agent_auth_mode', 'shared_bootstrap')
+
+        return jsonify(response_payload), 200
 
     except Exception as e:
         db.session.rollback()

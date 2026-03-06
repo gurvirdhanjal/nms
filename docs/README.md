@@ -134,6 +134,50 @@ Key dependencies include:
 - **Requests**: HTTP library.
 - **OpenCV**: Image processing (if applicable).
 
+## Testing and Quality Gates
+
+### Python test dependencies
+```bash
+pip install -r requirements-dev.txt
+```
+
+### JavaScript test dependencies
+```bash
+npm install
+```
+
+### Test commands
+```bash
+pytest -m "unit or integration"
+pytest -m performance
+npm run test:js
+npm run test:js:coverage
+npm run test:js:perf
+python scripts/run_quality_gate.py
+```
+
+### Coverage thresholds
+- Python touched backend modules: `>=95%`
+- JS touched/new console modules: `>=95%`
+
 ## Contributing
 
 Please refer to `AGENTS.md` and `CONVENTIONS.md` for coding standards and contribution guidelines.
+
+## Agentic Skills
+
+Standards-oriented skills for coding agents are indexed in `docs/skills.md`.
+
+## RBAC Dashboard Validation Commands
+
+Run all required checks locally:
+
+```bash
+python -m pytest
+npm run test:js
+npm run test:js:coverage
+npm run test:js:perf
+python scripts/run_quality_gate.py
+```
+
+These checks validate dashboard scope filtering, snapshot meta echo contracts, one-time RBAC mismatch refresh guard, and Files UI removal from device live console.

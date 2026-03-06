@@ -2,390 +2,268 @@
 
 {% block title %}Device History - {{ device.device_name }}{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_history.css') }}?v=20260227e">
+{% endblock %}
+
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h1 style="color: white;"><i class="fas fa-history"></i> Device History</h1>
-                <p style="color: white;" class="lead">{{ device.device_name }} - {{ device.employee_name or 'Unknown
-                    Employee' }}</p>
-            </div>
-            <div>
-                <a href="{{ url_for('tracking_bp.device_tracking') }}" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> Back to Tracking
-                </a>
-            </div>
+<div id="device-history-page" class="dashboard-enterprise">
+<div class="row g-3">
+    <div class="col-12 d-flex flex-wrap justify-content-between align-items-start gap-3 history-header-row">
+        <div class="history-heading-block">
+            <h1 class="history-page-title"><i class="fas fa-history"></i> Device History</h1>
+            <p class="history-device-title mb-1">{{ device.device_name }} - {{ device.employee_name or 'Unknown Employee' }}</p>
+            <small class="history-meta">MAC: {{ device.mac_address }} | IP: {{ device.ip_address or 'n/a' }}</small>
+        </div>
+        <div class="history-header-actions">
+            <a href="{{ url_for('tracking_bp.device_tracking') }}" class="tactical-btn-outline history-nav-btn">
+                <i class="fas fa-arrow-left"></i> Back to Tracking
+            </a>
         </div>
     </div>
-</div>
 
-<!-- Date Range Selector -->
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
+    <div class="col-12">
+        <div class="card history-surface history-control-card">
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <label class="form-label">View History for:</label>
-                        <select class="form-select" id="historyRange">
-                            <option value="1" {% if days==1 %}selected{% endif %}>Last 24 Hours</option>
-                            <option value="7" {% if days==7 %}selected{% endif %}>Last 7 Days</option>
-                            <option value="30" {% if days==30 %}selected{% endif %}>Last 30 Days</option>
-                            <option value="90">Last 90 Days</option>
+                <div class="row g-3 align-items-center">
+                    <div class="col-lg-4">
+                        <label for="historyRange" class="form-label history-control-label">View History For</label>
+                        <select id="historyRange" class="form-select tactical-select history-control-select">
+                            <option value="1" {% if days == 1 %}selected{% endif %}>Last 24 Hours</option>
+                            <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 Days</option>
+                            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 Days</option>
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Export Data:</label>
-                        <div>
-                            <button class="btn btn-outline-primary" id="exportCSV">
-                                <i class="fas fa-download"></i> Export CSV
+                    <div class="col-lg-8">
+                        <div class="d-flex flex-wrap justify-content-lg-end gap-2 align-items-center history-time-controls">
+                            <span class="history-time-fixed">Local Time</span>
+                            <button id="historyRefreshBtn" type="button" class="tactical-btn-outline history-refresh-btn">
+                                <i class="fas fa-rotate"></i> Refresh
                             </button>
-                            <button class="btn btn-outline-success" id="exportPDF">
-                                <i class="fas fa-file-pdf"></i> Export PDF
-                            </button>
+                            <span id="tzContext" class="history-meta">Displaying: Local</span>
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-lg-end gap-2 mt-2 history-integrity-legend">
+                            <span class="history-badge history-badge-verified">VERIFIED</span>
+                            <span class="history-badge history-badge-legacy">LEGACY APPROX</span>
+                            <span class="history-badge history-badge-partial">PARTIAL</span>
+                            <span class="history-badge history-badge-invalid">INVALID</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Summary Cards -->
-<div class="row mt-4">
-    <div class="col-md-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body text-center">
-                <h3 id="totalActivityTime">0h</h3>
-                <p>Total Active Time</p>
+    <div class="col-12">
+        <div id="healthVerdictBanner" class="history-verdict-banner history-surface">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <div class="fw-bold history-verdict-title" id="healthVerdictText">Health Verdict: Loading...</div>
+                    <div class="history-muted" id="healthVerdictReason">Calculating workstation health from reachability, integrity, and anomaly signals.</div>
+                </div>
+                <div id="staleBadge" class="history-badge history-badge-stale d-none">DATA STALE</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body text-center">
-                <h3 id="totalEvents">0</h3>
-                <p>Total Events</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-info text-white">
-            <div class="card-body text-center">
-                <h3 id="uniqueApps">0</h3>
-                <p>Unique Applications</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-warning text-white">
-            <div class="card-body text-center">
-                <h3 id="avgUsage">0%</h3>
-                <p>Avg CPU Usage</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Tabs for Different Data Types -->
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <ul class="nav nav-tabs card-header-tabs" id="historyTabs">
-                    <li class="nav-item">
-                        <a class="nav-link active" data-bs-toggle="tab" href="#activityTab">Activity Logs</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-bs-toggle="tab" href="#resourcesTab">Resource Usage</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-bs-toggle="tab" href="#applicationsTab">Application Usage</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-bs-toggle="tab" href="#timelineTab">Timeline</a>
-                    </li>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Current Status</div>
+                <h3 id="stateCurrentStatus" class="history-kpi-value">Unknown</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Last Seen</div>
+                <h3 id="stateLastSeen" class="history-kpi-value">n/a</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Reachability (7d)</div>
+                <h3 id="stateReachability" class="history-kpi-value">0.0%</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Stability Score</div>
+                <h3 id="stateStability" class="history-kpi-value">0.0</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Samples</div>
+                <h3 id="summarySamples" class="history-kpi-value">{{ summary.sample_count or 0 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Activity Events</div>
+                <h3 id="summaryActivity" class="history-kpi-value">{{ summary.activity_count or 0 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Data Confidence</div>
+                <h3 id="summaryConfidence" class="history-kpi-value">0.0%</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="tactical-stat-card history-surface history-kpi-card">
+            <div class="card-body history-kpi-body">
+                <div class="history-kpi-label">Sampling Health</div>
+                <h3 id="summarySamplingHealth" class="history-kpi-value">n/a</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card history-surface history-risk-card">
+            <div class="card-body py-2">
+                <div class="d-flex flex-wrap gap-2 align-items-center" id="riskBadges">
+                    <span class="history-meta">No risk indicators in selected window.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-9">
+        <div class="card history-surface history-main-card">
+            <div class="card-header history-tabs-header">
+                <ul class="nav nav-tabs card-header-tabs history-tabs" id="historyTabs" role="tablist">
+                    <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#activityTab" type="button" role="tab">Activity</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#resourcesTab" type="button" role="tab">Resources</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#applicationsTab" type="button" role="tab">Applications</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#integrityTab" type="button" role="tab">Integrity</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#policyTab" type="button" role="tab">Policy</button></li>
                 </ul>
             </div>
-            <div class="card-body">
+            <div class="card-body history-main-body">
+                <div id="historyLoading" class="alert alert-secondary history-loading-alert">Loading history data...</div>
+                <div id="historyError" class="alert alert-danger d-none history-error-alert" role="alert">
+                    <span id="historyErrorText"></span>
+                    <button id="historyRetryBtn" class="tactical-btn-outline history-inline-btn ms-2">Retry</button>
+                </div>
                 <div class="tab-content">
-                    <!-- Activity Logs Tab -->
-                    <div class="tab-pane fade show active" id="activityTab">
+                    <div class="tab-pane fade show active" id="activityTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="activityInsights"></div>
                         <div class="table-responsive">
-                            <table class="table">
+                            <table class="table table-sm tactical-table history-table">
                                 <thead>
-                                    <tr>
-                                        <th>Timestamp</th>
-                                        <th>Activity Type</th>
-                                        <th>Event Count</th>
-                                        <th>Details</th>
-                                    </tr>
+                                    <tr><th>Timestamp</th><th>Type</th><th class="metric">Count</th><th>Details</th></tr>
                                 </thead>
-                                <tbody>
-                                    {% for log in activity_logs %}
-                                    <tr>
-                                        <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                        <td>
-                                            <span class="badge 
-                                                {% if 'keyboard' in log.activity_type %}bg-primary
-                                                {% elif 'mouse' in log.activity_type %}bg-success
-                                                {% elif 'idle' in log.activity_type %}bg-warning
-                                                {% else %}bg-secondary{% endif %}">
-                                                {{ log.activity_type }}
-                                            </span>
-                                        </td>
-                                        <td>{{ log.event_count }}</td>
-                                        <td>
-                                            <small class="text-muted">{{ log.details|truncate(50) if log.details else
-                                                'N/A' }}</small>
-                                        </td>
-                                    </tr>
-                                    {% else %}
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">
-                                            <i class="fas fa-history fa-2x mb-3"></i>
-                                            <p>No activity logs found for this period</p>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
+                                <tbody id="activityBody"></tbody>
                             </table>
                         </div>
+                        <button id="activityLoadMore" class="tactical-btn-outline history-inline-btn">Load More</button>
                     </div>
-
-                    <!-- Resource Usage Tab -->
-                    <div class="tab-pane fade" id="resourcesTab">
+                    <div class="tab-pane fade" id="resourcesTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="resourcesInsights"></div>
                         <div class="table-responsive">
-                            <table class="table">
+                            <table class="table table-sm tactical-table history-table">
                                 <thead>
-                                    <tr>
-                                        <th>Timestamp</th>
-                                        <th>CPU Usage</th>
-                                        <th>Memory Usage</th>
-                                        <th>Disk Usage</th>
-                                    </tr>
+                                    <tr><th>Timestamp</th><th class="metric">CPU</th><th class="metric">Memory</th><th class="metric">Disk</th><th class="metric">Up (KB/s)</th><th class="metric">Down (KB/s)</th></tr>
                                 </thead>
-                                <tbody>
-                                    {% for log in resource_logs %}
-                                    <tr>
-                                        <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <div class="progress flex-grow-1 me-2" style="height: 8px;">
-                                                    <div class="progress-bar {{ 'bg-danger' if log.cpu_usage and log.cpu_usage > 80 else 'bg-warning' if log.cpu_usage and log.cpu_usage > 60 else 'bg-success' }}"
-                                                        style="width: {{ log.cpu_usage or 0 }}%"></div>
-                                                </div>
-                                                <span>{{ "%.1f"|format(log.cpu_usage or 0) }}%</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <div class="progress flex-grow-1 me-2" style="height: 8px;">
-                                                    <div class="progress-bar {{ 'bg-danger' if log.memory_usage and log.memory_usage > 80 else 'bg-warning' if log.memory_usage and log.memory_usage > 60 else 'bg-info' }}"
-                                                        style="width: {{ log.memory_usage or 0 }}%"></div>
-                                                </div>
-                                                <span>{{ "%.1f"|format(log.memory_usage or 0) }}%</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <div class="progress flex-grow-1 me-2" style="height: 8px;">
-                                                    <div class="progress-bar {{ 'bg-danger' if log.disk_usage and log.disk_usage > 80 else 'bg-warning' if log.disk_usage and log.disk_usage > 60 else 'bg-primary' }}"
-                                                        style="width: {{ log.disk_usage or 0 }}%"></div>
-                                                </div>
-                                                <span>{{ "%.1f"|format(log.disk_usage or 0) }}%</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% else %}
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">
-                                            <i class="fas fa-microchip fa-2x mb-3"></i>
-                                            <p>No resource usage data found for this period</p>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
+                                <tbody id="resourcesBody"></tbody>
                             </table>
                         </div>
+                        <button id="resourcesLoadMore" class="tactical-btn-outline history-inline-btn">Load More</button>
                     </div>
-
-                    <!-- Application Usage Tab -->
-                    <div class="tab-pane fade" id="applicationsTab">
+                    <div class="tab-pane fade" id="applicationsTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="applicationsInsights"></div>
                         <div class="table-responsive">
-                            <table class="table">
+                            <table class="table table-sm tactical-table history-table">
                                 <thead>
-                                    <tr>
-                                        <th>Application Name</th>
-                                        <th>Total Usage Time</th>
-                                        <th>Sessions</th>
-                                        <th>Last Used</th>
-                                    </tr>
+                                    <tr><th>Timestamp</th><th>Application</th><th class="metric">Duration (s)</th><th>Status</th></tr>
                                 </thead>
-                                <tbody>
-                                    {% set app_groups = {} %}
-                                    {% for log in application_logs %}
-                                    {% if log.application_name not in app_groups %}
-                                    {% set _ = app_groups.update({log.application_name: []}) %}
-                                    {% endif %}
-                                    {% set _ = app_groups[log.application_name].append(log) %}
-                                    {% endfor %}
-
-                                    {% for app_name, logs in app_groups.items() %}
-                                    {% set total_duration = logs|sum(attribute='duration') %}
-                                    <tr>
-                                        <td>
-                                            <strong>{{ app_name }}</strong>
-                                            {% if logs[0].window_title %}
-                                            <br><small class="text-muted">{{ logs[0].window_title|truncate(30)
-                                                }}</small>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% set hours = (total_duration / 3600)|int %}
-                                            {% set minutes = ((total_duration % 3600) / 60)|int %}
-                                            {{ hours }}h {{ minutes }}m
-                                        </td>
-                                        <td>{{ logs|length }}</td>
-                                        <td>{{ logs[0].timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                                    </tr>
-                                    {% else %}
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">
-                                            <i class="fas fa-window-restore fa-2x mb-3"></i>
-                                            <p>No application usage data found for this period</p>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
+                                <tbody id="applicationsBody"></tbody>
                             </table>
                         </div>
+                        <button id="applicationsLoadMore" class="tactical-btn-outline history-inline-btn">Load More</button>
                     </div>
-
-                    <!-- Timeline Tab -->
-                    <div class="tab-pane fade" id="timelineTab">
-                        <div class="timeline">
-                            {% for log in activity_logs|sort(attribute='timestamp') %}
-                            {% if loop.index0 % 10 == 0 %} {# Show every 10th entry for performance #}
-                            <div class="timeline-item">
-                                <div class="timeline-marker 
-                                    {% if 'keyboard' in log.activity_type %}bg-primary
-                                    {% elif 'mouse' in log.activity_type %}bg-success
-                                    {% elif 'idle' in log.activity_type %}bg-warning
-                                    {% else %}bg-secondary{% endif %}">
-                                </div>
-                                <div class="timeline-content">
-                                    <div class="d-flex justify-content-between">
-                                        <strong>{{ log.activity_type|title }} Activity</strong>
-                                        <small class="text-muted">{{ log.timestamp.strftime('%H:%M:%S') }}</small>
-                                    </div>
-                                    <p class="mb-1">{{ log.event_count }} events</p>
-                                    {% if log.details %}
-                                    <small class="text-muted">{{ log.details|truncate(100) }}</small>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            {% endif %}
-                            {% else %}
-                            <div class="text-center text-muted py-4">
-                                <i class="fas fa-stream fa-2x mb-3"></i>
-                                <p>No timeline data available for this period</p>
-                            </div>
-                            {% endfor %}
+                    <div class="tab-pane fade" id="integrityTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="integrityInsights"></div>
+                        <div class="mb-3">
+                            <div class="history-meta mb-1">Integrity Timeline</div>
+                            <div id="integrityTimeline" class="timeline-track"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead>
+                                    <tr><th>Received</th><th>Integrity</th><th>Source</th><th>Schema</th><th>Notes</th></tr>
+                                </thead>
+                                <tbody id="integrityBody"></tbody>
+                            </table>
+                        </div>
+                        <button id="integrityLoadMore" class="tactical-btn-outline history-inline-btn">Load More</button>
+                    </div>
+                    <div class="tab-pane fade" id="policyTab" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead>
+                                    <tr><th>Time</th><th>User</th><th>Domain</th><th>Severity</th><th>Action</th></tr>
+                                </thead>
+                                <tbody id="policyBody"><tr><td colspan="5" class="text-center text-muted py-3">No policy events yet.</td></tr></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="col-xl-3">
+        <div class="card history-surface history-actions-card">
+            <div class="card-header fw-semibold history-actions-header">Actions</div>
+            <div class="card-body history-actions-body">
+                <button id="actionRefresh" class="tactical-btn-outline history-action-btn">
+                    <i class="fas fa-rotate"></i> Refresh Live Data
+                </button>
+                <button id="actionRunIntegrity" class="tactical-btn-outline history-action-btn">
+                    <i class="fas fa-shield-halved"></i> Run Integrity Check
+                </button>
+                <a href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}" class="tactical-btn-outline history-action-btn">
+                    <i class="fas fa-desktop"></i> Open Monitor
+                </a>
+                <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}" class="tactical-btn-outline history-action-btn">
+                    <i class="fas fa-satellite-dish"></i> Open Live View
+                </a>
+                <button id="actionArchive" class="tactical-btn-outline history-action-btn history-action-danger">
+                    <i class="fas fa-box-archive"></i> Archive Device
+                </button>
+                <button id="actionAssignScope" class="tactical-btn-outline history-action-btn">
+                    <i class="fas fa-sitemap"></i> Assign Site/Dept
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
-
-<style>
-    .timeline {
-        position: relative;
-        padding-left: 30px;
-    }
-
-    .timeline-item {
-        position: relative;
-        margin-bottom: 20px;
-    }
-
-    .timeline-marker {
-        position: absolute;
-        left: -30px;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        top: 5px;
-    }
-
-    .timeline-content {
-        background: #f8f9fa;
-        padding: 10px 15px;
-        border-radius: 5px;
-        border-left: 3px solid #dee2e6;
-    }
-</style>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Update summary statistics
-        updateSummaryStats();
-
-        // Handle date range changes
-        document.getElementById('historyRange').addEventListener('change', function () {
-            const days = this.value;
-            window.location.href = `?days=${days}`;
-        });
-
-        // Export functionality
-        document.getElementById('exportCSV').addEventListener('click', function () {
-            alert('CSV export functionality would be implemented here');
-        });
-
-        document.getElementById('exportPDF').addEventListener('click', function () {
-            alert('PDF export functionality would be implemented here');
-        });
-    });
-
-    function updateSummaryStats() {
-        // Calculate statistics from displayed data
-        const activityLogs = {{ activity_logs| length
-    }};
-
-    // Calculate unique applications
-    const uniqueApps = new Set();
-    {% for log in application_logs %}
-    uniqueApps.add('{{ log.application_name }}');
-    {% endfor %}
-
-    // Calculate total active time (simplified)
-    let totalMinutes = 0;
-    {% for log in application_logs %}
-    totalMinutes += {{ log.duration or 0 }} / 60;
-    {% endfor %}
-    const totalHours = Math.floor(totalMinutes / 60);
-
-    document.getElementById('totalActivityTime').textContent = totalHours + 'h';
-    document.getElementById('totalEvents').textContent = activityLogs;
-    document.getElementById('uniqueApps').textContent = uniqueApps.size;
-
-    // Calculate average CPU usage
-    const resourceLogs = {{ resource_logs| length }};
-    let totalCPU = 0;
-    let count = 0;
-    {% for log in resource_logs %}
-    {% if log.cpu_usage %}
-    totalCPU += {{ log.cpu_usage }};
-    count += 1;
-    {% endif %}
-    {% endfor %}
-    const avgCPU = count > 0 ? (totalCPU / count).toFixed(1) : 0;
-    document.getElementById('avgUsage').textContent = avgCPU + '%';
-}
+    window.TRACKING_HISTORY_CONFIG = {
+        deviceId: {{ device.id }},
+        defaultDays: {{ days or 7 }},
+        archiveEndpoint: "{{ url_for('tracking_bp.api_delete_device') }}",
+        initialFocus: {{ (request.args.get('focus') or '')|tojson }}
+    };
 </script>
+<script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v=20260227e"></script>
 {% endblock %}

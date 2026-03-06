@@ -63,7 +63,8 @@
                                 </td>
                                 <td>{{ user.email }}</td>
                                 <td>
-                                    <span class="badge bg-{{ 'primary' if user.role == 'admin' else 'secondary' }}">
+                                    <span
+                                        class="badge bg-{{ 'primary' if user.role == 'admin' else 'info' if user.role == 'manager' else 'secondary' }}">
                                         {{ user.role }}
                                     </span>
                                 </td>
@@ -167,15 +168,35 @@
                                     <option value="">Select Role</option>
                                     <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>
                                         Administrator</option>
+                                    <option value="manager" {% if user and user.role=='manager' %}selected{% endif %}>
+                                        Manager</option>
+                                    <option value="operator" {% if user and user.role=='operator' %}selected{% endif %}>
+                                        Operator</option>
+                                    <option value="viewer" {% if user and user.role=='viewer' %}selected{% endif %}>
+                                        Viewer</option>
                                     <option value="user" {% if user and user.role=='user' %}selected{% endif %}>User
-                                    </option>
+                                        (Legacy)</option>
                                 </select>
-                                <div class="form-text">Admin has full system access</div>
+                                <div class="form-text">Admin has full system access, Managers/Operators are restricted
+                                    to Departments</div>
                             </div>
                         </div>
                     </div>
 
                     <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="department_id" class="form-label">Department (For non-admins)</label>
+                                <select class="form-control" id="department_id" name="department_id">
+                                    <option value="">No Department Assigned</option>
+                                    {% for dept in departments %}
+                                    <option value="{{ dept.id }}" {% if user and user.department_id==dept.id
+                                        %}selected{% endif %}>{{ dept.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Restricts user to see only devices in this department</div>
+                            </div>
+                        </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="phone_number" class="form-label">Phone Number</label>

@@ -32,7 +32,7 @@ class SwitchTopology(db.Model):
     local_device = db.relationship(
         'Device', 
         foreign_keys=[local_device_id], 
-        backref=db.backref('local_neighbors', lazy=True)
+        backref=db.backref('local_neighbors', lazy=True, cascade='all, delete-orphan')
     )
     remote_device = db.relationship(
         'Device', 

@@ -57,7 +57,7 @@ class PollTask(db.Model):
     # ── Relationships ──────────────────────────────────────────
     device = db.relationship(
         'Device',
-        backref=db.backref('poll_tasks', lazy='dynamic'),
+        backref=db.backref('poll_tasks', lazy='dynamic', cascade='all, delete-orphan'),
         foreign_keys=[device_id]
     )
 

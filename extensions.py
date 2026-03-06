@@ -1,10 +1,40 @@
 from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
 import redis
 import logging
 from config import Config
 
+_bcrypt_fallback_reason = None
+try:
+    from flask_bcrypt import Bcrypt
+except Exception as bcrypt_import_error:  # pragma: no cover - environment fallback
+    from werkzeug.security import check_password_hash as _wz_check_password_hash
+    from werkzeug.security import generate_password_hash as _wz_generate_password_hash
+
+    _bcrypt_fallback_reason = str(bcrypt_import_error)
+
+    class Bcrypt:  # pragma: no cover - exercised only in incompatible runtimes
+        def init_app(self, app):
+            return self
+
+        def generate_password_hash(self, password, rounds=None, prefix=None):
+            if isinstance(password, bytes):
+                password = password.decode('utf-8')
+            generated = _wz_generate_password_hash(str(password))
+            return generated.encode('utf-8')
+
+        def check_password_hash(self, pw_hash, password):
+            if isinstance(pw_hash, bytes):
+                pw_hash = pw_hash.decode('utf-8')
+            if isinstance(password, bytes):
+                password = password.decode('utf-8')
+            return _wz_check_password_hash(str(pw_hash), str(password))
+
 logger = logging.getLogger(__name__)
+if _bcrypt_fallback_reason:  # pragma: no cover - environment fallback
+    logger.warning(
+        "[Auth] Flask-Bcrypt unavailable; using Werkzeug fallback. reason=%s",
+        _bcrypt_fallback_reason,
+    )
 
 # Initialize extensions without app
 db = SQLAlchemy()

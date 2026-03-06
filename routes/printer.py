@@ -1,12 +1,14 @@
 """
 Printer Audit Routes — API endpoints for printer metrics and print job audit trail.
 """
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
 from datetime import datetime, timedelta
 from extensions import db
 from models.printer import PrinterMetrics, PrintJobAudit
 from models.device import Device
+from models.tracked_device import TrackedDevice
 from services.snmp_service import snmp_service
+from services.tracking_reconcile import normalize_mac
 
 printer_bp = Blueprint('printer', __name__)
 
@@ -23,8 +25,36 @@ def printers_list_page():
 
 @printer_bp.route('/printer/<int:device_id>', methods=['GET'])
 def printer_detail_page(device_id):
-    """Render the printer detail page."""
-    return render_template('printers/detail.html')
+    """Render the printer detail page with live-tracking fallback safety."""
+    device = Device.query.get(device_id)
+    if device is None:
+        tracked = TrackedDevice.query.get(device_id)
+        if tracked is None:
+            abort(404)
+
+        tracked_mac = normalize_mac(getattr(tracked, 'mac_address', None))
+        if tracked_mac:
+            return redirect(url_for('tracking_bp.live_tracking', mac=tracked_mac))
+        return redirect(url_for('tracking_bp.tracked_device_live', device_id=tracked.id, warn='no_mac'))
+
+    normalized_mac = normalize_mac(getattr(device, 'macaddress', None))
+    tracked_live_url = None
+    warning_code = None
+    if normalized_mac:
+        tracked = TrackedDevice.query.filter_by(mac_address=normalized_mac).first()
+        if tracked:
+            tracked_live_url = url_for('tracking_bp.live_tracking', mac=normalized_mac)
+        else:
+            warning_code = 'no_live_device'
+    else:
+        warning_code = 'no_mac'
+
+    return render_template(
+        'printers/detail.html',
+        device=device,
+        tracked_live_url=tracked_live_url,
+        warning_code=warning_code,
+    )
 
 
 # ============================================================================

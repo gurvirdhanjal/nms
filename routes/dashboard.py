@@ -2,13 +2,19 @@
 Dashboard API endpoints for Network Monitoring System.
 Provides aggregated health, trends, and problem detection.
 """
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, session
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case, or_
 import time
 from utils.server_health import compute_server_health, is_server_device
 from extensions import db
-from middleware.rbac import require_login
+from middleware.rbac import (
+    current_scope_cache_fragment,
+    get_ui_rbac_context,
+    require_login,
+    require_permission,
+    scoped_query,
+)
 
 dashboard_bp = Blueprint('dashboard_bp', __name__, url_prefix='/api/dashboard')
 
@@ -35,7 +41,8 @@ def _versioned_cache_key(key: str) -> str:
 def get_cached(key, ttl_seconds=30):
     """Get value from cache if not expired."""
     cache_key = _versioned_cache_key(key)
-    if redis_client:
+    use_redis = bool(redis_client) and not current_app.config.get('TESTING')
+    if use_redis:
         try:
             val = redis_client.get(cache_key)
             if val:
@@ -56,7 +63,8 @@ def get_cached(key, ttl_seconds=30):
 def set_cached(key, value, ttl_seconds=30):
     """Set value in cache with TTL."""
     cache_key = _versioned_cache_key(key)
-    if redis_client:
+    use_redis = bool(redis_client) and not current_app.config.get('TESTING')
+    if use_redis:
         try:
             # We serialize to JSON strings for Redis
             payload = json.dumps(value)
@@ -77,7 +85,8 @@ def acquire_stampede_lock(lock_key, ttl_seconds=10):
     Returns True if acquired, False if someone else is building it.
     """
     versioned_lock_key = _versioned_cache_key(f"lock:{lock_key}")
-    if redis_client:
+    use_redis = bool(redis_client) and not current_app.config.get('TESTING')
+    if use_redis:
         try:
             # SET NX EX
             acquired = redis_client.set(versioned_lock_key, "1", nx=True, ex=ttl_seconds)
@@ -91,7 +100,8 @@ def acquire_stampede_lock(lock_key, ttl_seconds=10):
 def release_stampede_lock(lock_key):
     """Best-effort lock release for cache rebuild coordination."""
     versioned_lock_key = _versioned_cache_key(f"lock:{lock_key}")
-    if redis_client:
+    use_redis = bool(redis_client) and not current_app.config.get('TESTING')
+    if use_redis:
         try:
             redis_client.delete(versioned_lock_key)
         except Exception:
@@ -174,6 +184,26 @@ def _build_subnet_health(all_devices, latest_scans, ip_to_subnet):
     return result
 
 
+def _scope_cache_suffix():
+    return current_scope_cache_fragment().replace(':', '__')
+
+
+def _snapshot_meta():
+    context = get_ui_rbac_context()
+    return {
+        'role': context.get('role', 'guest'),
+        'scope_key': context.get('scope_key', 'global'),
+        'scope_label': context.get('scope_label', 'Global'),
+        'generated_at_utc': datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    }
+
+
+def _scoped_devices():
+    from models.device import Device
+    devices = scoped_query(Device).all()
+    return devices, [d.device_id for d in devices if getattr(d, 'device_id', None) is not None]
+
+
 @dashboard_bp.route('/subnet-details')
 def get_subnet_details():
     """
@@ -213,10 +243,11 @@ def get_subnet_details():
     try:
         from models.device import Device
         from models.scan_history import DeviceScanHistory
+        from middleware.rbac import scoped_query
 
         normalized_subnet = _normalize_subnet(subnet_value)
 
-        base_query = Device.query
+        base_query = scoped_query(Device)
         if normalized_subnet.lower() == 'unassigned':
             base_query = base_query.filter(
                 or_(
@@ -327,8 +358,8 @@ def get_summary():
     Cache: 30s
     """
     
-    # Check cache
-    cached = get_cached('summary')
+    scope_cache_key = f"summary:{_scope_cache_suffix()}"
+    cached = get_cached(scope_cache_key)
     if cached:
         return jsonify(cached)
     
@@ -336,14 +367,13 @@ def get_summary():
         from models.device import Device
         from models.scan_history import DeviceScanHistory
         from models.dashboard import DashboardEvent
-        
+
+        scoped_devices, scoped_device_ids = _scoped_devices()
+        scoped_device_ips = {d.device_ip for d in scoped_devices if getattr(d, 'device_ip', None)}
+
         # 1. Device Counts
-        # Total Inventory (All devices)
-        # Total Inventory (All devices)
-        inventory_count = Device.query.count()
-        
-        # Maintenance Count
-        maintenance_count = Device.query.filter_by(maintenance_mode=True).count()
+        inventory_count = len(scoped_devices)
+        maintenance_count = sum(1 for device in scoped_devices if bool(getattr(device, 'maintenance_mode', False)))
         
         # DEBUG LOGGING
         db_path = db.engine.url.database
@@ -352,24 +382,24 @@ def get_summary():
         
         # Monitored Devices (The denominator for availability)
         # USER REQUEST: Removed is_monitored filter to show ALL devices
-        monitored_count = Device.query.count()
+        monitored_count = len(scoped_devices)
         # Fallback to avoid division by zero
         monitored_denominator = monitored_count if monitored_count > 0 else 1
-        
-        # Get latest scan per device
-        latest_subq = db.session.query(
-            DeviceScanHistory.device_ip,
-            func.max(DeviceScanHistory.scan_id).label('max_id')
-        ).group_by(DeviceScanHistory.device_ip).subquery()
-        
-        latest_scans = db.session.query(DeviceScanHistory).join(
-            latest_subq,
-            (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-            (DeviceScanHistory.scan_id == latest_subq.c.max_id)
-        ).join(
-            Device,
-            Device.device_ip == DeviceScanHistory.device_ip
-        ).all()
+
+        latest_scans = []
+        if scoped_device_ips:
+            latest_subq = db.session.query(
+                DeviceScanHistory.device_ip,
+                func.max(DeviceScanHistory.scan_id).label('max_id')
+            ).filter(
+                DeviceScanHistory.device_ip.in_(scoped_device_ips)
+            ).group_by(DeviceScanHistory.device_ip).subquery()
+
+            latest_scans = db.session.query(DeviceScanHistory).join(
+                latest_subq,
+                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
+                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+            ).all()
         
         healthy_count = 0
         degraded_count = 0
@@ -416,7 +446,7 @@ def get_summary():
         
         # CRITICAL FIX: Count devices without scan history as "Unknown"
         # Get all device IPs from Device table
-        all_devices = Device.query.all()
+        all_devices = scoped_devices
         all_device_ips = set([d.device_ip for d in all_devices])
         
         # Build device_ip → subnet_cidr map for subnet grouping
@@ -443,16 +473,16 @@ def get_summary():
         
         # Get uptime % for EACH monitored device over last 24h
         # Query: device_ip, total_scans, online_scans
-        stats_24h = db.session.query(
-            DeviceScanHistory.device_ip,
-            func.count(DeviceScanHistory.scan_id).label('total'),
-            func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
-        ).join(
-            Device,
-            Device.device_ip == DeviceScanHistory.device_ip
-        ).filter(
-            DeviceScanHistory.scan_timestamp >= cutoff_24h
-        ).group_by(DeviceScanHistory.device_ip).all()
+        stats_24h = []
+        if scoped_device_ips:
+            stats_24h = db.session.query(
+                DeviceScanHistory.device_ip,
+                func.count(DeviceScanHistory.scan_id).label('total'),
+                func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
+            ).filter(
+                DeviceScanHistory.scan_timestamp >= cutoff_24h,
+                DeviceScanHistory.device_ip.in_(scoped_device_ips)
+            ).group_by(DeviceScanHistory.device_ip).all()
         
         total_uptime_pct = 0
         devices_with_history = 0
@@ -471,9 +501,26 @@ def get_summary():
         avg_packet_loss = round(sum(packet_losses) / len(packet_losses), 2) if packet_losses else 0
         
         # Alerts
-        critical_count = DashboardEvent.query.filter_by(severity='CRITICAL', resolved=False).count()
-        warning_count = DashboardEvent.query.filter_by(severity='WARNING', resolved=False).count()
-        info_count = DashboardEvent.query.filter_by(severity='INFO', resolved=False).count()
+        if scoped_device_ids:
+            critical_count = DashboardEvent.query.filter(
+                DashboardEvent.device_id.in_(scoped_device_ids),
+                DashboardEvent.severity == 'CRITICAL',
+                DashboardEvent.resolved.is_(False),
+            ).count()
+            warning_count = DashboardEvent.query.filter(
+                DashboardEvent.device_id.in_(scoped_device_ids),
+                DashboardEvent.severity == 'WARNING',
+                DashboardEvent.resolved.is_(False),
+            ).count()
+            info_count = DashboardEvent.query.filter(
+                DashboardEvent.device_id.in_(scoped_device_ids),
+                DashboardEvent.severity == 'INFO',
+                DashboardEvent.resolved.is_(False),
+            ).count()
+        else:
+            critical_count = 0
+            warning_count = 0
+            info_count = 0
         
         result = {
             'timestamp': datetime.utcnow().isoformat(),
@@ -527,7 +574,7 @@ def get_summary():
             'subnet_health': _build_subnet_health(all_devices, latest_scans, ip_to_subnet)
         }
         
-        set_cached('summary', result, ttl_seconds=30)
+        set_cached(scope_cache_key, result, ttl_seconds=30)
         return jsonify(result)
         
     except Exception as e:
@@ -552,9 +599,15 @@ def get_full_snapshot():
     alerts_limit = request.args.get('limit', '200')
     worker_compute = request.args.get('worker_compute', '').lower() in ('1', 'true', 'yes')
     fresh_top_problems = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
-    
-    snapshot_cache_key = f'full_snapshot_{time_range}_{alerts_status}_{alerts_limit}'
-    snapshot_lock_key = f'full_snapshot:{time_range}:{alerts_status}:{alerts_limit}'
+
+    meta = _snapshot_meta()
+    scope_fragment = _scope_cache_suffix()
+    snapshot_cache_key = (
+        f"full_snapshot_{scope_fragment}_{time_range}_{alerts_status}_{alerts_limit}"
+    )
+    snapshot_lock_key = (
+        f"full_snapshot:{scope_fragment}:{time_range}:{alerts_status}:{alerts_limit}"
+    )
     lock_acquired = False
 
     if not worker_compute and not fresh_top_problems:
@@ -575,10 +628,16 @@ def get_full_snapshot():
                     from flask import Response
                     return Response(snapshot.payload, mimetype='application/json')
 
-            return jsonify({
-                'error': 'SNAPSHOT_WARMING',
-                'message': 'Dashboard snapshot is being rebuilt. Retry shortly.'
-            }), 503
+            # Fallback: avoid surfacing 503 to end users while another worker warms cache.
+            # We compute this request inline and return a normal payload.
+            try:
+                from flask import current_app
+                current_app.logger.warning(
+                    "Snapshot lock busy for key=%s; computing inline fallback response",
+                    snapshot_cache_key
+                )
+            except Exception:
+                pass
 
     try:
         from routes.server_metrics import get_server_health_summary, get_fleet_metrics
@@ -601,7 +660,8 @@ def get_full_snapshot():
             'trends': None,
             'inventory': None,
             'serverHealth': None,
-            'alerts': None
+            'alerts': None,
+            'meta': meta,
         }
         errors = {}
 
@@ -641,8 +701,9 @@ def get_top_problems():
     """
     
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    scoped_cache_key = f"top-problems:{_scope_cache_suffix()}"
     if not force_fresh:
-        cached = get_cached('top-problems', 10)
+        cached = get_cached(scoped_cache_key, 10)
         if cached:
             return jsonify(cached)
     
@@ -650,21 +711,30 @@ def get_top_problems():
         from models.device import Device
         from models.scan_history import DeviceScanHistory
         from models.dashboard import DashboardEvent
-        
-        # Latest scan per device (same subquery pattern)
-        latest_subq = db.session.query(
-            DeviceScanHistory.device_ip,
-            func.max(DeviceScanHistory.scan_id).label('max_id')
-        ).group_by(DeviceScanHistory.device_ip).subquery()
-        
-        latest_scans = db.session.query(DeviceScanHistory, Device).join(
-            latest_subq,
-            (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-            (DeviceScanHistory.scan_id == latest_subq.c.max_id)
-        ).join(
-            Device,
-            Device.device_ip == DeviceScanHistory.device_ip
-        ).all()
+
+        scoped_devices, scoped_device_ids = _scoped_devices()
+        device_by_ip = {d.device_ip: d for d in scoped_devices if getattr(d, 'device_ip', None)}
+        scoped_ips = set(device_by_ip.keys())
+
+        latest_scans = []
+        if scoped_ips:
+            latest_subq = db.session.query(
+                DeviceScanHistory.device_ip,
+                func.max(DeviceScanHistory.scan_id).label('max_id')
+            ).filter(
+                DeviceScanHistory.device_ip.in_(scoped_ips)
+            ).group_by(DeviceScanHistory.device_ip).subquery()
+
+            latest_scan_rows = db.session.query(DeviceScanHistory).join(
+                latest_subq,
+                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
+                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+            ).all()
+            latest_scans = [
+                (scan, device_by_ip[scan.device_ip])
+                for scan in latest_scan_rows
+                if scan.device_ip in device_by_ip
+            ]
         
         # High Latency (Top 5)
         # s is now (DeviceScanHistory, Device)
@@ -711,11 +781,15 @@ def get_top_problems():
         
         # Recent Alerts (Top 5 Active/Unresolved)
         # We prioritize unresolved alerts. If none, maybe show resolved? User wants "Active Alerts".
-        recent_alerts = DashboardEvent.query.filter(
-            DashboardEvent.resolved == False
-        ).order_by(
-            DashboardEvent.timestamp.desc()
-        ).limit(10).all()
+        if scoped_device_ids:
+            recent_alerts = DashboardEvent.query.filter(
+                DashboardEvent.device_id.in_(scoped_device_ids),
+                DashboardEvent.resolved.is_(False),
+            ).order_by(
+                DashboardEvent.timestamp.desc()
+            ).limit(10).all()
+        else:
+            recent_alerts = []
         
         result = {
             'high_latency': [
@@ -764,7 +838,7 @@ def get_top_problems():
             ]
         }
         
-        set_cached('top-problems', result, ttl_seconds=10)
+        set_cached(scoped_cache_key, result, ttl_seconds=10)
         return jsonify(result)
         
     except Exception as e:
@@ -785,11 +859,21 @@ def get_all_alerts():
     try:
         from models.dashboard import DashboardEvent
         from models.device import Device
-        
+
+        scoped_device_ids = [
+            row[0]
+            for row in scoped_query(Device).with_entities(Device.device_id).all()
+            if row and row[0] is not None
+        ]
+
         status = request.args.get('status', 'active')
         limit = int(request.args.get('limit', 100))
-        
+
         query = DashboardEvent.query
+        if scoped_device_ids:
+            query = query.filter(DashboardEvent.device_id.in_(scoped_device_ids))
+        else:
+            query = query.filter(False)
         
         if status == 'active':
             query = query.filter_by(resolved=False)
@@ -799,7 +883,7 @@ def get_all_alerts():
         alerts = query.order_by(DashboardEvent.timestamp.desc()).limit(limit).all()
 
         device_ids = [a.device_id for a in alerts if a.device_id]
-        devices = Device.query.filter(Device.device_id.in_(device_ids)).all() if device_ids else []
+        devices = scoped_query(Device).filter(Device.device_id.in_(device_ids)).all() if device_ids else []
         device_map = {d.device_id: d for d in devices}
 
         def classify_scope(device_type: str) -> str:
@@ -842,32 +926,49 @@ def get_all_alerts():
 # ============================================================
 # POST /api/alerts/<id>/acknowledge
 # ============================================================
-@dashboard_bp.route('/alerts/<event_id>/acknowledge', methods=['POST'])
 def acknowledge_alert(event_id):
-
     try:
         from models.dashboard import DashboardEvent
         event = DashboardEvent.query.get(event_id)
-        
+
         if not event:
             return jsonify({'error': 'Alert not found'}), 404
-            
+
         event.is_acknowledged = True
         event.acknowledged_at = datetime.utcnow()
         event.acknowledged_by = session.get('user_id', 'admin') # Default to admin if no user_id
-        
+
         db.session.commit()
+
+        # Audit logging
+        from middleware.rbac import create_audit_log
+        device_name = event.device_ip or 'Unknown'
+        if event.device_id:
+            from models.device import Device
+            device = Device.query.get(event.device_id)
+            if device:
+                device_name = device.device_name or device.device_ip
+
+        create_audit_log(
+            action='acknowledge',
+            entity_type='alert',
+            entity_id=None,  # Alert IDs are UUIDs, not integers
+            entity_name=f"{event.event_id[:8]} - {device_name} - {event.severity}",
+            description=f"Alert acknowledged: {event.message[:100]}"
+        )
+
         return jsonify({'status': 'success', 'message': 'Alert acknowledged'})
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 # ============================================================
 # POST /api/alerts/<id>/resolve
 # ============================================================
 @dashboard_bp.route('/alerts/<event_id>/resolve', methods=['POST'])
+@require_permission('devices.edit')
 def resolve_alert(event_id):
-
     try:
         from models.dashboard import DashboardEvent
         event = DashboardEvent.query.get(event_id)
@@ -880,6 +981,24 @@ def resolve_alert(event_id):
         event.message += " [MANUALLY RESOLVED]"
         
         db.session.commit()
+        
+        # Audit logging
+        from middleware.rbac import create_audit_log
+        device_name = event.device_ip or 'Unknown'
+        if event.device_id:
+            from models.device import Device
+            device = Device.query.get(event.device_id)
+            if device:
+                device_name = device.device_name or device.device_ip
+        
+        create_audit_log(
+            action='resolve',
+            entity_type='alert',
+            entity_id=None,  # Alert IDs are UUIDs, not integers
+            entity_name=f"{event.event_id[:8]} - {device_name} - {event.severity}",
+            description=f"Alert resolved: {event.message[:100]}"
+        )
+        
         return jsonify({'status': 'success', 'message': 'Alert resolved'})
         
     except Exception as e:
@@ -899,7 +1018,7 @@ def get_trends():
     """
     
     time_range = request.args.get('range', '24h')
-    cache_key = f'trends_{time_range}'
+    cache_key = f"trends:{_scope_cache_suffix()}:{time_range}"
     
     cached = get_cached(cache_key, 300)
     if cached:
@@ -907,7 +1026,9 @@ def get_trends():
     
     try:
         from models.scan_history import DeviceScanHistory
-        
+        scoped_devices, _ = _scoped_devices()
+        scoped_ips = {device.device_ip for device in scoped_devices if getattr(device, 'device_ip', None)}
+
         # Determine cutoff
         if time_range == '1h':
             cutoff = datetime.utcnow() - timedelta(hours=1)
@@ -948,9 +1069,12 @@ def get_trends():
                 buckets[key] = {'online': 0, 'total': 0, 'latencies': []}
             current_time_step += timedelta(minutes=bucket_minutes)
 
-        scans = DeviceScanHistory.query.filter(
-            DeviceScanHistory.scan_timestamp >= cutoff
-        ).order_by(DeviceScanHistory.scan_timestamp).all()
+        scans = []
+        if scoped_ips:
+            scans = DeviceScanHistory.query.filter(
+                DeviceScanHistory.scan_timestamp >= cutoff,
+                DeviceScanHistory.device_ip.in_(scoped_ips),
+            ).order_by(DeviceScanHistory.scan_timestamp).all()
         
         # Fill with actual data
         for scan in scans:
@@ -1018,14 +1142,18 @@ def get_availability_details():
     """
 
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
+    scoped_cache_key = f"availability-details:{_scope_cache_suffix()}"
     if not force_fresh:
-        cached = get_cached('availability-details', 60)
+        cached = get_cached(scoped_cache_key, 60)
         if cached:
             return jsonify(cached)
 
     try:
         from models.scan_history import DeviceScanHistory
         from models.device import Device
+
+        scoped_devices, _ = _scoped_devices()
+        scoped_ips = {device.device_ip for device in scoped_devices if getattr(device, 'device_ip', None)}
 
         now = datetime.utcnow()
         bucket_start = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
@@ -1037,9 +1165,12 @@ def get_availability_details():
             ts = bucket_start + timedelta(hours=i)
             buckets[ts] = {'online': 0, 'total': 0}
 
-        scans = DeviceScanHistory.query.filter(
-            DeviceScanHistory.scan_timestamp >= cutoff
-        ).all()
+        scans = []
+        if scoped_ips:
+            scans = DeviceScanHistory.query.filter(
+                DeviceScanHistory.scan_timestamp >= cutoff,
+                DeviceScanHistory.device_ip.in_(scoped_ips),
+            ).all()
 
         for scan in scans:
             if not scan.scan_timestamp:
@@ -1067,7 +1198,8 @@ def get_availability_details():
             func.count(DeviceScanHistory.scan_id).label('total'),
             func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
         ).filter(
-            DeviceScanHistory.scan_timestamp >= cutoff
+            DeviceScanHistory.scan_timestamp >= cutoff,
+            DeviceScanHistory.device_ip.in_(scoped_ips) if scoped_ips else False,
         ).group_by(DeviceScanHistory.device_ip).subquery()
 
         stats = db.session.query(
@@ -1116,7 +1248,7 @@ def get_availability_details():
             'worst_availability': worst_availability
         }
 
-        set_cached('availability-details', result, ttl_seconds=60)
+        set_cached(scoped_cache_key, result, ttl_seconds=60)
         return jsonify(result)
 
     except Exception as e:
@@ -1140,12 +1272,17 @@ def get_inventory_stats():
         from models.device import Device
         from models.snmp_config import DeviceSnmpConfig
         from sqlalchemy import func
+        from middleware.rbac import scoped_query
+        
+        # Get scoped devices first
+        scoped_devices = scoped_query(Device).all()
+        scoped_device_ids = [d.device_id for d in scoped_devices]
         
         # 1. Vendor Distribution
         vendor_query = db.session.query(
             Device.manufacturer, 
             func.count(Device.device_id)
-        ).group_by(Device.manufacturer).all()
+        ).filter(Device.device_id.in_(scoped_device_ids) if scoped_device_ids else False).group_by(Device.manufacturer).all()
         
         by_vendor = {
             (v[0] or 'Unknown'): v[1] 
@@ -1164,7 +1301,7 @@ def get_inventory_stats():
         type_query = db.session.query(
             Device.device_type, 
             func.count(Device.device_id)
-        ).group_by(Device.device_type).all()
+        ).filter(Device.device_id.in_(scoped_device_ids) if scoped_device_ids else False).group_by(Device.device_type).all()
 
         by_type = {}
         for dtype, count in type_query:
@@ -1172,11 +1309,14 @@ def get_inventory_stats():
             by_type[label] = by_type.get(label, 0) + count
         
         # 3. SNMP Stats
-        total_devices = Device.query.count()
-        snmp_enabled = DeviceSnmpConfig.query.filter_by(is_enabled=True).count()
+        total_devices = len(scoped_device_ids)
+        snmp_enabled = DeviceSnmpConfig.query.filter(
+            DeviceSnmpConfig.device_id.in_(scoped_device_ids) if scoped_device_ids else False,
+            DeviceSnmpConfig.is_enabled == True
+        ).count()
         
         # 4. Full Device List (for table)
-        devices = Device.query.all()
+        devices = scoped_devices
         
         # calculate server health for each device (agent metrics only)
         from models.server_health import ServerHealthLog

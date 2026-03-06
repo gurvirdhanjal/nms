@@ -1,9 +1,10 @@
+import json
+import logging
 import os
 import sys
 import time
-import json
-import logging
 from datetime import datetime
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 # Add the project directory to the Python path
@@ -18,6 +19,7 @@ logger = logging.getLogger('dashboard_worker')
 
 app = create_app()
 
+
 def compute_and_store_snapshot():
     """
     Computes the full dashboard snapshot and stores it in the database natively.
@@ -25,7 +27,7 @@ def compute_and_store_snapshot():
     """
     start_time = time.time()
     logger.info("Starting Dashboard Snapshot aggregation cycle...")
-    
+
     with app.app_context():
         # Using the test client to invoke the internal routing logic cleanly
         # and letting it assemble all sub-components using existing handlers.
@@ -38,16 +40,16 @@ def compute_and_store_snapshot():
 
                 # We pass worker_compute=true to bypass the O(1) fetch and force the actual calculation
                 response = client.get('/api/dashboard/full_snapshot?worker_compute=true')
-                
+
                 if response.status_code == 200:
                     # Parse the payload from the response data to ensure we got a valid JSON
                     payload_dict = json.loads(response.data)
-                    
+
                     # Dump it back to a compact raw string for the DB
                     raw_json_string = json.dumps(payload_dict)
-                    
+
                     cache_key = 'full_snapshot_24h_active_200'
-                    
+
                     # Upsert into DashboardSnapshot table
                     snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()
                     if not snapshot:
@@ -56,26 +58,30 @@ def compute_and_store_snapshot():
                     else:
                         snapshot.payload = raw_json_string
                         snapshot.updated_at = datetime.utcnow()
-                        
+
                     db.session.commit()
                     duration = time.time() - start_time
-                    logger.info(f"✅ Dashboard Snapshot successfully updated in {duration:.2f} seconds.")
+                    logger.info("Dashboard Snapshot successfully updated in %.2f seconds.", duration)
                 else:
-                    logger.error(f"❌ Failed to compute dashboard snapshot! HTTP {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"❌ Exception during snapshot computation: {e}", exc_info=True)
+                    logger.error("Failed to compute dashboard snapshot. HTTP %s", response.status_code)
+
+            except Exception as error:
+                db.session.rollback()
+                logger.error("Exception during snapshot computation: %s", error, exc_info=True)
+            finally:
+                db.session.remove()
+
 
 if __name__ == '__main__':
     logger.info("Initializing Dashboard Aggregation Worker...")
-    
+
     # Run once immediately on startup
     compute_and_store_snapshot()
-    
+
     # Schedule to run every 25 seconds
     scheduler = BlockingScheduler()
     scheduler.add_job(compute_and_store_snapshot, 'interval', seconds=25, max_instances=1, coalesce=True)
-    
+
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

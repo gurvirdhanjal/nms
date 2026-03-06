@@ -3,6 +3,7 @@ import threading
 import uuid
 import json
 import logging
+import time
 from datetime import datetime
 from services.network_scanner import NetworkScanner
 
@@ -189,6 +190,84 @@ class DiscoveryService:
                     return scan_id
         return None
 
+    def trigger_settings_subnet_scan(self, subnets, username='system', app=None):
+        """Run a background scan for configured subnets and persist classified results."""
+        if not isinstance(subnets, list):
+            return 0
+
+        normalized_subnets = []
+        for raw in subnets:
+            subnet = str(raw or '').strip()
+            if not subnet:
+                continue
+            if subnet not in normalized_subnets:
+                normalized_subnets.append(subnet)
+
+        if not normalized_subnets:
+            return 0
+
+        worker = threading.Thread(
+            target=self._run_settings_subnet_scan_worker,
+            args=(normalized_subnets, username, app),
+            daemon=True,
+        )
+        worker.start()
+        return len(normalized_subnets)
+
+    def _run_settings_subnet_scan_worker(self, subnets, username='system', app=None):
+        """Scan each configured subnet with classifier-enabled scanner and upsert results."""
+        started = time.time()
+        total_added = 0
+        total_updated = 0
+        errors = []
+
+        for subnet in subnets:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                logger.info("[DiscoverySettings] Auto scan started: user=%s subnet=%s", username, subnet)
+                devices = loop.run_until_complete(
+                    self.scanner.scan_network_range_incremental(
+                        subnet,
+                        scan_id=None,
+                        active_scans=None,
+                        active_scans_lock=None,
+                        scan_mode='heavy',
+                    )
+                )
+                save_result = self._save_scan_results(scan_id=None, devices=devices, app=app)
+                total_added += int(save_result.get('added', 0))
+                total_updated += int(save_result.get('updated', 0))
+                logger.info(
+                    "[DiscoverySettings] Auto scan finished: subnet=%s added=%s updated=%s",
+                    subnet,
+                    int(save_result.get('added', 0)),
+                    int(save_result.get('updated', 0)),
+                )
+            except Exception as scan_error:
+                logger.exception("[DiscoverySettings] Auto scan failed: subnet=%s", subnet)
+                errors.append(f"{subnet}: {scan_error}")
+            finally:
+                loop.close()
+
+        if app is None:
+            return
+
+        try:
+            with app.app_context():
+                from models.discovery_config import get_config
+                from extensions import db
+
+                cfg = get_config()
+                cfg.last_heavy_scan = datetime.utcnow()
+                cfg.last_scan_duration = round(time.time() - started, 2)
+                cfg.last_new_count = total_added
+                cfg.last_updated_count = total_updated
+                cfg.last_error = "; ".join(errors)[:1000] if errors else None
+                db.session.commit()
+        except Exception:
+            logger.exception("[DiscoverySettings] Failed to persist post-scan metadata")
+
     def _run_async_scan_wrapper(self, scan_id, ip_range, scan_mode='heavy', app=None):
         """
         Wrapper to run async scanner in a thread.
@@ -249,7 +328,7 @@ class DiscoveryService:
 
     def _save_scan_results(self, scan_id, devices, app=None):
         if not devices:
-            return
+            return {'added': 0, 'updated': 0}
 
         def _persist():
             from extensions import db
@@ -310,17 +389,19 @@ class DiscoveryService:
                     print(f"[Discovery] Failed to commit scan results: {e}")
 
             with self.active_scans_lock:
-                if scan_id in self.active_scans:
+                if scan_id and scan_id in self.active_scans:
                     self.active_scans[scan_id]['saved'] = True
+            return {'added': count_added, 'updated': count_updated}
 
         if app is None:
-            return
+            return {'added': 0, 'updated': 0}
 
         try:
             with app.app_context():
-                _persist()
+                return _persist()
         except Exception as e:
             print(f"[Discovery] Failed to save scan results: {e}")
+            return {'added': 0, 'updated': 0}
     def start_recursive_discovery(self, seed_ip):
         """
         Start a recursive discovery process starting from a seed IP.

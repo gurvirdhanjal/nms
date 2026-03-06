@@ -1,12 +1,32 @@
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
-from middleware.rbac import require_login
+from middleware.rbac import require_login, require_permission, require_role, create_audit_log
 from extensions import db
-from models.tracked_device import TrackedDevice, DeviceScanHistory, DeviceActivityLog, DeviceResourceLog, DeviceApplicationLog
-from datetime import datetime, timedelta
+from models.tracked_device import (
+    TrackedDevice,
+    TrackedDeviceIpHistory,
+    DeviceScanHistory,
+    DeviceActivityLog,
+    DeviceResourceLog,
+    DeviceApplicationLog,
+)
+from models.dashboard import DashboardEvent
+from models.restricted_site_policy import (
+    RestrictedSiteAlertState,
+    RestrictedSiteDomainMeta,
+    RestrictedSiteEvent,
+    RestrictedSitePolicy,
+    TrackingAgentKeyBinding,
+    build_policy_version,
+    normalize_domain,
+)
+from models.user import User
+from datetime import datetime, timedelta, timezone
 import requests
 import json
+import os
 import socket
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 import platform
 import subprocess
@@ -14,10 +34,46 @@ import psutil
 import ipaddress
 import time
 import logging
+import re
+import hmac
+import hashlib
+import secrets
 from urllib.parse import urlparse
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import io
+from werkzeug.exceptions import HTTPException
+from services.tracking_reconcile import (
+    normalize_mac,
+    run_reconciliation,
+    is_reconciliation_locked,
+)
+from services.tracking_history import (
+    build_history_envelope,
+    ingest_tracking_sample,
+    parse_history_window_strict,
+    parse_workstation_window,
+    query_history_summary,
+    query_history_dashboard,
+    query_activity_page,
+    query_resource_page,
+    query_application_page,
+    query_integrity_page,
+    run_tracking_integrity_checks,
+    run_tracking_retention,
+)
+from services.tracking_workstation import (
+    calculate_daily_uptime_snapshot,
+    get_scoped_tracked_device_or_404,
+    persist_availability_event,
+    query_availability_events_page,
+    query_workstation_anomalies,
+    query_workstation_overview,
+    query_workstation_reports,
+    scoped_tracked_device_query,
+)
+from services.notification_service import NotificationService
+from services.sse_broadcaster import broadcast_event
 
 tracking_bp = Blueprint('tracking_bp', __name__)
 
@@ -31,6 +87,94 @@ def _tracking_auth_guard():
 from config import Config
 SHARED_API_KEY = Config.API_KEY
 logger = logging.getLogger(__name__)
+PURGE_TOKEN_TTL_SECONDS = 300
+_TRACKING_PURGE_TOKENS = {}
+_TRACKING_PURGE_TOKEN_LOCK = threading.Lock()
+RESTRICTED_SOURCE_WINDOW = 'window_title'
+RESTRICTED_SOURCE_DNS = 'dns_cache'
+RESTRICTED_CONFIDENCE_HIGH = 'HIGH'
+RESTRICTED_CONFIDENCE_MEDIUM = 'MEDIUM'
+RESTRICTED_CONFIDENCE_LOW = 'LOW'
+RESTRICTED_CORROBORATION_WINDOW_SECONDS = 120
+HOSTNAME_CANDIDATE_RE = re.compile(r'(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b', re.IGNORECASE)
+SYNC_IP_REASON_PAYLOAD = 'SYNC_PAYLOAD_UPDATE'
+SYNC_IP_REASON_MANUAL = 'MANUAL_EDIT'
+SYNC_IP_REASON_RECONCILE = 'RECONCILE_RELOCATION'
+
+
+def _coerce_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
+
+
+def _super_admin_allowlist():
+    raw = getattr(Config, "SUPER_ADMIN_USERNAMES", "")
+    return {entry.strip().lower() for entry in str(raw).split(",") if entry.strip()}
+
+
+def _can_purge_tracking_history():
+    username = str(session.get('username') or '').strip().lower()
+    role = str(session.get('role') or '').strip().lower()
+    if role != 'admin':
+        return False
+    allowlist = _super_admin_allowlist()
+    if not allowlist:
+        return False
+    return username in allowlist
+
+
+def _scope_defaults_for_new_tracked_device() -> dict[str, int | None]:
+    """Apply RBAC scope defaults when creating tracked devices from UI actions."""
+    role = str(session.get('role') or '').strip().lower()
+    if role == 'admin':
+        return {}
+
+    site_id = session.get('site_id')
+    department_id = session.get('department_id')
+    user_id = session.get('user_id')
+    if (site_id is None or department_id is None) and user_id:
+        user = User.query.get(user_id)
+        if user:
+            site_id = user.site_id
+            department_id = user.department_id
+
+    scoped = {}
+    if site_id is not None:
+        scoped['site_id'] = int(site_id)
+    if department_id is not None:
+        scoped['department_id'] = int(department_id)
+    return scoped
+
+
+def _issue_purge_token(payload: dict):
+    token = str(time.time_ns()) + "-" + str(abs(hash(json.dumps(payload, sort_keys=True))))
+    expires_at = time.time() + PURGE_TOKEN_TTL_SECONDS
+    with _TRACKING_PURGE_TOKEN_LOCK:
+        _TRACKING_PURGE_TOKENS[token] = {
+            "payload": payload,
+            "expires_at": expires_at,
+        }
+    return token, expires_at
+
+
+def _consume_purge_token(token: str):
+    now_ts = time.time()
+    with _TRACKING_PURGE_TOKEN_LOCK:
+        # Cleanup expired tokens opportunistically.
+        expired = [key for key, value in _TRACKING_PURGE_TOKENS.items() if value.get("expires_at", 0) <= now_ts]
+        for key in expired:
+            _TRACKING_PURGE_TOKENS.pop(key, None)
+        stored = _TRACKING_PURGE_TOKENS.pop(token, None)
+    if not stored:
+        return None
+    if stored.get("expires_at", 0) <= now_ts:
+        return None
+    return stored.get("payload")
 
 
 class AgentHttpError(Exception):
@@ -68,7 +212,7 @@ def _map_agent_request_error(exc):
     return "AGENT_REQUEST_FAILED", "Agent request failed"
 
 
-def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False):
+def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False, silent=False):
     parsed = urlparse(url)
     started = time.monotonic()
     session = _get_agent_http_session()
@@ -81,35 +225,37 @@ def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False):
             stream=stream,
         )
         latency_ms = int((time.monotonic() - started) * 1000)
-        logger.info(
-            "[AgentHTTP] method=%s host=%s path=%s result=ok status=%s latency_ms=%s",
-            method.upper(),
-            parsed.hostname,
-            parsed.path,
-            response.status_code,
-            latency_ms,
-        )
+        if not silent:
+            logger.info(
+                "[AgentHTTP] method=%s host=%s path=%s result=ok status=%s latency_ms=%s",
+                method.upper(),
+                parsed.hostname,
+                parsed.path,
+                response.status_code,
+                latency_ms,
+            )
         return response
     except requests.exceptions.RequestException as exc:
         latency_ms = int((time.monotonic() - started) * 1000)
         code, message = _map_agent_request_error(exc)
-        logger.warning(
-            "[AgentHTTP] method=%s host=%s path=%s result=%s latency_ms=%s error=%s",
-            method.upper(),
-            parsed.hostname,
-            parsed.path,
-            code.lower(),
-            latency_ms,
-            exc,
-        )
+        if not silent:
+            logger.warning(
+                "[AgentHTTP] method=%s host=%s path=%s result=%s latency_ms=%s error=%s",
+                method.upper(),
+                parsed.hostname,
+                parsed.path,
+                code.lower(),
+                latency_ms,
+                exc,
+            )
         raise AgentHttpError(code, message, original=exc) from exc
 
 
-def _agent_http_get(url, timeout=2.0, headers=None, stream=False):
-    return _agent_http_request("GET", url, timeout=timeout, headers=headers, stream=stream)
+def _agent_http_get(url, timeout=2.0, headers=None, stream=False, silent=False):
+    return _agent_http_request("GET", url, timeout=timeout, headers=headers, stream=stream, silent=silent)
 
 
-def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=False):
+def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=False, silent=False):
     parsed = urlparse(url)
     started = time.monotonic()
     session = _get_agent_http_session()
@@ -123,25 +269,27 @@ def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=Fals
             stream=stream,
         )
         latency_ms = int((time.monotonic() - started) * 1000)
-        logger.info(
-            "[AgentHTTP] method=POST host=%s path=%s result=ok status=%s latency_ms=%s",
-            parsed.hostname,
-            parsed.path,
-            response.status_code,
-            latency_ms,
-        )
+        if not silent:
+            logger.info(
+                "[AgentHTTP] method=POST host=%s path=%s result=ok status=%s latency_ms=%s",
+                parsed.hostname,
+                parsed.path,
+                response.status_code,
+                latency_ms,
+            )
         return response
     except requests.exceptions.RequestException as exc:
         latency_ms = int((time.monotonic() - started) * 1000)
         code, message = _map_agent_request_error(exc)
-        logger.warning(
-            "[AgentHTTP] method=POST host=%s path=%s result=%s latency_ms=%s error=%s",
-            parsed.hostname,
-            parsed.path,
-            code.lower(),
-            latency_ms,
-            exc,
-        )
+        if not silent:
+            logger.warning(
+                "[AgentHTTP] method=POST host=%s path=%s result=%s latency_ms=%s error=%s",
+                parsed.hostname,
+                parsed.path,
+                code.lower(),
+                latency_ms,
+                exc,
+            )
         raise AgentHttpError(code, message, original=exc) from exc
 
 
@@ -182,6 +330,462 @@ def _require_tracking_api_key():
     if not provided_key or provided_key != SHARED_API_KEY:
         return _json_error('SESSION_EXPIRED', 'Unauthorized agent sync request.', 401)
     return None
+
+
+def _allow_shared_agent_key_bootstrap():
+    return bool(getattr(Config, 'TRACKING_ALLOW_SHARED_AGENT_KEY_BOOTSTRAP', True))
+
+
+def _extract_agent_binding_headers():
+    key_id = (request.headers.get('X-Agent-Key-Id') or '').strip()
+    key_secret = (request.headers.get('X-Agent-Key') or '').strip()
+    return key_id, key_secret
+
+
+def _hash_agent_secret(secret):
+    return hashlib.sha256(str(secret or '').encode('utf-8')).hexdigest()
+
+
+def _verify_agent_secret(secret, expected_hash):
+    return hmac.compare_digest(_hash_agent_secret(secret), str(expected_hash or ''))
+
+
+def _create_agent_key_binding(tracked_device_id):
+    key_id = secrets.token_hex(16)
+    key_secret = secrets.token_urlsafe(48)
+    binding = TrackingAgentKeyBinding(
+        key_id=key_id,
+        key_hash=_hash_agent_secret(key_secret),
+        tracked_device_id=int(tracked_device_id),
+        is_active=True,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(binding)
+    db.session.flush()
+    return binding, key_secret
+
+
+def _get_active_binding_for_device(device_id):
+    return TrackingAgentKeyBinding.query.filter_by(
+        tracked_device_id=int(device_id),
+        is_active=True,
+    ).order_by(TrackingAgentKeyBinding.id.desc()).first()
+
+
+def _touch_agent_key(binding):
+    if not binding:
+        return
+    binding.last_used_at = datetime.utcnow()
+    binding.last_used_ip = request.remote_addr
+
+
+def _authorize_agent_request(expected_device_id=None, require_bound=False, allow_bootstrap=True):
+    key_id, key_secret = _extract_agent_binding_headers()
+    if key_id and key_secret:
+        binding = TrackingAgentKeyBinding.query.filter_by(key_id=key_id, is_active=True).first()
+        if not binding or not _verify_agent_secret(key_secret, binding.key_hash):
+            return None, _json_error('INVALID_AGENT_KEY', 'Invalid agent key binding.', 401)
+        if expected_device_id is not None and int(binding.tracked_device_id) != int(expected_device_id):
+            create_audit_log(
+                action='reject',
+                entity_type='agent_key_binding',
+                entity_id=binding.id,
+                entity_name=binding.key_id,
+                description=(
+                    f'Agent key/device mismatch. expected_device_id={expected_device_id} '
+                    f'bound_device_id={binding.tracked_device_id} remote_ip={request.remote_addr}'
+                ),
+                changes={'agent_key_id': binding.key_id, 'expected_device_id': expected_device_id},
+            )
+            return None, _json_error('AGENT_KEY_DEVICE_MISMATCH', 'Agent key is not bound to this device.', 403)
+        _touch_agent_key(binding)
+        return {'binding': binding, 'bootstrap': False}, None
+
+    if require_bound:
+        return None, _json_error('AGENT_KEY_REQUIRED', 'Bound agent key is required.', 401)
+
+    if allow_bootstrap and _allow_shared_agent_key_bootstrap():
+        auth_error = _require_tracking_api_key()
+        if auth_error is None:
+            return {'binding': None, 'bootstrap': True}, None
+    return None, _json_error('SESSION_EXPIRED', 'Unauthorized agent sync request.', 401)
+
+
+def _is_admin_session():
+    return bool(session.get('logged_in')) and str(session.get('role') or '').strip().lower() == 'admin'
+
+
+def _coerce_positive_int(value, default_value, min_value=1, max_value=86400):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default_value)
+    return max(min_value, min(max_value, parsed))
+
+
+def _normalize_restricted_domain_list(values):
+    if isinstance(values, str):
+        candidates = [item.strip() for item in values.replace('\r', '\n').split('\n')]
+    elif isinstance(values, list):
+        candidates = values
+    else:
+        candidates = []
+    normalized = sorted({domain for domain in (normalize_domain(item) for item in candidates) if domain})
+    return normalized
+
+
+def _upsert_restricted_policy_from_payload(policy, payload):
+    blocked_domains = _normalize_restricted_domain_list(payload.get('blocked_domains', []))
+    policy.enabled = bool(payload.get('enabled', policy.enabled))
+    policy.cooldown_seconds = _coerce_positive_int(payload.get('cooldown_seconds', policy.cooldown_seconds), policy.cooldown_seconds, min_value=60, max_value=86400)
+    policy.dns_poll_seconds = _coerce_positive_int(payload.get('dns_poll_seconds', policy.dns_poll_seconds), policy.dns_poll_seconds, min_value=15, max_value=3600)
+    policy.window_poll_seconds = _coerce_positive_int(payload.get('window_poll_seconds', policy.window_poll_seconds), policy.window_poll_seconds, min_value=5, max_value=600)
+    policy.dns_seen_ttl_seconds = _coerce_positive_int(payload.get('dns_seen_ttl_seconds', policy.dns_seen_ttl_seconds), policy.dns_seen_ttl_seconds, min_value=60, max_value=86400)
+    policy.apply_domains(blocked_domains)
+    policy.recompute_version()
+    return blocked_domains
+
+
+def _parse_observed_datetime(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    text = str(value or '').strip()
+    if not text:
+        return datetime.utcnow()
+    try:
+        if text.endswith('Z'):
+            text = text[:-1] + '+00:00'
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+    except Exception:
+        return datetime.utcnow()
+
+
+def _match_restricted_domain(observed_domain, blocked_domains):
+    observed = normalize_domain(observed_domain)
+    if not observed:
+        return None
+    for rule in blocked_domains:
+        if observed == rule or observed.endswith(f'.{rule}'):
+            return rule
+    return None
+
+
+def _build_restricted_alert_message(domain, source, confidence, hit_count):
+    source_label = 'Foreground window title' if source == RESTRICTED_SOURCE_WINDOW else 'DNS cache lookup'
+    return (
+        f"Restricted domain detected: {domain} | source={source_label} | confidence={confidence} | "
+        f"hit_count={int(hit_count or 1)}"
+    )
+
+
+def _coerce_restricted_events(raw_value):
+    if isinstance(raw_value, list):
+        return raw_value
+    if isinstance(raw_value, dict):
+        nested = raw_value.get('events')
+        if isinstance(nested, list):
+            return nested
+    return []
+
+
+def _ingest_restricted_site_events_internal(device, events, binding_key_id=None, policy=None, now_utc=None):
+    policy = policy or RestrictedSitePolicy.get_singleton()
+    now_utc = now_utc or datetime.utcnow()
+    cooldown = int(policy.cooldown_seconds or 900)
+
+    # Keep evaluation aligned with the merged policy distributed during sync
+    # (global policy + device-scoped domain metadata).
+    device_domains = [
+        row.domain
+        for row in RestrictedSiteDomainMeta.query.filter_by(device_id=int(device.id)).all()
+    ]
+    blocked_domains = sorted(set((policy.blocked_domains or []) + device_domains))
+
+    ingested = 0
+    alert_updates = 0
+    emails_sent = 0
+
+    for raw_event in events or []:
+        if not isinstance(raw_event, dict):
+            continue
+
+        observed_domain = normalize_domain(raw_event.get('domain'))
+        if not observed_domain:
+            continue
+
+        matched_rule = _match_restricted_domain(observed_domain, blocked_domains)
+        if not matched_rule:
+            continue
+
+        source = str(raw_event.get('source') or RESTRICTED_SOURCE_DNS).strip().lower()
+        if source not in (RESTRICTED_SOURCE_DNS, RESTRICTED_SOURCE_WINDOW):
+            source = RESTRICTED_SOURCE_DNS
+
+        process_name = str(raw_event.get('process_name') or '').strip() or None
+        raw_evidence = str(raw_event.get('raw_evidence') or raw_event.get('evidence_title') or '').strip()[:500] or None
+        observed_at = _parse_observed_datetime(raw_event.get('observed_at_utc') or raw_event.get('observed_at'))
+        confidence = _maybe_uplift_confidence(device.id, observed_domain, source, observed_at)
+
+        event_row = RestrictedSiteEvent(
+            device_id=device.id,
+            domain=observed_domain,
+            matched_rule=matched_rule,
+            source=source,
+            confidence=confidence,
+            policy_version=policy.policy_version,
+            raw_evidence=raw_evidence,
+            process_name=process_name,
+            observed_at_utc=observed_at,
+            received_at_utc=now_utc,
+            agent_key_id=binding_key_id,
+        )
+        db.session.add(event_row)
+        ingested += 1
+
+        state = RestrictedSiteAlertState.query.filter_by(device_id=device.id, domain=observed_domain).first()
+        if not state:
+            state = RestrictedSiteAlertState(
+                device_id=device.id,
+                domain=observed_domain,
+                hit_count=0,
+                first_seen_at=observed_at,
+            )
+            db.session.add(state)
+            db.session.flush()
+
+        state.hit_count = int(state.hit_count or 0) + 1
+        if not state.first_seen_at:
+            state.first_seen_at = observed_at
+        state.last_seen_at = observed_at
+
+        metric_name = f'restricted_site:tracked:{device.id}:{observed_domain}'
+        existing_alert = DashboardEvent.query.filter_by(
+            metric_name=metric_name,
+            resolved=False,
+        ).order_by(DashboardEvent.timestamp.desc()).first()
+
+        message = _build_restricted_alert_message(
+            domain=observed_domain,
+            source=source,
+            confidence=confidence,
+            hit_count=state.hit_count,
+        )
+        should_emit_alert = (
+            not state.last_alerted_at
+            or ((now_utc - state.last_alerted_at).total_seconds() >= cooldown)
+        )
+
+        if bool(device.maintenance_mode):
+            continue
+
+        if should_emit_alert:
+            if existing_alert:
+                existing_alert.timestamp = now_utc
+                existing_alert.severity = 'WARNING'
+                existing_alert.message = message
+                existing_alert.value = float(state.hit_count)
+                dashboard_event = existing_alert
+            else:
+                dashboard_event = DashboardEvent(
+                    event_id=str(uuid.uuid4()),
+                    device_id=None,
+                    device_ip=device.ip_address,
+                    event_type='restricted_site',
+                    severity='WARNING',
+                    metric_name=metric_name,
+                    message=message,
+                    value=float(state.hit_count),
+                    timestamp=now_utc,
+                    resolved=False,
+                )
+                db.session.add(dashboard_event)
+
+            state.active_dashboard_event_id = dashboard_event.event_id
+            state.last_alerted_at = now_utc
+            alert_updates += 1
+            broadcast_event(
+                'alert_created',
+                {
+                    'event_id': state.active_dashboard_event_id,
+                    'device_id': device.id,
+                    'device_ip': device.ip_address,
+                    'metric_name': metric_name,
+                    'severity': 'WARNING',
+                    'message': message,
+                },
+            )
+        elif existing_alert:
+            existing_alert.timestamp = now_utc
+            existing_alert.message = message
+            existing_alert.value = float(state.hit_count)
+            state.active_dashboard_event_id = existing_alert.event_id
+
+        should_email = not state.last_emailed_at or ((now_utc - state.last_emailed_at).total_seconds() >= cooldown)
+        if should_emit_alert and should_email:
+            NotificationService.send_warning_alert(
+                device,
+                metric=metric_name,
+                value=state.hit_count,
+                message=message,
+            )
+            state.last_emailed_at = now_utc
+            emails_sent += 1
+
+    return {
+        'ingested_events': int(ingested),
+        'alert_updates': int(alert_updates),
+        'emails_sent': int(emails_sent),
+        'policy_version': policy.policy_version,
+    }
+
+
+def _maybe_uplift_confidence(device_id, domain, source, observed_at):
+    lookback = observed_at - timedelta(seconds=RESTRICTED_CORROBORATION_WINDOW_SECONDS)
+    opposite_source = RESTRICTED_SOURCE_DNS if source == RESTRICTED_SOURCE_WINDOW else RESTRICTED_SOURCE_WINDOW
+    corroborated = RestrictedSiteEvent.query.filter(
+        RestrictedSiteEvent.device_id == int(device_id),
+        RestrictedSiteEvent.domain == domain,
+        RestrictedSiteEvent.source == opposite_source,
+        RestrictedSiteEvent.observed_at_utc >= lookback,
+    ).order_by(RestrictedSiteEvent.observed_at_utc.desc()).first()
+    if not corroborated:
+        return RESTRICTED_CONFIDENCE_HIGH if source == RESTRICTED_SOURCE_WINDOW else RESTRICTED_CONFIDENCE_LOW
+    if source == RESTRICTED_SOURCE_WINDOW:
+        return RESTRICTED_CONFIDENCE_HIGH
+    return RESTRICTED_CONFIDENCE_MEDIUM
+
+
+def _restricted_severity_rank(value):
+    normalized = str(value or 'LOW').strip().upper()
+    if normalized == 'HIGH':
+        return 3
+    if normalized == 'MEDIUM':
+        return 2
+    if normalized == 'LOW':
+        return 1
+    return 0
+
+
+def _restricted_severity_from_confidence(confidence):
+    normalized = str(confidence or '').strip().upper()
+    if normalized == RESTRICTED_CONFIDENCE_HIGH:
+        return 'HIGH'
+    if normalized in (RESTRICTED_CONFIDENCE_MEDIUM, RESTRICTED_CONFIDENCE_LOW):
+        return 'MEDIUM'
+    return 'MEDIUM'
+
+
+def _extract_restricted_confidence(message):
+    match = re.search(r'confidence\s*=\s*([a-z]+)', str(message or ''), re.IGNORECASE)
+    if not match:
+        return None
+    return str(match.group(1)).strip().upper()
+
+
+def _build_active_violation_summary(device_ids):
+    normalized_ids = []
+    seen = set()
+    for raw_id in (device_ids or []):
+        try:
+            parsed_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed_id <= 0 or parsed_id in seen:
+            continue
+        seen.add(parsed_id)
+        normalized_ids.append(parsed_id)
+
+    if not normalized_ids:
+        return {}
+
+    states = RestrictedSiteAlertState.query.filter(
+        RestrictedSiteAlertState.device_id.in_(normalized_ids),
+        RestrictedSiteAlertState.active_dashboard_event_id.isnot(None),
+    ).all()
+    if not states:
+        return {}
+
+    active_event_ids = sorted(
+        {
+            str(state.active_dashboard_event_id).strip()
+            for state in states
+            if state.active_dashboard_event_id
+        }
+    )
+    active_events = {}
+    if active_event_ids:
+        rows = DashboardEvent.query.filter(
+            DashboardEvent.event_id.in_(active_event_ids),
+            DashboardEvent.resolved.is_(False),
+        ).all()
+        active_events = {str(row.event_id): row for row in rows}
+
+    summary_map = {}
+    for state in states:
+        key = str(state.active_dashboard_event_id or '').strip()
+        if not key:
+            continue
+        dashboard_event = active_events.get(key)
+        if not dashboard_event:
+            continue
+
+        device_summary = summary_map.setdefault(
+            int(state.device_id),
+            {
+                'active_violation_count': 0,
+                'highest_violation_severity': 'LOW',
+                'latest_violation_timestamp': None,
+                '_latest_observed_dt': None,
+            },
+        )
+        device_summary['active_violation_count'] = int(device_summary['active_violation_count'] or 0) + 1
+
+        observed_at = state.last_seen_at or dashboard_event.timestamp
+        latest_observed = device_summary.get('_latest_observed_dt')
+        if observed_at and (latest_observed is None or observed_at > latest_observed):
+            device_summary['_latest_observed_dt'] = observed_at
+
+        severity = _restricted_severity_from_confidence(_extract_restricted_confidence(dashboard_event.message))
+        if _restricted_severity_rank(severity) > _restricted_severity_rank(device_summary.get('highest_violation_severity')):
+            device_summary['highest_violation_severity'] = severity
+
+    for device_summary in summary_map.values():
+        latest_observed_dt = device_summary.pop('_latest_observed_dt', None)
+        device_summary['latest_violation_timestamp'] = latest_observed_dt.isoformat() if latest_observed_dt else None
+
+    return summary_map
+
+
+def _safe_build_active_violation_summary(device_ids):
+    try:
+        return _build_active_violation_summary(device_ids)
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        logger.warning("[TrackingPolicy] violation summary unavailable: %s", exc)
+        return {}
+
+
+def _apply_violation_summary(payload, summary):
+    data = payload if isinstance(payload, dict) else {}
+    summary_data = summary if isinstance(summary, dict) else {}
+    active_count = int(summary_data.get('active_violation_count') or 0)
+    highest_severity = str(summary_data.get('highest_violation_severity') or 'LOW').strip().upper()
+    latest_timestamp = summary_data.get('latest_violation_timestamp')
+
+    if active_count <= 0:
+        highest_severity = 'LOW'
+
+    data['active_violation_count'] = active_count
+    data['highest_violation_severity'] = highest_severity
+    data['latest_violation_timestamp'] = latest_timestamp
+    return data
+
 
 def generate_placeholder_image(text="No Feed"):
     """Generate a placeholder image with text"""
@@ -237,7 +841,47 @@ def _wav_header(sample_rate=16000, bits_per_sample=16, channels=1, data_size=0x7
 class NetworkScanner:
     def __init__(self):
         self.timeout = 2.0  # Increased to 2.0s for reliability
-        self.max_workers = 100
+        try:
+            configured_workers = int(os.environ.get('TRACKING_SCAN_MAX_WORKERS', '24') or '24')
+        except (TypeError, ValueError):
+            configured_workers = 24
+        self.max_workers = max(4, min(configured_workers, 64))
+        self.require_private_scan_targets = _coerce_bool(
+            os.environ.get('TRACKING_SCAN_REQUIRE_PRIVATE'),
+            default=True,
+        )
+        self.include_link_local = _coerce_bool(
+            os.environ.get('TRACKING_SCAN_INCLUDE_LINK_LOCAL'),
+            default=False,
+        )
+        self.preferred_subnet = (os.environ.get('TRACKING_SCAN_SUBNET') or '').strip() or None
+        try:
+            self.max_scan_hosts = max(32, int(os.environ.get('TRACKING_SCAN_MAX_HOSTS', '1024') or '1024'))
+        except (TypeError, ValueError):
+            self.max_scan_hosts = 1024
+
+    def _is_link_local_ip(self, ip_value):
+        try:
+            return ipaddress.ip_address(str(ip_value)).is_link_local
+        except ValueError:
+            return False
+
+    def _is_scan_candidate_ip(self, ip_value):
+        """Filter out addresses that should not be part of bulk subnet scans."""
+        try:
+            ip_obj = ipaddress.ip_address(str(ip_value))
+        except ValueError:
+            return False
+
+        if ip_obj.version != 4:
+            return False
+        if ip_obj.is_loopback or ip_obj.is_multicast or ip_obj.is_unspecified:
+            return False
+        if ip_obj.is_link_local and not self.include_link_local:
+            return False
+        if self.require_private_scan_targets and not ip_obj.is_private:
+            return False
+        return True
 
     def _resolve_probe_profile(self, profile):
         if profile == 'interactive':
@@ -327,16 +971,30 @@ class NetworkScanner:
     def check_tracking_service(self, ip, port=5002, profile='scan'):
         """Check if tracking service is running and classify availability."""
         probe_cfg = self._resolve_probe_profile(profile)
+        if self._is_link_local_ip(ip) and not self.include_link_local:
+            if probe_cfg.get('return_offline'):
+                return self._build_probe_result(
+                    availability_status='offline',
+                    tracking_status='offline',
+                    data={},
+                    metrics_available=False,
+                    probe_error_code='AGENT_LINK_LOCAL_SKIPPED',
+                    probe_method='none',
+                    identity=None,
+                )
+            return None
         base_url = f"http://{ip}:{port}"
         identity_data = {}
         probe_error_code = None
 
         try:
+            is_scan = (profile == 'scan')
             # 1) Identity probe
             try:
                 identity_response = _agent_http_get(
                     f"{base_url}/api/identity",
                     timeout=probe_cfg['identity_timeout'],
+                    silent=is_scan
                 )
                 if identity_response.status_code == 200:
                     identity_payload = identity_response.json()
@@ -354,6 +1012,7 @@ class NetworkScanner:
                     f"{base_url}/api/secure/stats",
                     timeout=probe_cfg['stats_timeout'],
                     headers={'X-API-Key': SHARED_API_KEY},
+                    silent=is_scan
                 )
                 if stats_response.status_code == 200:
                     stats_payload = stats_response.json()
@@ -398,6 +1057,7 @@ class NetworkScanner:
                 health_response = _agent_http_get(
                     f"{base_url}/api/health",
                     timeout=probe_cfg['health_timeout'],
+                    silent=is_scan
                 )
                 if health_response.status_code == 200:
                     return self._build_probe_result(
@@ -501,34 +1161,6 @@ class NetworkScanner:
                     'unique_client_id': agent_client_id
                 })
             
-            # --- AUTO-UPDATE IP LOGIC ---
-            # If we found a valid device identity, update the DB immediately to fix connectivity
-            target_mac = device_info.get('mac_address')
-            target_client_id = device_info.get('unique_client_id')
-            
-            if target_mac and target_mac != "N/A":
-                # 1. Try finding by Unique Client ID first (Most robust)
-                device = None
-                if target_client_id:
-                    device = TrackedDevice.query.filter_by(unique_client_id=target_client_id).first()
-                
-                # 2. Fallback to MAC address
-                if not device:
-                    device = TrackedDevice.query.filter_by(mac_address=target_mac).first()
-                    # If found by MAC but missing client ID, save it for future
-                    if device and target_client_id and not device.unique_client_id:
-                        device.unique_client_id = target_client_id
-                        db.session.commit()
-                        print(f"[Auto-Repair] Linked Client ID {target_client_id} to device {device.device_name}")
-
-                # 3. Update IP if changed
-                if device:
-                    if device.ip_address != ip:
-                        print(f"[Auto-Repair] IP Change Detect: {device.device_name} moved from {device.ip_address} to {ip}")
-                        device.ip_address = ip
-                        device.last_seen = datetime.utcnow()
-                        db.session.commit()
-
             return device_info
         except Exception as e:
             print(f"Error scanning IP {ip}: {e}")
@@ -536,23 +1168,62 @@ class NetworkScanner:
     
     def get_local_network_ranges(self):
         """Get local network range"""
+        if self.preferred_subnet:
+            try:
+                preferred_network = ipaddress.IPv4Network(self.preferred_subnet, strict=False)
+                logger.info("[TrackingScan] Using TRACKING_SCAN_SUBNET=%s", preferred_network)
+                return str(preferred_network)
+            except Exception:
+                logger.warning(
+                    "[TrackingScan] Invalid TRACKING_SCAN_SUBNET=%s; falling back to interface detection",
+                    self.preferred_subnet,
+                )
+
+        candidates = []
         try:
             interfaces = psutil.net_if_addrs()
             for interface_name, addrs in interfaces.items():
                 for addr in addrs:
                     if addr.family.name == 'AF_INET':
-                        ip = addr.address
-                        netmask = addr.netmask
-                        # We still return the network, but we won't skip 127.0.0.1 during actual scan list gen
-                        if not ip:
+                        ip = (addr.address or '').strip()
+                        netmask = (addr.netmask or '').strip()
+                        if not ip or not netmask:
                             continue
-                        if ip.startswith("127."):
-                             continue
+                        try:
+                            ip_obj = ipaddress.ip_address(ip)
+                        except ValueError:
+                            continue
+                        if ip_obj.version != 4:
+                            continue
+                        if ip_obj.is_loopback or ip_obj.is_unspecified or ip_obj.is_multicast:
+                            continue
+                        if ip_obj.is_link_local and not self.include_link_local:
+                            continue
+                        if self.require_private_scan_targets and not ip_obj.is_private:
+                            continue
                         try:
                             network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
-                            return str(network)
+                            # Prefer private, non-link-local interfaces.
+                            score = 0
+                            if ip_obj.is_link_local:
+                                score += 100
+                            if not ip_obj.is_private:
+                                score += 10
+                            candidates.append((score, -int(network.prefixlen), str(network), ip, interface_name))
                         except:
                             continue
+            if candidates:
+                candidates.sort(key=lambda item: (item[0], item[1], item[4]))
+                selected = candidates[0]
+                selected_network = selected[2]
+                logger.info(
+                    "[TrackingScan] Selected interface=%s ip=%s network=%s include_link_local=%s",
+                    selected[4],
+                    selected[3],
+                    selected_network,
+                    self.include_link_local,
+                )
+                return selected_network
         except:
             pass
         return "192.168.1.0/24"
@@ -565,8 +1236,18 @@ class NetworkScanner:
         
         all_ips = []
         try:
-            # Add all network IPs
-            all_ips = [str(ip) for ip in ipaddress.IPv4Network(local_network, strict=False)]
+            network = ipaddress.IPv4Network(local_network, strict=False)
+            all_ips = [
+                str(ip)
+                for ip in network.hosts()
+                if self._is_scan_candidate_ip(ip)
+            ]
+            if len(all_ips) > self.max_scan_hosts:
+                print(
+                    f"[DEBUG] Tracking Scanner: limiting host scan from {len(all_ips)} to {self.max_scan_hosts}",
+                    flush=True,
+                )
+                all_ips = all_ips[:self.max_scan_hosts]
         except Exception as e:
             print(f"[DEBUG] Error generating IP list: {e}")
 
@@ -575,20 +1256,54 @@ class NetworkScanner:
             all_ips.append("127.0.0.1")
         
         # Add typical local IPs if not present
-        local_ip = socket.gethostbyname(socket.gethostname())
-        if local_ip not in all_ips:
-            all_ips.append(local_ip)
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+            if local_ip not in all_ips and self._is_scan_candidate_ip(local_ip):
+                all_ips.append(local_ip)
+        except Exception:
+            pass
 
         print(f"[DEBUG] Tracking Scanner: Found {len(all_ips)} IPs to scan. (First 5: {all_ips[:5]})", flush=True)
         
         devices_found = []
         # Use simple loop for debugging if needed, but keeping threads for now
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            results = executor.map(self.scan_single_ip, all_ips)
-            for result in results:
-                if result:
-                    print(f"[DEBUG] Found device: {result['ip']} - Status: {result['status']}", flush=True)
-                    devices_found.append(result)
+            results = list(executor.map(self.scan_single_ip, all_ips))
+            
+        # Process DB updates synchronously
+        for result in results:
+            if result:
+                print(f"[DEBUG] Found device: {result['ip']} - Status: {result['status']}", flush=True)
+                devices_found.append(result)
+                
+                # --- AUTO-UPDATE IP LOGIC ---
+                target_mac = result.get('mac_address')
+                target_client_id = result.get('unique_client_id')
+                availability_status = result.get('availability_status', 'offline')
+                ip = result['ip']
+                
+                if target_mac and target_mac != "N/A" and availability_status in ('online', 'degraded'):
+                    # 1. Try finding by Unique Client ID first (Most robust)
+                    device = None
+                    if target_client_id:
+                        device = TrackedDevice.query.filter_by(unique_client_id=target_client_id).first()
+                    
+                    # 2. Fallback to MAC address
+                    if not device:
+                        device = TrackedDevice.query.filter_by(mac_address=target_mac).first()
+                        # If found by MAC but missing client ID, save it for future
+                        if device and target_client_id and not device.unique_client_id:
+                            device.unique_client_id = target_client_id
+                            db.session.commit()
+                            print(f"[Auto-Repair] Linked Client ID {target_client_id} to device {device.device_name}")
+
+                    # 3. Update IP if changed
+                    if device:
+                        if device.ip_address != ip:
+                            print(f"[Auto-Repair] IP Change Detect: {device.device_name} moved from {device.ip_address} to {ip}")
+                            device.ip_address = ip
+                            device.last_seen = datetime.utcnow()
+                            db.session.commit()
         
         print(f"[DEBUG] Scan complete. Found {len(devices_found)} devices.", flush=True)
         return devices_found
@@ -602,15 +1317,11 @@ metrics_refresh_state = {'last_run': 0}
 # ============================================================
 
 def check_device_status(device):
-    """Check if device is online/offline based on last_seen"""
-    if not device.last_seen:
-        return "offline"
-    
-    time_diff = datetime.utcnow() - device.last_seen
-    if time_diff < timedelta(minutes=5):  # Device seen in last 5 minutes
-        return "online"
-    else:
-        return "offline"
+    """Return service-truth availability status for template rendering."""
+    availability_status = str(getattr(device, 'availability_status', '') or '').strip().lower()
+    if availability_status in ('online', 'degraded', 'offline'):
+        return availability_status
+    return "offline"
 
 def device_to_dict(device):
     """Convert device to a JSON-serializable dictionary"""
@@ -628,29 +1339,85 @@ def device_to_dict(device):
         'department': device.department,
         'notes': device.notes,
         'maintenance_mode': device.maintenance_mode,
+        'is_archived': bool(getattr(device, 'is_archived', False)),
+        'archived_at': device.archived_at.isoformat() if getattr(device, 'archived_at', None) else None,
+        'archived_reason': getattr(device, 'archived_reason', None),
+        'archived_by': getattr(device, 'archived_by', None),
         'created_at': device.created_at.isoformat() if device.created_at else None,
         'updated_at': device.updated_at.isoformat() if device.updated_at else None,
         'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+        'last_agent_sync_at': device.last_agent_sync_at.isoformat() if getattr(device, 'last_agent_sync_at', None) else None,
+        'last_agent_sync_ip': getattr(device, 'last_agent_sync_ip', None),
         'status': check_device_status(device)
     }
 
 
-def _normalize_mac(raw_value):
-    if raw_value is None:
-        return None
-    mac = str(raw_value).strip().upper().replace('-', ':')
-    if mac in ('', 'N/A', 'UNKNOWN'):
-        return None
-    parts = mac.split(':')
-    if len(parts) != 6:
-        return None
-    if any(len(part) != 2 for part in parts):
-        return None
+def _format_hm_duration(total_seconds):
     try:
-        int(''.join(parts), 16)
-    except ValueError:
-        return None
-    return ':'.join(parts)
+        seconds = max(0, int(float(total_seconds)))
+    except (TypeError, ValueError):
+        return "N/A"
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{hours}h {minutes}m"
+
+
+def _attach_daily_uptime_payload(device_payload, device_id, now_utc=None):
+    payload = dict(device_payload or {})
+    try:
+        summary = calculate_daily_uptime_snapshot(int(device_id), now_utc=now_utc)
+    except Exception:
+        reference = now_utc or datetime.utcnow()
+        if isinstance(reference, datetime) and reference.tzinfo:
+            reference = reference.astimezone(timezone.utc).replace(tzinfo=None)
+        day_start = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+        elapsed_seconds = max(0, int((reference - day_start).total_seconds()))
+        heartbeat_seconds = max(60, int(getattr(Config, 'TRACKING_HEARTBEAT_INTERVAL_SECONDS', 300) or 300))
+        expected_heartbeats = (
+            int((elapsed_seconds + heartbeat_seconds - 1) // heartbeat_seconds)
+            if elapsed_seconds > 0
+            else 0
+        )
+        summary = {
+            'uptime_percent': 0.0,
+            'online_seconds': 0,
+            'downtime_seconds': elapsed_seconds,
+            'elapsed_seconds': elapsed_seconds,
+            'heartbeat_interval_seconds': heartbeat_seconds,
+            'received_heartbeats': 0,
+            'expected_heartbeats': expected_heartbeats,
+            'sample_coverage_percent': 0.0 if expected_heartbeats > 0 else None,
+            'window_start': day_start.isoformat(),
+            'window_end': reference.isoformat(),
+        }
+
+    uptime_percent = summary.get('uptime_percent')
+    online_seconds = summary.get('online_seconds')
+    downtime_seconds = summary.get('downtime_seconds')
+
+    uptime_display = "N/A"
+    try:
+        if uptime_percent is not None:
+            uptime_display = f"{float(uptime_percent):.1f}%"
+    except (TypeError, ValueError):
+        uptime_display = "N/A"
+
+    payload['daily_uptime'] = {
+        'uptime_percent': uptime_percent,
+        'online_seconds': online_seconds,
+        'downtime_seconds': downtime_seconds,
+        'elapsed_seconds': summary.get('elapsed_seconds'),
+        'heartbeat_interval_seconds': summary.get('heartbeat_interval_seconds'),
+        'received_heartbeats': summary.get('received_heartbeats'),
+        'expected_heartbeats': summary.get('expected_heartbeats'),
+        'sample_coverage_percent': summary.get('sample_coverage_percent'),
+        'window_start': summary.get('window_start'),
+        'window_end': summary.get('window_end'),
+        'uptime_display': uptime_display,
+        'online_display': _format_hm_duration(online_seconds),
+        'downtime_display': _format_hm_duration(downtime_seconds),
+    }
+    return payload
 
 
 def _extract_identity_from_service_info(service_info):
@@ -666,7 +1433,7 @@ def _extract_identity_from_service_info(service_info):
         or data.get('mac_address')
     )
     return {
-        'mac_address': _normalize_mac(raw_mac),
+        'mac_address': normalize_mac(raw_mac),
         'hostname': (
             device_info.get('hostname')
             or identity.get('hostname')
@@ -688,6 +1455,159 @@ def _find_tracked_device(mac_address=None, unique_client_id=None):
     if mac_address:
         return TrackedDevice.query.filter_by(mac_address=mac_address).first()
     return None
+
+
+def _cleanup_stale_tracked_devices(days=30, dry_run=False, limit=200):
+    cutoff = datetime.utcnow() - timedelta(days=max(1, int(days or 30)))
+    scoped_query = scoped_tracked_device_query(
+        include_archived=False,
+        include_unscoped_for_admin=True,
+    )
+    stale_query = scoped_query.filter(
+        db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None)),
+        db.func.lower(db.func.coalesce(TrackedDevice.availability_status, 'offline')) == 'offline',
+        db.or_(
+            db.and_(
+                TrackedDevice.last_agent_sync_at.isnot(None),
+                TrackedDevice.last_agent_sync_at < cutoff,
+            ),
+            db.and_(
+                TrackedDevice.last_agent_sync_at.is_(None),
+                TrackedDevice.last_seen.isnot(None),
+                TrackedDevice.last_seen < cutoff,
+                TrackedDevice.created_at.isnot(None),
+                TrackedDevice.created_at < cutoff,
+            ),
+        ),
+    ).order_by(TrackedDevice.last_seen.asc().nullsfirst(), TrackedDevice.id.asc())
+
+    stale_devices = stale_query.limit(max(1, min(int(limit or 200), 2000))).all()
+    archived = []
+    now_utc = datetime.utcnow()
+
+    for device in stale_devices:
+        archived.append({
+            'device_id': device.id,
+            'device_name': device.device_name,
+            'mac_address': device.mac_address,
+            'ip_address': device.ip_address,
+            'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+            'last_agent_sync_at': device.last_agent_sync_at.isoformat() if getattr(device, 'last_agent_sync_at', None) else None,
+        })
+        if dry_run:
+            continue
+        device.is_archived = True
+        device.archived_at = now_utc
+        device.archived_reason = f'stale_cleanup_{max(1, int(days or 30))}d'
+        device.archived_by = str(session.get('username') or 'system')
+        device.updated_at = now_utc
+
+    return {
+        'cutoff_utc': cutoff.isoformat(),
+        'candidate_count': len(stale_devices),
+        'archived_count': 0 if dry_run else len(stale_devices),
+        'devices': archived,
+    }
+
+
+def _normalize_sync_ipv4(value, require_private=True):
+    text = str(value or '').strip()
+    if not text:
+        return None
+    try:
+        parsed = ipaddress.ip_address(text)
+    except ValueError:
+        return None
+
+    if parsed.version != 4:
+        return None
+    if parsed.is_loopback or parsed.is_link_local or parsed.is_unspecified or parsed.is_multicast:
+        return None
+    if require_private and not parsed.is_private:
+        return None
+    return str(parsed)
+
+
+def _parse_payload_ip_candidates(payload, require_private=True):
+    raw_candidates = payload.get('ip_candidates') if isinstance(payload, dict) else None
+    if not isinstance(raw_candidates, list):
+        return []
+    normalized = []
+    seen = set()
+    for candidate in raw_candidates:
+        parsed = _normalize_sync_ipv4(candidate, require_private=require_private)
+        if not parsed or parsed in seen:
+            continue
+        seen.add(parsed)
+        normalized.append(parsed)
+    return normalized
+
+
+def _resolve_device_ip_from_payload(payload):
+    data = payload if isinstance(payload, dict) else {}
+    require_private = bool(getattr(Config, 'TRACKING_AGENT_IP_REQUIRE_PRIVATE', True))
+    normalized_payload_ip = _normalize_sync_ipv4(data.get('ip_address'), require_private=require_private)
+    normalized_candidates = _parse_payload_ip_candidates(data, require_private=require_private)
+
+    if normalized_candidates:
+        if normalized_payload_ip and normalized_payload_ip in normalized_candidates:
+            return normalized_payload_ip, 'payload_ip', normalized_payload_ip, normalized_candidates, None
+        if len(normalized_candidates) == 1:
+            return normalized_candidates[0], 'single_candidate', normalized_payload_ip, normalized_candidates, None
+        return None, 'unchanged_unresolved', normalized_payload_ip, normalized_candidates, 'SYNC_IP_UNRESOLVED'
+
+    if normalized_payload_ip:
+        return normalized_payload_ip, 'payload_ip', normalized_payload_ip, normalized_candidates, None
+
+    return None, 'unchanged_unresolved', normalized_payload_ip, normalized_candidates, 'SYNC_IP_UNRESOLVED'
+
+
+def _transport_forwarded_for_header():
+    forwarded = request.headers.get('X-Forwarded-For')
+    if forwarded:
+        return str(forwarded).strip()
+    forwarded = request.headers.get('X-Real-IP')
+    if forwarded:
+        return str(forwarded).strip()
+    return None
+
+
+def _record_tracked_device_ip_history(
+    *,
+    device_id,
+    old_ip,
+    new_ip,
+    resolved_ip,
+    payload_ip,
+    payload_candidates,
+    transport_remote_ip,
+    transport_forwarded_for,
+    agent_key_id,
+    reason,
+    ip_source,
+    network_signature,
+):
+    if not device_id or str(old_ip or '').strip() == str(new_ip or '').strip():
+        return None
+
+    row = TrackedDeviceIpHistory(
+        device_id=int(device_id),
+        old_ip=(str(old_ip).strip() or None) if old_ip is not None else None,
+        new_ip=(str(new_ip).strip() or None) if new_ip is not None else None,
+        resolved_ip=(str(resolved_ip).strip() or None) if resolved_ip is not None else None,
+        payload_ip=(str(payload_ip).strip() or None) if payload_ip is not None else None,
+        payload_candidates_json=json.dumps(payload_candidates or [], ensure_ascii=True),
+        transport_remote_ip=(str(transport_remote_ip).strip() or None) if transport_remote_ip is not None else None,
+        transport_forwarded_for=(str(transport_forwarded_for).strip() or None) if transport_forwarded_for is not None else None,
+        agent_key_id=(str(agent_key_id).strip() or None) if agent_key_id is not None else None,
+        reason=(str(reason).strip() or SYNC_IP_REASON_PAYLOAD),
+        ip_source=(str(ip_source).strip() or None) if ip_source is not None else None,
+        network_signature=(str(network_signature).strip() or None) if network_signature is not None else None,
+        changed_at_utc=datetime.utcnow(),
+        received_at_utc=datetime.utcnow(),
+    )
+    db.session.add(row)
+    return row
 
 PRODUCTIVE_KEYWORDS = [
     'code', 'studio', 'pycharm', 'intellij', 'eclipse', 'vim', 'emacs',
@@ -715,7 +1635,7 @@ def calculate_focus_score(app_logs):
     neutral_time = 0
 
     for log in app_logs:
-        duration = log.duration or 60
+        duration = log.duration or 0
         category = classify_app(log.application_name)
         if category == 'productive':
             productive_time += duration
@@ -830,53 +1750,15 @@ def _calc_interval_seconds(log, last_ts_by_device, default_interval=60, max_inte
     return delta
 
 def log_device_data(device_id, tracking_data):
-    """Log device activity and resource data"""
+    """Persist a canonical tracking sample + child logs."""
     try:
-        current_time = datetime.utcnow()
-        
-        # Log activity
-        current_activity = tracking_data.get('current_activity', {})
-        activity_log = DeviceActivityLog(
+        ingest_tracking_sample(
             device_id=device_id,
-            timestamp=current_time,
-            activity_type='status_update',
-            event_count=1,
-            details=json.dumps(current_activity)
+            payload=tracking_data if isinstance(tracking_data, dict) else {},
+            source='probe',
+            received_at=datetime.utcnow(),
         )
-        db.session.add(activity_log)
-        
-        # Log resources
-        system_metrics = tracking_data.get('system_metrics', {})
-        network_metrics = tracking_data.get('network')
-        if not network_metrics:
-            network_metrics = system_metrics.get('network_speed') or {}
-        
-        resource_log = DeviceResourceLog(
-            device_id=device_id,
-            timestamp=current_time,
-            cpu_usage=system_metrics.get('cpu_percent'),
-            memory_usage=system_metrics.get('memory_percent'),
-            disk_usage=system_metrics.get('disk_usage'),
-            upload_kbps=network_metrics.get('upload_speed_kbps', 0.0),
-            download_kbps=network_metrics.get('download_speed_kbps', 0.0)
-        )
-        db.session.add(resource_log)
-        
-        # Log applications
-        today_stats = tracking_data.get('today_stats', {})
-        applications = today_stats.get('applications_used', [])
-        for app in applications[-5:]:  # Log last 5 applications
-            app_log = DeviceApplicationLog(
-                device_id=device_id,
-                timestamp=current_time,
-                application_name=app,
-                status='active',
-                duration=60  # Assume 1 minute per check
-            )
-            db.session.add(app_log)
-        
         db.session.commit()
-        
     except Exception as e:
         db.session.rollback()
         print(f"Error logging device data: {e}")
@@ -895,7 +1777,9 @@ def refresh_tracking_snapshot(force=False, min_interval_seconds=15, force_log=Fa
     refreshed = 0
 
     try:
-        devices = TrackedDevice.query.all()
+        devices = TrackedDevice.query.filter(
+            db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None))
+        ).all()
         if not devices:
             return 0
 
@@ -1018,66 +1902,93 @@ def utility_processor():
 @tracking_bp.route('/tracking')
 def device_tracking():
     """Main device tracking page"""
-    # 1. Fetch all devices (Fast)
-    saved_devices = TrackedDevice.query.order_by(TrackedDevice.device_name).all()
-    
-    # 2. Calculate Online/Offline counts in-memory (0 extra DB queries)
-    # Define "Online" as seen in the last 5 minutes
-    online_threshold = datetime.utcnow() - timedelta(minutes=5)
-    
+    # Template values are best-effort; JS refresh from /api/tracking/live-summary is source-of-truth.
+    saved_devices = scoped_tracked_device_query(
+        include_archived=False,
+        include_unscoped_for_admin=True,
+    ).order_by(TrackedDevice.device_name).all()
+
     online_count = 0
+    degraded_count = 0
+    offline_count = 0
     for device in saved_devices:
-        if device.last_seen and device.last_seen > online_threshold:
+        status = str(device.availability_status or 'offline').strip().lower()
+        if status == 'online':
             online_count += 1
-            
-    offline_count = len(saved_devices) - online_count
-    
-    # 3. Calculate 24h Activity using a single efficient aggregate query
+        elif status == 'degraded':
+            degraded_count += 1
+        else:
+            offline_count += 1
+
+    # 24h Activity aggregate query scoped to visible devices.
     yesterday = datetime.utcnow() - timedelta(hours=24)
-    last_24h_activity = db.session.query(db.func.count(db.distinct(DeviceActivityLog.device_id)))\
-        .filter(DeviceActivityLog.timestamp >= yesterday).scalar() or 0
-    
-    # 4. Remove the expensive per-device get_device_statistics loop
-    # The template does NOT use 'device_stats' or 'saved_devices_dicts'
-    
+    visible_device_ids = [device.id for device in saved_devices]
+    if visible_device_ids:
+        last_24h_activity = (
+            db.session.query(db.func.count(db.distinct(DeviceActivityLog.device_id)))
+            .filter(
+                DeviceActivityLog.device_id.in_(visible_device_ids),
+                DeviceActivityLog.timestamp >= yesterday,
+            )
+            .scalar()
+            or 0
+        )
+    else:
+        last_24h_activity = 0
+
+    reachable_count = online_count + degraded_count
+    checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+    agent_cutoff = datetime.utcnow() - timedelta(seconds=checkin_window_seconds)
+    active_agent_checkins = sum(
+        1
+        for device in saved_devices
+        if getattr(device, 'last_agent_sync_at', None) and device.last_agent_sync_at >= agent_cutoff
+    )
+
     return render_template('tracking/device_tracking.html', 
                          saved_devices=saved_devices,
                          online_count=online_count,
+                         degraded_count=degraded_count,
+                         reachable_count=reachable_count,
                          offline_count=offline_count,
-                         active_count=online_count, # Use online count for active card
-                         last_24h_activity=last_24h_activity)
+                         active_count=reachable_count,
+                         last_24h_activity=last_24h_activity,
+                         active_agent_checkins=active_agent_checkins,
+                         agent_sync_window_seconds=checkin_window_seconds,
+                         workstation_ui_v2=bool(getattr(Config, 'TRACKING_WORKSTATION_UI_V2', False)))
 
 @tracking_bp.route('/tracking/history/<int:device_id>')
+@require_permission('tracking.history.view')
 def device_history(device_id):
     """Device history page"""
-    device = TrackedDevice.query.get_or_404(device_id)
-    
-    # Get date range from request
-    days = request.args.get('days', 7, type=int)
-    start_date = datetime.utcnow() - timedelta(days=days)
-    
-    # Get historical data
-    activity_logs = DeviceActivityLog.query.filter(
-        DeviceActivityLog.device_id == device_id,
-        DeviceActivityLog.timestamp >= start_date
-    ).order_by(DeviceActivityLog.timestamp.desc()).all()
-    
-    resource_logs = DeviceResourceLog.query.filter(
-        DeviceResourceLog.device_id == device_id,
-        DeviceResourceLog.timestamp >= start_date
-    ).order_by(DeviceResourceLog.timestamp.desc()).limit(1000).all()
-    
-    application_logs = DeviceApplicationLog.query.filter(
-        DeviceApplicationLog.device_id == device_id,
-        DeviceApplicationLog.timestamp >= start_date
-    ).order_by(DeviceApplicationLog.timestamp.desc()).all()
-    
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    days = max(1, min(int(request.args.get('days', 7, type=int) or 7), 30))
+    start_date, end_date = parse_history_window_strict(None, None, default_days=days, max_days=30)
+    summary = query_history_summary(device_id, start_date, end_date)
+
     return render_template('tracking/device_history.html',
-                         device=device,
-                         activity_logs=activity_logs,
-                         resource_logs=resource_logs,
-                         application_logs=application_logs,
-                         days=days)
+                           device=device,
+                           days=days,
+                           summary=summary)
+
+
+@tracking_bp.route('/tracking/history')
+@require_permission('tracking.history.view')
+def device_history_index():
+    """Fallback route for history root; redirect to tracking list."""
+    return redirect(url_for('tracking_bp.device_tracking'))
+
+
+@tracking_bp.route('/tracking/workstation/<int:device_id>')
+@require_permission('tracking.history.view')
+def workstation_monitor(device_id):
+    """Workstation monitoring shell page."""
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    return render_template(
+        'tracking/workstation_monitor.html',
+        device=device,
+        default_days=7,
+    )
 
 # ============================================================
 # API ENDPOINTS - REAL TIME TRACKING
@@ -1091,6 +2002,7 @@ def api_real_time_tracking(mac_address):
     """Real-time tracking data for device"""
     try:
         force_refresh = request.args.get('force') == '1'
+        prefer_cache = request.args.get('prefer_cache') == '1'
 
         # Check cache first (CACHE HIT)
         if not force_refresh and mac_address in real_time_data:
@@ -1102,13 +2014,17 @@ def api_real_time_tracking(mac_address):
                 )
                 probe_method = cached.get('probe_method')
                 probe_error_code = cached.get('probe_error_code')
+                cached_device_info = cached.get('device_info') if isinstance(cached.get('device_info'), dict) else {}
+                cached_device_id = cached_device_info.get('id')
+                if cached_device_id:
+                    cached_device_info = _attach_daily_uptime_payload(cached_device_info, cached_device_id)
 
                 if availability_status == 'offline':
                     return jsonify({
                         'success': False,
                         'error_code': probe_error_code or 'AGENT_UNREACHABLE',
                         'error': 'Device not responding (Cached)',
-                        'device_info': cached.get('device_info'),
+                        'device_info': cached_device_info,
                         'availability_status': 'offline',
                         'metrics_available': False,
                         'metrics_stale': False,
@@ -1121,7 +2037,7 @@ def api_real_time_tracking(mac_address):
                 return jsonify({
                     'success': True,
                     'tracking_data': cached_data,
-                    'device_info': cached.get('device_info'),
+                    'device_info': cached_device_info,
                     'timestamp': datetime.fromtimestamp(cached['timestamp']).isoformat(),
                     'cached': True,
                     'availability_status': availability_status,
@@ -1136,6 +2052,69 @@ def api_real_time_tracking(mac_address):
         device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
         if not device or not device.ip_address:
             return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+        device_violation_summary = _safe_build_active_violation_summary([device.id]).get(device.id, {})
+
+        if prefer_cache and not force_refresh:
+            bootstrap_now_utc = datetime.utcnow()
+            checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+            sync_recent = bool(
+                device.last_agent_sync_at and
+                (bootstrap_now_utc - device.last_agent_sync_at).total_seconds() <= checkin_window_seconds
+            )
+            if sync_recent:
+                fallback_data = {}
+                if device.tracking_data:
+                    try:
+                        candidate_payload = json.loads(device.tracking_data)
+                        if isinstance(candidate_payload, dict):
+                            fallback_data = candidate_payload
+                    except Exception:
+                        fallback_data = {}
+
+                cached_entry = real_time_data.get(mac_address, {})
+                cached_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
+                if not fallback_data and cached_data:
+                    fallback_data = cached_data
+
+                fallback_status = str(device.availability_status or 'degraded').strip().lower()
+                if fallback_status not in ('online', 'degraded'):
+                    fallback_status = 'degraded'
+                metrics_available = bool(
+                    device.metrics_available or
+                    fallback_data.get('system_metrics') or
+                    fallback_data.get('today_stats') or
+                    fallback_data.get('current_activity')
+                )
+                device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
+                device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=bootstrap_now_utc)
+
+                real_time_data[mac_address] = {
+                    'data': fallback_data,
+                    'status': fallback_status,
+                    'availability_status': fallback_status,
+                    'device_info': device_info_payload,
+                    'timestamp': time.time(),
+                    'probe_error_code': device.probe_error_code,
+                    'probe_method': device.probe_method or 'bootstrap-cache',
+                    'metrics_available': metrics_available,
+                    'metrics_stale': True,
+                }
+
+                return jsonify({
+                    'success': True,
+                    'tracking_data': fallback_data,
+                    'device_info': device_info_payload,
+                    'timestamp': bootstrap_now_utc.isoformat(),
+                    'cached': True,
+                    'bootstrap_cache': True,
+                    'availability_status': fallback_status,
+                    'metrics_available': metrics_available,
+                    'metrics_stale': True,
+                    'probe': {
+                        'method': device.probe_method or 'bootstrap-cache',
+                        'error_code': device.probe_error_code,
+                    },
+                })
 
         # Get live data from device using interactive probe profile.
         scanner = NetworkScanner()
@@ -1166,7 +2145,8 @@ def api_real_time_tracking(mac_address):
                 (now_utc - device.last_seen).total_seconds() >= 30
             )
             device.last_seen = now_utc
-            device_info_payload = device_to_dict(device)
+            device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
+            device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=now_utc)
 
             real_time_data[mac_address] = {
                 'data': tracking_data,
@@ -1203,11 +2183,72 @@ def api_real_time_tracking(mac_address):
 
         probe_error_code = service_info.get('probe_error_code') if isinstance(service_info, dict) else None
         probe_method = service_info.get('probe_method') if isinstance(service_info, dict) else None
+        now_utc = datetime.utcnow()
+        checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+        sync_recent = False
+        if device.last_agent_sync_at:
+            sync_recent = (now_utc - device.last_agent_sync_at).total_seconds() <= checkin_window_seconds
+
+        if sync_recent:
+            fallback_data = {}
+            if device.tracking_data:
+                try:
+                    candidate_payload = json.loads(device.tracking_data)
+                    if isinstance(candidate_payload, dict):
+                        fallback_data = candidate_payload
+                except Exception:
+                    fallback_data = {}
+            cached_entry = real_time_data.get(mac_address, {})
+            cached_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
+            if not fallback_data and cached_data:
+                fallback_data = cached_data
+
+            fallback_status = str(device.availability_status or 'degraded').strip().lower()
+            if fallback_status not in ('online', 'degraded'):
+                fallback_status = 'degraded'
+            metrics_available = bool(
+                device.metrics_available or
+                fallback_data.get('system_metrics') or
+                fallback_data.get('today_stats') or
+                fallback_data.get('current_activity')
+            )
+            device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
+            device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=now_utc)
+
+            real_time_data[mac_address] = {
+                'data': fallback_data,
+                'status': fallback_status,
+                'availability_status': fallback_status,
+                'device_info': device_info_payload,
+                'timestamp': time.time(),
+                'probe_error_code': probe_error_code or 'AGENT_UNREACHABLE',
+                'probe_method': probe_method or 'interactive',
+                'metrics_available': metrics_available,
+                'metrics_stale': True,
+            }
+
+            return jsonify({
+                'success': True,
+                'tracking_data': fallback_data,
+                'device_info': device_info_payload,
+                'timestamp': now_utc.isoformat(),
+                'availability_status': fallback_status,
+                'metrics_available': metrics_available,
+                'metrics_stale': True,
+                'sync_recent_fallback': True,
+                'probe': {
+                    'method': probe_method or 'interactive',
+                    'error_code': probe_error_code or 'AGENT_UNREACHABLE',
+                },
+            })
+
+        device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
+        device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=now_utc)
         real_time_data[mac_address] = {
             'data': None,
             'status': 'offline',
             'availability_status': 'offline',
-            'device_info': device_to_dict(device),
+            'device_info': device_info_payload,
             'timestamp': time.time(),
             'probe_error_code': probe_error_code or 'AGENT_UNREACHABLE',
             'probe_method': probe_method,
@@ -1219,7 +2260,7 @@ def api_real_time_tracking(mac_address):
             'success': False,
             'error_code': probe_error_code or 'AGENT_UNREACHABLE',
             'error': 'Device not responding',
-            'device_info': device_to_dict(device),
+            'device_info': device_info_payload,
             'availability_status': 'offline',
             'metrics_available': False,
             'metrics_stale': False,
@@ -1235,136 +2276,459 @@ def api_real_time_tracking(mac_address):
             e,
         )
 
-@tracking_bp.route('/api/tracking/history/activity/<int:device_id>')
-def api_activity_history(device_id):
-    """Get activity history for device"""
-    # Auth handled by middleware
+def _history_window_from_request(default_days=7, max_days=30):
+    return parse_history_window_strict(
+        request.args.get('from'),
+        request.args.get('to'),
+        default_days=default_days,
+        max_days=max_days,
+    )
 
-    
+
+def _workstation_window_from_request(default_days=7):
+    max_days = max(1, int(getattr(Config, 'TRACKING_REPORT_MAX_DAYS', 90) or 90))
+    return parse_workstation_window(
+        request.args.get('from'),
+        request.args.get('to'),
+        default_days=default_days,
+        max_days=max_days,
+    )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/summary')
+@require_permission('tracking.history.view')
+def api_history_summary_v2(device_id):
+    """V2 summary endpoint for history shell page."""
     try:
-        days = request.args.get('days', 7, type=int)
-        start_date = datetime.utcnow() - timedelta(days=days)
-        
-        logs = DeviceActivityLog.query.filter(
-            DeviceActivityLog.device_id == device_id,
-            DeviceActivityLog.timestamp >= start_date
-        ).order_by(DeviceActivityLog.timestamp.asc()).all()
-        
-        # Convert logs to serializable format
-        log_dicts = []
-        for log in logs:
-            log_dict = {
-                'id': log.id,
-                'device_id': log.device_id,
-                'timestamp': log.timestamp.isoformat(),
-                'activity_type': log.activity_type,
-                'event_count': log.event_count,
-                'details': log.details
-            }
-            log_dicts.append(log_dict)
-        
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        summary = query_history_summary(device_id, start_date, end_date)
+        envelope = build_history_envelope(request, start_date, end_date)
         return jsonify({
             'success': True,
-            'data': log_dicts
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            'tz': (request.args.get('tz') or 'UTC'),
+            'data': summary,
+            **envelope,
         })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
     except Exception as e:
         return _json_exception(
-            'ACTIVITY_HISTORY_FAILED',
+            'HISTORY_SUMMARY_FAILED',
+            'Failed to load history summary.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/activity')
+@require_permission('tracking.history.view')
+def api_history_activity_v2(device_id):
+    """V2 activity endpoint with deterministic cursor pagination."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        cursor = request.args.get('cursor')
+        rows, next_cursor = query_activity_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=limit,
+            cursor=cursor,
+        )
+        envelope = build_history_envelope(request, start_date, end_date)
+        return jsonify({
+            'success': True,
+            'data': rows,
+            'next_cursor': next_cursor,
+            'has_more': bool(next_cursor),
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            **envelope,
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'HISTORY_ACTIVITY_FAILED',
             'Failed to load activity history.',
             e,
         )
 
-@tracking_bp.route('/api/tracking/history/resources/<int:device_id>')
-def api_resource_history(device_id):
-    """Get resource usage history for device"""
-    # Auth handled by middleware
 
-    
+@tracking_bp.route('/api/tracking/history/<int:device_id>/resources')
+@require_permission('tracking.history.view')
+def api_history_resources_v2(device_id):
+    """V2 resource endpoint with cursor pagination and optional bucket rollups."""
     try:
-        hours = request.args.get('hours', 24, type=int)
-        start_date = datetime.utcnow() - timedelta(hours=hours)
-        
-        logs = DeviceResourceLog.query.filter(
-            DeviceResourceLog.device_id == device_id,
-            DeviceResourceLog.timestamp >= start_date
-        ).order_by(DeviceResourceLog.timestamp.asc()).all()
-        
-        # Convert logs to serializable format
-        log_dicts = []
-        for log in logs:
-            log_dict = {
-                'id': log.id,
-                'device_id': log.device_id,
-                'timestamp': log.timestamp.isoformat(),
-                'cpu_usage': log.cpu_usage,
-                'memory_usage': log.memory_usage,
-                'disk_usage': log.disk_usage
-            }
-            log_dicts.append(log_dict)
-        
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        cursor = request.args.get('cursor')
+        bucket = (request.args.get('bucket') or 'raw').strip().lower()
+        rows, next_cursor = query_resource_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=limit,
+            cursor=cursor,
+            bucket=bucket,
+        )
+        envelope = build_history_envelope(request, start_date, end_date)
         return jsonify({
             'success': True,
-            'data': log_dicts
+            'data': rows,
+            'bucket': bucket,
+            'next_cursor': next_cursor,
+            'has_more': bool(next_cursor),
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            **envelope,
         })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
     except Exception as e:
         return _json_exception(
-            'RESOURCE_HISTORY_FAILED',
+            'HISTORY_RESOURCE_FAILED',
             'Failed to load resource history.',
             e,
         )
 
-@tracking_bp.route('/api/tracking/history/applications/<int:device_id>')
-def api_application_history(device_id):
-    """Get application usage history for device"""
-    # Auth handled by middleware
 
-    
+@tracking_bp.route('/api/tracking/history/<int:device_id>/applications')
+@require_permission('tracking.history.view')
+def api_history_applications_v2(device_id):
+    """V2 application endpoint with cursor pagination and grouped view."""
     try:
-        days = request.args.get('days', 7, type=int)
-        start_date = datetime.utcnow() - timedelta(days=days)
-        
-        logs = DeviceApplicationLog.query.filter(
-            DeviceApplicationLog.device_id == device_id,
-            DeviceApplicationLog.timestamp >= start_date
-        ).order_by(DeviceApplicationLog.timestamp.desc()).all()
-        
-        # Convert logs to serializable format
-        log_dicts = []
-        for log in logs:
-            log_dict = {
-                'id': log.id,
-                'device_id': log.device_id,
-                'timestamp': log.timestamp.isoformat(),
-                'application_name': log.application_name,
-                'status': log.status,
-                'duration': log.duration
-            }
-            log_dicts.append(log_dict)
-        
-        # Group by application and calculate total usage
-        app_usage = {}
-        for log in logs:
-            if log.application_name not in app_usage:
-                app_usage[log.application_name] = {
-                    'name': log.application_name,
-                    'total_duration': 0,
-                    'sessions': 0,
-                    'last_used': log.timestamp.isoformat()
-                }
-            app_usage[log.application_name]['total_duration'] += (log.duration or 0)
-            app_usage[log.application_name]['sessions'] += 1
-        
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        cursor = request.args.get('cursor')
+        group_by = request.args.get('group_by')
+        rows, next_cursor = query_application_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=limit,
+            cursor=cursor,
+            group_by=group_by,
+        )
+        envelope = build_history_envelope(request, start_date, end_date)
         return jsonify({
             'success': True,
-            'data': list(app_usage.values()),
-            'raw_data': log_dicts[:100]  # Last 100 entries
+            'data': rows,
+            'group_by': group_by or 'raw',
+            'next_cursor': next_cursor,
+            'has_more': bool(next_cursor),
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            **envelope,
         })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
     except Exception as e:
         return _json_exception(
-            'APPLICATION_HISTORY_FAILED',
+            'HISTORY_APPLICATION_FAILED',
             'Failed to load application history.',
             e,
         )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/integrity')
+@require_permission('tracking.history.view')
+def api_history_integrity_v2(device_id):
+    """V2 integrity endpoint showing sample quality records."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        cursor = request.args.get('cursor')
+        rows, next_cursor = query_integrity_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=limit,
+            cursor=cursor,
+        )
+        envelope = build_history_envelope(request, start_date, end_date)
+        return jsonify({
+            'success': True,
+            'data': rows,
+            'next_cursor': next_cursor,
+            'has_more': bool(next_cursor),
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            **envelope,
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'HISTORY_INTEGRITY_FAILED',
+            'Failed to load integrity history.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/dashboard')
+@require_permission('tracking.history.view')
+def api_history_dashboard(device_id):
+    """Polished history dashboard payload with deterministic health metrics."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        payload = query_history_dashboard(device, start_date, end_date)
+        envelope = build_history_envelope(request, start_date, end_date)
+        return jsonify({
+            'success': True,
+            'data': payload,
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+            'tz': (request.args.get('tz') or 'UTC'),
+            **envelope,
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'HISTORY_DASHBOARD_FAILED',
+            'Failed to load history dashboard.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/run-integrity', methods=['POST'])
+@require_permission('tracking.history.view')
+def api_history_run_integrity(device_id):
+    """Trigger a scoped integrity check cycle from history page action."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        payload = request.get_json(silent=True) or {}
+        requested_days = payload.get('days', request.args.get('days', 7))
+        try:
+            lookback_days = int(requested_days)
+        except (TypeError, ValueError):
+            lookback_days = 7
+        lookback_days = max(1, min(lookback_days, 30))
+        result = run_tracking_integrity_checks(lookback_days=lookback_days)
+        return jsonify({
+            'success': True,
+            'message': 'Integrity check completed.',
+            'data': result,
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception(
+            'HISTORY_RUN_INTEGRITY_FAILED',
+            'Failed to run integrity checks.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/workstation/<int:device_id>/overview')
+@require_permission('tracking.history.view')
+def api_workstation_overview(device_id):
+    """Scoped workstation overview API."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        return jsonify({
+            'success': True,
+            'data': query_workstation_overview(device),
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception(
+            'WORKSTATION_OVERVIEW_FAILED',
+            'Failed to load workstation overview.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/workstation/<int:device_id>/reports')
+@require_permission('tracking.history.view')
+def api_workstation_reports(device_id):
+    """Scoped workstation report metrics API."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_utc, end_utc = _workstation_window_from_request(default_days=7)
+        return jsonify({
+            'success': True,
+            'from': start_utc.isoformat(),
+            'to': end_utc.isoformat(),
+            'tz': (request.args.get('tz') or 'UTC'),
+            'data': query_workstation_reports(device.id, start_utc, end_utc),
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'WORKSTATION_REPORTS_FAILED',
+            'Failed to load workstation reports.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/workstation/<int:device_id>/availability')
+@require_permission('tracking.history.view')
+def api_workstation_availability(device_id):
+    """Scoped workstation availability timeline API."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_utc, end_utc = _workstation_window_from_request(default_days=7)
+        limit = request.args.get('limit', 100, type=int)
+        cursor = request.args.get('cursor')
+        rows, next_cursor = query_availability_events_page(
+            device_id=device.id,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            limit=limit,
+            cursor=cursor,
+        )
+        return jsonify({
+            'success': True,
+            'from': start_utc.isoformat(),
+            'to': end_utc.isoformat(),
+            'data': rows,
+            'next_cursor': next_cursor,
+            'has_more': bool(next_cursor),
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'WORKSTATION_AVAILABILITY_FAILED',
+            'Failed to load workstation availability timeline.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/workstation/<int:device_id>/anomalies')
+@require_permission('tracking.history.view')
+def api_workstation_anomalies(device_id):
+    """Scoped workstation anomalies API."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_utc, end_utc = _workstation_window_from_request(default_days=7)
+        anomalies = query_workstation_anomalies(device, start_utc, end_utc)
+        return jsonify({
+            'success': True,
+            'from': start_utc.isoformat(),
+            'to': end_utc.isoformat(),
+            'data': anomalies,
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception(
+            'WORKSTATION_ANOMALIES_FAILED',
+            'Failed to load workstation anomalies.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/history/activity/<int:device_id>')
+@require_permission('tracking.history.view')
+def api_activity_history(device_id):
+    """Legacy wrapper -> v2 activity endpoint."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        days = request.args.get('days', 7, type=int)
+        start_date = datetime.utcnow() - timedelta(days=days)
+        end_date = datetime.utcnow()
+        rows, _ = query_activity_page(device_id, start_date, end_date, limit=1000, cursor=None)
+        rows.reverse()
+        response = jsonify({'success': True, 'data': rows})
+        response.headers['Warning'] = '299 - "Deprecated endpoint. Use /api/tracking/history/<device_id>/activity"'
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception('ACTIVITY_HISTORY_FAILED', 'Failed to load activity history.', e)
+
+
+@tracking_bp.route('/api/tracking/history/resources/<int:device_id>')
+@require_permission('tracking.history.view')
+def api_resource_history(device_id):
+    """Legacy wrapper -> v2 resources endpoint."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        hours = request.args.get('hours', 24, type=int)
+        start_date = datetime.utcnow() - timedelta(hours=hours)
+        end_date = datetime.utcnow()
+        rows, _ = query_resource_page(device_id, start_date, end_date, limit=2000, cursor=None, bucket='raw')
+        rows.reverse()
+        response = jsonify({'success': True, 'data': rows})
+        response.headers['Warning'] = '299 - "Deprecated endpoint. Use /api/tracking/history/<device_id>/resources"'
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception('RESOURCE_HISTORY_FAILED', 'Failed to load resource history.', e)
+
+
+@tracking_bp.route('/api/tracking/history/applications/<int:device_id>')
+@require_permission('tracking.history.view')
+def api_application_history(device_id):
+    """Legacy wrapper -> v2 application endpoint."""
+    try:
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        days = request.args.get('days', 7, type=int)
+        start_date = datetime.utcnow() - timedelta(days=days)
+        end_date = datetime.utcnow()
+        grouped, _ = query_application_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=500,
+            cursor=None,
+            group_by='application',
+        )
+        raw_rows, _ = query_application_page(
+            device_id=device_id,
+            start=start_date,
+            end=end_date,
+            limit=100,
+            cursor=None,
+            group_by=None,
+        )
+        legacy_grouped = [
+            {
+                'name': item.get('application_name'),
+                'sessions': item.get('sessions', 0),
+                'total_duration': item.get('total_duration', 0),
+                'last_used': item.get('last_used'),
+            }
+            for item in grouped
+        ]
+        response = jsonify({'success': True, 'data': legacy_grouped, 'raw_data': raw_rows})
+        response.headers['Warning'] = '299 - "Deprecated endpoint. Use /api/tracking/history/<device_id>/applications"'
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception('APPLICATION_HISTORY_FAILED', 'Failed to load application history.', e)
 
 
 
@@ -1510,8 +2874,28 @@ def api_stream_audio(mac_address):
             ) as response:
                 
                 if response.status_code == 200:
-                    # Send WAV header once so browsers can play raw PCM stream
-                    yield _wav_header()
+                    # Send WAV header once so browsers can play raw PCM stream.
+                    try:
+                        sample_rate = int(response.headers.get('X-Audio-Sample-Rate', 16000))
+                    except (TypeError, ValueError):
+                        sample_rate = 16000
+                    try:
+                        channels = int(response.headers.get('X-Audio-Channels', 1))
+                    except (TypeError, ValueError):
+                        channels = 1
+                    try:
+                        bits_per_sample = int(response.headers.get('X-Audio-Bits', 16))
+                    except (TypeError, ValueError):
+                        bits_per_sample = 16
+
+                    sample_rate = max(8000, sample_rate)
+                    channels = max(1, channels)
+                    bits_per_sample = 16 if bits_per_sample not in (8, 16, 24, 32) else bits_per_sample
+                    yield _wav_header(
+                        sample_rate=sample_rate,
+                        bits_per_sample=bits_per_sample,
+                        channels=channels,
+                    )
                     # Forward chunks
                     # Use a smaller chunk size for audio to reduce latency
                     for chunk in response.iter_content(chunk_size=1024):
@@ -1685,21 +3069,31 @@ def api_stop_camera(mac_address):
 @tracking_bp.route('/api/tracking/scan', methods=['POST'])
 def api_scan_devices():
     """Scan network for devices"""
-    print("[DEBUG] /api/tracking/scan endpoint called!")
+    if is_reconciliation_locked():
+        return _json_error(
+            'TRACKING_RECONCILIATION_BUSY',
+            'Tracking reconciliation is currently running. Try scan again shortly.',
+            409,
+        )
     
     try:
         scanner = NetworkScanner()
         devices_found = scanner.scan_for_trackable_devices()
 
-        saved_devices = TrackedDevice.query.all()
+        saved_devices = scoped_tracked_device_query(
+            include_archived=True,
+            include_unscoped_for_admin=True,
+        ).all()
         saved_macs = {str(device.mac_address).upper(): device for device in saved_devices if device.mac_address}
+        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         enhanced_devices = []
         updated_ips = []
         auto_saved_devices = []
+        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         for device in devices_found:
-            mac = _normalize_mac(device.get('mac_address'))
+            mac = normalize_mac(device.get('mac_address'))
             status = device.get('status')
             unique_client_id = (device.get('unique_client_id') or '').strip() or None
             scanned_hostname = (device.get('hostname') or '').strip() or None
@@ -1718,7 +3112,8 @@ def api_scan_devices():
                         hostname=scanned_hostname,
                         ip_address=device.get('ip'),
                         department="Unassigned",
-                        notes="Auto-discovered by scanner"
+                        notes="Auto-discovered by scanner",
+                        **scope_defaults,
                     )
                     db.session.add(new_device)
                     db.session.flush()
@@ -1734,6 +3129,12 @@ def api_scan_devices():
 
             saved_device = saved_macs.get(mac) if mac else None
             if saved_device:
+                if status == 'tracking_active' and getattr(saved_device, 'is_archived', False):
+                    saved_device.is_archived = False
+                    saved_device.archived_at = None
+                    saved_device.archived_reason = None
+                    saved_device.archived_by = None
+                    saved_device.is_active = True
                 if device.get('ip') and device.get('ip') != saved_device.ip_address:
                     old_ip = saved_device.ip_address
                     saved_device.ip_address = device.get('ip')
@@ -1803,7 +3204,16 @@ def api_save_device():
         ip_address = (data.get('ip_address') or '').strip() or None
         hostname = (data.get('hostname') or '').strip() or None
         unique_client_id = (data.get('unique_client_id') or '').strip() or None
-        mac_address = _normalize_mac(data.get('mac_address'))
+        raw_mac = data.get('mac_address')
+        raw_mac_text = str(raw_mac or '').strip()
+        mac_address = normalize_mac(raw_mac)
+
+        if raw_mac_text and not mac_address:
+            return _json_error(
+                'INVALID_MAC_ADDRESS',
+                'Invalid MAC address format. Use 00:1A:2B:3C:4D:5E.',
+                400,
+            )
 
         if not ip_address and not mac_address:
             return _json_error(
@@ -1832,10 +3242,26 @@ def api_save_device():
         employee_name = (data.get('employee_name') or '').strip() or None
         department = (data.get('department') or '').strip() or None
         notes = (data.get('notes') or '').strip() or None
+        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         device = _find_tracked_device(mac_address=mac_address, unique_client_id=unique_client_id)
+        if device is not None:
+            visible_device = scoped_tracked_device_query(
+                include_archived=True,
+                include_unscoped_for_admin=True,
+            ).filter(TrackedDevice.id == device.id).first()
+            if not visible_device:
+                return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
 
         if device:
+            previous_ip = (device.ip_address or '').strip() or None
+            if getattr(device, 'is_archived', False):
+                device.is_archived = False
+                device.archived_at = None
+                device.archived_reason = None
+                device.archived_by = None
+                device.is_active = True
+
             if device.mac_address != mac_address:
                 mac_collision = TrackedDevice.query.filter(
                     TrackedDevice.mac_address == mac_address,
@@ -1856,7 +3282,28 @@ def api_save_device():
             device.unique_client_id = unique_client_id or device.unique_client_id
             device.department = department
             device.notes = notes
+            if scope_defaults.get('site_id') is not None and device.site_id is None:
+                device.site_id = scope_defaults.get('site_id')
+            if scope_defaults.get('department_id') is not None and device.department_id is None:
+                device.department_id = scope_defaults.get('department_id')
             device.updated_at = datetime.utcnow()
+
+            next_ip = (device.ip_address or '').strip() or None
+            if previous_ip != next_ip and next_ip:
+                _record_tracked_device_ip_history(
+                    device_id=device.id,
+                    old_ip=previous_ip,
+                    new_ip=next_ip,
+                    resolved_ip=next_ip,
+                    payload_ip=ip_address,
+                    payload_candidates=[next_ip],
+                    transport_remote_ip=request.remote_addr,
+                    transport_forwarded_for=_transport_forwarded_for_header(),
+                    agent_key_id=None,
+                    reason=SYNC_IP_REASON_MANUAL,
+                    ip_source='manual_edit',
+                    network_signature=None,
+                )
         else:
             device = TrackedDevice(
                 mac_address=mac_address,
@@ -1866,9 +3313,28 @@ def api_save_device():
                 hostname=hostname,
                 ip_address=ip_address,
                 department=department,
-                notes=notes
+                notes=notes,
+                is_archived=False,
+                **scope_defaults,
             )
             db.session.add(device)
+            db.session.flush()
+            next_ip = (device.ip_address or '').strip() or None
+            if next_ip:
+                _record_tracked_device_ip_history(
+                    device_id=device.id,
+                    old_ip=None,
+                    new_ip=next_ip,
+                    resolved_ip=next_ip,
+                    payload_ip=ip_address,
+                    payload_candidates=[next_ip],
+                    transport_remote_ip=request.remote_addr,
+                    transport_forwarded_for=_transport_forwarded_for_header(),
+                    agent_key_id=None,
+                    reason=SYNC_IP_REASON_MANUAL,
+                    ip_source='manual_edit',
+                    network_signature=None,
+                )
 
         db.session.commit()
         return jsonify({
@@ -1885,47 +3351,201 @@ def api_save_device():
         )
 
 @tracking_bp.route('/api/tracking/delete-device', methods=['POST'])
+@require_permission('tracking.device.archive')
 def api_delete_device():
-    """Delete device"""
-    
+    """Archive-first deletion endpoint (hard delete requires purge privileges)."""
     try:
         payload = request.get_json(silent=True) or {}
-        mac_address = _normalize_mac(payload.get('mac_address'))
-        if not mac_address:
-            return _json_error('MAC_ADDRESS_REQUIRED', 'MAC address is required.', 400)
-        device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
-        
+        device = None
+        device_query = scoped_tracked_device_query(include_archived=True, include_unscoped_for_admin=True)
+        device_id_provided = False
+
+        raw_device_id = payload.get('device_id')
+        if raw_device_id is not None and str(raw_device_id).strip() != '':
+            device_id_provided = True
+            try:
+                parsed_device_id = int(raw_device_id)
+            except (TypeError, ValueError):
+                return _json_error('INVALID_DEVICE_ID', 'Device ID must be a valid integer.', 400)
+            if parsed_device_id <= 0:
+                return _json_error('INVALID_DEVICE_ID', 'Device ID must be greater than zero.', 400)
+            device = device_query.filter(TrackedDevice.id == parsed_device_id).first()
+            if not device:
+                return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+
+        if device is None:
+            raw_mac = payload.get('mac_address')
+            raw_mac_text = str(raw_mac or '').strip()
+            if not raw_mac_text:
+                if device_id_provided:
+                    return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+                return _json_error(
+                    'DEVICE_IDENTITY_REQUIRED',
+                    'Provide device_id or mac_address to archive a tracked device.',
+                    400,
+                )
+
+            mac_address = normalize_mac(raw_mac)
+            if not mac_address:
+                return _json_error('INVALID_MAC_ADDRESS', 'MAC address format is invalid.', 400)
+
+            # Match legacy rows that may have mixed separator/case in stored MAC.
+            device = device_query.filter(
+                db.func.replace(db.func.upper(TrackedDevice.mac_address), '-', ':') == mac_address
+            ).first()
+
         if not device:
             return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
-        
-        db.session.delete(device)
+
+        purge_requested = _coerce_bool(payload.get('purge'), False)
+        if purge_requested:
+            db.session.delete(device)
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Device and tracking history permanently purged.',
+                'purged': True,
+            })
+
+        now_utc = datetime.utcnow()
+        if not device.is_archived:
+            device.is_archived = True
+            device.archived_at = now_utc
+            device.archived_reason = (payload.get('reason') or 'manual_archive').strip() if payload.get('reason') else 'manual_archive'
+            device.archived_by = str(session.get('username') or 'system')
+        device.is_active = False
+        device.updated_at = now_utc
         db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'Device deleted successfully'})
+
+        return jsonify({
+            'success': True,
+            'message': 'Device archived successfully.',
+            'archived': True,
+            'device': device_to_dict(device),
+        })
     except Exception as e:
         db.session.rollback()
-        return _json_exception(
-            'DELETE_DEVICE_FAILED',
-            'Failed to delete tracked device.',
-            e,
+        return _json_exception('DELETE_DEVICE_FAILED', 'Failed to archive tracked device.', e)
+
+
+@tracking_bp.route('/api/tracking/device/archive', methods=['POST'])
+@require_permission('tracking.device.archive')
+def api_archive_device():
+    """Explicit archive endpoint (alias of archive-first delete behavior)."""
+    return api_delete_device()
+
+
+@tracking_bp.route('/api/tracking/history/purge/request', methods=['POST'])
+@require_permission('tracking.history.purge')
+def api_tracking_history_purge_request():
+    """Create a short-lived purge confirmation token with deletion preview."""
+    if not _can_purge_tracking_history():
+        return _json_error(
+            'TRACKING_PURGE_FORBIDDEN',
+            'Only allowlisted super-admin users can request purge.',
+            403,
         )
+
+    payload = request.get_json(silent=True) or {}
+    target_device_id = payload.get('device_id')
+    if target_device_id is not None:
+        try:
+            target_device_id = int(target_device_id)
+        except (TypeError, ValueError):
+            return _json_error('INVALID_DEVICE_ID', 'Device ID must be a valid integer.', 400)
+
+    query = TrackedDevice.query
+    if target_device_id:
+        query = query.filter(TrackedDevice.id == target_device_id)
+
+    devices = query.all()
+    if not devices:
+        return _json_error('DEVICE_NOT_FOUND', 'No tracked devices match purge scope.', 404)
+
+    device_ids = [device.id for device in devices]
+    preview = {
+        'devices': len(device_ids),
+        'activity_logs': DeviceActivityLog.query.filter(DeviceActivityLog.device_id.in_(device_ids)).count(),
+        'resource_logs': DeviceResourceLog.query.filter(DeviceResourceLog.device_id.in_(device_ids)).count(),
+        'application_logs': DeviceApplicationLog.query.filter(DeviceApplicationLog.device_id.in_(device_ids)).count(),
+    }
+    token_payload = {'device_id': target_device_id, 'preview': preview}
+    token, expires_at = _issue_purge_token(token_payload)
+    return jsonify({
+        'success': True,
+        'token': token,
+        'expires_at': datetime.utcfromtimestamp(expires_at).isoformat(),
+        'preview': preview,
+    })
+
+
+@tracking_bp.route('/api/tracking/history/purge/confirm', methods=['POST'])
+@require_permission('tracking.history.purge')
+def api_tracking_history_purge_confirm():
+    """Confirm and execute permanent purge by token."""
+    if not _can_purge_tracking_history():
+        return _json_error(
+            'TRACKING_PURGE_FORBIDDEN',
+            'Only allowlisted super-admin users can confirm purge.',
+            403,
+        )
+
+    payload = request.get_json(silent=True) or {}
+    token = str(payload.get('token') or '').strip()
+    if not token:
+        return _json_error('PURGE_TOKEN_REQUIRED', 'Purge token is required.', 400)
+
+    token_payload = _consume_purge_token(token)
+    if not token_payload:
+        return _json_error('PURGE_TOKEN_INVALID', 'Purge token is invalid or expired.', 400)
+
+    target_device_id = token_payload.get('device_id')
+    query = TrackedDevice.query
+    if target_device_id:
+        query = query.filter(TrackedDevice.id == target_device_id)
+
+    devices = query.all()
+    if not devices:
+        return _json_error('DEVICE_NOT_FOUND', 'No tracked devices match purge scope.', 404)
+
+    purged_devices = 0
+    for device in devices:
+        db.session.delete(device)
+        purged_devices += 1
+
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'purged_devices': purged_devices,
+        'scope': {'device_id': target_device_id},
+    })
 
 @tracking_bp.route('/api/tracking/sync-ips', methods=['POST'])
 def api_sync_ips():
     """Sync IP addresses for all devices"""
+    if is_reconciliation_locked():
+        return _json_error(
+            'TRACKING_RECONCILIATION_BUSY',
+            'Tracking reconciliation is currently running. Try sync again shortly.',
+            409,
+        )
     
     try:
         scanner = NetworkScanner()
         devices_found = scanner.scan_for_trackable_devices()
 
-        saved_devices = TrackedDevice.query.all()
+        saved_devices = scoped_tracked_device_query(
+            include_archived=True,
+            include_unscoped_for_admin=True,
+        ).all()
         saved_macs = {str(device.mac_address).upper(): device for device in saved_devices if device.mac_address}
+        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         updated_devices = []
         auto_saved_devices = []
 
         for device in devices_found:
-            mac = _normalize_mac(device.get('mac_address'))
+            mac = normalize_mac(device.get('mac_address'))
             status = device.get('status')
             unique_client_id = (device.get('unique_client_id') or '').strip() or None
             scanned_hostname = (device.get('hostname') or '').strip() or None
@@ -1944,7 +3564,8 @@ def api_sync_ips():
                     hostname=scanned_hostname,
                     ip_address=scanned_ip,
                     department="Unassigned",
-                    notes="Auto-discovered during sync"
+                    notes="Auto-discovered during sync",
+                    **scope_defaults,
                 )
                 db.session.add(new_device)
                 db.session.flush()
@@ -1957,6 +3578,12 @@ def api_sync_ips():
 
             saved_device = saved_macs.get(mac) if mac else None
             if saved_device:
+                if status == 'tracking_active' and getattr(saved_device, 'is_archived', False):
+                    saved_device.is_archived = False
+                    saved_device.archived_at = None
+                    saved_device.archived_reason = None
+                    saved_device.archived_by = None
+                    saved_device.is_active = True
                 if scanned_ip and scanned_ip != saved_device.ip_address:
                     old_ip = saved_device.ip_address
                     saved_device.ip_address = scanned_ip
@@ -1992,6 +3619,461 @@ def api_sync_ips():
         )
 
 
+@tracking_bp.route('/api/tracking/reconcile', methods=['POST'])
+def api_tracking_reconcile():
+    """Run tracking reconciliation on demand."""
+    payload = request.get_json(silent=True) or {}
+    dry_run_raw = payload.get('dry_run', request.args.get('dry_run'))
+    force_discovery_raw = payload.get('force_discovery', request.args.get('force_discovery'))
+
+    dry_run = Config.TRACKING_RECONCILE_DRYRUN
+    if dry_run_raw is not None:
+        dry_run = str(dry_run_raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    force_discovery = False
+    if force_discovery_raw is not None:
+        force_discovery = str(force_discovery_raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    report = run_reconciliation(force_discovery=force_discovery, dry_run=dry_run)
+    status_code = 200 if report.success else (409 if report.error_code == 'TRACKING_RECONCILIATION_BUSY' else 500)
+    return jsonify(report.to_dict()), status_code
+
+
+@tracking_bp.route('/api/tracking/cleanup-stale-devices', methods=['POST'])
+@require_permission('tracking.device.archive')
+def api_cleanup_stale_devices():
+    payload = request.get_json(silent=True) or {}
+    days_raw = payload.get('days', request.args.get('days', 30))
+    dry_run = _coerce_bool(payload.get('dry_run', request.args.get('dry_run')), default=False)
+    limit_raw = payload.get('limit', request.args.get('limit', 200))
+
+    try:
+        days = max(1, min(int(days_raw), 3650))
+    except (TypeError, ValueError):
+        days = 30
+    try:
+        limit = max(1, min(int(limit_raw), 2000))
+    except (TypeError, ValueError):
+        limit = 200
+
+    result = _cleanup_stale_tracked_devices(days=days, dry_run=dry_run, limit=limit)
+    if not dry_run and result['archived_count'] > 0:
+        db.session.commit()
+    elif not dry_run:
+        db.session.rollback()
+
+    return jsonify({
+        'success': True,
+        'dry_run': bool(dry_run),
+        'days': days,
+        'limit': limit,
+        **result,
+    })
+
+
+@tracking_bp.route('/admin/restricted-sites-policy')
+@require_role('admin')
+def restricted_sites_policy_page():
+    return render_template('admin/restricted_sites_policy.html')
+
+
+@tracking_bp.route('/api/tracking/restricted-sites/policy', methods=['GET'])
+def api_restricted_sites_policy():
+    current_version = str(request.args.get('current_version') or '').strip()
+    policy = RestrictedSitePolicy.get_singleton()
+
+    if _is_admin_session():
+        if current_version and current_version == policy.policy_version:
+            return ('', 304)
+        return jsonify({'success': True, 'policy': policy.to_dict(), 'policy_version': policy.policy_version})
+
+    auth_ctx, auth_error = _authorize_agent_request(
+        expected_device_id=None,
+        require_bound=True,
+        allow_bootstrap=False,
+    )
+    if auth_error:
+        return auth_error
+    if current_version and current_version == policy.policy_version:
+        return ('', 304)
+
+    return jsonify({
+        'success': True,
+        'policy': policy.to_dict(),
+        'policy_version': policy.policy_version,
+        'agent_key_id': auth_ctx['binding'].key_id if auth_ctx and auth_ctx.get('binding') else None,
+    })
+
+
+@tracking_bp.route('/api/tracking/restricted-sites/policy', methods=['POST'])
+@require_role('admin')
+def api_update_restricted_sites_policy():
+    payload = request.get_json(silent=True) or {}
+    policy = RestrictedSitePolicy.get_singleton()
+    before = policy.to_dict()
+
+    blocked_domains = _upsert_restricted_policy_from_payload(policy, payload)
+    policy.updated_by = str(session.get('username') or 'admin')
+    policy.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    create_audit_log(
+        action='update',
+        entity_type='restricted_site_policy',
+        entity_id=policy.id,
+        entity_name='Restricted Site Policy',
+        description='Updated restricted site policy settings.',
+        changes={
+            'before': before,
+            'after': policy.to_dict(),
+            'blocked_domains_count': len(blocked_domains),
+        },
+    )
+    return jsonify({'success': True, 'policy': policy.to_dict(), 'policy_version': policy.policy_version})
+
+
+@tracking_bp.route('/api/admin/restricted-sites-policy', methods=['GET'])
+@require_role('admin')
+def get_admin_restricted_sites_policy():
+    policy = RestrictedSitePolicy.get_singleton()
+    return jsonify({
+        'success': True,
+        'domains': policy.blocked_domains,
+        'mode': 'blocking' if policy.enabled else 'monitoring'
+    })
+
+
+@tracking_bp.route('/api/admin/restricted-sites-policy/domains', methods=['POST'])
+@require_role('admin')
+def add_admin_restricted_sites_policy_domain():
+    payload = request.get_json(silent=True) or {}
+    domain = str(payload.get('domain') or '').strip().lower()
+    if not domain:
+        return jsonify({'success': False, 'error': 'Domain required'}), 400
+    
+    policy = RestrictedSitePolicy.get_singleton()
+    before = policy.to_dict()
+    current_domains = set(policy.blocked_domains)
+    current_domains.add(domain)
+    policy.apply_domains(list(current_domains))
+    
+    policy.updated_by = str(session.get('username') or 'admin')
+    policy.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    create_audit_log(
+        action='update',
+        entity_type='restricted_site_policy',
+        entity_id=policy.id,
+        entity_name='Restricted Site Policy',
+        description=f'Added domain {domain} to global policy.',
+        changes={'before': before, 'after': policy.to_dict()}
+    )
+    return jsonify({'success': True, 'domains': policy.blocked_domains, 'mode': 'blocking' if policy.enabled else 'monitoring'})
+
+
+@tracking_bp.route('/api/admin/restricted-sites-policy/domains', methods=['DELETE'])
+@require_role('admin')
+def remove_admin_restricted_sites_policy_domains():
+    payload = request.get_json(silent=True) or {}
+    domains_to_remove = set(payload.get('domains', []))
+    
+    policy = RestrictedSitePolicy.get_singleton()
+    before = policy.to_dict()
+    
+    current_domains = set(policy.blocked_domains)
+    new_domains = current_domains - domains_to_remove
+    policy.apply_domains(list(new_domains))
+    
+    policy.updated_by = str(session.get('username') or 'admin')
+    policy.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    create_audit_log(
+        action='update',
+        entity_type='restricted_site_policy',
+        entity_id=policy.id,
+        entity_name='Restricted Site Policy',
+        description=f'Removed domains from global policy.',
+        changes={'before': before, 'after': policy.to_dict()}
+    )
+    return jsonify({'success': True, 'domains': policy.blocked_domains, 'mode': 'blocking' if policy.enabled else 'monitoring'})
+
+
+@tracking_bp.route('/api/admin/restricted-sites-policy/mode', methods=['POST'])
+@require_role('admin')
+def set_admin_restricted_sites_policy_mode():
+    payload = request.get_json(silent=True) or {}
+    mode = str(payload.get('mode') or '').strip().lower()
+    if mode not in ['monitoring', 'blocking']:
+        return jsonify({'success': False, 'error': 'Invalid mode'}), 400
+        
+    policy = RestrictedSitePolicy.get_singleton()
+    before = policy.to_dict()
+    
+    policy.enabled = True if mode == 'blocking' else False
+    policy.updated_by = str(session.get('username') or 'admin')
+    policy.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    create_audit_log(
+        action='update',
+        entity_type='restricted_site_policy',
+        entity_id=policy.id,
+        entity_name='Restricted Site Policy',
+        description=f'Updated global policy mode to {mode}.',
+        changes={'before': before, 'after': policy.to_dict()}
+    )
+    return jsonify({'success': True, 'domains': policy.blocked_domains, 'mode': 'blocking' if policy.enabled else 'monitoring'})
+
+
+# ============================================================
+# RESTRICTED-SITE EVENT INGESTION HELPERS
+# ============================================================
+
+RESTRICTED_SOURCE_WINDOW = 'window_title'
+RESTRICTED_SOURCE_DNS = 'dns_cache'
+
+
+def _coerce_restricted_events(raw):
+    """Normalize the events field into a list of dicts."""
+    if isinstance(raw, list):
+        return [e for e in raw if isinstance(e, dict)]
+    return []
+
+
+def _match_restricted_domain(domain, blocked_domains):
+    """Return the matched blocked-domain rule, or None."""
+    if not domain or not blocked_domains:
+        return None
+    domain_lower = domain.lower()
+    for rule in blocked_domains:
+        rule_lower = rule.lower()
+        if domain_lower == rule_lower or domain_lower.endswith('.' + rule_lower):
+            return rule
+    return None
+
+
+def _parse_observed_datetime(raw):
+    """Best-effort parse of an ISO datetime string; fall back to utcnow."""
+    if isinstance(raw, datetime):
+        return raw
+    if raw:
+        try:
+            return datetime.fromisoformat(str(raw).replace('Z', '+00:00')).replace(tzinfo=None)
+        except Exception:
+            pass
+    return datetime.utcnow()
+
+
+def _maybe_uplift_confidence(device_id, domain, source, observed_at):
+    """Return confidence level based on source type."""
+    if source == RESTRICTED_SOURCE_WINDOW:
+        return 'HIGH'
+    return 'LOW'
+
+
+def _build_restricted_alert_message(domain, source, confidence, hit_count):
+    """Build a human-readable alert message."""
+    source_label = 'window title' if source == RESTRICTED_SOURCE_WINDOW else 'DNS cache'
+    return (
+        f"Restricted site '{domain}' detected via {source_label} "
+        f"(confidence: {confidence}, hits: {hit_count})"
+    )
+
+
+def _ingest_restricted_site_events_internal(device, events, binding_key_id=None, policy=None, now_utc=None):
+    """
+    Core ingestion logic shared by the standalone events endpoint
+    and the main tracking sync endpoint.
+    Returns a summary dict with ingested_events, alert_updates, emails_sent.
+    """
+    if policy is None:
+        policy = RestrictedSitePolicy.get_singleton()
+    if now_utc is None:
+        now_utc = datetime.utcnow()
+
+    blocked_domains = policy.blocked_domains
+    cooldown = int(policy.cooldown_seconds or 900)
+    ingested = 0
+    alert_updates = 0
+    emails_sent = 0
+
+    for raw_event in events:
+        if not isinstance(raw_event, dict):
+            continue
+
+        observed_domain = normalize_domain(raw_event.get('domain'))
+        if not observed_domain:
+            continue
+        matched_rule = _match_restricted_domain(observed_domain, blocked_domains)
+        if not matched_rule:
+            continue
+
+        source = str(raw_event.get('source') or RESTRICTED_SOURCE_DNS).strip().lower()
+        if source not in (RESTRICTED_SOURCE_DNS, RESTRICTED_SOURCE_WINDOW):
+            source = RESTRICTED_SOURCE_DNS
+
+        process_name = str(raw_event.get('process_name') or '').strip() or None
+        raw_evidence = str(raw_event.get('raw_evidence') or raw_event.get('evidence_title') or '').strip()[:500] or None
+        observed_at = _parse_observed_datetime(raw_event.get('observed_at_utc') or raw_event.get('observed_at'))
+        confidence = _maybe_uplift_confidence(device.id, observed_domain, source, observed_at)
+
+        event_row = RestrictedSiteEvent(
+            device_id=device.id,
+            domain=observed_domain,
+            matched_rule=matched_rule,
+            source=source,
+            confidence=confidence,
+            policy_version=policy.policy_version,
+            raw_evidence=raw_evidence,
+            process_name=process_name,
+            observed_at_utc=observed_at,
+            received_at_utc=now_utc,
+            agent_key_id=binding_key_id,
+        )
+        db.session.add(event_row)
+        ingested += 1
+
+        state = RestrictedSiteAlertState.query.filter_by(device_id=device.id, domain=observed_domain).first()
+        if not state:
+            state = RestrictedSiteAlertState(
+                device_id=device.id,
+                domain=observed_domain,
+                hit_count=0,
+                first_seen_at=observed_at,
+            )
+            db.session.add(state)
+            db.session.flush()
+
+        state.hit_count = int(state.hit_count or 0) + 1
+        if not state.first_seen_at:
+            state.first_seen_at = observed_at
+        state.last_seen_at = observed_at
+
+        metric_name = f'restricted_site:tracked:{device.id}:{observed_domain}'
+        existing_alert = DashboardEvent.query.filter_by(
+            metric_name=metric_name,
+            resolved=False,
+        ).order_by(DashboardEvent.timestamp.desc()).first()
+
+        message = _build_restricted_alert_message(
+            domain=observed_domain,
+            source=source,
+            confidence=confidence,
+            hit_count=state.hit_count,
+        )
+        should_emit_alert = not state.last_alerted_at or ((now_utc - state.last_alerted_at).total_seconds() >= cooldown)
+
+        if not bool(getattr(device, 'maintenance_mode', False)):
+            if should_emit_alert:
+                if existing_alert:
+                    existing_alert.timestamp = now_utc
+                    existing_alert.severity = 'WARNING'
+                    existing_alert.message = message
+                    existing_alert.value = float(state.hit_count)
+                    dashboard_event = existing_alert
+                else:
+                    dashboard_event = DashboardEvent(
+                        event_id=str(uuid.uuid4()),
+                        device_id=None,
+                        device_ip=device.ip_address,
+                        event_type='restricted_site',
+                        severity='WARNING',
+                        metric_name=metric_name,
+                        message=message,
+                        value=float(state.hit_count),
+                        timestamp=now_utc,
+                        resolved=False,
+                    )
+                    db.session.add(dashboard_event)
+                state.active_dashboard_event_id = dashboard_event.event_id
+                state.last_alerted_at = now_utc
+                alert_updates += 1
+                try:
+                    broadcast_event(
+                        'alert_created',
+                        {
+                            'event_id': state.active_dashboard_event_id,
+                            'device_id': device.id,
+                            'device_ip': device.ip_address,
+                            'metric_name': metric_name,
+                            'severity': 'WARNING',
+                            'message': message,
+                        },
+                    )
+                except Exception:
+                    pass  # SSE broadcast is best-effort
+            elif existing_alert:
+                existing_alert.timestamp = now_utc
+                existing_alert.message = message
+                existing_alert.value = float(state.hit_count)
+                state.active_dashboard_event_id = existing_alert.event_id
+
+            should_email = not state.last_emailed_at or ((now_utc - state.last_emailed_at).total_seconds() >= cooldown)
+            if should_emit_alert and should_email:
+                try:
+                    NotificationService.send_warning_alert(
+                        device,
+                        metric=metric_name,
+                        value=state.hit_count,
+                        message=message,
+                    )
+                    state.last_emailed_at = now_utc
+                    emails_sent += 1
+                except Exception:
+                    pass  # Email is best-effort
+
+    return {
+        'ingested_events': ingested,
+        'alert_updates': alert_updates,
+        'emails_sent': emails_sent,
+    }
+
+
+@tracking_bp.route('/api/tracking/restricted-sites/events', methods=['POST'])
+def api_ingest_restricted_site_events():
+    payload = request.get_json(silent=True) or {}
+    raw_mac = payload.get('mac_address')
+    mac_address = normalize_mac(raw_mac)
+    unique_client_id = (payload.get('unique_client_id') or '').strip() or None
+
+    device = _find_tracked_device(mac_address=mac_address, unique_client_id=unique_client_id)
+    if not device:
+        return _json_error('TRACKED_DEVICE_NOT_FOUND', 'Tracked device not found for restricted-site event ingest.', 404)
+
+    auth_ctx, auth_error = _authorize_agent_request(
+        expected_device_id=device.id,
+        require_bound=True,
+        allow_bootstrap=False,
+    )
+    if auth_error:
+        return auth_error
+    binding = auth_ctx.get('binding') if auth_ctx else None
+
+    policy = RestrictedSitePolicy.get_singleton()
+    events = _coerce_restricted_events(payload.get('events'))
+    if not events:
+        return _json_error('EVENTS_REQUIRED', 'events[] payload is required.', 400)
+    now_utc = datetime.utcnow()
+    ingest_summary = _ingest_restricted_site_events_internal(
+        device=device,
+        events=events,
+        binding_key_id=binding.key_id if binding else None,
+        policy=policy,
+        now_utc=now_utc,
+    )
+
+    db.session.commit()
+    return jsonify(
+        {
+            'success': True,
+            **ingest_summary,
+            'received_at': now_utc.isoformat(),
+        }
+    )
+
+
 @tracking_bp.route('/api/tracking/register', methods=['GET'])
 def api_tracking_register():
     """Compatibility registration endpoint for service auto-discovery."""
@@ -2011,20 +4093,22 @@ def api_tracking_register():
 @tracking_bp.route('/api/tracking/sync', methods=['POST'])
 def api_tracking_sync():
     """Compatibility sync endpoint for service agents."""
-    auth_error = _require_tracking_api_key()
-    if auth_error:
-        return auth_error
-
     try:
         payload = request.get_json(silent=True) or {}
-        mac_address = _normalize_mac(payload.get('mac_address'))
-        if not mac_address:
+        raw_mac = payload.get('mac_address')
+        raw_mac_text = str(raw_mac or '').strip()
+        mac_address = normalize_mac(raw_mac)
+        if not raw_mac_text:
             return _json_error('MAC_ADDRESS_REQUIRED', 'MAC address is required for sync.', 400)
+        if not mac_address:
+            return _json_error('INVALID_MAC_ADDRESS', 'MAC address format is invalid for sync.', 400)
 
         hostname = (payload.get('hostname') or '').strip() or None
-        ip_address = (payload.get('ip_address') or request.remote_addr or '').strip() or None
         unique_client_id = (payload.get('unique_client_id') or '').strip() or None
         now_utc = datetime.utcnow()
+        resolved_ip, resolved_from, payload_ip, payload_ip_candidates, ip_resolution_code = _resolve_device_ip_from_payload(payload)
+        network_signature = str(payload.get('network_signature') or '').strip() or None
+        ip_changed = False
 
         device = _find_tracked_device(mac_address=mac_address, unique_client_id=unique_client_id)
         if not device:
@@ -2035,53 +4119,219 @@ def api_tracking_sync():
                 device_name=device_name,
                 employee_name='Auto-Discovered',
                 hostname=hostname,
-                ip_address=ip_address,
+                ip_address=None,
                 department='Unassigned',
                 notes='Auto-registered by service agent sync',
                 last_seen=now_utc,
+                is_archived=False,
             )
             db.session.add(device)
             db.session.flush()
         else:
-            if ip_address:
-                device.ip_address = ip_address
             if hostname:
                 device.hostname = hostname
             if unique_client_id and not device.unique_client_id:
                 device.unique_client_id = unique_client_id
             if not device.device_name and hostname:
                 device.device_name = hostname
+            if getattr(device, 'is_archived', False):
+                device.is_archived = False
+                device.archived_at = None
+                device.archived_reason = None
+                device.archived_by = None
+                device.is_active = True
             device.last_seen = now_utc
             device.updated_at = now_utc
 
-        current_stats = payload.get('current_stats')
-        if isinstance(current_stats, dict):
-            has_metrics = bool(
-                current_stats.get('system_metrics') or
-                current_stats.get('today_stats') or
-                current_stats.get('current_activity')
-            )
-            cached_entry = real_time_data.get(mac_address, {})
-            real_time_data[mac_address] = {
-                'data': current_stats,
-                'status': 'online' if has_metrics else 'degraded',
-                'availability_status': 'online' if has_metrics else 'degraded',
-                'device_info': device_to_dict(device),
-                'timestamp': time.time(),
-                'last_log_time': cached_entry.get('last_log_time', 0),
-                'metrics_available': has_metrics,
-                'metrics_stale': False,
-                'probe_method': 'sync',
-                'probe_error_code': None,
-            }
+        auth_ctx, auth_error = _authorize_agent_request(
+            expected_device_id=device.id,
+            require_bound=False,
+            allow_bootstrap=True,
+        )
+        if auth_error:
+            db.session.rollback()
+            return auth_error
 
-        db.session.commit()
-        return jsonify({
+        binding = auth_ctx.get('binding') if auth_ctx else None
+        issued_binding_secret = None
+        if binding is None:
+            existing_binding = _get_active_binding_for_device(device.id)
+            if existing_binding is None:
+                binding, issued_binding_secret = _create_agent_key_binding(device.id)
+            else:
+                binding = existing_binding
+        if binding:
+            _touch_agent_key(binding)
+
+        current_ip = (device.ip_address or '').strip() or None
+        if resolved_ip and resolved_ip != current_ip:
+            device.ip_address = resolved_ip
+            device.updated_at = now_utc
+            ip_changed = True
+            _record_tracked_device_ip_history(
+                device_id=device.id,
+                old_ip=current_ip,
+                new_ip=resolved_ip,
+                resolved_ip=resolved_ip,
+                payload_ip=payload_ip,
+                payload_candidates=payload_ip_candidates,
+                transport_remote_ip=request.remote_addr,
+                transport_forwarded_for=_transport_forwarded_for_header(),
+                agent_key_id=binding.key_id if binding else None,
+                reason=SYNC_IP_REASON_PAYLOAD,
+                ip_source=resolved_from,
+                network_signature=network_signature,
+            )
+            create_audit_log(
+                action='update',
+                entity_type='tracked_device',
+                entity_id=device.id,
+                entity_name=device.device_name,
+                description=f"Updated tracked device IP from {current_ip or 'N/A'} to {resolved_ip}.",
+                changes={
+                    'old_ip': current_ip,
+                    'new_ip': resolved_ip,
+                    'resolved_from': resolved_from,
+                    'agent_key_id': binding.key_id if binding else None,
+                },
+            )
+
+        device.last_agent_sync_at = now_utc
+        current_resolved_ip = (device.ip_address or '').strip() or None
+        if current_resolved_ip:
+            device.last_agent_sync_ip = current_resolved_ip
+
+        current_stats = payload.get('current_stats')
+        if current_stats is None and any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
+            current_stats = {
+                'current_activity': payload.get('current_activity'),
+                'today_stats': payload.get('today_stats'),
+                'system_metrics': payload.get('system_metrics'),
+                'device_info': payload.get('device_info'),
+                'meta': payload.get('meta'),
+            }
+        current_stats_valid = isinstance(current_stats, dict)
+        integrity_error_code = None
+        ingest_result = None
+
+        if current_stats is not None and not current_stats_valid:
+            integrity_error_code = 'INTEGRITY_PAYLOAD_INVALID'
+            device.availability_status = 'degraded'
+            device.metrics_available = False
+            device.probe_method = 'sync'
+            device.probe_error_code = integrity_error_code
+            device.last_probe_at = now_utc
+        elif current_stats_valid:
+            try:
+                ingest_result = ingest_tracking_sample(
+                    device_id=device.id,
+                    payload=current_stats,
+                    source='sync',
+                    received_at=now_utc,
+                )
+                has_metrics = bool(
+                    current_stats.get('system_metrics') or
+                    current_stats.get('today_stats') or
+                    current_stats.get('current_activity')
+                )
+                device.availability_status = 'online' if has_metrics else 'degraded'
+                device.metrics_available = bool(has_metrics)
+                device.probe_method = 'sync'
+                device.probe_error_code = None
+                device.last_probe_at = now_utc
+            except Exception as ingest_exc:
+                integrity_error_code = 'INTEGRITY_INGEST_FAILED'
+                logger.warning("[TrackingSync] ingest failed mac=%s err=%s", mac_address, ingest_exc)
+                device.availability_status = 'degraded'
+                device.metrics_available = False
+                device.probe_method = 'sync'
+                device.probe_error_code = integrity_error_code
+                device.last_probe_at = now_utc
+
+        persist_availability_event(
+            device=device,
+            probe_result={
+                'availability_status': device.availability_status,
+                'metrics_available': bool(device.metrics_available),
+                'probe_method': 'sync',
+                'probe_error_code': integrity_error_code or device.probe_error_code,
+                'sample_id': ingest_result.sample_id if ingest_result else None,
+                'observed_at': now_utc,
+            },
+            source='sync',
+            dry_run=False,
+        )
+
+        cached_entry = real_time_data.get(mac_address, {})
+        has_metrics_cache = bool(current_stats_valid and (
+            current_stats.get('system_metrics') or
+            current_stats.get('today_stats') or
+            current_stats.get('current_activity')
+        ))
+        real_time_data[mac_address] = {
+            'data': current_stats if current_stats_valid else {},
+            'status': device.availability_status or ('online' if has_metrics_cache else 'degraded'),
+            'availability_status': device.availability_status or ('online' if has_metrics_cache else 'degraded'),
+            'device_info': device_to_dict(device),
+            'timestamp': time.time(),
+            'last_log_time': cached_entry.get('last_log_time', 0),
+            'metrics_available': bool(device.metrics_available),
+            'metrics_stale': False,
+            'probe_method': 'sync',
+            'probe_error_code': integrity_error_code,
+        }
+        if ingest_result and ingest_result.created:
+            real_time_data[mac_address]['last_log_time'] = time.time()
+
+        response_payload = {
             'success': True,
             'message': 'Sync received',
             'device': device_to_dict(device),
+            'sample': ingest_result.to_dict() if ingest_result else None,
+            'integrity_error_code': integrity_error_code,
+            'resolved_ip': resolved_ip,
+            'resolved_from': resolved_from,
+            'ip_changed': bool(ip_changed),
+            'ip_resolution_code': ip_resolution_code,
             'synced_at': now_utc.isoformat(),
-        })
+        }
+
+        policy = RestrictedSitePolicy.get_singleton()
+        device_domains = []
+        if device and device.id:
+            device_domains = [row.domain for row in RestrictedSiteDomainMeta.query.filter_by(device_id=device.id).all()]
+
+        merged_domains = sorted(list(set(policy.blocked_domains + device_domains)))
+        combined_version = f"{policy.policy_version}_{len(merged_domains)}"
+
+        client_policy_version = str(payload.get('restricted_sites_policy_version') or '').strip()
+        response_payload['restricted_sites_policy_version'] = combined_version
+
+        if client_policy_version != combined_version:
+            policy_dict = policy.to_dict()
+            policy_dict['blocked_domains'] = merged_domains
+            policy_dict['policy_version'] = combined_version
+            response_payload['restricted_sites_policy'] = policy_dict
+
+        restricted_site_events = _coerce_restricted_events(payload.get('restricted_site_events'))
+        if restricted_site_events:
+            response_payload['restricted_site_ingest'] = _ingest_restricted_site_events_internal(
+                device=device,
+                events=restricted_site_events,
+                binding_key_id=binding.key_id if binding else None,
+                policy=policy,
+                now_utc=now_utc,
+            )
+
+        if issued_binding_secret and binding:
+            response_payload['agent_binding'] = {
+                'key_id': binding.key_id,
+                'agent_key': issued_binding_secret,
+                'issued_at': now_utc.isoformat(),
+            }
+
+        db.session.commit()
+        return jsonify(response_payload)
     except Exception as e:
         db.session.rollback()
         return _json_exception(
@@ -2096,15 +4346,82 @@ def api_tracking_sync():
 
 @tracking_bp.route('/tracking/live')
 def live_tracking():
-    """Live tracking page (separate from main tracking)"""
-    saved_devices = TrackedDevice.query.order_by(TrackedDevice.device_name).all()
-    
-    # Convert devices to serializable dictionaries
-    saved_devices_dicts = [device_to_dict(device) for device in saved_devices]
-    
-    return render_template('tracking/live_tracking.html', 
-                         saved_devices=saved_devices,
-                         saved_devices_dicts=saved_devices_dicts)
+    """Fleet command center page."""
+    selected_device_id = request.args.get('device_id', type=int)
+    selected_mac = normalize_mac(request.args.get('mac'))
+
+    if selected_device_id:
+        return redirect(url_for('tracking_bp.tracked_device_live', device_id=selected_device_id))
+    if selected_mac:
+        target = scoped_tracked_device_query(
+            include_archived=True,
+            include_unscoped_for_admin=True,
+        ).filter(TrackedDevice.mac_address == selected_mac).first()
+        if target:
+            return redirect(url_for('tracking_bp.tracked_device_live', device_id=target.id))
+
+    saved_devices = scoped_tracked_device_query(
+        include_archived=False,
+        include_unscoped_for_admin=True,
+    ).order_by(TrackedDevice.device_name).all()
+    return render_template('tracking/live_tracking.html', saved_devices=saved_devices)
+
+
+@tracking_bp.route('/tracking/devices/<int:device_id>')
+@tracking_bp.route('/devices/<int:device_id>')
+@require_permission('tracking.history.view')
+def tracked_device_live(device_id):
+    """Canonical full-page live telemetry view for a tracked workstation."""
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    identity_text = f"{device.device_name or ''} {device.hostname or ''}".strip().lower()
+    if 'server' in identity_text:
+        device_type_label = 'Server'
+    elif 'printer' in identity_text or 'print' in identity_text:
+        device_type_label = 'Printer'
+    else:
+        device_type_label = 'Workstation'
+
+    primary_ip = (device.ip_address or '').strip()
+    sync_ip = (getattr(device, 'last_agent_sync_ip', None) or '').strip()
+    if primary_ip.startswith('127.') and sync_ip:
+        display_ip = sync_ip
+    else:
+        display_ip = primary_ip or sync_ip or None
+
+    policy_status = 'compliant'
+    policy_domain = None
+    latest_policy_state = (
+        RestrictedSiteAlertState.query
+        .filter(RestrictedSiteAlertState.device_id == device.id)
+        .order_by(RestrictedSiteAlertState.last_seen_at.desc().nullslast(), RestrictedSiteAlertState.id.desc())
+        .first()
+    )
+    if latest_policy_state and latest_policy_state.active_dashboard_event_id:
+        active_event = DashboardEvent.query.filter(
+            DashboardEvent.event_id == latest_policy_state.active_dashboard_event_id,
+            DashboardEvent.resolved.is_(False),
+        ).first()
+        if active_event:
+            policy_status = 'violating'
+            policy_domain = latest_policy_state.domain
+
+    initial_daily_uptime = _attach_daily_uptime_payload({}, device.id).get('daily_uptime', {})
+    last_seen_candidates = [value for value in (device.last_agent_sync_at, device.last_seen) if value]
+    initial_last_seen_utc = None
+    if last_seen_candidates:
+        latest_seen = max(last_seen_candidates)
+        initial_last_seen_utc = f"{latest_seen.isoformat()}Z"
+
+    return render_template(
+        'tracking/device_live.html',
+        device=device,
+        device_type_label=device_type_label,
+        display_ip=display_ip,
+        policy_status=policy_status,
+        policy_domain=policy_domain,
+        initial_daily_uptime=initial_daily_uptime,
+        initial_last_seen_utc=initial_last_seen_utc,
+    )
 
 @tracking_bp.route('/api/tracking/live-summary')
 def api_live_summary():
@@ -2112,7 +4429,13 @@ def api_live_summary():
     
     try:
         from extensions import redis_client
-        devices = TrackedDevice.query.all()
+        now_utc = datetime.utcnow()
+        checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+        devices = scoped_tracked_device_query(
+            include_archived=False,
+            include_unscoped_for_admin=True,
+        ).all()
+        violation_summary_map = _safe_build_active_violation_summary([device.id for device in devices if device and device.id])
         summary_data = []
         
         # MGET High-Speed Cache
@@ -2133,6 +4456,14 @@ def api_live_summary():
             probe_error_code = device.probe_error_code
             probe_method = device.probe_method
             last_probe_at = device.last_probe_at.isoformat() if device.last_probe_at else None
+            last_agent_sync_at = device.last_agent_sync_at
+            last_agent_sync_at_iso = last_agent_sync_at.isoformat() if last_agent_sync_at else None
+            agent_sync_age_seconds = None
+            agent_sync_recent = False
+            if last_agent_sync_at:
+                age_seconds = max(0, int((now_utc - last_agent_sync_at).total_seconds()))
+                agent_sync_age_seconds = age_seconds
+                agent_sync_recent = age_seconds <= checkin_window_seconds
             is_from_redis = False
 
             # Try Redis first (High Speed Cache)
@@ -2190,6 +4521,7 @@ def api_live_summary():
                 'id': device.id,
                 'device_name': device.device_name,
                 'employee_name': device.employee_name,
+                'hostname': device.hostname,
                 'mac_address': device.mac_address,
                 'ip_address': device.ip_address,
                 'status': availability_status,
@@ -2198,15 +4530,29 @@ def api_live_summary():
                 'probe_method': probe_method,
                 'metrics_available': metrics_available,
                 'last_probe_at': last_probe_at,
+                'last_agent_sync_at': last_agent_sync_at_iso,
+                'agent_sync_age_seconds': agent_sync_age_seconds,
+                'agent_sync_recent': bool(agent_sync_recent),
+                'agent_sync_window_seconds': checkin_window_seconds,
+                'last_agent_sync_ip': getattr(device, 'last_agent_sync_ip', None),
                 'tracking_data': tracking_info,
             }
+            _apply_violation_summary(
+                device_data,
+                violation_summary_map.get(int(device.id)),
+            )
             summary_data.append(device_data)
+        active_agent_checkins = len([d for d in summary_data if d.get('agent_sync_recent')])
         
         return jsonify({
             'success': True,
             'total_devices': len(devices),
             'online_devices': len([d for d in summary_data if d['status'] == 'online']),
             'degraded_devices': len([d for d in summary_data if d['status'] == 'degraded']),
+            'reachable_devices': len([d for d in summary_data if d['status'] in ('online', 'degraded')]),
+            'offline_devices': len([d for d in summary_data if d['status'] == 'offline']),
+            'active_agent_checkins': active_agent_checkins,
+            'agent_sync_window_seconds': checkin_window_seconds,
             'devices': summary_data
         })
         
@@ -2214,6 +4560,130 @@ def api_live_summary():
         return _json_exception(
             'LIVE_SUMMARY_FAILED',
             'Failed to load live tracking summary.',
+            e,
+        )
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/alerts')
+@require_permission('tracking.history.view')
+def api_device_restricted_alerts(device_id):
+    """Return restricted-site violation records for one tracked device."""
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        states = RestrictedSiteAlertState.query.filter(
+            RestrictedSiteAlertState.device_id == device.id
+        ).order_by(
+            RestrictedSiteAlertState.last_seen_at.desc().nullslast(),
+            RestrictedSiteAlertState.id.desc(),
+        ).limit(100).all()
+
+        if not states:
+            return jsonify(
+                {
+                    'success': True,
+                    'device_id': device.id,
+                    'active_violation_count': 0,
+                    'highest_violation_severity': 'LOW',
+                    'latest_violation_timestamp': None,
+                    'alerts': [],
+                }
+            )
+
+        dashboard_event_ids = sorted(
+            {
+                str(state.active_dashboard_event_id).strip()
+                for state in states
+                if state.active_dashboard_event_id
+            }
+        )
+        dashboard_events = {}
+        if dashboard_event_ids:
+            event_rows = DashboardEvent.query.filter(
+                DashboardEvent.event_id.in_(dashboard_event_ids)
+            ).all()
+            dashboard_events = {str(event.event_id): event for event in event_rows}
+
+        alerts = []
+        active_violation_count = 0
+        highest_violation_severity = 'LOW'
+        latest_violation_dt = None
+
+        for state in states:
+            latest_event = RestrictedSiteEvent.query.filter(
+                RestrictedSiteEvent.device_id == device.id,
+                RestrictedSiteEvent.domain == state.domain,
+            ).order_by(
+                RestrictedSiteEvent.observed_at_utc.desc(),
+                RestrictedSiteEvent.id.desc(),
+            ).first()
+
+            active_key = str(state.active_dashboard_event_id or '').strip()
+            dashboard_event = dashboard_events.get(active_key) if active_key else None
+            is_active = bool(dashboard_event and not dashboard_event.resolved)
+
+            if is_active:
+                active_violation_count += 1
+
+            if is_active and dashboard_event and dashboard_event.is_acknowledged:
+                status = 'Acknowledged'
+            elif is_active:
+                status = 'New'
+            else:
+                status = 'Resolved'
+
+            confidence = (
+                getattr(latest_event, 'confidence', None)
+                or _extract_restricted_confidence(dashboard_event.message if dashboard_event else None)
+                or RESTRICTED_CONFIDENCE_LOW
+            )
+            severity = _restricted_severity_from_confidence(confidence)
+            if is_active and _restricted_severity_rank(severity) > _restricted_severity_rank(highest_violation_severity):
+                highest_violation_severity = severity
+
+            observed_at = (
+                latest_event.observed_at_utc if latest_event else None
+            ) or state.last_seen_at or (dashboard_event.timestamp if dashboard_event else None)
+            if observed_at and (latest_violation_dt is None or observed_at > latest_violation_dt):
+                latest_violation_dt = observed_at
+
+            alerts.append(
+                {
+                    'domain': state.domain,
+                    'site_visited': state.domain,
+                    'matched_rule': latest_event.matched_rule if latest_event else state.domain,
+                    'source': latest_event.source if latest_event else None,
+                    'confidence': str(confidence).upper(),
+                    'severity': severity,
+                    'status': status,
+                    'hit_count': int(state.hit_count or 0),
+                    'timestamp': observed_at.isoformat() if observed_at else None,
+                    'observed_at_utc': observed_at.isoformat() if observed_at else None,
+                    'first_seen_at': state.first_seen_at.isoformat() if state.first_seen_at else None,
+                    'last_seen_at': state.last_seen_at.isoformat() if state.last_seen_at else None,
+                    'dashboard_event_id': dashboard_event.event_id if dashboard_event else None,
+                    'is_acknowledged': bool(dashboard_event.is_acknowledged) if dashboard_event else False,
+                    'resolved': bool(dashboard_event.resolved) if dashboard_event else True,
+                }
+            )
+
+        alerts.sort(key=lambda item: item.get('timestamp') or '', reverse=True)
+
+        return jsonify(
+            {
+                'success': True,
+                'device_id': device.id,
+                'active_violation_count': int(active_violation_count),
+                'highest_violation_severity': highest_violation_severity if active_violation_count > 0 else 'LOW',
+                'latest_violation_timestamp': latest_violation_dt.isoformat() if latest_violation_dt else None,
+                'alerts': alerts,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception(
+            'DEVICE_RESTRICTED_ALERTS_FAILED',
+            'Failed to load restricted-site alerts.',
             e,
         )
 
@@ -2355,7 +4825,9 @@ def api_live_alerts():
     """Get live alerts for all devices"""
     
     try:
-        devices = TrackedDevice.query.all()
+        devices = TrackedDevice.query.filter(
+            db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None))
+        ).all()
         all_alerts = []
         scanner = NetworkScanner()
         scanner.timeout = 2.5
@@ -2657,7 +5129,7 @@ def api_metric_details(metric_type):
             app_usage = {}
             for log in app_logs:
                 app = log.application_name
-                dur = log.duration or 60
+                dur = log.duration or 0
                 app_usage[app] = app_usage.get(app, 0) + dur
             
             results = []

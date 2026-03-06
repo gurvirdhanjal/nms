@@ -5,7 +5,7 @@ from extensions import db
 import json
 import ipaddress
 import logging
-from middleware.rbac import require_login
+from middleware.rbac import require_login, require_permission
 
 # ===============================
 # CONFIG (SAFETY FIRST)
@@ -98,9 +98,8 @@ def get_local_ip_range():
         return jsonify({'error': str(e)}), 500
 
 @scanning_bp.route('/api/scan_network', methods=['POST'])
+@require_permission('scanning.run')
 def scan_network():
-    # Auth handled by middleware
-
     data = request.get_json(silent=True) or {}
     ip_range = data.get('ip_range')
     requested_scan_mode = (data.get('scan_mode') or 'heavy').strip().lower()
@@ -171,6 +170,7 @@ def active_scan():
     return jsonify({'scan_id': None})
 
 @scanning_bp.route('/api/stop_scan/<scan_id>', methods=['POST'])
+@require_permission('scanning.run')
 def stop_scan(scan_id):
     service = get_discovery_service()
     result = service.stop_scan(scan_id)
@@ -265,7 +265,6 @@ def add_to_inventory():
     # Auth handled by middleware
     
     try:
-        
         data = request.get_json()
         ip_address = data.get('ip_address', '').strip()
         hostname = data.get('hostname', 'Unknown').strip()
@@ -280,6 +279,37 @@ def add_to_inventory():
         if not ip_address:
             return jsonify({'success': False, 'message': 'IP address required'}), 400
 
+        # ENTERPRISE SAFETY: Check if device already exists
+        from models.device import Device
+        existing_device = Device.query.filter_by(device_ip=ip_address).first()
+        
+        # Auto-assignment logic: find the most specific Subnet match
+        from models.subnet import Subnet
+        best_subnet = Subnet.get_best_match(ip_address)
+        suggested_site_id = best_subnet.site_id if best_subnet else None
+        
+        # Track if subnet is unmapped
+        subnet_unmapped = (best_subnet is None)
+        subnet_info = None
+        
+        if best_subnet:
+            subnet_info = {
+                'cidr': best_subnet.cidr,
+                'site_id': best_subnet.site_id,
+                'description': best_subnet.description
+            }
+
+        # CRITICAL: Only auto-assign site_id for NEW devices
+        # For existing devices, preserve their current site_id
+        if existing_device:
+            # Device exists - DO NOT change site_id
+            assigned_site_id = existing_device.site_id
+            site_assignment_action = 'preserved'
+        else:
+            # New device - auto-assign from subnet
+            assigned_site_id = suggested_site_id
+            site_assignment_action = 'auto_assigned' if suggested_site_id else 'unassigned'
+
         device, action, _prev_ip = upsert_device_from_identity(
             ip=ip_address,
             mac=mac_address,
@@ -287,7 +317,8 @@ def add_to_inventory():
             manufacturer='Unknown',
             device_type=device_type or 'unknown',
             is_monitored=True,
-            is_active=True
+            is_active=True,
+            site_id=assigned_site_id  # Safe: either preserved or auto-assigned for new
         )
 
         if device and (classification_confidence or confidence_score is not None or classification_details):
@@ -305,20 +336,46 @@ def add_to_inventory():
             return jsonify({'success': False, 'message': 'IP address required'}), 400
 
         if action in ("created", "updated"):
+            db.session.flush()
             _upsert_snmp_config_for_device(device, data)
             db.session.commit()
 
-        return jsonify({
+        # Build response with subnet information and assignment details
+        response_data = {
             'success': True,
             'message': 'Device added or updated successfully',
             'device': {
                 'device_id': device.device_id,
                 'device_ip': device.device_ip,
                 'device_name': device.device_name,
-                'macaddress': device.macaddress
+                'macaddress': device.macaddress,
+                'site_id': device.site_id
             },
-            'action': action
-        }), 201
+            'action': action,
+            'site_assignment_action': site_assignment_action,
+            'subnet_mapped': not subnet_unmapped
+        }
+        
+        # Add warnings/info based on scenario
+        if action == 'updated' and suggested_site_id and suggested_site_id != device.site_id:
+            # Existing device in different site than subnet suggests
+            response_data['info'] = (
+                f'Device already assigned to site ID {device.site_id}. '
+                f'Subnet {best_subnet.cidr} suggests site ID {suggested_site_id}. '
+                f'Site assignment preserved (no auto-reassignment).'
+            )
+        elif action == 'created' and subnet_unmapped:
+            response_data['warning'] = (
+                f'Device added but IP {ip_address} is not in any mapped subnet. '
+                f'Please map the subnet to a site for proper organization.'
+            )
+        elif action == 'created' and best_subnet:
+            response_data['info'] = (
+                f'Device auto-assigned to site based on subnet {best_subnet.cidr}'
+            )
+            response_data['subnet'] = subnet_info
+        
+        return jsonify(response_data), 201
         
     except Exception as e:
         db.session.rollback()
@@ -326,9 +383,8 @@ def add_to_inventory():
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @scanning_bp.route('/api/discovery/start', methods=['POST'])
+@require_permission('scanning.run')
 def start_discovery():
-    # Auth handled by middleware
-    
     from flask import current_app
     from services.snmp_discovery_service import get_snmp_discovery_service
     

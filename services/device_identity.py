@@ -127,6 +127,7 @@ def upsert_device_from_identity(
     device_type=None,
     is_monitored=None,
     is_active=True,
+    site_id=None
 ):
     """
     Identity-first device upsert.
@@ -183,6 +184,7 @@ def upsert_device_from_identity(
             hostname=hostname or "Unknown",
             manufacturer=manufacturer or "Unknown",
             subnet_cidr=compute_subnet_cidr(ip),
+            site_id=site_id,
             is_monitored=bool(is_monitored) if is_monitored is not None else False,
             is_active=bool(is_active),
             created_at=datetime.utcnow(),
@@ -216,6 +218,8 @@ def upsert_device_from_identity(
                 primary.maintenance_mode = True
             if dup.is_monitored and not primary.is_monitored:
                 primary.is_monitored = True
+            if dup.site_id and not primary.site_id:
+                primary.site_id = dup.site_id
                 
             db.session.delete(dup)
 
@@ -262,6 +266,10 @@ def upsert_device_from_identity(
 
     if is_active is True and not primary.is_active:
         primary.is_active = True
+        updated = True
+        
+    if site_id and primary.site_id is None:
+        primary.site_id = site_id
         updated = True
         
     primary.updated_at = datetime.utcnow()

@@ -57,12 +57,18 @@ def setup_auth_middleware(bp):
         # Allow API key auth for /api/* endpoints
         if request.path.startswith('/api/'):
             provided_key = request.headers.get('X-API-Key')
-            expected_key = current_app.config.get('MOBILE_API_KEY')
-            
-            print(f"DEBUG AUTH: Path={request.path} Header-Key={provided_key} Expected={expected_key}")
+            bound_key_id = request.headers.get('X-Agent-Key-Id')
+            bound_key = request.headers.get('X-Agent-Key')
+            expected_mobile_key = current_app.config.get('MOBILE_API_KEY')
+            expected_tracking_key = current_app.config.get('API_KEY') # TRACKING_API_KEY in config
+
+            # Restricted tracking endpoints can authenticate via bound agent keys.
+            if request.path.startswith('/api/tracking/') and bound_key_id and bound_key:
+                return None
 
             if provided_key:
-                if expected_key and provided_key == expected_key:
+                if (expected_mobile_key and provided_key == expected_mobile_key) or \
+                   (expected_tracking_key and provided_key == expected_tracking_key):
                     return None
                 return jsonify({'success': False, 'error': 'Invalid API key'}), 401
         

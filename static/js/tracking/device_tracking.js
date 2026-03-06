@@ -3,6 +3,10 @@
 
     let deviceToDelete = null;
     const STATUS_REFRESH_INTERVAL_MS = 15000;
+    let kpiBaseline = null;
+    let lastRefreshAtMs = null;
+    let refreshTicker = null;
+    let activeQuickFilter = 'all';
 
     document.addEventListener('DOMContentLoaded', initTrackingDevicePage);
 
@@ -12,6 +16,7 @@
         bindModalActions();
         bindFilterActions();
         bindScanActions();
+        updateTableHealthCounters();
         applyDeviceFilters();
         startStoredStatusRefresh();
     }
@@ -29,6 +34,11 @@
         const syncButton = document.getElementById('syncBtn');
         if (syncButton) {
             syncButton.addEventListener('click', syncTrackedDeviceIps);
+        }
+
+        const manualRefreshButton = document.getElementById('trackingManualRefreshBtn');
+        if (manualRefreshButton) {
+            manualRefreshButton.addEventListener('click', refreshStoredDeviceStatuses);
         }
 
         const exportButton = document.getElementById('exportDevicesBtn');
@@ -72,8 +82,13 @@
             const deleteButton = event.target.closest('.delete-device');
             if (deleteButton) {
                 const macAddress = deleteButton.getAttribute('data-mac');
+                const rawDeviceId = deleteButton.getAttribute('data-device-id');
+                const parsedDeviceId = Number.parseInt(rawDeviceId || '', 10);
                 const deviceName = deleteButton.getAttribute('data-device-name') || 'Unknown Device';
-                showDeleteConfirmation(macAddress, deviceName);
+                showDeleteConfirmation({
+                    deviceId: Number.isInteger(parsedDeviceId) ? parsedDeviceId : null,
+                    macAddress: macAddress || '',
+                }, deviceName);
             }
         });
     }
@@ -102,14 +117,35 @@
     function bindFilterActions() {
         const searchInput = document.getElementById('deviceSearchInput');
         const statusFilter = document.getElementById('deviceStatusFilter');
+        const chipButtons = document.querySelectorAll('[data-chip-filter]');
 
         if (searchInput) {
             searchInput.addEventListener('input', applyDeviceFilters);
         }
 
         if (statusFilter) {
-            statusFilter.addEventListener('change', applyDeviceFilters);
+            statusFilter.addEventListener('change', () => {
+                if (statusFilter.value !== 'all') {
+                    activeQuickFilter = 'all';
+                    document.querySelectorAll('[data-chip-filter]').forEach((button) => {
+                        button.classList.toggle('active', button.getAttribute('data-chip-filter') === 'all');
+                    });
+                }
+                applyDeviceFilters();
+            });
         }
+
+        chipButtons.forEach((chipButton) => {
+            chipButton.addEventListener('click', () => {
+                activeQuickFilter = chipButton.getAttribute('data-chip-filter') || 'all';
+                chipButtons.forEach((button) => button.classList.toggle('active', button === chipButton));
+                const statusFilterSelect = document.getElementById('deviceStatusFilter');
+                if (statusFilterSelect) {
+                    statusFilterSelect.value = 'all';
+                }
+                applyDeviceFilters();
+            });
+        });
     }
 
     function bindScanActions() {
@@ -135,12 +171,12 @@
     }
 
     function startStoredStatusRefresh() {
-        const trackedRows = document.querySelectorAll('#deviceList tr[data-device-row="true"][data-mac]');
-        if (!trackedRows.length) {
-            return;
-        }
+        updateRefreshTicker();
         refreshStoredDeviceStatuses();
         window.setInterval(refreshStoredDeviceStatuses, STATUS_REFRESH_INTERVAL_MS);
+        if (!refreshTicker) {
+            refreshTicker = window.setInterval(updateRefreshTicker, 1000);
+        }
     }
 
     async function refreshStoredDeviceStatuses() {
@@ -150,8 +186,12 @@
                 return;
             }
 
+            updateKpiCards(response);
+
             const rows = document.querySelectorAll('#deviceList tr[data-device-row="true"][data-mac]');
-            if (!rows.length) return;
+            if (!rows.length) {
+                return;
+            }
 
             const rowMap = new Map();
             rows.forEach(row => {
@@ -171,10 +211,78 @@
                 applyStoredStatusToRow(row, device);
             });
 
+            updateTableHealthCounters();
             applyDeviceFilters();
+            lastRefreshAtMs = Date.now();
+            updateRefreshTicker();
         } catch (error) {
             console.debug('Stored status refresh failed:', error?.message || error);
+            const statusLabel = document.getElementById('trackingRefreshStatus');
+            if (statusLabel) {
+                statusLabel.textContent = 'Refresh issue';
+            }
         }
+    }
+
+    function updateKpiCards(summaryResponse) {
+        const total = Number(summaryResponse.total_devices || 0);
+        const reachable = Number(
+            summaryResponse.reachable_devices !== undefined
+                ? summaryResponse.reachable_devices
+                : Number(summaryResponse.online_devices || 0) + Number(summaryResponse.degraded_devices || 0)
+        );
+        const offline = Number(
+            summaryResponse.offline_devices !== undefined
+                ? summaryResponse.offline_devices
+                : Math.max(total - reachable, 0)
+        );
+
+        setElementText('trackingKpiTotal', total);
+        setElementText('trackingKpiReachable', reachable);
+        setElementText('trackingKpiOffline', offline);
+        const activeAgentCheckins = Number(summaryResponse.active_agent_checkins || 0);
+        setElementText('trackingKpiActive24h', activeAgentCheckins);
+
+        if (!kpiBaseline) {
+            kpiBaseline = { total, reachable, offline, activeAgentCheckins };
+        }
+
+        updateKpiTrend('trackingKpiTotalTrend', total - Number(kpiBaseline.total || 0), 'vs baseline');
+        updateKpiTrend('trackingKpiReachableTrend', reachable - Number(kpiBaseline.reachable || 0), 'vs baseline');
+        updateKpiTrend('trackingKpiOfflineTrend', offline - Number(kpiBaseline.offline || 0), 'vs baseline');
+        const syncWindow = Number(summaryResponse.agent_sync_window_seconds || 180);
+        updateKpiTrend(
+            'trackingKpiActive24hTrend',
+            activeAgentCheckins - Number(kpiBaseline.activeAgentCheckins || 0),
+            `${activeAgentCheckins} in ${syncWindow}s`
+        );
+
+        const offlineCard = document.getElementById('trackingKpiOffline')?.closest('.tactical-stat-card');
+        if (offlineCard) {
+            offlineCard.classList.toggle('critical', offline > 0);
+        }
+    }
+
+    function updateKpiTrend(elementId, delta, suffix) {
+        const trendElement = document.getElementById(elementId);
+        if (!trendElement) {
+            return;
+        }
+
+        trendElement.classList.remove('up', 'down', 'stable');
+        const detail = suffix ? ` ${suffix}` : '';
+        if (delta > 0) {
+            trendElement.classList.add('up');
+            trendElement.textContent = `+${delta}${detail}`;
+            return;
+        }
+        if (delta < 0) {
+            trendElement.classList.add('down');
+            trendElement.textContent = `${delta}${detail}`;
+            return;
+        }
+        trendElement.classList.add('stable');
+        trendElement.textContent = `Stable${detail ? ` (${suffix})` : ''}`;
     }
 
     function applyStoredStatusToRow(row, device) {
@@ -186,6 +294,31 @@
                 : 'offline';
 
         row.dataset.deviceStatus = availabilityStatus;
+        const ipAddress = safeValue(device.ip_address, '').trim();
+        const hostName = safeValue(device.hostname, '').trim();
+        row.dataset.needsSync = (!ipAddress || availabilityStatus === 'offline') ? '1' : '0';
+
+        const ipValue = row.querySelector('.tracking-ip-value');
+        if (ipValue) {
+            const nextIpText = ipAddress || 'N/A';
+            if (ipValue.textContent !== nextIpText) {
+                ipValue.textContent = nextIpText;
+            }
+        }
+
+        const hostValue = row.querySelector('.tracking-host-value');
+        if (hostValue) {
+            const nextHostText = hostName || 'N/A';
+            if (hostValue.textContent !== nextHostText) {
+                hostValue.textContent = nextHostText;
+            }
+        }
+
+        const deviceNameText = safeValue(row.querySelector('.device-name-cell strong')?.textContent, '').trim().toLowerCase();
+        const employeeText = safeValue(row.querySelector('.device-name-cell .device-mac')?.textContent, '').trim().toLowerCase();
+        const scopeText = safeValue(row.querySelector('.tracking-scope-meta')?.textContent, '').trim().toLowerCase();
+        const macText = safeValue(device.mac_address, row.getAttribute('data-mac') || '').trim().toLowerCase();
+        row.dataset.searchIndex = `${deviceNameText} ${employeeText} ${hostName.toLowerCase()} ${ipAddress.toLowerCase()} ${macText} ${scopeText}`.trim();
 
         const statusCell = row.querySelector('.tracking-status-cell');
         let statusSpan = null;
@@ -227,7 +360,8 @@
         }
 
         const statusMeta = row.querySelector('.tracking-status-meta');
-        const metaText = `${formatProbeTimestamp(device.last_probe_at)} | ${reason}`;
+        const syncHint = buildAgentSyncHint(device);
+        const metaText = `${formatProbeTimestamp(device.last_probe_at)} | ${reason}${syncHint ? ` | ${syncHint}` : ''}`;
         if (statusMeta && statusMeta.textContent !== metaText) {
             statusMeta.textContent = metaText;
             statusMeta.title = reason;
@@ -235,11 +369,8 @@
     }
 
     function formatProbeTimestamp(rawTimestamp) {
-        if (!rawTimestamp) {
-            return 'Last probe: n/a';
-        }
-        const parsed = new Date(rawTimestamp);
-        if (Number.isNaN(parsed.getTime())) {
+        const parsed = parseUniversalDate(rawTimestamp);
+        if (!parsed) {
             return 'Last probe: n/a';
         }
         return `Last probe: ${parsed.toLocaleTimeString()}`;
@@ -262,6 +393,28 @@
         return probeError ? `Offline (${probeError})` : 'Agent unreachable';
     }
 
+    function buildAgentSyncHint(device) {
+        if (!device) {
+            return '';
+        }
+        if (device.agent_sync_recent) {
+            const age = Number(device.agent_sync_age_seconds || 0);
+            if (Number.isFinite(age)) {
+                return `service.py check-in ${age}s ago`;
+            }
+            return 'service.py check-in active';
+        }
+        const lastSyncAt = safeValue(device.last_agent_sync_at, '');
+        if (!lastSyncAt) {
+            return 'no service.py check-in yet';
+        }
+        const parsed = parseUniversalDate(lastSyncAt);
+        if (!parsed) {
+            return 'service.py check-in stale';
+        }
+        return `last service.py check-in ${parsed.toLocaleTimeString()}`;
+    }
+
     function openAddDeviceModal() {
         clearDeviceForm();
         const modalElement = document.getElementById('addDeviceModal');
@@ -272,8 +425,8 @@
         modal.show();
     }
 
-    function showDeleteConfirmation(macAddress, deviceName) {
-        deviceToDelete = macAddress;
+    function showDeleteConfirmation(deleteTarget, deviceName) {
+        deviceToDelete = deleteTarget;
         const deleteDeviceName = document.getElementById('deleteDeviceName');
         if (deleteDeviceName) {
             deleteDeviceName.textContent = deviceName;
@@ -321,7 +474,7 @@
             payload.device_name = payload.hostname || 'Auto-Discovered Device';
         }
 
-        setButtonLoading(saveButton, '<i data-lucide="loader" class="fa-spin" style="width:1rem;height:1rem;vertical-align:middle;"></i> Saving...');
+        setButtonLoading(saveButton, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Saving...');
 
         try {
             const response = await requestJson('/api/tracking/save-device', {
@@ -348,19 +501,39 @@
         }
     }
 
-    async function deleteTrackedDevice(macAddress) {
+    async function deleteTrackedDevice(deleteTarget) {
+        const payload = {};
+        if (typeof deleteTarget === 'string') {
+            payload.mac_address = deleteTarget;
+        } else if (deleteTarget && typeof deleteTarget === 'object') {
+            if (Number.isInteger(deleteTarget.deviceId) && deleteTarget.deviceId > 0) {
+                payload.device_id = deleteTarget.deviceId;
+            }
+            if (deleteTarget.macAddress) {
+                payload.mac_address = deleteTarget.macAddress;
+            }
+        }
+
+        if (!payload.device_id && !payload.mac_address) {
+            showNotification('Missing device identity for archive request.', 'warning');
+            return;
+        }
+
+        // Force a full purge instead of a soft archive per user request
+        payload.purge = true;
+
         try {
             const response = await requestJson('/api/tracking/delete-device', {
                 method: 'POST',
-                body: JSON.stringify({ mac_address: macAddress }),
+                body: JSON.stringify(payload),
             });
 
             if (!response.success) {
-                showNotification(response.error || 'Delete failed.', 'danger');
+                showNotification(response.error || 'Archive failed.', 'danger');
                 return;
             }
 
-            showNotification('Device deleted successfully.', 'success');
+            showNotification(response.message || 'Device archived successfully.', 'success');
             const modalElement = document.getElementById('confirmDeleteModal');
             const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
             if (modal) {
@@ -368,7 +541,7 @@
             }
             setTimeout(() => window.location.reload(), 800);
         } catch (error) {
-            showNotification(error.message || 'Delete failed.', 'danger');
+            showNotification(error.message || 'Archive failed.', 'danger');
         }
     }
 
@@ -436,10 +609,19 @@
         rows.forEach((row) => {
             const rowStatus = row.dataset.deviceStatus || 'offline';
             const rowSearch = row.dataset.searchIndex || '';
+            const isUnassigned = row.dataset.unassigned === '1';
+            const needsSync = row.dataset.needsSync === '1';
 
             const matchesSearch = !searchTerm || rowSearch.includes(searchTerm);
             const matchesStatus = statusFilter === 'all' || rowStatus === statusFilter;
-            const shouldShow = matchesSearch && matchesStatus;
+            const matchesChip = (
+                activeQuickFilter === 'all' ||
+                (activeQuickFilter === 'online' && rowStatus === 'online') ||
+                (activeQuickFilter === 'offline' && rowStatus === 'offline') ||
+                (activeQuickFilter === 'unassigned' && isUnassigned) ||
+                (activeQuickFilter === 'needs_sync' && needsSync)
+            );
+            const shouldShow = matchesSearch && matchesStatus && matchesChip;
 
             const isCurrentlyHidden = row.classList.contains('d-none');
             const shouldBeHidden = !shouldShow;
@@ -463,12 +645,69 @@
             const showFilteredEmptyState = rows.length > 0 && visibleCount === 0;
             filterEmptyState.classList.toggle('d-none', !showFilteredEmptyState);
         }
+
+        updateTableHealthCounters();
+    }
+
+    function updateTableHealthCounters() {
+        const rows = Array.from(document.querySelectorAll('#deviceList tr[data-device-row="true"]'));
+        if (!rows.length) {
+            setElementText('managedCount', 0);
+            setElementText('unassignedCount', 0);
+            setElementText('needsAttentionCount', 0);
+            return;
+        }
+
+        const managedCount = rows.length;
+        const unassignedCount = rows.filter((row) => row.dataset.unassigned === '1').length;
+        const needsAttention = rows.filter((row) => row.dataset.needsSync === '1').length;
+
+        setElementText('managedCount', managedCount);
+        setElementText('unassignedCount', unassignedCount);
+        setElementText('needsAttentionCount', needsAttention);
+
+        const needsAttentionPill = document.getElementById('needsAttentionPill');
+        if (needsAttentionPill) {
+            needsAttentionPill.classList.toggle('attention', needsAttention > 0);
+        }
+
+        const unassignedPill = document.getElementById('unassignedCount')?.closest('.tracking-summary-pill');
+        if (unassignedPill) {
+            unassignedPill.classList.toggle('attention', unassignedCount > 0);
+        }
+    }
+
+    function updateRefreshTicker() {
+        const refreshStatus = document.getElementById('trackingRefreshStatus');
+        const lastRefreshedText = document.getElementById('trackingLastRefreshedText');
+        const statusDot = document.querySelector('.tracking-realtime-pill .status-dot');
+        if (!refreshStatus || !lastRefreshedText) {
+            return;
+        }
+
+        if (!lastRefreshAtMs) {
+            refreshStatus.textContent = 'Auto-refresh every 15s';
+            lastRefreshedText.textContent = 'Last refreshed: n/a';
+            if (statusDot) {
+                statusDot.classList.remove('healthy', 'offline');
+                statusDot.classList.add('unknown');
+            }
+            return;
+        }
+
+        const ageSeconds = Math.max(0, Math.floor((Date.now() - lastRefreshAtMs) / 1000));
+        refreshStatus.textContent = ageSeconds <= 20 ? 'Live polling active' : 'Refresh delayed';
+        lastRefreshedText.textContent = `Last refreshed ${ageSeconds}s ago`;
+        if (statusDot) {
+            statusDot.classList.remove('healthy', 'offline', 'unknown');
+            statusDot.classList.add(ageSeconds <= 20 ? 'healthy' : 'offline');
+        }
     }
 
     async function scanNetworkDevices(event) {
         const button = event.currentTarget;
         const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin" style="width:1rem;height:1rem;vertical-align:middle;"></i> Scanning...');
+        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Scanning...');
 
         try {
             const response = await requestJson('/api/tracking/scan', {
@@ -490,6 +729,8 @@
             if (Array.isArray(response.auto_saved_devices) && response.auto_saved_devices.length > 0) {
                 showNotification(`Auto-saved ${response.auto_saved_devices.length} new device(s) from scan.`, 'success');
             }
+
+            refreshStoredDeviceStatuses();
         } catch (error) {
             showNotification(error.message || 'Scan failed.', 'danger');
         } finally {
@@ -500,7 +741,7 @@
     async function syncTrackedDeviceIps(event) {
         const button = event.currentTarget;
         const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin" style="width:1rem;height:1rem;vertical-align:middle;"></i> Syncing...');
+        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Syncing...');
 
         try {
             const response = await requestJson('/api/tracking/sync-ips', {
@@ -525,9 +766,11 @@
 
             if (updatedCount === 0 && autoSavedCount === 0) {
                 showNotification('All tracked devices are already up to date.', 'info');
+                refreshStoredDeviceStatuses();
                 return;
             }
 
+            refreshStoredDeviceStatuses();
             setTimeout(() => window.location.reload(), 1400);
         } catch (error) {
             showNotification(error.message || 'Sync failed.', 'danger');
@@ -540,6 +783,10 @@
         setElementText('scanTrackingActiveCount', response.tracking_active || 0);
         setElementText('scanPortOnlyCount', response.port_only || 0);
         setElementText('scanNewDevicesCount', response.new_devices || 0);
+        const newDeviceCard = document.getElementById('scanNewDevicesCount')?.closest('.tactical-stat-card');
+        if (newDeviceCard) {
+            newDeviceCard.classList.toggle('warning', Number(response.new_devices || 0) > 0);
+        }
 
         const banner = document.getElementById('scanResultsBanner');
         if (banner) {
@@ -619,12 +866,12 @@
         const isSaved = Boolean(device.is_saved);
         const actionHtml = isSaved
             ? '<button class="btn btn-outline-secondary border-secondary text-light btn-sm" type="button" disabled>Already Saved</button>'
-            : `<button class="btn btn-outline-primary border-primary text-light btn-sm save-scanned-device" type="button" data-mac="${escapeHtml(macAddress)}" data-ip="${escapeHtml(ip)}" data-hostname="${escapeHtml(hostname)}"><i data-lucide="download" style="width: 14px; height: 14px; margin-right: 4px;"></i> Save</button>`;
+            : `<button class="btn btn-outline-primary border-primary text-light btn-sm save-scanned-device" type="button" data-mac="${escapeHtml(macAddress)}" data-ip="${escapeHtml(ip)}" data-hostname="${escapeHtml(hostname)}"><i data-lucide="download" class="tracking-icon-sm me-1"></i> Save</button>`;
 
         row.querySelector('.scan-device-col').innerHTML = `<strong>${escapeHtml(hostname)}</strong><div class="device-mac mt-1">${escapeHtml(system)}</div>`;
         row.querySelector('.scan-status-col').innerHTML = `<span class="${statusClass}">${statusLabel}</span>`;
-        row.querySelector('.scan-network-col').innerHTML = `<strong style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">IP:</strong> <span class="text-success">${escapeHtml(ip)}</span><br><strong style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem; font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);">MAC:</strong> ${escapeHtml(macAddress)}`;
-        row.querySelector('.scan-tracking-col').innerHTML = `<strong style="color: var(--e-text-primary, #e6edf5); font-size: 0.73rem;">${trackingText}</strong>`;
+        row.querySelector('.scan-network-col').innerHTML = `<strong class="tracking-scan-label">IP:</strong> <span class="text-success">${escapeHtml(ip)}</span><br><strong class="tracking-scan-label">MAC:</strong> ${escapeHtml(macAddress)}`;
+        row.querySelector('.scan-tracking-col').innerHTML = `<strong class="tracking-scan-state">${trackingText}</strong>`;
         row.querySelector('.scan-action-col').innerHTML = actionHtml;
     }
 
@@ -640,7 +887,7 @@
         };
 
         const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin" style="width:1rem;height:1rem;vertical-align:middle;"></i> Saving...');
+        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Saving...');
 
         try {
             const response = await requestJson('/api/tracking/save-device', {
@@ -674,7 +921,8 @@
             const csvLines = ['Device Name,Employee Name,Status,Last Seen'];
 
             devices.forEach((device) => {
-                const lastSeen = device.timestamp ? new Date(device.timestamp).toLocaleDateString() : 'Never';
+                const parsedLastSeen = parseUniversalDate(device.timestamp);
+                const lastSeen = parsedLastSeen ? parsedLastSeen.toLocaleDateString() : 'Never';
                 csvLines.push([
                     csvEscape(device.device_name || ''),
                     csvEscape(device.employee_name || ''),
@@ -759,7 +1007,7 @@
             return 'Requested device/resource was not found (it may have been deleted).';
         }
         if (status === 409) {
-            return 'Conflict detected while saving. Refresh and retry.';
+            return 'Tracking reconciliation is running. Retry in a few seconds.';
         }
         if (status >= 500) {
             return 'Server error while processing the request. Please retry.';
@@ -829,6 +1077,39 @@
         if (element) {
             element.textContent = String(value);
         }
+    }
+
+    function parseUniversalDate(value) {
+        if (value instanceof Date) {
+            return Number.isNaN(value.getTime()) ? null : value;
+        }
+        if (typeof value === 'number') {
+            const parsedFromNumber = new Date(value);
+            return Number.isNaN(parsedFromNumber.getTime()) ? null : parsedFromNumber;
+        }
+        const raw = String(value || '').trim();
+        if (!raw) {
+            return null;
+        }
+        if (/^\d+$/.test(raw)) {
+            const numeric = Number(raw);
+            if (Number.isFinite(numeric)) {
+                const ts = raw.length <= 10 ? numeric * 1000 : numeric;
+                const parsedFromEpoch = new Date(ts);
+                if (!Number.isNaN(parsedFromEpoch.getTime())) {
+                    return parsedFromEpoch;
+                }
+            }
+        }
+        let normalized = raw;
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(raw)) {
+            normalized = raw.replace(' ', 'T');
+        }
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(normalized)) {
+            normalized = `${normalized}Z`;
+        }
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
 
     function getScanRowKey(device) {

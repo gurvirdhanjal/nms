@@ -24,8 +24,25 @@ class Site(db.Model):
 
     # Relationships
     devices = db.relationship('Device', backref='site', lazy='dynamic')
+    subnets = db.relationship('Subnet', backref='site', lazy='dynamic', cascade='all, delete-orphan')
+    users = db.relationship('User', backref='site', lazy='dynamic')
 
     def to_dict(self):
+        from models.device import Device
+        
+        departments = self.departments.all() if hasattr(self, 'departments') else []
+        dept_ids = [d.id for d in departments]
+        
+        if dept_ids:
+            device_count = Device.query.filter(
+                db.or_(
+                    Device.site_id == self.id,
+                    Device.department_id.in_(dept_ids)
+                )
+            ).count()
+        else:
+            device_count = self.devices.count() if self.devices else 0
+            
         return {
             'id': self.id,
             'site_name': self.site_name,
@@ -35,7 +52,7 @@ class Site(db.Model):
             'contact_name': self.contact_name,
             'contact_email': self.contact_email,
             'contact_phone': self.contact_phone,
-            'device_count': self.devices.count() if self.devices else 0,
+            'device_count': device_count,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

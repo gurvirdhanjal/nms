@@ -409,11 +409,6 @@ class AutoDiscoveryService:
     # ------------------------------------------------------------------ #
     # Manual triggers (called from API)
     # ------------------------------------------------------------------ #
-    def trigger_light_sweep(self, app):
-        """Run light sweep in background thread."""
-        t = threading.Thread(target=self.run_light_sweep, args=(app,), daemon=True)
-        t.start()
-
     def trigger_heavy_scan(self, app):
         """Run heavy scan in background thread."""
         t = threading.Thread(target=self.run_heavy_scan, args=(app,), daemon=True)

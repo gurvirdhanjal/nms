@@ -26,7 +26,10 @@ def user_management():
                 flash('User deleted successfully.', 'success')
         return redirect(url_for('user_management_bp.user_management'))
 
-    return render_template('user_management.html', users=users, user=user)
+    from models.department import Department
+    departments = Department.query.all()
+
+    return render_template('user_management.html', users=users, user=user, departments=departments)
 
 @user_management_bp.route('/user_management/save', methods=['POST'])
 @require_role('admin')
@@ -38,6 +41,11 @@ def save_user():
         role = request.form['role']
         email = request.form['email']
         phone_number = request.form.get('phone_number', '')
+        department_id = request.form.get('department_id')
+        if department_id:
+            department_id = int(department_id)
+        else:
+            department_id = None
 
         # Check if username already exists (for new users or when changing username)
         existing_user = User.query.filter_by(username=username).first()
@@ -54,13 +62,44 @@ def save_user():
         if user_id:
             # Update existing user
             user = User.query.get(user_id)
+            
+            # Track changes for audit log
+            changes = {}
+            old_role = user.role
+            
+            if user.username != username:
+                changes['username'] = {'before': user.username, 'after': username}
+            if user.role != role:
+                changes['role'] = {'before': user.role, 'after': role}
+            if user.email != email:
+                changes['email'] = {'before': user.email, 'after': email}
+            if user.department_id != department_id:
+                changes['department_id'] = {'before': user.department_id, 'after': department_id}
+            if password:
+                changes['password'] = {'before': '[REDACTED]', 'after': '[REDACTED]'}
+            
             user.username = username
             # Only update password if provided
             if password:
                 user.password = bcrypt.generate_password_hash(password).decode('utf-8')
             user.role = role
+            user.department_id = department_id
             user.email = email
             user.phone_number = phone_number
+            
+            db.session.commit()
+            
+            # Audit logging for user update
+            from middleware.rbac import create_audit_log
+            create_audit_log(
+                action='update',
+                entity_type='user',
+                entity_id=user.id,
+                entity_name=username,
+                description=f'Updated user {username}',
+                changes=changes if changes else None
+            )
+            
             flash('User updated successfully.', 'success')
         else:
             # Create new user - password is required for new users
@@ -73,13 +112,25 @@ def save_user():
                 username=username, 
                 password=hashed_password, 
                 role=role, 
+                department_id=department_id,
                 email=email, 
                 phone_number=phone_number
             )
             db.session.add(user)
+            db.session.commit()
+            
+            # Audit logging for user creation
+            from middleware.rbac import create_audit_log
+            create_audit_log(
+                action='create',
+                entity_type='user',
+                entity_id=user.id,
+                entity_name=username,
+                description=f'Created user {username} with role {role}'
+            )
+            
             flash('User created successfully.', 'success')
 
-        db.session.commit()
         return redirect(url_for('user_management_bp.user_management'))
     
     except Exception as e:
@@ -95,8 +146,27 @@ def toggle_user_status(user_id):
         if user.id == session.get('user_id'):
             return jsonify({'error': 'You cannot deactivate your own account'}), 400
         
+        old_status = user.is_active
         user.is_active = not user.is_active
         db.session.commit()
+        
+        # Audit logging for user status change
+        from middleware.rbac import create_audit_log
+        action = 'deactivate' if not user.is_active else 'activate'
+        create_audit_log(
+            action=action,
+            entity_type='user',
+            entity_id=user.id,
+            entity_name=user.username,
+            description=f'{action.capitalize()}d user {user.username}',
+            changes={
+                'is_active': {
+                    'before': old_status,
+                    'after': user.is_active
+                }
+            }
+        )
+        
         return jsonify({'success': True, 'is_active': user.is_active})
     else:
         return jsonify({'error': 'User not found'}), 404

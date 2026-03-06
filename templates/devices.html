@@ -234,7 +234,8 @@
 
     .devices-page .devices-notification-host {
         position: fixed;
-        top: 1rem;
+        top: calc(52px + 1rem);
+        /* Avoid header overlap */
         right: 1rem;
         z-index: 1085;
         max-width: 460px;
@@ -416,13 +417,12 @@
                             <input type="hidden" name="per_page" value="{{ per_page|default(100) }}">
 
                             <button type="button" class="btn btn-dark btn-sm border-secondary"
-                                onclick="refreshAllVisibleStatuses()"
-                                title="Refresh Status">
+                                onclick="refreshAllVisibleStatuses()" title="Refresh Status">
                                 <i data-lucide="refresh-cw"></i> Refresh
                             </button>
                             <button type="button" class="btn btn-outline-info btn-sm border-secondary"
-                                id="selectFilteredAcrossPagesBtn"
-                                onclick="selectFilteredAcrossPages()" title="Select filtered devices across all pages">
+                                id="selectFilteredAcrossPagesBtn" onclick="selectFilteredAcrossPages()"
+                                title="Select filtered devices across all pages">
                                 <i data-lucide="layers"></i> Select Filtered (All Pages)
                             </button>
                             <span id="filteredSelectionProgress" class="selection-progress d-none">
@@ -430,31 +430,40 @@
                                 <span id="filteredSelectionProgressText">Resolving filtered devices...</span>
                             </span>
 
-                            <select class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
+                            <select
+                                class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
                                 id="statusFilter" name="status" onchange="submitServerFilters()">
                                 <option value="" {% if not active_status %}selected{% endif %}>All Status</option>
-                                <option value="Online" {% if active_status == 'Online' %}selected{% endif %}>Online</option>
-                                <option value="Offline" {% if active_status == 'Offline' %}selected{% endif %}>Offline</option>
-                                <option value="Maintenance" {% if active_status == 'Maintenance' %}selected{% endif %}>Maintenance
+                                <option value="Online" {% if active_status=='Online' %}selected{% endif %}>Online
+                                </option>
+                                <option value="Offline" {% if active_status=='Offline' %}selected{% endif %}>Offline
+                                </option>
+                                <option value="Maintenance" {% if active_status=='Maintenance' %}selected{% endif %}>
+                                    Maintenance
                                 </option>
                             </select>
 
-                            <select class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
+                            <select
+                                class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
                                 id="typeFilter" name="type" onchange="submitServerFilters()">
                                 <option value="" {% if not active_type %}selected{% endif %}>All Types</option>
-                                <option value="switch" {% if active_type == 'switch' %}selected{% endif %}>Switch</option>
-                                <option value="access_point" {% if active_type == 'access_point' %}selected{% endif %}>Access Point
+                                <option value="switch" {% if active_type=='switch' %}selected{% endif %}>Switch</option>
+                                <option value="access_point" {% if active_type=='access_point' %}selected{% endif %}>
+                                    Access Point
                                 </option>
-                                <option value="router" {% if active_type == 'router' %}selected{% endif %}>Router</option>
-                                <option value="firewall" {% if active_type == 'firewall' %}selected{% endif %}>Firewall</option>
-                                <option value="server" {% if active_type == 'server' %}selected{% endif %}>Server</option>
-                                <option value="workstation" {% if active_type == 'workstation' %}selected{% endif %}>Workstation
+                                <option value="router" {% if active_type=='router' %}selected{% endif %}>Router</option>
+                                <option value="firewall" {% if active_type=='firewall' %}selected{% endif %}>Firewall
                                 </option>
-                                <option value="camera" {% if active_type in ['camera', 'camera/iot', 'camera_iot'] %}selected{% endif
-                                    %}>Camera/IoT</option>
-                                <option value="printer" {% if active_type == 'printer' %}selected{% endif %}>Printer</option>
-                                <option value="mobile" {% if active_type == 'mobile' %}selected{% endif %}>Mobile</option>
-                                <option value="iot" {% if active_type == 'iot' %}selected{% endif %}>IoT</option>
+                                <option value="server" {% if active_type=='server' %}selected{% endif %}>Server</option>
+                                <option value="workstation" {% if active_type=='workstation' %}selected{% endif %}>
+                                    Workstation
+                                </option>
+                                <option value="camera" {% if active_type in ['camera', 'camera/iot' , 'camera_iot' ]
+                                    %}selected{% endif %}>Camera/IoT</option>
+                                <option value="printer" {% if active_type=='printer' %}selected{% endif %}>Printer
+                                </option>
+                                <option value="mobile" {% if active_type=='mobile' %}selected{% endif %}>Mobile</option>
+                                <option value="iot" {% if active_type=='iot' %}selected{% endif %}>IoT</option>
                             </select>
 
                             <select
@@ -462,7 +471,7 @@
                                 id="subnetFilter" name="subnet" onchange="submitServerFilters()">
                                 <option value="" {% if not active_subnet %}selected{% endif %}>All Subnets</option>
                                 {% for sn in subnets %}
-                                <option value="{{ sn }}" {% if active_subnet == sn %}selected{% endif %}>{{ sn }}</option>
+                                <option value="{{ sn }}" {% if active_subnet==sn %}selected{% endif %}>{{ sn }}</option>
                                 {% endfor %}
                             </select>
 
@@ -475,8 +484,7 @@
                                     onkeyup="handleSearchInput(event)"
                                     title="Press Enter to apply search across all pages">
                                 <button type="button" class="btn btn-outline-secondary border-secondary"
-                                    onclick="submitServerFilters()"
-                                    title="Apply search to all pages">
+                                    onclick="submitServerFilters()" title="Apply search to all pages">
                                     <i data-lucide="arrow-right"></i>
                                 </button>
                             </div>
@@ -493,573 +501,666 @@
                     </div>
                 </div>
                 <div class="card-body">
-<div id="devices-wrapper">
+                    <div id="devices-wrapper">
 
-                <!-- Bulk Actions -->
-                <div id="bulkActions"
-                    class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
-                    <div>
-                        <span class="text-white me-2"><i data-lucide="check-square"></i> <span
-                                id="selectedCount">0</span> selected</span>
-                        <span id="crossPageSelectionHint" class="selection-hint d-none">cross-page selection active</span>
-                    </div>
-                    <div>
-                        <button class="btn btn-outline-secondary btn-sm me-1" onclick="clearAllSelections()">
-                            <i data-lucide="x-circle"></i> Clear
-                        </button>
-                        <button class="btn btn-danger btn-sm" id="bulkDeleteBtn" onclick="deleteSelectedDevices()">
-                            <i data-lucide="trash-2"></i> Delete Selected
-                        </button>
-                    </div>
-                </div>
-
-                <div class="alert alert-info mb-2">
-                    <i data-lucide="info"></i>
-                    Showing <span id="deviceTotalCount">{{ devices|length }}</span> of
-                    {{ total_devices|default(devices|length) }} matched device(s) |
-                    Inventory {{ global_device_count|default(total_devices|default(devices|length)) }} |
-                    Page {{ page|default(1) }} of {{ total_pages|default(1) }}
-                </div>
-                <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell">
-
-                    <table class="table table-hover devices-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th class="select-column">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
-                                    </div>
-                                </th>
-                                <th>Name</th>
-                                <th>IP Address</th>
-                                <th>Type</th>
-                                <th>SNMP</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-<tbody id="devices-table-body"></tbody>
-                    </table>
-                </div>
-<div class="devices-pagination mt-2" id="devices-pagination-container">
-                    <form id="perPageForm" class="per-page-form">
-                        <label for="perPageSelect">Rows</label>
-                        <select id="perPageSelect" class="form-select form-select-sm bg-dark text-light border-secondary" onchange="clearCrossPageSelection(); scheduleFetchDevices();">
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                            <option value="200">200</option>
-                            <option value="500">500</option>
-                        </select>
-                    </form>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearServerFilters()">
-                        <i data-lucide="filter-x"></i> Clear Filters
-                    </button>
-                    <ul class="pagination pagination-sm" id="devices-pagination-list"></ul>
-                </div>
-            </div>
-
-            <div class="empty-state devices-hidden" id="devices-empty-state">
-                <div class="empty-state text-center p-5">
-                    <i data-lucide="server" class="empty-state-icon"></i>
-                    <h5 class="mt-3">No Devices Found</h5>
-                    <p class="text-secondary">Start a network scan to discover devices on your network.</p>
-                    <a href="{{ url_for('scanning_bp.scanner_page') }}" class="btn btn-primary mt-2">
-                        <i data-lucide="scan-search"></i> Go to Scanner
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Device Modal -->
-<div class="modal fade" id="deviceModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark text-white border-secondary">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title"><i data-lucide="circle-plus"></i> Add / Edit Device</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                    aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="deviceForm" action="{{ url_for('devices_bp.save_device') }}" method="POST">
-                    <input type="hidden" name="device_id" id="device_id">
-
-                    <!-- Navbar Tabs -->
-                    <ul class="nav nav-tabs border-secondary mb-3" id="deviceTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active text-light" id="tab-identity-btn" data-bs-toggle="tab"
-                                data-bs-target="#tab-identity" type="button" role="tab"><i data-lucide="id-card"></i>
-                                Identity</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link text-light" id="tab-monitoring-btn" data-bs-toggle="tab"
-                                data-bs-target="#tab-monitoring" type="button" role="tab"><i
-                                    data-lucide="activity"></i> Monitoring</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link text-light" id="tab-ops-btn" data-bs-toggle="tab"
-                                data-bs-target="#tab-ops" type="button" role="tab"><i data-lucide="settings"></i>
-                                Operations</button>
-                        </li>
-                    </ul>
-
-                    <div class="tab-content" id="deviceTabsContent">
-
-                        <!-- IDENTITY TAB -->
-                        <div class="tab-pane fade show active" id="tab-identity" role="tabpanel">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Device Name <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="device_name" id="device_name" required placeholder="e.g. APP-SERVER-01">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">IP Address <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="device_ip" id="device_ip" required placeholder="e.g. 192.168.1.5">
-                                </div>
-
-                                <div class="col-md-6">
-                                    <label class="form-label">Device Type <span class="text-danger">*</span></label>
-                                    <select class="form-select bg-dark text-light border-secondary" name="device_type"
-                                        id="device_type" required>
-                                        <option value="server">Server</option>
-                                        <option value="switch">Switch</option>
-                                        <option value="router">Router</option>
-                                        <option value="firewall">Firewall</option>
-                                        <option value="workstation">Workstation</option>
-                                        <option value="camera">Camera/IoT</option>
-                                        <option value="printer">Printer</option>
-                                        <option value="iot">IoT</option>
-                                        <option value="unknown">Unknown</option>
-                                    </select>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <label class="form-label">Hostname</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="hostname" id="hostname" placeholder="Optional">
-                                </div>
-
-                                <div class="col-md-6">
-                                    <label class="form-label">MAC Address</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="macaddress" id="macaddress" placeholder="00:11:22:33:44:55">
-                                </div>
-
-                                <div class="col-md-6">
-                                    <label class="form-label">Manufacturer</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="manufacturer" id="manufacturer" placeholder="Optional">
-                                </div>
-
-                                <div class="col-md-12">
-                                    <label class="form-label">Location</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="location" id="location" placeholder="e.g. Data Center / Rack 2 / U5">
-                                </div>
-
-                                <div class="col-md-12">
-                                    <label class="form-label">Description</label>
-                                    <textarea class="form-control bg-dark text-light border-secondary"
-                                        name="description" id="description" rows="2"
-                                        placeholder="Optional notes..."></textarea>
-                                </div>
-
-                                <!-- Device Credentials -->
-                                <div class="col-12 mt-2">
-                                    <hr class="my-2 credential-divider">
-                                    <h6 class="credential-section-label mb-1">
-                                        <i data-lucide="key-round"></i> Device Credentials
-                                    </h6>
-                                    <p class="text-muted small mb-2">
-                                        Used for SSH, SNMP, or API authentication. Password is stored securely (hashed).
-                                    </p>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Username</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        name="device_username" id="device_username" placeholder="admin, root, etc."
-                                        autocomplete="off">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Password</label>
-                                    <input type="password" class="form-control bg-dark text-light border-secondary"
-                                        name="device_password" id="device_password" placeholder="Enter password"
-                                        autocomplete="new-password">
-                                    <div class="form-text text-muted">Leave blank when editing to keep current password.
-                                    </div>
-                                </div>
+                        <!-- Bulk Actions -->
+                        <div id="bulkActions"
+                            class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
+                            <div>
+                                <span class="text-white me-2"><i data-lucide="check-square"></i> <span
+                                        id="selectedCount">0</span> selected</span>
+                                <span id="crossPageSelectionHint" class="selection-hint d-none">cross-page selection
+                                    active</span>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-1" onclick="clearAllSelections()">
+                                    <i data-lucide="x-circle"></i> Clear
+                                </button>
+                                <button class="btn btn-danger btn-sm" id="bulkDeleteBtn"
+                                    onclick="deleteSelectedDevices()">
+                                    <i data-lucide="trash-2"></i> Delete Selected
+                                </button>
                             </div>
                         </div>
 
-                        <!-- MONITORING TAB -->
-                        <div class="tab-pane fade" id="tab-monitoring" role="tabpanel">
-                            <div class="mb-3">
-                                <label class="form-label">Monitoring Mode</label>
-                                <div class="btn-group w-100" role="group">
-                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_ping"
-                                        value="ping" checked onchange="toggleMonitoringFields()">
-                                    <label class="btn btn-outline-secondary" for="mode_ping">Ping Only</label>
+                        <div class="alert alert-info mb-2">
+                            <i data-lucide="info"></i>
+                            Showing <span id="deviceTotalCount">{{ devices|length }}</span> of
+                            {{ total_devices|default(devices|length) }} matched device(s) |
+                            Inventory {{ global_device_count|default(total_devices|default(devices|length)) }} |
+                            Page {{ page|default(1) }} of {{ total_pages|default(1) }}
+                        </div>
+                        <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell">
 
-                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_snmp"
-                                        value="snmp" onchange="toggleMonitoringFields()">
-                                    <label class="btn btn-outline-secondary" for="mode_snmp">SNMP</label>
-
-                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_agent"
-                                        value="agent" onchange="toggleMonitoringFields()">
-                                    <label class="btn btn-outline-secondary" for="mode_agent">Agent</label>
-
-                                    <input type="radio" class="btn-check" name="monitoring_mode" id="mode_wmi"
-                                        value="wmi" onchange="toggleMonitoringFields()">
-                                    <label class="btn btn-outline-secondary" for="mode_wmi">WMI</label>
-                                </div>
-                            </div>
-
-                            <!-- SNMP Fields -->
-                            <div id="snmpFields"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                <h6 class="text-info mb-3">SNMP Configuration</h6>
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Version</label>
-                                        <select class="form-select bg-dark text-light border-secondary"
-                                            name="snmp_version" id="snmp_version" onchange="toggleSnmpVersion()">
-                                            <option value="v2c">v2c</option>
-                                            <option value="v3">v3</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Port</label>
-                                        <input type="number" class="form-control bg-dark text-light border-secondary"
-                                            name="snmp_port" id="snmp_port" value="161">
-                                    </div>
-
-                                    <!-- v2c Community -->
-                                    <div class="col-md-12" id="snmp_v2_fields">
-                                        <label class="form-label">Community String</label>
-                                        <input type="text" class="form-control bg-dark text-light border-secondary"
-                                            name="snmp_community" id="snmp_community" value="public">
-                                    </div>
-
-                                    <!-- v3 Fields -->
-                                    <div class="col-md-12 monitoring-fields-hidden" id="snmp_v3_fields">
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Username</label>
-                                                <input type="text"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="snmp_username" id="snmp_username">
+                            <table class="table table-hover devices-table">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th class="select-column">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
                                             </div>
-                                            <div class="col-md-6"></div>
+                                        </th>
+                                        <th>Name</th>
+                                        <th>IP Address</th>
+                                        <th>Type</th>
+                                        <th>SNMP</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="devices-table-body"></tbody>
+                            </table>
+                        </div>
+                        <div class="devices-pagination mt-2" id="devices-pagination-container">
+                            <form id="perPageForm" class="per-page-form">
+                                <label for="perPageSelect">Rows</label>
+                                <select id="perPageSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary"
+                                    onchange="clearCrossPageSelection(); scheduleFetchDevices();">
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="200">200</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </form>
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                onclick="clearServerFilters()">
+                                <i data-lucide="filter-x"></i> Clear Filters
+                            </button>
+                            <ul class="pagination pagination-sm" id="devices-pagination-list"></ul>
+                        </div>
+                    </div>
 
-                                            <div class="col-md-6">
-                                                <label class="form-label">Auth Protocol</label>
-                                                <select class="form-select bg-dark text-light border-secondary"
-                                                    name="snmp_auth_proto" id="snmp_auth_proto">
-                                                    <option value="">None</option>
-                                                    <option value="MD5">MD5</option>
-                                                    <option value="SHA">SHA</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Auth Password</label>
-                                                <input type="password"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="snmp_auth_password" id="snmp_auth_password">
-                                            </div>
+                    <div class="empty-state devices-hidden" id="devices-empty-state">
+                        <div class="empty-state text-center p-5">
+                            <i data-lucide="server" class="empty-state-icon"></i>
+                            <h5 class="mt-3">No Devices Found</h5>
+                            <p class="text-secondary">Start a network scan to discover devices on your network.</p>
+                            <a href="{{ url_for('scanning_bp.scanner_page') }}" class="btn btn-primary mt-2">
+                                <i data-lucide="scan-search"></i> Go to Scanner
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                                            <div class="col-md-6">
-                                                <label class="form-label">Priv Protocol</label>
-                                                <select class="form-select bg-dark text-light border-secondary"
-                                                    name="snmp_priv_proto" id="snmp_priv_proto">
-                                                    <option value="">None</option>
-                                                    <option value="DES">DES</option>
-                                                    <option value="AES">AES</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Priv Password</label>
-                                                <input type="password"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="snmp_priv_password" id="snmp_priv_password">
+        <!-- Device Modal -->
+        <div class="modal fade" id="deviceModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content bg-dark text-white border-secondary">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title"><i data-lucide="circle-plus"></i> Add / Edit Device</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="deviceForm" action="{{ url_for('devices_bp.save_device') }}" method="POST">
+                            <input type="hidden" name="device_id" id="device_id">
+
+                            <!-- Navbar Tabs -->
+                            <ul class="nav nav-tabs border-secondary mb-3" id="deviceTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active text-light" id="tab-identity-btn"
+                                        data-bs-toggle="tab" data-bs-target="#tab-identity" type="button" role="tab"><i
+                                            data-lucide="id-card"></i>
+                                        Identity</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link text-light" id="tab-monitoring-btn" data-bs-toggle="tab"
+                                        data-bs-target="#tab-monitoring" type="button" role="tab"><i
+                                            data-lucide="activity"></i> Monitoring</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link text-light" id="tab-ops-btn" data-bs-toggle="tab"
+                                        data-bs-target="#tab-ops" type="button" role="tab"><i
+                                            data-lucide="settings"></i>
+                                        Operations</button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content" id="deviceTabsContent">
+
+                                <!-- IDENTITY TAB -->
+                                <div class="tab-pane fade show active" id="tab-identity" role="tabpanel">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Device Name <span
+                                                    class="text-danger">*</span></label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="device_name" id="device_name" required
+                                                placeholder="e.g. APP-SERVER-01">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">IP Address <span
+                                                    class="text-danger">*</span></label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="device_ip" id="device_ip" required placeholder="e.g. 192.168.1.5">
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label">Device Type <span
+                                                    class="text-danger">*</span></label>
+                                            <select class="form-select bg-dark text-light border-secondary"
+                                                name="device_type" id="device_type" required>
+                                                <option value="server">Server</option>
+                                                <option value="switch">Switch</option>
+                                                <option value="router">Router</option>
+                                                <option value="firewall">Firewall</option>
+                                                <option value="workstation">Workstation</option>
+                                                <option value="camera">Camera/IoT</option>
+                                                <option value="printer">Printer</option>
+                                                <option value="iot">IoT</option>
+                                                <option value="unknown">Unknown</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label">Hostname</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="hostname" id="hostname" placeholder="Optional">
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label">MAC Address</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="macaddress" id="macaddress" placeholder="00:11:22:33:44:55">
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label">Manufacturer</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="manufacturer" id="manufacturer" placeholder="Optional">
+                                        </div>
+
+                                        <div class="col-md-12">
+                                            <label class="form-label">Location</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="location" id="location"
+                                                placeholder="e.g. Data Center / Rack 2 / U5">
+                                        </div>
+
+                                        <div class="col-md-12">
+                                            <label class="form-label">Description</label>
+                                            <textarea class="form-control bg-dark text-light border-secondary"
+                                                name="description" id="description" rows="2"
+                                                placeholder="Optional notes..."></textarea>
+                                        </div>
+
+                                        <!-- Site & Department Assignment -->
+                                        <div class="col-12 mt-2">
+                                            <hr class="my-2 credential-divider">
+                                            <h6 class="credential-section-label mb-1">
+                                                <i data-lucide="building-2"></i> Site &amp; Department
+                                            </h6>
+                                            <p class="text-muted small mb-2">
+                                                Assign this device to a site and department for organizational scoping.
+                                            </p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Site</label>
+                                            <select class="form-select bg-dark text-light border-secondary"
+                                                name="site_id" id="device_site_id" onchange="onDeviceSiteChange()">
+                                                <option value="">-- No Site --</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Department</label>
+                                            <select class="form-select bg-dark text-light border-secondary"
+                                                name="department_id" id="device_department_id"
+                                                onchange="onDeviceDepartmentChange()">
+                                                <option value="">-- No Department --</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Device Credentials -->
+                                        <div class="col-12 mt-2">
+                                            <hr class="my-2 credential-divider">
+                                            <h6 class="credential-section-label mb-1">
+                                                <i data-lucide="key-round"></i> Device Credentials
+                                            </h6>
+                                            <p class="text-muted small mb-2">
+                                                Used for SSH, SNMP, or API authentication. Password is stored securely
+                                                (hashed).
+                                            </p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Username</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                                name="device_username" id="device_username"
+                                                placeholder="admin, root, etc." autocomplete="off">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Password</label>
+                                            <input type="password"
+                                                class="form-control bg-dark text-light border-secondary"
+                                                name="device_password" id="device_password" placeholder="Enter password"
+                                                autocomplete="new-password">
+                                            <div class="form-text text-muted">Leave blank when editing to keep current
+                                                password.
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- Agent Fields -->
-                            <div id="agentFields"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                <h6 class="text-info mb-3">Agent Configuration</h6>
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Token / Key</label>
-                                        <input type="text" class="form-control bg-dark text-light border-secondary"
-                                            name="agent_token" id="agent_token">
+                                <!-- MONITORING TAB -->
+                                <div class="tab-pane fade" id="tab-monitoring" role="tabpanel">
+                                    <div class="mb-3">
+                                        <label class="form-label">Monitoring Mode</label>
+                                        <div class="btn-group w-100" role="group">
+                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_ping"
+                                                value="ping" checked onchange="toggleMonitoringFields()">
+                                            <label class="btn btn-outline-secondary" for="mode_ping">Ping Only</label>
+
+                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_snmp"
+                                                value="snmp" onchange="toggleMonitoringFields()">
+                                            <label class="btn btn-outline-secondary" for="mode_snmp">SNMP</label>
+
+                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_agent"
+                                                value="agent" onchange="toggleMonitoringFields()">
+                                            <label class="btn btn-outline-secondary" for="mode_agent">Agent</label>
+
+                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_wmi"
+                                                value="wmi" onchange="toggleMonitoringFields()">
+                                            <label class="btn btn-outline-secondary" for="mode_wmi">WMI</label>
+                                        </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">OS Type</label>
-                                        <select class="form-select bg-dark text-light border-secondary"
-                                            name="agent_os_type" id="agent_os_type">
-                                            <option value="windows">Windows</option>
-                                            <option value="linux">Linux</option>
-                                            <option value="macos">macOS</option>
-                                        </select>
+
+                                    <!-- SNMP Fields -->
+                                    <div id="snmpFields"
+                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
+                                        <h6 class="text-info mb-3">SNMP Configuration</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Version</label>
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    name="snmp_version" id="snmp_version"
+                                                    onchange="toggleSnmpVersion()">
+                                                    <option value="v2c">v2c</option>
+                                                    <option value="v3">v3</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Port</label>
+                                                <input type="number"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="snmp_port" id="snmp_port" value="161">
+                                            </div>
+
+                                            <!-- v2c Community -->
+                                            <div class="col-md-12" id="snmp_v2_fields">
+                                                <label class="form-label">Community String</label>
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="snmp_community" id="snmp_community" value="public">
+                                            </div>
+
+                                            <!-- v3 Fields -->
+                                            <div class="col-md-12 monitoring-fields-hidden" id="snmp_v3_fields">
+                                                <div class="row g-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Username</label>
+                                                        <input type="text"
+                                                            class="form-control bg-dark text-light border-secondary"
+                                                            name="snmp_username" id="snmp_username">
+                                                    </div>
+                                                    <div class="col-md-6"></div>
+
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Auth Protocol</label>
+                                                        <select class="form-select bg-dark text-light border-secondary"
+                                                            name="snmp_auth_proto" id="snmp_auth_proto">
+                                                            <option value="">None</option>
+                                                            <option value="MD5">MD5</option>
+                                                            <option value="SHA">SHA</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Auth Password</label>
+                                                        <input type="password"
+                                                            class="form-control bg-dark text-light border-secondary"
+                                                            name="snmp_auth_password" id="snmp_auth_password">
+                                                    </div>
+
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Priv Protocol</label>
+                                                        <select class="form-select bg-dark text-light border-secondary"
+                                                            name="snmp_priv_proto" id="snmp_priv_proto">
+                                                            <option value="">None</option>
+                                                            <option value="DES">DES</option>
+                                                            <option value="AES">AES</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Priv Password</label>
+                                                        <input type="password"
+                                                            class="form-control bg-dark text-light border-secondary"
+                                                            name="snmp_priv_password" id="snmp_priv_password">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Check-in Interval (sec)</label>
-                                        <input type="number" class="form-control bg-dark text-light border-secondary"
-                                            name="agent_interval" id="agent_interval" value="300">
+
+                                    <!-- Agent Fields -->
+                                    <div id="agentFields"
+                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
+                                        <h6 class="text-info mb-3">Agent Configuration</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Token / Key</label>
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="agent_token" id="agent_token">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">OS Type</label>
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    name="agent_os_type" id="agent_os_type">
+                                                    <option value="windows">Windows</option>
+                                                    <option value="linux">Linux</option>
+                                                    <option value="macos">macOS</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Check-in Interval (sec)</label>
+                                                <input type="number"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="agent_interval" id="agent_interval" value="300">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- WMI Fields -->
+                                    <div id="wmiFields"
+                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
+                                        <h6 class="text-info mb-3">WMI Configuration</h6>
+                                        <div class="alert alert-warning py-1 small"><i data-lucide="triangle-alert"></i>
+                                            Not recommended for long-term monitoring.</div>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Domain</label>
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="wmi_domain" id="wmi_domain">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Username</label>
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="wmi_username" id="wmi_username">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Password</label>
+                                                <input type="password"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    name="wmi_password" id="wmi_password">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Connectivity Test -->
+                                    <div class="d-grid gap-2">
+                                        <button type="button" class="btn btn-outline-info" id="testConnectBtn"
+                                            onclick="testConnectivity()">
+                                            <i data-lucide="plug-zap"></i> Test Connectivity
+                                        </button>
+                                        <div id="testResult" class="mt-2"></div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- WMI Fields -->
-                            <div id="wmiFields"
-                                class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                <h6 class="text-info mb-3">WMI Configuration</h6>
-                                <div class="alert alert-warning py-1 small"><i data-lucide="triangle-alert"></i>
-                                    Not recommended for long-term monitoring.</div>
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Domain</label>
-                                        <input type="text" class="form-control bg-dark text-light border-secondary"
-                                            name="wmi_domain" id="wmi_domain">
+                                <!-- OPERATIONS TAB -->
+                                <div class="tab-pane fade" id="tab-ops" role="tabpanel">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" name="is_monitored"
+                                            id="is_monitored" checked>
+                                        <label class="form-check-label" for="is_monitored">Monitoring Enabled</label>
+                                        <div class="form-text text-muted">Identify if the system should actively poll
+                                            this
+                                            device.</div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Username</label>
-                                        <input type="text" class="form-control bg-dark text-light border-secondary"
-                                            name="wmi_username" id="wmi_username">
+
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" name="maintenance_mode"
+                                            id="maintenance_mode">
+                                        <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
+                                        <div class="form-text text-muted">Suppress alerts for this device.</div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Password</label>
-                                        <input type="password" class="form-control bg-dark text-light border-secondary"
-                                            name="wmi_password" id="wmi_password">
+
+                                    <div class="alert alert-dark border-secondary">
+                                        <small><i data-lucide="info"></i> Advanced operational settings like "Alert
+                                            Thresholds" and "Auto-Discovery Neighbors" can be configured after
+                                            creation.</small>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- Connectivity Test -->
-                            <div class="d-grid gap-2">
-                                <button type="button" class="btn btn-outline-info" id="testConnectBtn"
-                                    onclick="testConnectivity()">
-                                    <i data-lucide="plug-zap"></i> Test Connectivity
-                                </button>
-                                <div id="testResult" class="mt-2"></div>
                             </div>
-                        </div>
-
-                        <!-- OPERATIONS TAB -->
-                        <div class="tab-pane fade" id="tab-ops" role="tabpanel">
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" name="is_monitored" id="is_monitored"
-                                    checked>
-                                <label class="form-check-label" for="is_monitored">Monitoring Enabled</label>
-                                <div class="form-text text-muted">Identify if the system should actively poll this
-                                    device.</div>
-                            </div>
-
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" name="maintenance_mode"
-                                    id="maintenance_mode">
-                                <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
-                                <div class="form-text text-muted">Suppress alerts for this device.</div>
-                            </div>
-
-                            <div class="alert alert-dark border-secondary">
-                                <small><i data-lucide="info"></i> Advanced operational settings like "Alert
-                                    Thresholds" and "Auto-Discovery Neighbors" can be configured after creation.</small>
-                            </div>
-                        </div>
-
+                        </form>
                     </div>
-                </form>
-            </div>
-            <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" form="deviceForm" class="btn btn-primary">Save Device</button>
+                    <div class="modal-footer border-secondary">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" form="deviceForm" class="btn btn-primary">Save Device</button>
+                    </div>
+                </div>
             </div>
         </div>
+
     </div>
-</div>
 
-</div>
+    <script>
 
-<script>
-    
-    // Keyed DOM patch helper
-    window.patchKeyedTableRows = function (tbody, items, options) {
-        if (!tbody) return;
-        const rows = Array.isArray(items) ? items : [];
-        const { getKey, renderCells, applyRow, emptyColSpan, emptyMessage, emptyClassName } = options || {};
+        // Keyed DOM patch helper
+        window.patchKeyedTableRows = function (tbody, items, options) {
+            if (!tbody) return;
+            const rows = Array.isArray(items) ? items : [];
+            const { getKey, renderCells, applyRow, emptyColSpan, emptyMessage, emptyClassName } = options || {};
 
-        if (!rows.length) {
-            tbody.innerHTML = `<tr><td colspan="${emptyColSpan || 1}" class="${emptyClassName || 'text-center'}">${emptyMessage || 'No data'}</td></tr>`;
-            return;
-        }
-
-        const existing = new Map();
-        Array.from(tbody.querySelectorAll('tr[data-row-key]')).forEach((row) => {
-            existing.set(row.dataset.rowKey, row);
-        });
-
-        const desiredRows = [];
-        rows.forEach((item, index) => {
-            const rawKey = getKey ? getKey(item, index) : index;
-            const key = String(rawKey || index);
-
-            let row = existing.get(key);
-            if (!row) {
-                row = document.createElement('tr');
-                row.dataset.rowKey = key;
-            } else {
-                existing.delete(key);
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="${emptyColSpan || 1}" class="${emptyClassName || 'text-center'}">${emptyMessage || 'No data'}</td></tr>`;
+                return;
             }
 
-            const nextCells = renderCells ? renderCells(item, index) : '';
-            if (row.innerHTML !== nextCells) {
-                row.innerHTML = nextCells;
-            }
+            const existing = new Map();
+            Array.from(tbody.querySelectorAll('tr[data-row-key]')).forEach((row) => {
+                existing.set(row.dataset.rowKey, row);
+            });
 
-            if (applyRow) {
-                applyRow(row, item, index);
-            }
-            desiredRows.push(row);
-        });
+            const desiredRows = [];
+            rows.forEach((item, index) => {
+                const rawKey = getKey ? getKey(item, index) : index;
+                const key = String(rawKey || index);
 
-        existing.forEach((staleRow) => staleRow.remove());
-        
-        let i = 0;
-        for (const row of desiredRows) {
-            if (tbody.children[i] !== row) {
-                tbody.insertBefore(row, tbody.children[i]);
-            }
-            i++;
-        }
-    };
-
-    let currentPage = 1;
-    let currentPerPage = 100;
-    
-    window.scheduleFetchDevices = function() {
-        if (typeof filterDebounceTimer !== 'undefined' && filterDebounceTimer) {
-            clearTimeout(filterDebounceTimer);
-        }
-        window.filterDebounceTimer = setTimeout(() => {
-            fetchDevices();
-        }, DEVICES_UI_CONFIG.filterDebounceMs);
-    };
-
-    window.goToPage = function(page) {
-        currentPage = page;
-        clearCrossPageSelection();
-        fetchDevices();
-    };
-
-    window.fetchDevices = function(forcePage=null) {
-        if (forcePage !== null) currentPage = forcePage;
-        
-        const filters = typeof getCurrentFilters === 'function' ? getCurrentFilters() : {search:'', type:'', subnet:'', status:''};
-        const perPageSelect = document.getElementById('perPageSelect');
-        if (perPageSelect) currentPerPage = parseInt(perPageSelect.value, 10);
-        
-        const params = new URLSearchParams({
-            page: currentPage,
-            per_page: currentPerPage,
-            search: filters.search,
-            type: filters.type,
-            subnet: filters.subnet,
-            status: filters.status
-        });
-
-        const fetchUrl = `/api/devices?${params.toString()}`;
-        
-        fetch(fetchUrl)
-            .then(res => res.json())
-            .then(data => {
-                const totalDevices = data.total_devices || 0;
-                const totalPages = data.total_pages || 1;
-                const devices = data.devices || [];
-                const globalCount = data.global_device_count || totalDevices;
-                
-                const wrapper = document.getElementById('devices-wrapper');
-                const emptyState = document.getElementById('devices-empty-state');
-                const totalEl = document.getElementById('deviceTotalCount');
-                
-                if (totalDevices === 0 && !filters.search && !filters.type && !filters.subnet && !filters.status) {
-                    if (wrapper) wrapper.classList.add('devices-hidden');
-                    if (emptyState) emptyState.classList.remove('devices-hidden');
-                    return;
+                let row = existing.get(key);
+                if (!row) {
+                    row = document.createElement('tr');
+                    row.dataset.rowKey = key;
                 } else {
-                    if (wrapper) wrapper.classList.remove('devices-hidden');
-                    if (emptyState) emptyState.classList.add('devices-hidden');
+                    existing.delete(key);
                 }
 
-                const infoAlert = document.querySelector('.alert.alert-info');
-                if (infoAlert) {
-                    infoAlert.innerHTML = `<i data-lucide="info"></i> Showing <span id="deviceTotalCount">${devices.length}</span> of ${totalDevices} matched device(s) | Inventory ${globalCount} | Page ${currentPage} of ${totalPages}`;
+                const nextCells = renderCells ? renderCells(item, index) : '';
+                if (row.innerHTML !== nextCells) {
+                    row.innerHTML = nextCells;
                 }
 
-                const tbody = document.getElementById('devices-table-body');
-                if (tbody) {
-                    window.patchKeyedTableRows(tbody, devices, {
-                        getKey: (d) => d.device_id,
-                        emptyColSpan: 7,
-                        emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
-                        emptyClassName: 'text-center',
-                        applyRow: (row, d) => {
-                            row.dataset.deviceId = d.device_id;
-                            row.dataset.deviceIp = d.device_ip;
-                            row.dataset.subnet = d.subnet_cidr || '';
-                            row.dataset.liveStatus = normalizeDeviceStatusKey(d.status);
-                        },
-                        renderCells: (d) => {
-                            const isUnknown = !d.device_type || d.device_type.toLowerCase() === 'unknown';
-                            
-                            const options = ['unknown','switch','access_point','router','firewall','server','workstation','camera','printer','mobile','iot'];
-                            const labels = ['Unknown','Switch','Access Point','Router','Firewall','Server','Workstation','Camera/IoT','Printer','Mobile','IoT'];
-                            
-                            let typeSelectHtml = `<select class="form-select form-select-sm bg-dark text-light border-secondary device-type-select" onchange="updateDeviceType(${d.device_id}, this.value, this)">`;
-                            options.forEach((opt, idx) => {
-                                let selected = (d.device_type || '').toLowerCase() === opt || (opt==='camera' && ['camera/iot','camera_iot'].includes((d.device_type||'').toLowerCase()));
-                                typeSelectHtml += `<option value="${opt}" ${selected ? 'selected' : ''}>${labels[idx]}</option>`;
-                            });
-                            typeSelectHtml += `</select>`;
+                if (applyRow) {
+                    applyRow(row, item, index);
+                }
+                desiredRows.push(row);
+            });
 
-                            let snmpHtml = d.snmp_enabled 
-                                ? `<span class="badge bg-success">Enabled</span>` + (d.snmp_last_error ? `<div class="small text-warning mt-1" title="${d.snmp_last_error}">Error</div>` : '')
-                                : `<span class="badge bg-secondary">Disabled</span>`;
+            existing.forEach((staleRow) => staleRow.remove());
 
-                            const statusKey = normalizeDeviceStatusKey(d.status);
-                            const statusClass = statusKey === 'online'
-                                ? 'status-online'
-                                : statusKey === 'maintenance'
-                                    ? 'status-maintenance'
-                                    : 'status-offline';
-                            const statusText = statusKey === 'online'
-                                ? 'Online'
-                                : statusKey === 'maintenance'
-                                    ? 'Maintenance'
-                                    : 'Offline';
-                            
-                            const isChecked = (typeof globalFilteredSelectionIds !== 'undefined' && globalFilteredSelectionIds.has(d.device_id)) ? 'checked' : '';
+            let i = 0;
+            for (const row of desiredRows) {
+                if (tbody.children[i] !== row) {
+                    tbody.insertBefore(row, tbody.children[i]);
+                }
+                i++;
+            }
+        };
 
-                            return `
-                                <td>
-                                    <div class="form-check">
-                                        <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" ${isChecked}>
-                                    </div>
-                                </td>
-                                <td class="device-name-cell">
-                                    <strong>${d.device_name}</strong>
-                                    <div class="device-mac">
-                                        <span class="me-1">MAC</span>
-                                        <code>${d.macaddress || 'N/A'}</code>
-                                    </div>
-                                </td>
+        let currentPage = 1;
+        let currentPerPage = 100;
+
+        window.scheduleFetchDevices = function () {
+            if (typeof filterDebounceTimer !== 'undefined' && filterDebounceTimer) {
+                clearTimeout(filterDebounceTimer);
+            }
+            window.filterDebounceTimer = setTimeout(() => {
+                fetchDevices();
+            }, DEVICES_UI_CONFIG.filterDebounceMs);
+        };
+
+        window.goToPage = function (page) {
+            currentPage = page;
+            clearCrossPageSelection();
+            fetchDevices();
+        };
+
+        window.fetchDevices = function (forcePage = null) {
+            if (forcePage !== null) currentPage = forcePage;
+
+            const filters = typeof getCurrentFilters === 'function' ? getCurrentFilters() : { search: '', type: '', subnet: '', status: '' };
+            const perPageSelect = document.getElementById('perPageSelect');
+            if (perPageSelect) currentPerPage = parseInt(perPageSelect.value, 10);
+
+            const params = new URLSearchParams({
+                page: currentPage,
+                per_page: currentPerPage,
+                search: filters.search,
+                type: filters.type,
+                subnet: filters.subnet,
+                status: filters.status
+            });
+
+            const fetchUrl = `/api/devices?${params.toString()}`;
+
+            fetch(fetchUrl)
+                .then(res => res.json())
+                .then(data => {
+                    const totalDevices = data.total_devices || 0;
+                    const totalPages = data.total_pages || 1;
+                    const devices = data.devices || [];
+                    const globalCount = data.global_device_count || totalDevices;
+
+                    const wrapper = document.getElementById('devices-wrapper');
+                    const emptyState = document.getElementById('devices-empty-state');
+                    const totalEl = document.getElementById('deviceTotalCount');
+
+                    if (totalDevices === 0 && !filters.search && !filters.type && !filters.subnet && !filters.status) {
+                        if (wrapper) wrapper.classList.add('devices-hidden');
+                        if (emptyState) emptyState.classList.remove('devices-hidden');
+                        return;
+                    } else {
+                        if (wrapper) wrapper.classList.remove('devices-hidden');
+                        if (emptyState) emptyState.classList.add('devices-hidden');
+                    }
+
+                    const infoAlert = document.querySelector('.alert.alert-info');
+                    if (infoAlert) {
+                        infoAlert.innerHTML = `<i data-lucide="info"></i> Showing <span id="deviceTotalCount">${devices.length}</span> of ${totalDevices} matched device(s) | Inventory ${globalCount} | Page ${currentPage} of ${totalPages}`;
+                    }
+
+                    const tbody = document.getElementById('devices-table-body');
+                    if (tbody) {
+                        window.patchKeyedTableRows(tbody, devices, {
+                            getKey: (d) => d.device_id,
+                            emptyColSpan: 7,
+                            emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
+                            emptyClassName: 'text-center',
+                            applyRow: (row, d) => {
+                                row.dataset.deviceId = d.device_id;
+                                row.dataset.deviceIp = d.device_ip;
+                                row.dataset.subnet = d.subnet_cidr || '';
+                                row.dataset.liveStatus = normalizeDeviceStatusKey(d.status);
+
+                                const isWorkstation = (d.device_type || '').toLowerCase() === 'workstation';
+                                const isPrinter = (d.device_type || '').toLowerCase() === 'printer';
+                                const hasMac = d.macaddress && d.macaddress !== 'N/A';
+                                const deviceHref = (isWorkstation && hasMac)
+                                    ? '/tracking/live?mac=' + encodeURIComponent(d.macaddress)
+                                    : isPrinter
+                                        ? '/printer/' + d.device_id
+                                        : '/devices/' + d.device_id + '/details';
+
+                                row.style.cursor = 'pointer';
+                                row.dataset.href = deviceHref;
+                                row.onclick = (e) => {
+                                    const target = e && e.target
+                                        ? (e.target.nodeType === 1 ? e.target : e.target.parentElement)
+                                        : null;
+                                    if (!target) {
+                                        window.location.assign(deviceHref);
+                                        return;
+                                    }
+
+                                    const tagName = (target.tagName || '').toLowerCase();
+                                    if (
+                                        ['input', 'select', 'button', 'a', 'label', 'option'].includes(tagName) ||
+                                        target.closest('button, a, .form-check, .device-actions, select, input, label')
+                                    ) {
+                                        return;
+                                    }
+
+                                    window.location.assign(deviceHref);
+                                };
+                            },
+                            renderCells: (d) => {
+                                const isUnknown = !d.device_type || d.device_type.toLowerCase() === 'unknown';
+
+                                const options = ['unknown', 'switch', 'access_point', 'router', 'firewall', 'server', 'workstation', 'camera', 'printer', 'mobile', 'iot'];
+                                const labels = ['Unknown', 'Switch', 'Access Point', 'Router', 'Firewall', 'Server', 'Workstation', 'Camera/IoT', 'Printer', 'Mobile', 'IoT'];
+
+                                let typeSelectHtml = `<select class="form-select form-select-sm bg-dark text-light border-secondary device-type-select" onchange="updateDeviceType(${d.device_id}, this.value, this)">`;
+                                options.forEach((opt, idx) => {
+                                    let selected = (d.device_type || '').toLowerCase() === opt || (opt === 'camera' && ['camera/iot', 'camera_iot'].includes((d.device_type || '').toLowerCase()));
+                                    typeSelectHtml += `<option value="${opt}" ${selected ? 'selected' : ''}>${labels[idx]}</option>`;
+                                });
+                                typeSelectHtml += `</select>`;
+
+                                let snmpHtml = d.snmp_enabled
+                                    ? `<span class="badge bg-success">Enabled</span>` + (d.snmp_last_error ? `<div class="small text-warning mt-1" title="${d.snmp_last_error}">Error</div>` : '')
+                                    : `<span class="badge bg-secondary">Disabled</span>`;
+
+                                const statusKey = normalizeDeviceStatusKey(d.status);
+                                const statusClass = statusKey === 'online'
+                                    ? 'status-online'
+                                    : statusKey === 'maintenance'
+                                        ? 'status-maintenance'
+                                        : 'status-offline';
+                                const statusText = statusKey === 'online'
+                                    ? 'Online'
+                                    : statusKey === 'maintenance'
+                                        ? 'Maintenance'
+                                        : 'Offline';
+
+                                const isChecked = (typeof globalFilteredSelectionIds !== 'undefined' && globalFilteredSelectionIds.has(d.device_id)) ? 'checked' : '';
+
+                                const isWorkstation = (d.device_type || '').toLowerCase() === 'workstation';
+                                const isPrinter = (d.device_type || '').toLowerCase() === 'printer';
+                                const hasMac = d.macaddress && d.macaddress !== 'N/A';
+                                const deviceHref = (isWorkstation && hasMac)
+                                    ? '/tracking/live?mac=' + encodeURIComponent(d.macaddress)
+                                    : isPrinter
+                                        ? '/printer/' + d.device_id
+                                        : '/devices/' + d.device_id + '/details';
+
+                                return `
+                                 <td>
+                                     <div class="form-check">
+                                         <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" onchange="handleDeviceSelection(this)" ${isChecked}>
+                                     </div>
+                                 </td>
+                                 <td class="device-name-cell">
+                                     <a href="${deviceHref}" class="text-decoration-none">
+                                         <strong>${d.device_name}</strong>
+                                     </a>
+                                     <div class="device-mac">
+                                         <span class="me-1">MAC</span>
+                                         <code>${d.macaddress || 'N/A'}</code>
+                                     </div>
+                                 </td>
                                 <td><code>${d.device_ip}</code></td>
                                 <td>${typeSelectHtml}</td>
                                 <td>${snmpHtml}</td>
@@ -1069,11 +1170,8 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm device-actions">
-                                        <a class="btn btn-outline-info" href="/devices/${d.device_id}/details" title="Details">
-                                            <i data-lucide="info"></i>
-                                        </a>
-                                        <button class="btn btn-outline-warning" onclick="toggleMonitoring(${d.device_id})" title="Toggle Monitoring">
-                                            <i data-lucide="${d.is_monitored ? 'eye-off' : 'eye'}"></i>
+                                        <button type="button" class="btn btn-outline-warning" onclick="editDevice(${d.device_id})" title="Edit Device">
+                                            <i data-lucide="pencil"></i>
                                         </button>
                                         <button class="btn btn-outline-danger" onclick="deleteDevice(${d.device_id})" title="Delete">
                                             <i data-lucide="trash-2"></i>
@@ -1081,1128 +1179,1300 @@
                                     </div>
                                 </td>
                             `;
-                        }
-                    });
-                }
-                
-                if (typeof rebuildDeviceRowsCache === 'function') rebuildDeviceRowsCache();
-                if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
-                if (typeof updateBulkUI === 'function') updateBulkUI();
-                
-                // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
-                if (typeof fetchAllStatuses === 'function') fetchAllStatuses({ force: true });
-                
-                const pagList = document.getElementById('devices-pagination-list');
-                const pagCont = document.getElementById('devices-pagination-container');
-                if (pagList && pagCont) {
-                    if (totalPages > 1) {
-                        pagCont.classList.remove('devices-hidden');
-                        let html = '';
-                        html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(1);">First</a></li>`;
-                        html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage - 1});">Prev</a></li>`;
-                        html += `<li class="page-item disabled"><span class="page-link">${currentPage} / ${totalPages}</span></li>`;
-                        html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage + 1});">Next</a></li>`;
-                        html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${totalPages});">Last</a></li>`;
-                        pagList.innerHTML = html;
-                    } else {
-                        pagCont.classList.add('devices-hidden');
+                            }
+                        });
                     }
-                }
-            })
-            .catch((error) => {
-                console.error(error);
-                showDevicesNotification('Failed to load devices. Please retry.', 'danger');
-            });
-    };
 
-    // Override the submitServerFilters function to not submit the form but trigger JS fetch
-    window.submitServerFilters = function(options = {}) {
-        if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
-        fetchDevices(1);
-    };
+                    if (typeof rebuildDeviceRowsCache === 'function') rebuildDeviceRowsCache();
+                    if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+                    if (typeof updateBulkUI === 'function') updateBulkUI();
 
-    // Replace the DOMContentLoaded clearServerFilters
-    
+                    // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
+                    if (typeof fetchAllStatuses === 'function') fetchAllStatuses({ force: true });
 
-
-    window.clearServerFilters = function() {
-        const form = document.getElementById('deviceFilterForm');
-        if (!form) return;
-        const searchInput = form.querySelector('input[name="search"]');
-        const typeSelect = form.querySelector('select[name="type"]');
-        const subnetSelect = form.querySelector('select[name="subnet"]');
-        const statusSelect = form.querySelector('select[name="status"]');
-        
-        if (searchInput) searchInput.value = '';
-        if (typeSelect) typeSelect.value = '';
-        if (subnetSelect) subnetSelect.value = '';
-        if (statusSelect) statusSelect.value = '';
-        
-        if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
-        fetchDevices(1);
-    };
-
-    window.filterTable = function() {
-        fetchDevices();
-    };
-
-    document.addEventListener('DOMContentLoaded', () => {
-        fetchDevices(1);
-    });
-
-
-    function hydrateLucideIcons() {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-            window.lucide.createIcons();
-        }
-    }
-
-    function showDevicesNotification(message, type = 'info', timeoutMs = 4200) {
-        const host = document.getElementById('devicesNotificationHost');
-        if (!host) return;
-
-        const allowedTypes = new Set(['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark']);
-        const safeType = allowedTypes.has(type) ? type : 'info';
-
-        const alert = document.createElement('div');
-        alert.className = `alert alert-${safeType} alert-dismissible fade show devices-notification`;
-        alert.setAttribute('role', 'alert');
-
-        const messageNode = document.createElement('span');
-        messageNode.textContent = String(message || '');
-        alert.appendChild(messageNode);
-
-        const closeBtn = document.createElement('button');
-        closeBtn.type = 'button';
-        closeBtn.className = 'btn-close';
-        closeBtn.setAttribute('data-bs-dismiss', 'alert');
-        closeBtn.setAttribute('aria-label', 'Close');
-        alert.appendChild(closeBtn);
-
-        host.appendChild(alert);
-
-        window.setTimeout(() => {
-            if (!alert.parentNode) return;
-            alert.classList.remove('show');
-            window.setTimeout(() => {
-                alert.remove();
-            }, 180);
-        }, timeoutMs);
-    }
-
-    const DEVICES_UI_CONFIG = Object.freeze({
-        statusPollIntervalMs: 30000,
-        statusFetchMinGapMs: 4000,
-        statusBatchSize: 120,
-        filterDebounceMs: 140,
-        autoClassifySoftLimit: 120,
-        autoClassifyDelayMs: 1200
-    });
-
-    let statusPollingInterval = null;
-    let statusRequestInFlight = false;
-    let statusAbortController = null;
-    let lastStatusFetchAt = 0;
-    let statusRequestToken = 0;
-    let statusPollCursor = 0;
-    let filterDebounceTimer = null;
-    let filterRafId = null;
-    let autoClassifyInFlight = false;
-    let deviceRowsCache = [];
-    let deviceRowById = new Map();
-    let globalFilteredSelectionIds = new Set();
-    let lastFilterSignature = '';
-    let lastSubmittedFilterSignature = '';
-    let filteredSelectionProgressTimer = null;
-    let filteredSelectionHideTimer = null;
-    let filteredSelectionStartedAt = 0;
-
-    function normalizeDeviceStatusKey(rawStatus) {
-        const normalized = String(rawStatus || '').trim().toLowerCase();
-        if (normalized === 'online' || normalized === 'up') return 'online';
-        if (normalized === 'maintenance') return 'maintenance';
-        return 'offline';
-    }
-
-    function statusTextFromKey(statusKey) {
-        if (statusKey === 'online') return 'Online';
-        if (statusKey === 'maintenance') return 'Maintenance';
-        return 'Offline';
-    }
-
-    function getStatusKeyFromElement(statusElement) {
-        if (!statusElement) return 'offline';
-        if (statusElement.classList.contains('status-online')) return 'online';
-        if (statusElement.classList.contains('status-offline')) return 'offline';
-        if (statusElement.classList.contains('status-maintenance')) return 'maintenance';
-        return 'offline';
-    }
-
-    function rebuildDeviceRowsCache() {
-        const tableBody = document.querySelector('.devices-table tbody');
-        if (!tableBody) {
-            deviceRowsCache = [];
-            deviceRowById = new Map();
-            return;
-        }
-
-        const nextCache = Array.from(tableBody.querySelectorAll('tr')).map((row) => {
-            const typeSelect = row.querySelector('select');
-            const statusElement = row.querySelector('.status-indicator');
-            row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
-            return {
-                row,
-                deviceId: row.dataset.deviceId || row.getAttribute('data-device-id'),
-                nameText: (row.cells[1]?.textContent || '').toLowerCase(),
-                ipText: (row.cells[2]?.textContent || '').toLowerCase(),
-                subnet: row.dataset.subnet || row.dataset.subnet || row.getAttribute('data-subnet') || '',
-                typeSelect,
-                checkbox: row.querySelector('.device-checkbox'),
-                statusElement
-            };
-        });
-
-        const nextMap = new Map();
-        nextCache.forEach((entry) => {
-            const key = String(entry.deviceId || '').trim();
-            if (key) {
-                nextMap.set(key, entry);
-            }
-        });
-
-        deviceRowsCache = nextCache;
-        deviceRowById = nextMap;
-    }
-
-    function updateDeviceTotalCount(visibleCount = null) {
-        const totalEl = document.getElementById('deviceTotalCount');
-        if (!totalEl) return;
-        const count = Number.isInteger(visibleCount) ? visibleCount : deviceRowsCache.length;
-        totalEl.textContent = String(count);
-    }
-
-    function getRenderableDeviceIds() {
-        if (!deviceRowsCache.length) {
-            // fetchDevices handles this now
-        }
-
-        const statusFilterActive = hasActiveStatusFilter();
-        const visibleRows = deviceRowsCache.filter(entry => !entry.row.classList.contains('devices-row-hidden'));
-        const targetRows = statusFilterActive
-            ? deviceRowsCache
-            : (visibleRows.length ? visibleRows : deviceRowsCache);
-        return targetRows
-            .map(entry => String(entry.deviceId || '').trim())
-            .filter(Boolean);
-    }
-
-    function getAllDeviceCheckboxes() {
-        return Array.from(document.querySelectorAll('.device-checkbox'));
-    }
-
-    function getVisibleDeviceCheckboxes() {
-        if (!deviceRowsCache.length) {
-            // fetchDevices handles this now
-        }
-        return deviceRowsCache
-            .filter(entry => !entry.row.classList.contains('devices-row-hidden'))
-            .map(entry => entry.checkbox)
-            .filter(Boolean);
-    }
-
-    function syncSelectAllWithVisible() {
-        const selectAll = document.getElementById('selectAllCheckbox');
-        if (!selectAll) return;
-
-        const visibleCheckboxes = getVisibleDeviceCheckboxes();
-        if (!visibleCheckboxes.length) {
-            selectAll.checked = false;
-            selectAll.indeterminate = false;
-            return;
-        }
-
-        const checkedVisible = visibleCheckboxes.filter(cb => cb.checked).length;
-        selectAll.checked = checkedVisible > 0 && checkedVisible === visibleCheckboxes.length;
-        selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visibleCheckboxes.length;
-    }
-
-    function getStatusBatchDeviceIds(options = {}) {
-        const force = Boolean(options && options.force);
-        const explicitIds = Array.isArray(options.deviceIds)
-            ? options.deviceIds.map(id => String(id || '').trim()).filter(Boolean)
-            : null;
-        if (explicitIds && explicitIds.length) {
-            return explicitIds;
-        }
-
-        const candidateIds = getRenderableDeviceIds();
-        if (!candidateIds.length) {
-            statusPollCursor = 0;
-            return [];
-        }
-
-        const batchSize = Math.max(1, parseInt(DEVICES_UI_CONFIG.statusBatchSize, 10) || 120);
-        if (candidateIds.length <= batchSize) {
-            statusPollCursor = 0;
-            return candidateIds;
-        }
-
-        if (force) {
-            statusPollCursor = 0;
-        }
-
-        const start = statusPollCursor % candidateIds.length;
-        const end = start + batchSize;
-        let batchIds = candidateIds.slice(start, end);
-        if (batchIds.length < batchSize) {
-            batchIds = batchIds.concat(candidateIds.slice(0, batchSize - batchIds.length));
-        }
-        statusPollCursor = (start + batchSize) % candidateIds.length;
-        return batchIds;
-    }
-
-    function hasActiveStatusFilter() {
-        const statusSelect = document.getElementById('statusFilter');
-        return Boolean(statusSelect && statusSelect.value && statusSelect.value.trim() !== '');
-    }
-
-    function getCurrentFilters() {
-        const searchInput = document.getElementById('deviceSearch');
-        const statusSelect = document.getElementById('statusFilter');
-        const typeSelect = document.getElementById('typeFilter');
-        const subnetSelect = document.getElementById('subnetFilter');
-
-        return {
-            search: (searchInput ? searchInput.value : '').trim(),
-            status: (statusSelect ? statusSelect.value : '').trim(),
-            type: (typeSelect ? typeSelect.value : '').trim(),
-            subnet: (subnetSelect ? subnetSelect.value : '').trim()
+                    const pagList = document.getElementById('devices-pagination-list');
+                    const pagCont = document.getElementById('devices-pagination-container');
+                    if (pagList && pagCont) {
+                        if (totalPages > 1) {
+                            pagCont.classList.remove('devices-hidden');
+                            let html = '';
+                            html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(1);">First</a></li>`;
+                            html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage - 1});">Prev</a></li>`;
+                            html += `<li class="page-item disabled"><span class="page-link">${currentPage} / ${totalPages}</span></li>`;
+                            html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage + 1});">Next</a></li>`;
+                            html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${totalPages});">Last</a></li>`;
+                            pagList.innerHTML = html;
+                        } else {
+                            pagCont.classList.add('devices-hidden');
+                        }
+                    }
+                })
+                .catch((error) => {
+                    console.error(error);
+                    showDevicesNotification('Failed to load devices. Please retry.', 'danger');
+                });
         };
-    }
 
-    function buildFilterSignature(filters) {
-        const source = filters || getCurrentFilters();
-        const search = (source.search || '').trim().toLowerCase();
-        const status = (source.status || '').trim().toLowerCase();
-        const type = (source.type || '').trim().toLowerCase();
-        const subnet = (source.subnet || '').trim().toLowerCase();
-        return `${search}|${status}|${type}|${subnet}`;
-    }
+        // Override the submitServerFilters function to not submit the form but trigger JS fetch
+        window.submitServerFilters = function (options = {}) {
+            if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
+            fetchDevices(1);
+        };
 
-    function setFilteredSelectionProgress(visible, message = '') {
-        const progressContainer = document.getElementById('filteredSelectionProgress');
-        const progressText = document.getElementById('filteredSelectionProgressText');
-        if (!progressContainer || !progressText) return;
+        // Replace the DOMContentLoaded clearServerFilters
 
-        if (visible) {
-            if (message) {
-                progressText.textContent = message;
-            }
-            progressContainer.classList.remove('d-none');
-            hydrateLucideIcons();
-            return;
-        }
 
-        progressContainer.classList.add('d-none');
-    }
 
-    function startFilteredSelectionProgress() {
-        if (filteredSelectionHideTimer) {
-            clearTimeout(filteredSelectionHideTimer);
-            filteredSelectionHideTimer = null;
-        }
-        if (filteredSelectionProgressTimer) {
-            clearInterval(filteredSelectionProgressTimer);
-            filteredSelectionProgressTimer = null;
-        }
+        window.clearServerFilters = function () {
+            const form = document.getElementById('deviceFilterForm');
+            if (!form) return;
+            const searchInput = form.querySelector('input[name="search"]');
+            const typeSelect = form.querySelector('select[name="type"]');
+            const subnetSelect = form.querySelector('select[name="subnet"]');
+            const statusSelect = form.querySelector('select[name="status"]');
 
-        filteredSelectionStartedAt = Date.now();
-        setFilteredSelectionProgress(true, 'Resolving filtered devices...');
+            if (searchInput) searchInput.value = '';
+            if (typeSelect) typeSelect.value = '';
+            if (subnetSelect) subnetSelect.value = '';
+            if (statusSelect) statusSelect.value = '';
 
-        filteredSelectionProgressTimer = setInterval(() => {
-            const elapsedSeconds = Math.max(1, Math.floor((Date.now() - filteredSelectionStartedAt) / 1000));
-            const progressText = document.getElementById('filteredSelectionProgressText');
-            if (progressText) {
-                progressText.textContent = `Resolving filtered devices... ${elapsedSeconds}s`;
-            }
-        }, 500);
-    }
+            if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
+            fetchDevices(1);
+        };
 
-    function stopFilteredSelectionProgress(message = '') {
-        if (filteredSelectionProgressTimer) {
-            clearInterval(filteredSelectionProgressTimer);
-            filteredSelectionProgressTimer = null;
-        }
+        window.filterTable = function () {
+            fetchDevices();
+        };
 
-        if (filteredSelectionHideTimer) {
-            clearTimeout(filteredSelectionHideTimer);
-            filteredSelectionHideTimer = null;
-        }
-
-        if (message) {
-            setFilteredSelectionProgress(true, message);
-            filteredSelectionHideTimer = setTimeout(() => {
-                setFilteredSelectionProgress(false);
-                filteredSelectionHideTimer = null;
-            }, 1200);
-            return;
-        }
-
-        setFilteredSelectionProgress(false);
-    }
-
-    function clearCrossPageSelection() {
-        globalFilteredSelectionIds.clear();
-    }
-
-    function clearAllSelections() {
-        getAllDeviceCheckboxes().forEach(cb => {
-            cb.checked = false;
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchDevices(1);
         });
-        clearCrossPageSelection();
-        updateBulkUI();
-    }
 
-    function clearServerFilters() {
-        const form = document.getElementById('deviceFilterForm');
-        if (!form) return;
 
-        const searchInput = form.querySelector('input[name="search"]');
-        const typeSelect = form.querySelector('select[name="type"]');
-        const subnetSelect = form.querySelector('select[name="subnet"]');
-        const statusSelect = form.querySelector('select[name="status"]');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        if (searchInput) searchInput.value = '';
-        if (typeSelect) typeSelect.value = '';
-        if (subnetSelect) subnetSelect.value = '';
-        if (statusSelect) statusSelect.value = '';
-        if (pageInput) pageInput.value = '1';
-
-        clearCrossPageSelection();
-        form.submit();
-    }
-
-    function submitServerFilters(options = {}) {
-        const force = Boolean(options && options.force);
-        const form = document.getElementById('deviceFilterForm');
-        if (!form) return;
-        const filters = getCurrentFilters();
-        const signature = buildFilterSignature(filters);
-        if (!force && signature === lastSubmittedFilterSignature) {
-            return;
-        }
-        lastSubmittedFilterSignature = signature;
-
-        const pageInput = form.querySelector('input[name="page"]');
-        if (pageInput) {
-            pageInput.value = '1';
+        function hydrateLucideIcons() {
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
         }
 
-        clearCrossPageSelection();
-        form.submit();
-    }
+        function showDevicesNotification(message, type = 'info', timeoutMs = 4200) {
+            const host = document.getElementById('devicesNotificationHost');
+            if (!host) return;
 
-    function handleSearchInput(event) {
-        if (event && event.key === 'Enter') {
-            event.preventDefault();
-            submitServerFilters();
-            return;
+            const allowedTypes = new Set(['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark']);
+            const safeType = allowedTypes.has(type) ? type : 'info';
+
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${safeType} alert-dismissible fade show devices-notification`;
+            alert.setAttribute('role', 'alert');
+
+            const messageNode = document.createElement('span');
+            messageNode.textContent = String(message || '');
+            alert.appendChild(messageNode);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'btn-close';
+            closeBtn.setAttribute('data-bs-dismiss', 'alert');
+            closeBtn.setAttribute('aria-label', 'Close');
+            alert.appendChild(closeBtn);
+
+            host.appendChild(alert);
+
+            window.setTimeout(() => {
+                if (!alert.parentNode) return;
+                alert.classList.remove('show');
+                window.setTimeout(() => {
+                    alert.remove();
+                }, 180);
+            }, timeoutMs);
         }
-        if (event && event.key === 'Escape') {
+
+        const DEVICES_UI_CONFIG = Object.freeze({
+            statusPollIntervalMs: 30000,
+            statusFetchMinGapMs: 4000,
+            statusBatchSize: 120,
+            filterDebounceMs: 140,
+            autoClassifySoftLimit: 120,
+            autoClassifyDelayMs: 1200
+        });
+
+        let statusPollingInterval = null;
+        let statusRequestInFlight = false;
+        let statusAbortController = null;
+        let lastStatusFetchAt = 0;
+        let statusRequestToken = 0;
+        let statusPollCursor = 0;
+        let filterDebounceTimer = null;
+        let filterRafId = null;
+        let autoClassifyInFlight = false;
+        let deviceRowsCache = [];
+        let deviceRowById = new Map();
+        let globalFilteredSelectionIds = new Set();
+        let lastFilterSignature = '';
+        let lastSubmittedFilterSignature = '';
+        let filteredSelectionProgressTimer = null;
+        let filteredSelectionHideTimer = null;
+        let filteredSelectionStartedAt = 0;
+
+        function normalizeDeviceStatusKey(rawStatus) {
+            const normalized = String(rawStatus || '').trim().toLowerCase();
+            if (normalized === 'online' || normalized === 'up') return 'online';
+            if (normalized === 'maintenance') return 'maintenance';
+            return 'offline';
+        }
+
+        function statusTextFromKey(statusKey) {
+            if (statusKey === 'online') return 'Online';
+            if (statusKey === 'maintenance') return 'Maintenance';
+            return 'Offline';
+        }
+
+        function getStatusKeyFromElement(statusElement) {
+            if (!statusElement) return 'offline';
+            if (statusElement.classList.contains('status-online')) return 'online';
+            if (statusElement.classList.contains('status-offline')) return 'offline';
+            if (statusElement.classList.contains('status-maintenance')) return 'maintenance';
+            return 'offline';
+        }
+
+        function rebuildDeviceRowsCache() {
+            const tableBody = document.querySelector('.devices-table tbody');
+            if (!tableBody) {
+                deviceRowsCache = [];
+                deviceRowById = new Map();
+                return;
+            }
+
+            const nextCache = Array.from(tableBody.querySelectorAll('tr')).map((row) => {
+                const typeSelect = row.querySelector('select');
+                const statusElement = row.querySelector('.status-indicator');
+                row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
+                return {
+                    row,
+                    deviceId: row.dataset.deviceId || row.getAttribute('data-device-id'),
+                    nameText: (row.cells[1]?.textContent || '').toLowerCase(),
+                    ipText: (row.cells[2]?.textContent || '').toLowerCase(),
+                    subnet: row.dataset.subnet || row.dataset.subnet || row.getAttribute('data-subnet') || '',
+                    typeSelect,
+                    checkbox: row.querySelector('.device-checkbox'),
+                    statusElement
+                };
+            });
+
+            const nextMap = new Map();
+            nextCache.forEach((entry) => {
+                const key = String(entry.deviceId || '').trim();
+                if (key) {
+                    nextMap.set(key, entry);
+                }
+            });
+
+            deviceRowsCache = nextCache;
+            deviceRowById = nextMap;
+        }
+
+        function updateDeviceTotalCount(visibleCount = null) {
+            const totalEl = document.getElementById('deviceTotalCount');
+            if (!totalEl) return;
+            const count = Number.isInteger(visibleCount) ? visibleCount : deviceRowsCache.length;
+            totalEl.textContent = String(count);
+        }
+
+        function getRenderableDeviceIds() {
+            if (!deviceRowsCache.length) {
+                // fetchDevices handles this now
+            }
+
+            const statusFilterActive = hasActiveStatusFilter();
+            const visibleRows = deviceRowsCache.filter(entry => !entry.row.classList.contains('devices-row-hidden'));
+            const targetRows = statusFilterActive
+                ? deviceRowsCache
+                : (visibleRows.length ? visibleRows : deviceRowsCache);
+            return targetRows
+                .map(entry => String(entry.deviceId || '').trim())
+                .filter(Boolean);
+        }
+
+        function getAllDeviceCheckboxes() {
+            return Array.from(document.querySelectorAll('.device-checkbox'));
+        }
+
+        function getVisibleDeviceCheckboxes() {
+            return Array.from(document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox'));
+        }
+
+        function syncSelectAllWithVisible() {
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (!selectAll) return;
+
+            const visibleCheckboxes = document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox');
+            if (!visibleCheckboxes.length) {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+                return;
+            }
+
+            let checkedVisible = 0;
+            for (let i = 0; i < visibleCheckboxes.length; i++) {
+                if (visibleCheckboxes[i].checked) checkedVisible++;
+            }
+            selectAll.checked = checkedVisible > 0 && checkedVisible === visibleCheckboxes.length;
+            selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visibleCheckboxes.length;
+        }
+
+        function getStatusBatchDeviceIds(options = {}) {
+            const force = Boolean(options && options.force);
+            const explicitIds = Array.isArray(options.deviceIds)
+                ? options.deviceIds.map(id => String(id || '').trim()).filter(Boolean)
+                : null;
+            if (explicitIds && explicitIds.length) {
+                return explicitIds;
+            }
+
+            const candidateIds = getRenderableDeviceIds();
+            if (!candidateIds.length) {
+                statusPollCursor = 0;
+                return [];
+            }
+
+            const batchSize = Math.max(1, parseInt(DEVICES_UI_CONFIG.statusBatchSize, 10) || 120);
+            if (candidateIds.length <= batchSize) {
+                statusPollCursor = 0;
+                return candidateIds;
+            }
+
+            if (force) {
+                statusPollCursor = 0;
+            }
+
+            const start = statusPollCursor % candidateIds.length;
+            const end = start + batchSize;
+            let batchIds = candidateIds.slice(start, end);
+            if (batchIds.length < batchSize) {
+                batchIds = batchIds.concat(candidateIds.slice(0, batchSize - batchIds.length));
+            }
+            statusPollCursor = (start + batchSize) % candidateIds.length;
+            return batchIds;
+        }
+
+        function hasActiveStatusFilter() {
+            const statusSelect = document.getElementById('statusFilter');
+            return Boolean(statusSelect && statusSelect.value && statusSelect.value.trim() !== '');
+        }
+
+        function getCurrentFilters() {
             const searchInput = document.getElementById('deviceSearch');
-            if (searchInput) {
-                searchInput.value = '';
-            }
+            const statusSelect = document.getElementById('statusFilter');
+            const typeSelect = document.getElementById('typeFilter');
+            const subnetSelect = document.getElementById('subnetFilter');
+
+            return {
+                search: (searchInput ? searchInput.value : '').trim(),
+                status: (statusSelect ? statusSelect.value : '').trim(),
+                type: (typeSelect ? typeSelect.value : '').trim(),
+                subnet: (subnetSelect ? subnetSelect.value : '').trim()
+            };
         }
-        scheduleFilterTable();
-    }
 
-    async function selectFilteredAcrossPages() {
-        const btn = document.getElementById('selectFilteredAcrossPagesBtn');
-        const filters = getCurrentFilters();
-
-        const query = new URLSearchParams({
-            search: filters.search,
-            device_type: filters.type,
-            subnet: filters.subnet,
-            status: filters.status,
-            max_ids: '2000'
-        });
-
-        const originalText = btn ? btn.innerHTML : '';
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Resolving...';
-            hydrateLucideIcons();
+        function buildFilterSignature(filters) {
+            const source = filters || getCurrentFilters();
+            const search = (source.search || '').trim().toLowerCase();
+            const status = (source.status || '').trim().toLowerCase();
+            const type = (source.type || '').trim().toLowerCase();
+            const subnet = (source.subnet || '').trim().toLowerCase();
+            return `${search}|${status}|${type}|${subnet}`;
         }
-        startFilteredSelectionProgress();
 
-        try {
-            const response = await fetch(`/api/devices/filter_ids?${query.toString()}`, {
-                method: 'GET',
-                credentials: 'same-origin'
-            });
-            const data = await response.json();
-            if (!response.ok || data.error) {
-                throw new Error(data.error || 'Failed to resolve filtered devices');
-            }
+        function setFilteredSelectionProgress(visible, message = '') {
+            const progressContainer = document.getElementById('filteredSelectionProgress');
+            const progressText = document.getElementById('filteredSelectionProgressText');
+            if (!progressContainer || !progressText) return;
 
-            const totalMatched = Number(data.total_matched || 0);
-            const selectedCount = Number(data.selected_count || 0);
-            const isTruncated = Boolean(data.truncated);
-            if (totalMatched <= 0 || selectedCount <= 0) {
-                stopFilteredSelectionProgress('No devices matched.');
-                showDevicesNotification('No devices match current filters.', 'warning');
+            if (visible) {
+                if (message) {
+                    progressText.textContent = message;
+                }
+                progressContainer.classList.remove('d-none');
+                hydrateLucideIcons();
                 return;
             }
 
-            if (isTruncated) {
-                stopFilteredSelectionProgress('Result too large. Narrow filters.');
-                showDevicesNotification(
-                    `Filtered set is too large (${totalMatched}). Narrow filters to <= ${data.max_ids || 2000} devices.`,
-                    'warning'
-                );
+            progressContainer.classList.add('d-none');
+        }
+
+        function startFilteredSelectionProgress() {
+            if (filteredSelectionHideTimer) {
+                clearTimeout(filteredSelectionHideTimer);
+                filteredSelectionHideTimer = null;
+            }
+            if (filteredSelectionProgressTimer) {
+                clearInterval(filteredSelectionProgressTimer);
+                filteredSelectionProgressTimer = null;
+            }
+
+            filteredSelectionStartedAt = Date.now();
+            setFilteredSelectionProgress(true, 'Resolving filtered devices...');
+
+            filteredSelectionProgressTimer = setInterval(() => {
+                const elapsedSeconds = Math.max(1, Math.floor((Date.now() - filteredSelectionStartedAt) / 1000));
+                const progressText = document.getElementById('filteredSelectionProgressText');
+                if (progressText) {
+                    progressText.textContent = `Resolving filtered devices... ${elapsedSeconds}s`;
+                }
+            }, 500);
+        }
+
+        function stopFilteredSelectionProgress(message = '') {
+            if (filteredSelectionProgressTimer) {
+                clearInterval(filteredSelectionProgressTimer);
+                filteredSelectionProgressTimer = null;
+            }
+
+            if (filteredSelectionHideTimer) {
+                clearTimeout(filteredSelectionHideTimer);
+                filteredSelectionHideTimer = null;
+            }
+
+            if (message) {
+                setFilteredSelectionProgress(true, message);
+                filteredSelectionHideTimer = setTimeout(() => {
+                    setFilteredSelectionProgress(false);
+                    filteredSelectionHideTimer = null;
+                }, 1200);
                 return;
             }
 
-            if (!confirm(`Select all ${selectedCount} filtered device(s) across all pages?`)) {
-                stopFilteredSelectionProgress();
-                return;
-            }
+            setFilteredSelectionProgress(false);
+        }
 
-            globalFilteredSelectionIds = new Set(
-                (data.device_ids || [])
-                    .map(id => parseInt(id, 10))
-                    .filter(id => Number.isInteger(id) && id > 0)
-            );
+        function clearCrossPageSelection() {
+            globalFilteredSelectionIds.clear();
+        }
 
+        function clearAllSelections() {
             getAllDeviceCheckboxes().forEach(cb => {
-                const id = parseInt(cb.value, 10);
-                cb.checked = Number.isInteger(id) && globalFilteredSelectionIds.has(id);
+                cb.checked = false;
+            });
+            clearCrossPageSelection();
+            updateBulkUI();
+        }
+
+        function clearServerFilters() {
+            const form = document.getElementById('deviceFilterForm');
+            if (!form) return;
+
+            const searchInput = form.querySelector('input[name="search"]');
+            const typeSelect = form.querySelector('select[name="type"]');
+            const subnetSelect = form.querySelector('select[name="subnet"]');
+            const statusSelect = form.querySelector('select[name="status"]');
+            const pageInput = form.querySelector('input[name="page"]');
+
+            if (searchInput) searchInput.value = '';
+            if (typeSelect) typeSelect.value = '';
+            if (subnetSelect) subnetSelect.value = '';
+            if (statusSelect) statusSelect.value = '';
+            if (pageInput) pageInput.value = '1';
+
+            clearCrossPageSelection();
+            form.submit();
+        }
+
+        function submitServerFilters(options = {}) {
+            const force = Boolean(options && options.force);
+            const form = document.getElementById('deviceFilterForm');
+            if (!form) return;
+            const filters = getCurrentFilters();
+            const signature = buildFilterSignature(filters);
+            if (!force && signature === lastSubmittedFilterSignature) {
+                return;
+            }
+            lastSubmittedFilterSignature = signature;
+
+            const pageInput = form.querySelector('input[name="page"]');
+            if (pageInput) {
+                pageInput.value = '1';
+            }
+
+            clearCrossPageSelection();
+            form.submit();
+        }
+
+        function handleSearchInput(event) {
+            if (event && event.key === 'Enter') {
+                event.preventDefault();
+                submitServerFilters();
+                return;
+            }
+            if (event && event.key === 'Escape') {
+                const searchInput = document.getElementById('deviceSearch');
+                if (searchInput) {
+                    searchInput.value = '';
+                }
+            }
+            scheduleFilterTable();
+        }
+
+        async function selectFilteredAcrossPages() {
+            const btn = document.getElementById('selectFilteredAcrossPagesBtn');
+            const filters = getCurrentFilters();
+
+            const query = new URLSearchParams({
+                search: filters.search,
+                device_type: filters.type,
+                subnet: filters.subnet,
+                status: filters.status,
+                max_ids: '100000'
             });
 
-            updateBulkUI();
-            stopFilteredSelectionProgress(`Selected ${selectedCount} devices.`);
-        } catch (error) {
-            console.error(error);
-            stopFilteredSelectionProgress('Selection failed.');
-            showDevicesNotification(`Failed to select filtered devices: ${error.message}`, 'danger');
-        } finally {
+            const originalText = btn ? btn.innerHTML : '';
             if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Resolving...';
                 hydrateLucideIcons();
             }
-        }
-    }
+            startFilteredSelectionProgress();
 
-    function scheduleFilterTable() {
-        if (filterDebounceTimer) {
-            clearTimeout(filterDebounceTimer);
-        }
-
-        filterDebounceTimer = setTimeout(() => {
-            if (typeof requestAnimationFrame !== 'function') {
-                filterTable();
-                return;
-            }
-            if (filterRafId) {
-                cancelAnimationFrame(filterRafId);
-            }
-            filterRafId = requestAnimationFrame(() => {
-                filterRafId = null;
-                filterTable();
-            });
-        }, DEVICES_UI_CONFIG.filterDebounceMs);
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        hydrateLucideIcons();
-
-        // Bulk Selection Logic
-        const selectAll = document.getElementById('selectAllCheckbox');
-        if (selectAll) {
-            selectAll.addEventListener('change', function (e) {
-                const visibleCheckboxes = getVisibleDeviceCheckboxes();
-                const visibleSet = new Set(visibleCheckboxes);
-                const shouldCheck = Boolean(e.target.checked);
-
-                if (!shouldCheck) {
-                    clearCrossPageSelection();
+            try {
+                const response = await fetch(`/api/devices/filter_ids?${query.toString()}`, {
+                    method: 'GET',
+                    credentials: 'same-origin'
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || 'Failed to resolve filtered devices');
                 }
 
+                const totalMatched = Number(data.total_matched || 0);
+                const selectedCount = Number(data.selected_count || 0);
+                const isTruncated = Boolean(data.truncated);
+                if (totalMatched <= 0 || selectedCount <= 0) {
+                    stopFilteredSelectionProgress('No devices matched.');
+                    showDevicesNotification('No devices match current filters.', 'warning');
+                    return;
+                }
+
+                if (isTruncated) {
+                    stopFilteredSelectionProgress('Result too large. Narrow filters.');
+                    showDevicesNotification(
+                        `Filtered set is too large (${totalMatched}). Narrow filters to <= ${data.max_ids || 100000} devices.`,
+                        'warning'
+                    );
+                    return;
+                }
+
+                if (!confirm(`Select all ${selectedCount} filtered device(s) across all pages?`)) {
+                    stopFilteredSelectionProgress();
+                    return;
+                }
+
+                globalFilteredSelectionIds = new Set(
+                    (data.device_ids || [])
+                        .map(id => parseInt(id, 10))
+                        .filter(id => Number.isInteger(id) && id > 0)
+                );
+
                 getAllDeviceCheckboxes().forEach(cb => {
-                    cb.checked = visibleSet.has(cb) ? shouldCheck : false;
+                    const id = parseInt(cb.value, 10);
+                    cb.checked = Number.isInteger(id) && globalFilteredSelectionIds.has(id);
                 });
 
                 updateBulkUI();
-            });
-        }
-
-        getAllDeviceCheckboxes().forEach(cb => {
-            cb.addEventListener('change', function () {
-                const id = parseInt(cb.value, 10);
-                if (Number.isInteger(id) && id > 0 && globalFilteredSelectionIds.size > 0) {
-                    if (cb.checked) globalFilteredSelectionIds.add(id);
-                    else globalFilteredSelectionIds.delete(id);
-                }
-                updateBulkUI();
-            });
-        });
-
-        // fetchDevices handles this now
-        updateDeviceTotalCount();
-        const initialFilters = getCurrentFilters();
-        lastFilterSignature = `${(initialFilters.status || '').toLowerCase()}|${(initialFilters.search || '').toLowerCase()}`;
-        lastSubmittedFilterSignature = buildFilterSignature(initialFilters);
-        updateBulkUI();
-
-        // Initialize status polling
-        fetchAllStatuses({ force: true });
-        startStatusPolling();
-
-        // Auto-classify if needed
-        const unclassifiedCount = {{ unclassified_count|default(0, true)|int }};
-        if (unclassifiedCount > 0 && unclassifiedCount <= DEVICES_UI_CONFIG.autoClassifySoftLimit) {
-            setTimeout(() => autoClassifyDevicesIfNeeded(unclassifiedCount), DEVICES_UI_CONFIG.autoClassifyDelayMs);
-        } else if (unclassifiedCount > DEVICES_UI_CONFIG.autoClassifySoftLimit) {
-            console.info(
-                `Skipping auto-classify on page load for ${unclassifiedCount} devices (limit ${DEVICES_UI_CONFIG.autoClassifySoftLimit}).`
-            );
-        }
-
-        bindStatusPollingToModal();
-
-        // Check for edit params
-        const urlParams = new URLSearchParams(window.location.search);
-        const modal = document.getElementById('deviceModal');
-        if (modal && urlParams.has('edit_id')) {
-            const bsModal = new bootstrap.Modal(modal);
-            bsModal.show();
-        }
-    });
-
-    function toggleMonitoringFields() {
-        const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
-
-        const snmpFields = document.getElementById('snmpFields');
-        const agentFields = document.getElementById('agentFields');
-        const wmiFields = document.getElementById('wmiFields');
-
-        if (snmpFields) snmpFields.classList.toggle('monitoring-fields-hidden', mode !== 'snmp');
-        if (agentFields) agentFields.classList.toggle('monitoring-fields-hidden', mode !== 'agent');
-        if (wmiFields) wmiFields.classList.toggle('monitoring-fields-hidden', mode !== 'wmi');
-    }
-
-    function toggleSnmpVersion() {
-        const version = document.getElementById('snmp_version').value;
-        const v2Fields = document.getElementById('snmp_v2_fields');
-        const v3Fields = document.getElementById('snmp_v3_fields');
-
-        if (version === 'v2c') {
-            v2Fields.classList.remove('monitoring-fields-hidden');
-            v3Fields.classList.add('monitoring-fields-hidden');
-        } else {
-            v2Fields.classList.add('monitoring-fields-hidden');
-            v3Fields.classList.remove('monitoring-fields-hidden');
-        }
-    }
-
-    function testConnectivity() {
-        const btn = document.getElementById('testConnectBtn');
-        const resultDiv = document.getElementById('testResult');
-        const originalText = btn.innerHTML;
-
-        // Gather data
-        const ip = document.getElementById('device_ip').value;
-        if (!ip) {
-            resultDiv.innerHTML = '<div class="alert alert-danger py-1">IP Address is required</div>';
-            return;
-        }
-
-        const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
-        const formData = {
-            ip: ip,
-            mode: mode,
-            snmp_community: document.getElementById('snmp_community').value,
-            snmp_version: document.getElementById('snmp_version').value,
-            snmp_port: document.getElementById('snmp_port').value,
-            // Add other fields if needed for auth
-        };
-
-        btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Testing...';
-        hydrateLucideIcons();
-        resultDiv.innerHTML = '';
-
-        fetch('/api/check_connectivity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    resultDiv.innerHTML = `<div class="alert alert-success py-1"><i data-lucide="check"></i> ${data.message}</div>`;
-                } else {
-                    resultDiv.innerHTML = `<div class="alert alert-danger py-1"><i data-lucide="x"></i> ${data.message}</div>`;
-                }
-                hydrateLucideIcons();
-            })
-            .catch(err => {
-                resultDiv.innerHTML = `<div class="alert alert-danger py-1">Error: ${err.message}</div>`;
-            })
-            .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            });
-    }
-
-    // Reset modal on open
-    const deviceModalEl = document.getElementById('deviceModal');
-    if (deviceModalEl) {
-        deviceModalEl.addEventListener('show.bs.modal', function (event) {
-            // Check if relatedTarget (the button) has data-edit-id
-            const button = event.relatedTarget;
-            // If we implement edit later, check button dataset
-            // For now, assume Add
-            document.getElementById('deviceForm').reset();
-            document.getElementById('device_id').value = '';
-
-            // Reset tabs
-            const firstTab = document.querySelector('#deviceTabs button:first-child');
-            if (firstTab) {
-                const tab = new bootstrap.Tab(firstTab);
-                tab.show();
-            }
-
-            toggleMonitoringFields();
-            toggleSnmpVersion();
-            document.getElementById('testResult').innerHTML = '';
-        });
-    }
-
-    function updateBulkUI() {
-        const selectedIds = new Set();
-        document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
-            const id = parseInt(cb.value, 10);
-            if (Number.isInteger(id) && id > 0) {
-                selectedIds.add(id);
-            }
-        });
-        globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
-        const count = selectedIds.size;
-
-        const bulkDiv = document.getElementById('bulkActions');
-        const countSpan = document.getElementById('selectedCount');
-        const crossPageHint = document.getElementById('crossPageSelectionHint');
-        const crossPageBtn = document.getElementById('selectFilteredAcrossPagesBtn');
-
-        if (count > 0 && bulkDiv) {
-            bulkDiv.classList.remove('devices-hidden');
-            if (countSpan) countSpan.textContent = count;
-        } else if (bulkDiv) {
-            bulkDiv.classList.add('devices-hidden');
-        }
-
-        if (crossPageHint) {
-            crossPageHint.classList.toggle('d-none', globalFilteredSelectionIds.size === 0);
-        }
-        if (crossPageBtn) {
-            crossPageBtn.disabled = false;
-            crossPageBtn.title = 'Select filtered devices across all pages';
-        }
-
-        syncSelectAllWithVisible();
-    }
-
-    function deleteSelectedDevices() {
-        const selectedIds = new Set();
-        document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
-            const id = parseInt(cb.value, 10);
-            if (Number.isInteger(id) && id > 0) {
-                selectedIds.add(id);
-            }
-        });
-        globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
-        const ids = Array.from(selectedIds);
-
-        if (ids.length === 0) return;
-
-        if (!confirm(`Are you sure you want to delete ${ids.length} device(s)? This cannot be undone.`)) {
-            return;
-        }
-
-        const btn = document.getElementById('bulkDeleteBtn');
-        const originalText = btn ? btn.innerHTML : '';
-        if (btn) {
-            btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Deleting...';
-            btn.disabled = true;
-            hydrateLucideIcons();
-        }
-
-        fetch('/api/devices/bulk_delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_ids: ids })
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Remove deleted rows
-                    ids.forEach(id => {
-                        const row = document.querySelector(`tr[data-device-id="${id}"]`);
-                        if (row) row.remove();
-                    });
-                    // fetchDevices handles this now
-                    updateDeviceTotalCount();
-                    clearCrossPageSelection();
-                    updateBulkUI();
-                    scheduleFilterTable();
-                    const selectAll = document.getElementById('selectAllCheckbox');
-                    if (selectAll) {
-                        selectAll.checked = false;
-                    }
-                    showDevicesNotification(`Successfully deleted ${data.deleted} devices.`, 'success');
-                } else {
-                    showDevicesNotification(`Delete failed: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                showDevicesNotification('Error deleting devices', 'danger');
-            })
-            .finally(() => {
+                stopFilteredSelectionProgress(`Selected ${selectedCount} devices.`);
+            } catch (error) {
+                console.error(error);
+                stopFilteredSelectionProgress('Selection failed.');
+                showDevicesNotification(`Failed to select filtered devices: ${error.message}`, 'danger');
+            } finally {
                 if (btn) {
-                    btn.innerHTML = originalText;
                     btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    hydrateLucideIcons();
                 }
-            });
-    }
+            }
+        }
 
-    function updateDeviceType(deviceId, newType, selectIdx) {
-        const selectElement = selectIdx || event.target;
-        selectElement.disabled = true;
+        function scheduleFilterTable() {
+            if (filterDebounceTimer) {
+                clearTimeout(filterDebounceTimer);
+            }
 
-        fetch('/api/devices/' + deviceId + '/update_type', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_type: newType })
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showDevicesNotification(`Device type updated to ${newType}`, 'success');
-                    scheduleFilterTable();
-                } else {
-                    showDevicesNotification('Error updating type: ' + data.error, 'danger');
+            filterDebounceTimer = setTimeout(() => {
+                if (typeof requestAnimationFrame !== 'function') {
+                    filterTable();
+                    return;
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showDevicesNotification('Error updating type', 'danger');
-            })
-            .finally(() => {
-                selectElement.disabled = false;
-            });
-    }
+                if (filterRafId) {
+                    cancelAnimationFrame(filterRafId);
+                }
+                filterRafId = requestAnimationFrame(() => {
+                    filterRafId = null;
+                    filterTable();
+                });
+            }, DEVICES_UI_CONFIG.filterDebounceMs);
+        }
 
-    function updateMonitoringToggleIcon(deviceId, isMonitored) {
-        const row = document.querySelector(`tr[data-device-id="${deviceId}"]`);
-        if (!row) return;
-        const icon = row.querySelector('button[title="Toggle Monitoring"] i');
-        if (!icon) return;
-        icon.setAttribute('data-lucide', isMonitored ? 'eye-off' : 'eye');
-        hydrateLucideIcons();
-    }
+        document.addEventListener('DOMContentLoaded', function () {
+            hydrateLucideIcons();
 
-    function toggleMonitoring(deviceId) {
-        if (confirm('Toggle monitoring for this device?')) {
-            fetch('/api/devices/' + deviceId + '/toggle_monitoring', { method: 'POST' })
+            // Bulk Selection Logic
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (selectAll) {
+                selectAll.addEventListener('change', function (e) {
+                    const shouldCheck = Boolean(e.target.checked);
+
+                    if (!shouldCheck) {
+                        clearCrossPageSelection();
+                    }
+
+                    const visibleCheckboxes = document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox');
+                    for (let i = 0; i < visibleCheckboxes.length; i++) {
+                        visibleCheckboxes[i].checked = shouldCheck;
+                        // Also sync to global state for consistency across pages
+                        const id = parseInt(visibleCheckboxes[i].value, 10);
+                        if (shouldCheck && id > 0) {
+                            globalFilteredSelectionIds.add(id);
+                        } else if (!shouldCheck && id > 0) {
+                            globalFilteredSelectionIds.delete(id);
+                        }
+                    }
+
+                    updateBulkUI();
+                });
+            }
+
+            // Dynamic checkboxes use handleDeviceSelection(this) in HTML
+
+            // fetchDevices handles this now
+            updateDeviceTotalCount();
+            const initialFilters = getCurrentFilters();
+            lastFilterSignature = `${(initialFilters.status || '').toLowerCase()}|${(initialFilters.search || '').toLowerCase()}`;
+            lastSubmittedFilterSignature = buildFilterSignature(initialFilters);
+            updateBulkUI();
+
+            // Initialize status polling
+            fetchAllStatuses({ force: true });
+            startStatusPolling();
+
+            // Auto-classify if needed
+            const unclassifiedCount = parseInt('{{ unclassified_count|default(0) }}', 10) || 0;
+
+            if (unclassifiedCount > 0 && unclassifiedCount <= DEVICES_UI_CONFIG.autoClassifySoftLimit) {
+                setTimeout(() => autoClassifyDevicesIfNeeded(unclassifiedCount), DEVICES_UI_CONFIG.autoClassifyDelayMs);
+            } else if (unclassifiedCount > DEVICES_UI_CONFIG.autoClassifySoftLimit) {
+                console.info(
+                    `Skipping auto-classify on page load for ${unclassifiedCount} devices (limit ${DEVICES_UI_CONFIG.autoClassifySoftLimit}).`
+                );
+            }
+
+            bindStatusPollingToModal();
+
+            // Removed URL edit_id checking as we use button dataset now
+        });
+
+        function toggleMonitoringFields() {
+            const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
+
+            const snmpFields = document.getElementById('snmpFields');
+            const agentFields = document.getElementById('agentFields');
+            const wmiFields = document.getElementById('wmiFields');
+
+            if (snmpFields) snmpFields.classList.toggle('monitoring-fields-hidden', mode !== 'snmp');
+            if (agentFields) agentFields.classList.toggle('monitoring-fields-hidden', mode !== 'agent');
+            if (wmiFields) wmiFields.classList.toggle('monitoring-fields-hidden', mode !== 'wmi');
+        }
+        function editDevice(deviceId) {
+            const form = document.getElementById('deviceForm');
+            const idInput = document.getElementById('device_id');
+            form.reset();
+            idInput.value = '';
+
+            const titleIcon = document.querySelector('#deviceModal .modal-title i');
+            const titleText = document.querySelector('#deviceModal .modal-title').lastChild;
+
+            if (titleIcon) titleIcon.setAttribute('data-lucide', 'pencil');
+            if (titleText) titleText.textContent = ' Edit Device';
+            if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+
+            fetch(`/api/devices/${deviceId}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Handle both wrapped {success, device} and raw device object formats
+                    const d = (data.success && data.device) ? data.device : (data.device_id ? data : null);
+                    if (d) {
+                        idInput.value = d.device_id;
+                        document.getElementById('device_name').value = d.device_name || '';
+                        document.getElementById('device_ip').value = d.device_ip || '';
+                        document.getElementById('hostname').value = d.hostname || '';
+                        document.getElementById('macaddress').value = d.macaddress || '';
+                        document.getElementById('device_type').value = d.device_type || 'unknown';
+                        document.getElementById('manufacturer').value = d.manufacturer || '';
+                        document.getElementById('location').value = d.location || '';
+                        // Site & Department — use the correct IDs from the modal form
+                        const siteSelect = document.getElementById('device_site_id');
+                        if (siteSelect) siteSelect.value = d.site_id || '';
+
+                        if (d.site_id && typeof onDeviceSiteChange === 'function') {
+                            onDeviceSiteChange();
+                            setTimeout(() => {
+                                const deptSelect = document.getElementById('device_department_id');
+                                if (deptSelect) deptSelect.value = d.department_id || '';
+                            }, 300);
+                        } else {
+                            const deptSelect = document.getElementById('device_department_id');
+                            if (deptSelect) deptSelect.value = d.department_id || '';
+                        }
+
+                        document.getElementById('description').value = d.description || '';
+
+                        // Monitoring mode
+                        const monMode = d.monitoring_mode || 'ping';
+                        const modeInputs = document.querySelectorAll('input[name="monitoring_mode"]');
+                        modeInputs.forEach(inp => { inp.checked = (inp.value === monMode); });
+
+                        const config = d.snmp_config || {};
+
+                        const _set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+                        _set('snmp_community', config.community_string || '');
+                        _set('snmp_version', (config.snmp_version === '3') ? 'v3' : 'v2c');
+                        _set('snmp_port', config.snmp_port || '161');
+                        _set('snmp_username', config.security_name || '');
+                        _set('snmp_auth_proto', config.auth_protocol || '');
+                        _set('snmp_auth_password', config.auth_password || '');
+                        _set('snmp_priv_proto', config.priv_protocol || '');
+                        _set('snmp_priv_password', config.priv_password || '');
+                        _set('agent_interval', d.agent_interval || '300');
+                        _set('agent_os_type', d.agent_os_type || 'windows');
+                        _set('agent_token', d.agent_token || '');
+
+                        toggleMonitoringFields();
+                        toggleSnmpVersion();
+
+                        // Show modal after logic executes
+                        const deviceModalEl = document.getElementById('deviceModal');
+                        const bsModal = new bootstrap.Modal(deviceModalEl);
+                        // Flag to tell the show.bs.modal listener NOT to reset the form
+                        window._editingDevice = true;
+                        bsModal.show();
+                    } else {
+                        console.error("Edit device payload missing success or device:", data);
+                        showDevicesNotification('Failed to load device details for editing.', 'danger');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error fetching device details:', err);
+                    showDevicesNotification('Error loading device details.', 'danger');
+                });
+        }
+
+        function toggleSnmpVersion() {
+            const version = document.getElementById('snmp_version').value;
+            const v2Fields = document.getElementById('snmp_v2_fields');
+            const v3Fields = document.getElementById('snmp_v3_fields');
+
+            if (version === 'v2c') {
+                v2Fields.classList.remove('monitoring-fields-hidden');
+                v3Fields.classList.add('monitoring-fields-hidden');
+            } else {
+                v2Fields.classList.add('monitoring-fields-hidden');
+                v3Fields.classList.remove('monitoring-fields-hidden');
+            }
+        }
+
+        function testConnectivity() {
+            const btn = document.getElementById('testConnectBtn');
+            const resultDiv = document.getElementById('testResult');
+            const originalText = btn.innerHTML;
+
+            // Gather data
+            const ip = document.getElementById('device_ip').value;
+            if (!ip) {
+                resultDiv.innerHTML = '<div class="alert alert-danger py-1">IP Address is required</div>';
+                return;
+            }
+
+            const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
+            const formData = {
+                ip: ip,
+                mode: mode,
+                snmp_community: document.getElementById('snmp_community').value,
+                snmp_version: document.getElementById('snmp_version').value,
+                snmp_port: document.getElementById('snmp_port').value,
+                // Add other fields if needed for auth
+            };
+
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Testing...';
+            hydrateLucideIcons();
+            resultDiv.innerHTML = '';
+
+            fetch('/api/check_connectivity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        updateMonitoringToggleIcon(deviceId, data.is_monitored);
-                        fetchAllStatuses({ force: true, deviceIds: [deviceId] });
+                        resultDiv.innerHTML = `<div class="alert alert-success py-1"><i data-lucide="check"></i> ${data.message}</div>`;
                     } else {
-                        showDevicesNotification('Error toggling monitoring', 'danger');
+                        resultDiv.innerHTML = `<div class="alert alert-danger py-1"><i data-lucide="x"></i> ${data.message}</div>`;
+                    }
+                    hydrateLucideIcons();
+                })
+                .catch(err => {
+                    resultDiv.innerHTML = `<div class="alert alert-danger py-1">Error: ${err.message}</div>`;
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                });
+        }
+
+        // Reset modal on open for Add Device; Edit Device is handled by editDevice()
+        const deviceModalEl = document.getElementById('deviceModal');
+        if (deviceModalEl) {
+            deviceModalEl.addEventListener('show.bs.modal', function (event) {
+                const triggerElement = event.relatedTarget;
+                // Only reset form if NOT opened from editDevice() — editDevice sets the _editingDevice flag
+                if (window._editingDevice) {
+                    window._editingDevice = false; // clear the flag
+                    return; // skip reset, editDevice() already populated everything
+                }
+                const form = document.getElementById('deviceForm');
+                const idInput = document.getElementById('device_id');
+                form.reset();
+                idInput.value = '';
+
+                const titleIcon = document.querySelector('#deviceModal .modal-title i');
+                const titleText = document.querySelector('#deviceModal .modal-title').lastChild;
+                if (titleIcon) titleIcon.setAttribute('data-lucide', 'circle-plus');
+                if (titleText) titleText.textContent = ' Add Device';
+                if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+
+                // Reset tabs
+                const firstTab = document.querySelector('#deviceTabs button:first-child');
+                if (firstTab) {
+                    const tab = new bootstrap.Tab(firstTab);
+                    tab.show();
+                }
+
+                toggleMonitoringFields();
+                toggleSnmpVersion();
+                document.getElementById('testResult').innerHTML = '';
+            });
+        }
+
+        window.handleDeviceSelection = function (cb) {
+            const id = parseInt(cb.value, 10);
+            if (Number.isInteger(id) && id > 0 && globalFilteredSelectionIds.size > 0) {
+                if (cb.checked) globalFilteredSelectionIds.add(id);
+                else globalFilteredSelectionIds.delete(id);
+            }
+            if (typeof updateBulkUI === 'function') {
+                updateBulkUI();
+            }
+        };
+
+        function updateBulkUI() {
+            const selectedIds = new Set();
+            document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
+                const id = parseInt(cb.value, 10);
+                if (Number.isInteger(id) && id > 0) {
+                    selectedIds.add(id);
+                }
+            });
+            globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
+            const count = selectedIds.size;
+
+            const bulkDiv = document.getElementById('bulkActions');
+            const countSpan = document.getElementById('selectedCount');
+            const crossPageHint = document.getElementById('crossPageSelectionHint');
+            const crossPageBtn = document.getElementById('selectFilteredAcrossPagesBtn');
+
+            if (count > 0 && bulkDiv) {
+                bulkDiv.classList.remove('devices-hidden');
+                if (countSpan) countSpan.textContent = count;
+            } else if (bulkDiv) {
+                bulkDiv.classList.add('devices-hidden');
+            }
+
+            if (crossPageHint) {
+                crossPageHint.classList.toggle('d-none', globalFilteredSelectionIds.size === 0);
+            }
+            if (crossPageBtn) {
+                crossPageBtn.disabled = false;
+                crossPageBtn.title = 'Select filtered devices across all pages';
+            }
+
+            syncSelectAllWithVisible();
+        }
+
+        function deleteSelectedDevices() {
+            const selectedIds = new Set();
+            document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
+                const id = parseInt(cb.value, 10);
+                if (Number.isInteger(id) && id > 0) {
+                    selectedIds.add(id);
+                }
+            });
+            globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
+            const ids = Array.from(selectedIds);
+
+            if (ids.length === 0) return;
+
+            if (!confirm(`Are you sure you want to delete ${ids.length} device(s)? This cannot be undone.`)) {
+                return;
+            }
+
+            const btn = document.getElementById('bulkDeleteBtn');
+            const originalText = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Deleting...';
+                btn.disabled = true;
+                hydrateLucideIcons();
+            }
+
+            fetch('/api/devices/bulk_delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: ids })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Remove deleted rows
+                        ids.forEach(id => {
+                            const row = document.querySelector(`tr[data-device-id="${id}"]`);
+                            if (row) row.remove();
+                        });
+                        // fetchDevices handles this now
+                        updateDeviceTotalCount();
+                        clearCrossPageSelection();
+                        updateBulkUI();
+                        scheduleFilterTable();
+                        const selectAll = document.getElementById('selectAllCheckbox');
+                        if (selectAll) {
+                            selectAll.checked = false;
+                        }
+                        showDevicesNotification(`Successfully deleted ${data.deleted} devices.`, 'success');
+                    } else {
+                        showDevicesNotification(`Delete failed: ${data.error || 'Unknown error'}`, 'danger');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    showDevicesNotification('Error deleting devices', 'danger');
+                })
+                .finally(() => {
+                    if (btn) {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                });
+        }
+
+        function updateDeviceType(deviceId, newType, selectIdx) {
+            const selectElement = selectIdx || event.target;
+            selectElement.disabled = true;
+
+            fetch('/api/devices/' + deviceId + '/update_type', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_type: newType })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showDevicesNotification(`Device type updated to ${newType}`, 'success');
+                        scheduleFilterTable();
+                    } else {
+                        showDevicesNotification('Error updating type: ' + data.error, 'danger');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    showDevicesNotification('Error toggling monitoring', 'danger');
+                    showDevicesNotification('Error updating type', 'danger');
+                })
+                .finally(() => {
+                    selectElement.disabled = false;
                 });
         }
-    }
 
-    function deleteDevice(deviceId) {
-        if (confirm('Are you sure you want to delete this device?')) {
-            const params = new URLSearchParams(window.location.search);
-            params.set('delete_id', String(deviceId));
-            if (!params.get('page')) params.set('page', '{{ page|default(1) }}');
-            if (!params.get('per_page')) params.set('per_page', '{{ per_page|default(100) }}');
-            window.location.href = '/devices?' + params.toString();
-        }
-    }
-
-    async function refreshAllVisibleStatuses() {
-        const targetIds = getRenderableDeviceIds();
-        if (!targetIds.length) {
-            return;
+        function updateMonitoringToggleIcon(deviceId, isMonitored) {
+            const row = document.querySelector(`tr[data-device-id="${deviceId}"]`);
+            if (!row) return;
+            const icon = row.querySelector('button[title="Toggle Monitoring"] i');
+            if (!icon) return;
+            icon.setAttribute('data-lucide', isMonitored ? 'eye-off' : 'eye');
+            hydrateLucideIcons();
         }
 
-        stopStatusPolling();
-
-        try {
-            const batchSize = Math.max(1, parseInt(DEVICES_UI_CONFIG.statusBatchSize, 10) || 120);
-            for (let i = 0; i < targetIds.length; i += batchSize) {
-                const batch = targetIds.slice(i, i + batchSize);
-                await fetchAllStatuses({ force: true, deviceIds: batch });
-            }
-        } finally {
-            startStatusPolling();
-        }
-    }
-
-    function fetchAllStatuses(options = {}) {
-        const force = Boolean(options && options.force);
-        const requestedIds = getStatusBatchDeviceIds(options);
-        if (!requestedIds.length) {
-            return Promise.resolve(null);
-        }
-
-        if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
-            window.cleanupBootstrapModal();
-        }
-
-        const now = Date.now();
-        if (!force && statusRequestInFlight) return;
-        if (!force && (now - lastStatusFetchAt) < DEVICES_UI_CONFIG.statusFetchMinGapMs) return;
-
-        if (force && statusRequestInFlight && statusAbortController) {
-            statusAbortController.abort();
-        }
-
-        statusRequestInFlight = true;
-        lastStatusFetchAt = now;
-        const requestToken = ++statusRequestToken;
-
-        statusAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const activeController = statusAbortController;
-        const fetchOptions = activeController ? { signal: activeController.signal } : {};
-        const queryParams = new URLSearchParams({
-            mode: 'latest',
-            fallback: 'live',
-            device_ids: requestedIds.join(',')
-        });
-
-        return fetch(`/api/monitoring/status?${queryParams.toString()}`, fetchOptions)
-            .then(response => {
-                if (!response.ok) throw new Error('Network response not ok');
-                return response.json();
-            })
-            .then(data => {
-                if (!data.devices || !Array.isArray(data.devices)) return;
-                if (!deviceRowsCache.length) {
-                    // fetchDevices handles this now
-                }
-                if (!deviceRowById.size && deviceRowsCache.length) {
-                    // fetchDevices handles this now
-                }
-
-                const applyStatusUpdates = () => {
-                    let statusChanged = false;
-
-                    data.devices.forEach(device => {
-                        const entry = deviceRowById.get(String(device.device_id));
-                        if (!entry || !entry.statusElement) return;
-
-                        const status = normalizeDeviceStatusKey(device.status);
-                        const statusClass = status === 'online'
-                            ? 'status-online'
-                            : status === 'maintenance'
-                                ? 'status-maintenance'
-                                : 'status-offline';
-
-                        const latencyText = (device.latency != null && status === 'online')
-                            ? ` (${Math.round(device.latency)}ms)` : '';
-
-                        const nextClassName = `status-indicator ${statusClass}`;
-                        const nextTitle = statusTextFromKey(status) + latencyText;
-
-                        if (entry.statusElement.className !== nextClassName) {
-                            entry.statusElement.className = nextClassName;
-                            statusChanged = true;
+        function toggleMonitoring(deviceId) {
+            if (confirm('Toggle monitoring for this device?')) {
+                fetch('/api/devices/' + deviceId + '/toggle_monitoring', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            updateMonitoringToggleIcon(deviceId, data.is_monitored);
+                            fetchAllStatuses({ force: true, deviceIds: [deviceId] });
+                        } else {
+                            showDevicesNotification('Error toggling monitoring', 'danger');
                         }
-                        if (entry.statusElement.title !== nextTitle) {
-                            entry.statusElement.title = nextTitle;
-                        }
-                        entry.row.dataset.liveStatus = status;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showDevicesNotification('Error toggling monitoring', 'danger');
                     });
+            }
+        }
 
-                    if (statusChanged && hasActiveStatusFilter()) {
-                        scheduleFilterTable();
-                    }
-                };
+        function deleteDevice(deviceId) {
+            if (confirm('Are you sure you want to delete this device?')) {
+                const params = new URLSearchParams(window.location.search);
+                params.set('delete_id', String(deviceId));
+                if (!params.get('page')) params.set('page', '{{ page|default(1) }}');
+                if (!params.get('per_page')) params.set('per_page', '{{ per_page|default(100) }}');
+                window.location.href = '/devices?' + params.toString();
+            }
+        }
 
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(applyStatusUpdates);
-                } else {
-                    applyStatusUpdates();
+        async function refreshAllVisibleStatuses() {
+            const targetIds = getRenderableDeviceIds();
+            if (!targetIds.length) {
+                return;
+            }
+
+            stopStatusPolling();
+
+            try {
+                const batchSize = Math.max(1, parseInt(DEVICES_UI_CONFIG.statusBatchSize, 10) || 120);
+                for (let i = 0; i < targetIds.length; i += batchSize) {
+                    const batch = targetIds.slice(i, i + batchSize);
+                    await fetchAllStatuses({ force: true, deviceIds: batch });
                 }
-            })
-            .catch(error => {
-                if (error && error.name === 'AbortError') return;
-                console.error('Error fetching statuses:', error);
-            })
-            .finally(() => {
-                if (requestToken !== statusRequestToken) return;
-                statusRequestInFlight = false;
-                if (statusAbortController === activeController) {
-                    statusAbortController = null;
+            } finally {
+                startStatusPolling();
+            }
+        }
+
+        function fetchAllStatuses(options = {}) {
+            const force = Boolean(options && options.force);
+            const requestedIds = getStatusBatchDeviceIds(options);
+            if (!requestedIds.length) {
+                return Promise.resolve(null);
+            }
+
+            if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
+                window.cleanupBootstrapModal();
+            }
+
+            const now = Date.now();
+            if (!force && statusRequestInFlight) return;
+            if (!force && (now - lastStatusFetchAt) < DEVICES_UI_CONFIG.statusFetchMinGapMs) return;
+
+            if (force && statusRequestInFlight && statusAbortController) {
+                statusAbortController.abort();
+            }
+
+            statusRequestInFlight = true;
+            lastStatusFetchAt = now;
+            const requestToken = ++statusRequestToken;
+
+            statusAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const activeController = statusAbortController;
+            const fetchOptions = activeController ? { signal: activeController.signal } : {};
+            const queryParams = new URLSearchParams({
+                mode: 'latest',
+                fallback: 'live',
+                device_ids: requestedIds.join(',')
+            });
+
+            return fetch(`/api/monitoring/status?${queryParams.toString()}`, fetchOptions)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data.devices || !Array.isArray(data.devices)) return;
+                    if (!deviceRowsCache.length) {
+                        // fetchDevices handles this now
+                    }
+                    if (!deviceRowById.size && deviceRowsCache.length) {
+                        // fetchDevices handles this now
+                    }
+
+                    const applyStatusUpdates = () => {
+                        let statusChanged = false;
+
+                        data.devices.forEach(device => {
+                            const entry = deviceRowById.get(String(device.device_id));
+                            if (!entry || !entry.statusElement) return;
+
+                            const status = normalizeDeviceStatusKey(device.status);
+                            const statusClass = status === 'online'
+                                ? 'status-online'
+                                : status === 'maintenance'
+                                    ? 'status-maintenance'
+                                    : 'status-offline';
+
+                            const latencyText = (device.latency != null && status === 'online')
+                                ? ` (${Math.round(device.latency)}ms)` : '';
+
+                            const nextClassName = `status-indicator ${statusClass}`;
+                            const nextTitle = statusTextFromKey(status) + latencyText;
+
+                            if (entry.statusElement.className !== nextClassName) {
+                                entry.statusElement.className = nextClassName;
+                                statusChanged = true;
+                            }
+                            if (entry.statusElement.title !== nextTitle) {
+                                entry.statusElement.title = nextTitle;
+                            }
+                            entry.row.dataset.liveStatus = status;
+                        });
+
+                        if (statusChanged && hasActiveStatusFilter()) {
+                            scheduleFilterTable();
+                        }
+                    };
+
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(applyStatusUpdates);
+                    } else {
+                        applyStatusUpdates();
+                    }
+                })
+                .catch(error => {
+                    if (error && error.name === 'AbortError') return;
+                    console.error('Error fetching statuses:', error);
+                })
+                .finally(() => {
+                    if (requestToken !== statusRequestToken) return;
+                    statusRequestInFlight = false;
+                    if (statusAbortController === activeController) {
+                        statusAbortController = null;
+                    }
+                });
+        }
+
+        function startStatusPolling() {
+            if (statusPollingInterval) return;
+            statusPollingInterval = setInterval(() => fetchAllStatuses(), DEVICES_UI_CONFIG.statusPollIntervalMs);
+        }
+
+        function stopStatusPolling() {
+            if (statusPollingInterval) {
+                clearInterval(statusPollingInterval);
+                statusPollingInterval = null;
+            }
+            if (statusAbortController) {
+                statusAbortController.abort();
+                statusAbortController = null;
+            }
+        }
+
+        function bindStatusPollingToModal() {
+            document.addEventListener('show.bs.modal', stopStatusPolling);
+            document.addEventListener('hidden.bs.modal', () => {
+                if (!document.querySelector('.modal.show')) {
+                    fetchAllStatuses({ force: true });
+                    startStatusPolling();
                 }
             });
-    }
-
-    function startStatusPolling() {
-        if (statusPollingInterval) return;
-        statusPollingInterval = setInterval(() => fetchAllStatuses(), DEVICES_UI_CONFIG.statusPollIntervalMs);
-    }
-
-    function stopStatusPolling() {
-        if (statusPollingInterval) {
-            clearInterval(statusPollingInterval);
-            statusPollingInterval = null;
         }
-        if (statusAbortController) {
-            statusAbortController.abort();
-            statusAbortController = null;
-        }
-    }
 
-    function bindStatusPollingToModal() {
-        document.addEventListener('show.bs.modal', stopStatusPolling);
-        document.addEventListener('hidden.bs.modal', () => {
-            if (!document.querySelector('.modal.show')) {
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) {
+                stopStatusPolling();
+            } else {
                 fetchAllStatuses({ force: true });
                 startStatusPolling();
             }
         });
-    }
 
-    document.addEventListener('visibilitychange', function () {
-        if (document.hidden) {
-            stopStatusPolling();
-        } else {
-            fetchAllStatuses({ force: true });
-            startStatusPolling();
+        function autoClassifyDevicesIfNeeded(count) {
+            if (!count || count <= 0) return;
+            if (count > DEVICES_UI_CONFIG.autoClassifySoftLimit) return;
+            if (autoClassifyInFlight) return;
+
+            const key = 'autoClassifyTs';
+            const lastTs = parseInt(sessionStorage.getItem(key) || '0', 10);
+            const now = Date.now();
+
+            if (lastTs && (now - lastTs) < 5 * 60 * 1000) return;
+
+            autoClassifyInFlight = true;
+
+            fetch('/api/devices/reclassify_all?auto=true')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !Array.isArray(data.updated_devices)) return;
+
+                    const applyClassification = () => {
+                        data.updated_devices.forEach(d => {
+                            const row = document.querySelector(`tr[data-device-id="${d.device_id}"]`);
+                            if (!row) return;
+                            const select = row.querySelector('select');
+                            if (select) select.value = d.device_type;
+                        });
+                        scheduleFilterTable();
+                    };
+
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(applyClassification);
+                    } else {
+                        applyClassification();
+                    }
+
+                    sessionStorage.setItem(key, String(Date.now()));
+                })
+                .catch(console.warn)
+                .finally(() => {
+                    autoClassifyInFlight = false;
+                });
         }
-    });
 
-    function autoClassifyDevicesIfNeeded(count) {
-        if (!count || count <= 0) return;
-        if (count > DEVICES_UI_CONFIG.autoClassifySoftLimit) return;
-        if (autoClassifyInFlight) return;
+        function filterTable() {
+            if (!deviceRowsCache.length) {
+                // fetchDevices handles this now
+            }
+            if (!deviceRowsCache.length) return;
 
-        const key = 'autoClassifyTs';
-        const lastTs = parseInt(sessionStorage.getItem(key) || '0', 10);
-        const now = Date.now();
+            const filters = getCurrentFilters();
+            const searchFilter = (filters.search || '').toLowerCase();
+            const statusFilter = (filters.status || '').toLowerCase();
+            const currentSignature = `${statusFilter}|${searchFilter}`;
+            let filtersChanged = false;
 
-        if (lastTs && (now - lastTs) < 5 * 60 * 1000) return;
+            if (currentSignature !== lastFilterSignature) {
+                if (globalFilteredSelectionIds.size > 0) {
+                    clearCrossPageSelection();
+                }
+                lastFilterSignature = currentSignature;
+                filtersChanged = true;
+            }
 
-        autoClassifyInFlight = true;
+            let selectionChanged = false;
 
-        fetch('/api/devices/reclassify_all?auto=true')
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success || !Array.isArray(data.updated_devices)) return;
+            let visibleCount = 0;
 
-                const applyClassification = () => {
-                    data.updated_devices.forEach(d => {
-                        const row = document.querySelector(`tr[data-device-id="${d.device_id}"]`);
-                        if (!row) return;
-                        const select = row.querySelector('select');
-                        if (select) select.value = d.device_type;
-                    });
-                    scheduleFilterTable();
-                };
+            deviceRowsCache.forEach(entry => {
+                const status = (entry.row.dataset.liveStatus || getStatusKeyFromElement(entry.statusElement) || 'offline').toLowerCase();
+                const typeValue = (entry.typeSelect ? String(entry.typeSelect.value || '') : '').toLowerCase();
+                const subnetValue = String(entry.subnet || '').toLowerCase();
+                const matchesSearch = searchFilter === ''
+                    || entry.nameText.includes(searchFilter)
+                    || entry.ipText.includes(searchFilter)
+                    || typeValue.includes(searchFilter)
+                    || subnetValue.includes(searchFilter);
 
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(applyClassification);
-                } else {
-                    applyClassification();
+                const matchesStatus = statusFilter === '' || status === statusFilter;
+                const isVisible = matchesStatus && matchesSearch;
+                if (isVisible) {
+                    visibleCount += 1;
                 }
 
-                sessionStorage.setItem(key, String(Date.now()));
-            })
-            .catch(console.warn)
-            .finally(() => {
-                autoClassifyInFlight = false;
+                const isHidden = entry.row.classList.contains('devices-row-hidden');
+                if (isVisible && isHidden) {
+                    entry.row.classList.remove('devices-row-hidden');
+                } else if (!isVisible && !isHidden) {
+                    entry.row.classList.add('devices-row-hidden');
+                }
+
+                if (!isVisible && entry.checkbox && entry.checkbox.checked) {
+                    entry.checkbox.checked = false;
+                    selectionChanged = true;
+                }
             });
-    }
 
-    function filterTable() {
-        if (!deviceRowsCache.length) {
-            // fetchDevices handles this now
-        }
-        if (!deviceRowsCache.length) return;
+            updateDeviceTotalCount(visibleCount);
 
-        const filters = getCurrentFilters();
-        const searchFilter = (filters.search || '').toLowerCase();
-        const statusFilter = (filters.status || '').toLowerCase();
-        const currentSignature = `${statusFilter}|${searchFilter}`;
-        let filtersChanged = false;
-
-        if (currentSignature !== lastFilterSignature) {
-            if (globalFilteredSelectionIds.size > 0) {
-                clearCrossPageSelection();
+            if (selectionChanged || filtersChanged) {
+                updateBulkUI();
+            } else {
+                syncSelectAllWithVisible();
             }
-            lastFilterSignature = currentSignature;
-            filtersChanged = true;
         }
 
-        let selectionChanged = false;
+        // ========================================================================
+        // Site & Department Dropdown Logic
+        // ========================================================================
+        let _allSites = [];
+        let _allDepartments = [];
 
-        let visibleCount = 0;
-
-        deviceRowsCache.forEach(entry => {
-            const status = (entry.row.dataset.liveStatus || getStatusKeyFromElement(entry.statusElement) || 'offline').toLowerCase();
-            const typeValue = (entry.typeSelect ? String(entry.typeSelect.value || '') : '').toLowerCase();
-            const subnetValue = String(entry.subnet || '').toLowerCase();
-            const matchesSearch = searchFilter === ''
-                || entry.nameText.includes(searchFilter)
-                || entry.ipText.includes(searchFilter)
-                || typeValue.includes(searchFilter)
-                || subnetValue.includes(searchFilter);
-
-            const matchesStatus = statusFilter === '' || status === statusFilter;
-            const isVisible = matchesStatus && matchesSearch;
-            if (isVisible) {
-                visibleCount += 1;
+        async function loadSitesAndDepartments() {
+            try {
+                const [sitesRes, deptsRes] = await Promise.all([
+                    fetch('/api/sites').then(r => r.json()),
+                    fetch('/api/departments').then(r => r.json())
+                ]);
+                _allSites = (sitesRes.status === 'ok') ? sitesRes.data : [];
+                _allDepartments = (deptsRes.status === 'ok') ? deptsRes.data : [];
+                populateDeviceSiteDropdown();
+            } catch (e) {
+                console.error('Error loading sites/departments:', e);
             }
-
-            const isHidden = entry.row.classList.contains('devices-row-hidden');
-            if (isVisible && isHidden) {
-                entry.row.classList.remove('devices-row-hidden');
-            } else if (!isVisible && !isHidden) {
-                entry.row.classList.add('devices-row-hidden');
-            }
-
-            if (!isVisible && entry.checkbox && entry.checkbox.checked) {
-                entry.checkbox.checked = false;
-                selectionChanged = true;
-            }
-        });
-
-        updateDeviceTotalCount(visibleCount);
-
-        if (selectionChanged || filtersChanged) {
-            updateBulkUI();
-        } else {
-            syncSelectAllWithVisible();
         }
-    }
-</script>
-{% endblock %}
 
+        function populateDeviceSiteDropdown(selectedSiteId) {
+            const sel = document.getElementById('device_site_id');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- No Site --</option>';
+            _allSites.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.site_name;
+                if (selectedSiteId && String(s.id) === String(selectedSiteId)) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function onDeviceSiteChange(selectedDeptId) {
+            const siteId = document.getElementById('device_site_id').value;
+            const sel = document.getElementById('device_department_id');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- No Department --</option>';
+
+            const filtered = siteId
+                ? _allDepartments.filter(d => String(d.site_id) === String(siteId))
+                : _allDepartments;
+
+            filtered.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.name;
+                if (selectedDeptId && String(d.id) === String(selectedDeptId)) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function onDeviceDepartmentChange() {
+            const deptSelect = document.getElementById('device_department_id');
+            const siteSelect = document.getElementById('device_site_id');
+            if (!deptSelect || !siteSelect) return;
+            const deptId = deptSelect.value;
+            if (!deptId) return;
+
+            const dept = _allDepartments.find(d => String(d.id) === String(deptId));
+            if (!dept) return;
+            if (dept.site_id) {
+                siteSelect.value = dept.site_id;
+                onDeviceSiteChange(deptId);
+            }
+        }
+
+        // Hook into the device modal open to load the dropdowns
+        const _deviceModalEl = document.getElementById('deviceModal');
+        if (_deviceModalEl) {
+            _deviceModalEl.addEventListener('show.bs.modal', function () {
+                if (_allSites.length === 0) {
+                    loadSitesAndDepartments();
+                }
+            });
+        }
+
+        // Load on page init as well
+        document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
+    </script>
+    {% endblock %}

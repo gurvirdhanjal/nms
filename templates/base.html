@@ -1767,7 +1767,7 @@
                         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal">
                                 <i class="fas fa-user-circle"></i> My Profile
                             </a></li>
-                        {% if session.role == 'admin' %}
+                        {% if rbac_context.capabilities.users %}
                         <li><a class="dropdown-item" href="{{ url_for('user_management_bp.user_management') }}">
                                 <i class="fas fa-users-cog"></i> Users
                             </a></li>
@@ -1793,50 +1793,66 @@
         <aside class="app-sidebar collapsed" id="app-sidebar">
             <div class="sidebar-panel">
                 <nav class="sidebar-nav">
+                    {% if rbac_context.capabilities.dashboard %}
                     <a href="{{ url_for('monitoring_bp.dashboard') }}"
                         class="sidebar-link {% if request.endpoint == 'monitoring_bp.dashboard' %}active{% endif %}">
                         <i data-lucide="layout-dashboard"></i><span class="link-text">Dashboard</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.devices %}
                     <a href="{{ url_for('devices_bp.device_management') }}"
                         class="sidebar-link {% if request.endpoint and 'devices_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="server"></i><span class="link-text">Devices</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.sites %}
                     <a href="{{ url_for('sites.sites_list_page') }}"
                         class="sidebar-link {% if request.endpoint and 'sites' in request.endpoint %}active{% endif %}">
                         <i data-lucide="building"></i><span class="link-text">Sites</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.departments %}
                     <a href="{{ url_for('departments.departments_list_page') }}"
                         class="sidebar-link {% if request.endpoint and 'departments' in request.endpoint %}active{% endif %}">
-                        <i data-lucide="sitemap"></i><span class="link-text">Departments</span>
+                        <i data-lucide="building-2"></i><span class="link-text">Departments</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.subnets %}
+                    <a href="{{ url_for('subnets.subnets_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'subnets' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="network"></i><span class="link-text">Subnets</span>
+                    </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.scanner %}
                     <a href="{{ url_for('scanning_bp.scanner_page') }}"
                         class="sidebar-link {% if request.endpoint and 'scanning_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="scan-search"></i><span class="link-text">Scanner</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.reports %}
                     <a href="{{ url_for('reports_bp.reports_page') }}"
                         class="sidebar-link {% if request.endpoint and 'reports_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="bar-chart-3"></i><span class="link-text">Reports</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.tracking %}
                     <a href="{{ url_for('tracking_bp.device_tracking') }}"
-                        class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint and request.endpoint != 'tracking_bp.live_tracking' %}active{% endif %}">
+                        class="sidebar-link {% if request.endpoint and 'tracking_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="users-round"></i><span class="link-text">Device Tracking</span>
                     </a>
-                    <a href="{{ url_for('tracking_bp.live_tracking') }}"
-                        class="sidebar-link {% if request.endpoint == 'tracking_bp.live_tracking' %}active{% endif %}">
-                        <i data-lucide="crosshair"></i><span class="link-text">Live Tracking</span>
-                    </a>
-                    <a href="{{ url_for('file_transfer_bp.file_transfer_dashboard') }}"
-                        class="sidebar-link {% if request.endpoint and 'file_transfer_bp' in request.endpoint %}active{% endif %}">
-                        <i data-lucide="arrow-left-right"></i><span class="link-text">Files</span>
-                    </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.maintenance %}
                     <a href="{{ url_for('maintenance_bp.maintenance_page') }}"
                         class="sidebar-link {% if request.endpoint and 'maintenance_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="wrench"></i><span class="link-text">Maintenance</span>
                     </a>
+                    {% endif %}
+                    {% if rbac_context.capabilities.discovery %}
                     <a href="{{ url_for('discovery_settings_bp.settings_page') }}"
                         class="sidebar-link {% if request.endpoint and 'discovery_settings_bp' in request.endpoint %}active{% endif %}">
                         <i data-lucide="radar"></i><span class="link-text">Discovery</span>
                     </a>
+                    {% endif %}
                 </nav>
 
             </div>
@@ -1956,6 +1972,9 @@
     {% if session.logged_in %}
     <script src="{{ url_for('static', filename='js/session_manager.js') }}"></script>
     {% endif %}
+    <script>
+        window.__RBAC_CONTEXT__ = {{ rbac_context | tojson }};
+    </script>
     {% block extra_js %}{% endblock %}
     <script>
         // ============================================================
@@ -2093,6 +2112,11 @@
                 }
                 syncSidebarLayout();
             });
+
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                lucide.createIcons();
+            }
 
             // Live clock
             function updateClock() {

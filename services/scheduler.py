@@ -21,6 +21,9 @@ class MonitoringScheduler:
         
         # Auto-discovery check every 1 minute (actual scan fires only when interval elapsed)
         schedule.every(1).minutes.do(self.maybe_run_auto_discovery)
+
+        # Tracking reconciliation every 60 seconds
+        schedule.every(60).seconds.do(self.run_tracking_reconciliation)
         
         # Daily report at 23:59
         schedule.every().day.at("23:59").do(self.generate_daily_report)
@@ -32,6 +35,11 @@ class MonitoringScheduler:
         # Rollup integrity validation + repair
         integrity_time = self.app.config.get('SERVER_HEALTH_ROLLUP_INTEGRITY_SCHEDULE', '03:00')
         schedule.every().day.at(integrity_time).do(self.run_rollup_integrity_check)
+
+        # Tracking history integrity checks
+        tracking_integrity_time = self.app.config.get('TRACKING_INTEGRITY_CHECK_SCHEDULE', '03:30')
+        schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_integrity)
+        schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_retention)
         
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self.run_scheduler)
@@ -39,15 +47,18 @@ class MonitoringScheduler:
         self.scheduler_thread.start()
         
         # Run immediate scan in background so UI has data
-        threading.Thread(target=self.run_monitoring_task).start()
+        t_monitoring = threading.Thread(target=self.run_monitoring_task, daemon=True)
+        t_monitoring.start()
+
+        # Run an immediate reconciliation pass in background for tracking status freshness.
+        t_recon = threading.Thread(target=self.run_tracking_reconciliation, daemon=True)
+        t_recon.start()
         
         print("Scheduled monitoring started (initial scan triggered)...")
     
     def stop_scheduled_monitoring(self):
         """Stop the scheduled monitoring"""
         self.is_running = False
-        if self.scheduler_thread:
-            self.scheduler_thread.join(timeout=5)
         print("Scheduled monitoring stopped.")
     
     def run_scheduler(self):
@@ -66,6 +77,23 @@ class MonitoringScheduler:
                 print(f"Error in scheduled monitoring: {e}")
             finally:
                 # Ensure session is cleaned up after background task
+                db.session.remove()
+
+    def run_tracking_reconciliation(self):
+        """Run tracking reconciliation every minute."""
+        with self.app.app_context():
+            try:
+                from services.tracking_reconcile import run_reconciliation
+
+                report = run_reconciliation(force_discovery=False, dry_run=None)
+                if not report.success and report.error_code != 'TRACKING_RECONCILIATION_BUSY':
+                    print(
+                        "[TRACKING] reconciliation failed: "
+                        f"code={report.error_code} error={report.error}"
+                    )
+            except Exception as e:
+                print(f"[TRACKING] scheduler reconciliation error: {e}")
+            finally:
                 db.session.remove()
     
     def maybe_run_auto_discovery(self):
@@ -136,6 +164,42 @@ class MonitoringScheduler:
                 )
             except Exception as e:
                 print(f"Error running rollup integrity check: {e}")
+            finally:
+                db.session.remove()
+
+    def run_tracking_history_integrity(self):
+        """Run tracking sample integrity checks."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.run_tracking_history_integrity_check()
+                print(
+                    "[TRACKING] integrity check completed: "
+                    f"success={result.get('success')} checks={result.get('checks_created', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running tracking history integrity check: {e}")
+            finally:
+                db.session.remove()
+
+    def run_tracking_history_retention(self):
+        """Run tracking history retention cleanup."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.run_tracking_history_retention(
+                    raw_days=self.app.config.get('TRACKING_RAW_RETENTION_DAYS', 30),
+                    hourly_days=self.app.config.get('TRACKING_HOURLY_RETENTION_DAYS', 365),
+                    daily_days=self.app.config.get('TRACKING_DAILY_RETENTION_DAYS', 1095),
+                )
+                print(
+                    "[TRACKING] retention completed: "
+                    f"success={result.get('success')} deleted={result.get('deleted')}"
+                )
+            except Exception as e:
+                print(f"Error running tracking history retention: {e}")
             finally:
                 db.session.remove()
 
