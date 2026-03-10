@@ -1342,17 +1342,6 @@ def get_inventory_stats():
         scoped_devices = scoped_query(Device).all()
         scoped_device_ids = [d.device_id for d in scoped_devices]
         
-        # 1. Vendor Distribution
-        vendor_query = db.session.query(
-            Device.manufacturer, 
-            func.count(Device.device_id)
-        ).filter(Device.device_id.in_(scoped_device_ids) if scoped_device_ids else False).group_by(Device.manufacturer).all()
-        
-        by_vendor = {
-            (v[0] or 'Unknown'): v[1] 
-            for v in vendor_query
-        }
-        
         def normalize_inventory_type(value: str) -> str:
             raw = (value or '').strip().lower()
             if raw in ('camera', 'camera/iot', 'camera_iot'):
@@ -1361,16 +1350,20 @@ def get_inventory_stats():
                 return 'Unknown'
             return raw.replace('_', ' ').title()
 
-        # 2. Device Type Distribution
-        type_query = db.session.query(
-            Device.device_type, 
-            func.count(Device.device_id)
-        ).filter(Device.device_id.in_(scoped_device_ids) if scoped_device_ids else False).group_by(Device.device_type).all()
-
+        # 1 & 2. Vendor and Device Type Distribution
+        # Optimized: Computed in-memory using the already-loaded `scoped_devices`
+        # instead of executing additional `GROUP BY` database queries with massive `IN` clauses.
+        by_vendor = {}
         by_type = {}
-        for dtype, count in type_query:
-            label = normalize_inventory_type(dtype)
-            by_type[label] = by_type.get(label, 0) + count
+
+        for d in scoped_devices:
+            # Vendor grouping
+            vendor = d.manufacturer or 'Unknown'
+            by_vendor[vendor] = by_vendor.get(vendor, 0) + 1
+
+            # Type grouping
+            label = normalize_inventory_type(d.device_type)
+            by_type[label] = by_type.get(label, 0) + 1
         
         # 3. SNMP Stats
         total_devices = len(scoped_device_ids)
