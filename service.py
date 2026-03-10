@@ -110,8 +110,8 @@ def require_api_key(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         api_key = request.headers.get('X-API-Key')
-        # Check against hardcoded OR generated key
-        if api_key == "8f42v73054r1749f8g58848be5e6502c" or api_key == API_KEY:
+        # Check against generated key
+        if api_key and api_key == API_KEY:
             return f(*args, **kwargs)
         return jsonify({"error": "Invalid API key"}), 401
     return decorated_function
@@ -1341,7 +1341,7 @@ class AutoDiscoveryService:
         self.shared_api_key = (
             os.getenv('TRACKING_API_KEY')
             or os.getenv('ADMIN_SERVER_API_KEY')
-            or "8f42v73054r1749f8g58848be5e6502c"
+            or ""
         ).strip()
 
         discovery_enabled_raw = os.getenv('ADMIN_DISCOVERY_ENABLED')

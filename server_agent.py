@@ -19,7 +19,7 @@ from logging.handlers import RotatingFileHandler
 # ==========================
 
 NMS_SERVER_URL = "http://127.0.0.1:5000/api/agent/metrics"
-AGENT_TOKEN = "8f42v73054r1749f8g58848be5e6502c"
+AGENT_TOKEN = os.environ.get("TRACKING_API_KEY", "")
 INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT = 5
 TOP_PROCESSES_LIMIT = 5
