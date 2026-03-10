@@ -48,7 +48,7 @@ describe('fleet overview server table', () => {
     expect(row.children[6].className).toContain('d-none');
     expect(row.children[7].className).toContain('d-none');
     expect(row.children[9].className).toContain('text-end');
-    expect(row.children[9].innerHTML).toContain('fas fa-external-link-alt');
+    expect(row.children[9].textContent).toContain('View');
   });
 
   it('uses the full table width for the empty state row', () => {
