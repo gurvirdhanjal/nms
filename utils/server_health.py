@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+from services.server_thresholds import summarize_health
 
 
 OFFLINE_THRESHOLD_SECONDS = 120
@@ -21,21 +23,11 @@ def compute_server_health(log) -> str:
         return "Offline"
 
     try:
-        age_seconds = (datetime.utcnow() - log.timestamp).total_seconds()
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        age_seconds = (now_utc - log.timestamp).total_seconds()
         if age_seconds > OFFLINE_THRESHOLD_SECONDS:
             return "Offline"
     except Exception:
         return "Offline"
 
-    cpu = log.cpu_usage
-    ram = log.memory_usage
-    disk = log.disk_usage
-
-    if cpu is None or ram is None or disk is None:
-        return "Offline"
-
-    if cpu > 90 or disk > 95:
-        return "Critical"
-    if cpu > 80 or ram > 85:
-        return "Warning"
-    return "Healthy"
+    return summarize_health(log).state

@@ -1,0 +1,599 @@
+{% extends "base.html" %}
+
+{% block title %}Restricted Sites Policy{% endblock %}
+
+{% block content %}
+<div class="dashboard-enterprise restricted-policy-page">
+    <div class="enterprise-panel mb-3">
+        <div class="panel-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0">
+                    <i class="fas fa-shield-alt"></i> Restricted Sites Policy
+                    <span class="badge bg-secondary ms-2" id="modeBadge">Monitoring</span>
+                </h5>
+                <small class="text-muted"><i class="fas fa-globe"></i> Universal policy — applies to all enrolled
+                    devices</small>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="tactical-btn tactical-btn-sm tactical-btn-outline"
+                    href="{{ url_for('tracking_bp.live_tracking') }}">
+                    <i class="fas fa-broadcast-tower"></i> Live Tracking
+                </a>
+                <a class="tactical-btn tactical-btn-sm tactical-btn-outline"
+                    href="{{ url_for('tracking_bp.device_tracking') }}">
+                    <i class="fas fa-desktop"></i> Device Management
+                </a>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div id="policyAlert" class="alert alert-danger d-none mb-2" role="alert"></div>
+
+            <div class="row g-2">
+                <div class="col-xl-8 col-lg-7">
+                    <div class="policy-section-card">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <label class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="enabled">
+                                <span class="form-check-label ms-1">Enforce Blocking Mode</span>
+                            </label>
+                            <div class="policy-domain-stats" id="domainStats">0 domains</div>
+                        </div>
+
+                        <form id="addDomainForm" class="d-flex gap-2 mb-3">
+                            <input type="text" class="form-control form-control-sm" id="addDomainInput"
+                                placeholder="example.com" required style="flex: 2; min-width: 0;">
+                            <input type="text" class="form-control form-control-sm" id="addCategoryInput"
+                                placeholder="Category" value="Custom" style="flex: 1; min-width: 0;">
+                            <input type="text" class="form-control form-control-sm" id="addReasonInput"
+                                placeholder="Reason" style="flex: 2; min-width: 0;">
+                            <button type="submit" class="tactical-btn tactical-btn-sm btn-primary flex-shrink-0"><i
+                                    class="fas fa-plus"></i> Add Site</button>
+                        </form>
+
+                        <div class="mb-2">
+                            <button type="button" id="removeSelectedBtn"
+                                class="tactical-btn tactical-btn-sm text-danger d-none"><i class="fas fa-trash"></i>
+                                Remove Selected</button>
+                        </div>
+
+                        <div id="domainList" class="policy-domain-list" style="max-height: 300px; overflow-y: auto;">
+                            <!-- domain pills -->
+                        </div>
+
+                        <!-- Keep existing ID intact to prevent breaking possible CSS/JS hooks -->
+                        <textarea class="d-none" id="blockedDomains"></textarea>
+
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-6 d-none">
+                                <div class="policy-preview-box">
+                                    <div class="policy-preview-title">Normalized Preview</div>
+                                    <div id="domainPreviewList" class="policy-preview-list text-muted">No domains
+                                        entered.</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 d-none">
+                                <div class="policy-preview-box">
+                                    <div class="policy-preview-title">Invalid Entries</div>
+                                    <div id="domainInvalidList" class="policy-preview-list text-muted">No invalid
+                                        entries.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-lg-5">
+                    <div class="policy-section-card policy-meta-card">
+                        <div class="policy-preview-title">Policy Metadata</div>
+                        <div class="policy-meta-item"><span>Version</span><strong id="policyVersion">-</strong></div>
+                        <div class="policy-meta-item"><span>Updated By</span><strong id="updatedBy">-</strong></div>
+                        <div class="policy-meta-item"><span>Last Synced</span><strong id="updatedAt">-</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <form id="policyForm" autocomplete="off" class="mt-3">
+                <div class="row g-2 mt-1">
+                    <div class="col-lg-3 col-sm-6">
+                        <label class="form-label mb-1" for="cooldownSeconds">Cooldown (s)</label>
+                        <input type="number" class="form-control form-control-sm" id="cooldownSeconds" min="60"
+                            max="86400" step="1">
+                    </div>
+                    <div class="col-lg-3 col-sm-6">
+                        <label class="form-label mb-1" for="dnsPollSeconds">DNS Poll (s)</label>
+                        <input type="number" class="form-control form-control-sm" id="dnsPollSeconds" min="15"
+                            max="3600" step="1">
+                    </div>
+                    <div class="col-lg-3 col-sm-6">
+                        <label class="form-label mb-1" for="windowPollSeconds">Window Poll (s)</label>
+                        <input type="number" class="form-control form-control-sm" id="windowPollSeconds" min="5"
+                            max="600" step="1">
+                    </div>
+                    <div class="col-lg-3 col-sm-6">
+                        <label class="form-label mb-1" for="dnsSeenTtlSeconds">DNS Seen TTL (s)</label>
+                        <input type="number" class="form-control form-control-sm" id="dnsSeenTtlSeconds" min="60"
+                            max="86400" step="1">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-3 flex-wrap">
+                    <button type="button" id="previewBtn"
+                        class="tactical-btn tactical-btn-sm tactical-btn-outline d-none">
+                        <i class="fas fa-eye"></i> Preview
+                    </button>
+                    <button type="button" id="reloadBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline">
+                        <i class="fas fa-sync-alt"></i> Reload
+                    </button>
+                    <button type="submit" id="saveBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline">
+                        <i class="fas fa-save"></i> Save Legacy Settings
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const el = (id) => document.getElementById(id);
+    let currentDomains = [];
+    let selectedDomains = new Set();
+
+    function showAlert(message, type = 'danger') {
+        const node = el('policyAlert');
+        if (!node) return;
+        node.classList.remove('d-none', 'alert-danger', 'alert-warning', 'alert-info', 'alert-success');
+        node.classList.add(`alert-${type}`);
+        node.textContent = String(message || '').trim() || 'Unexpected error.';
+        setTimeout(() => node.classList.add('d-none'), 5000);
+    }
+
+    async function requestJson(url, options) {
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            ...options
+        });
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        let payload = null;
+        if (contentType.includes('application/json')) {
+            payload = await response.json().catch(() => null);
+        }
+        if (response.status === 401) {
+            window.location.reload();
+            return;
+        }
+        if (!response.ok || payload?.success === false) {
+            throw new Error(payload?.error || `Request failed (${response.status})`);
+        }
+        return payload || {};
+    }
+
+    function renderDomains() {
+        const list = el('domainList');
+        if (!list) return;
+
+        el('domainStats').textContent = `${currentDomains.length} domains`;
+
+        if (!currentDomains.length) {
+            list.innerHTML = '<div class="text-muted p-2 text-center">No blocked domains. Policy is empty.</div>';
+            el('removeSelectedBtn').classList.add('d-none');
+            return;
+        }
+
+        let html = '';
+        currentDomains.forEach(domain => {
+            const isChecked = selectedDomains.has(domain);
+            html += `
+                <div class="d-flex align-items-center justify-content-between" style="padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); background: transparent;">
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="checkbox" class="domain-checkbox" value="${domain}" ${isChecked ? 'checked' : ''} style="margin:0; width: 14px; height: 14px; accent-color: var(--teal); background: var(--bg-surface); border: 1px solid var(--border);">
+                        <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);">${domain}</span>
+                    </div>
+                    <button type="button" title="Remove Domain" style="background:transparent; border:none; color: var(--text-muted); padding: 0; font-size: 11px; cursor: pointer; transition: color 0.15s ease;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'" onclick="removeDomain('${domain}')"><i class="fas fa-trash"></i></button>
+                </div>
+            `;
+        });
+        list.innerHTML = html;
+
+        el('removeSelectedBtn').classList.toggle('d-none', selectedDomains.size === 0);
+
+        list.querySelectorAll('.domain-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    selectedDomains.add(e.target.value);
+                } else {
+                    selectedDomains.delete(e.target.value);
+                }
+                el('removeSelectedBtn').classList.toggle('d-none', selectedDomains.size === 0);
+            });
+        });
+    }
+
+    async function loadPolicy() {
+        try {
+            // Load global policy domains & mode
+            const policyData = await requestJson('/api/admin/restricted-sites-policy');
+            currentDomains = policyData.domains || [];
+            const mode = policyData.mode || 'monitoring';
+
+            el('enabled').checked = (mode === 'blocking');
+            const badge = el('modeBadge');
+            badge.textContent = mode === 'blocking' ? 'Blocking' : 'Monitoring';
+            badge.className = mode === 'blocking' ? 'badge bg-danger ms-2' : 'badge bg-secondary ms-2';
+
+            selectedDomains.clear();
+            renderDomains();
+
+            // Load legacy policy data to populate the other fields
+            const legacyData = await requestJson('/api/tracking/restricted-sites/policy');
+            const pol = legacyData.policy || {};
+            el('cooldownSeconds').value = pol.cooldown_seconds ?? 900;
+            el('dnsPollSeconds').value = pol.dns_poll_seconds ?? 60;
+            el('windowPollSeconds').value = pol.window_poll_seconds ?? 10;
+            el('dnsSeenTtlSeconds').value = pol.dns_seen_ttl_seconds ?? 1800;
+            el('policyVersion').textContent = pol.policy_version || '-';
+            el('updatedBy').textContent = pol.updated_by || '-';
+            el('updatedAt').textContent = pol.updated_at ? new Date(pol.updated_at + 'Z').toLocaleString() : '-';
+        } catch (err) {
+            showAlert(err.message);
+        }
+    }
+
+    async function toggleMode(e) {
+        const isEnabled = e.target.checked;
+        const mode = isEnabled ? 'blocking' : 'monitoring';
+        try {
+            await requestJson('/api/admin/restricted-sites-policy/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode })
+            });
+            showAlert(`Policy mode changed to ${mode}`, 'success');
+            await loadPolicy();
+        } catch (err) {
+            e.target.checked = !isEnabled; // revert
+            showAlert(err.message);
+        }
+    }
+
+    async function addDomain(e) {
+        e.preventDefault();
+        const domain = el('addDomainInput').value.trim();
+        const category = el('addCategoryInput').value.trim();
+        const reason = el('addReasonInput').value.trim();
+        if (!domain) return;
+
+        try {
+            await requestJson('/api/admin/restricted-sites-policy/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain, category, reason })
+            });
+            el('addDomainInput').value = '';
+            el('addReasonInput').value = '';
+            showAlert('Domain added successfully', 'success');
+            await loadPolicy();
+        } catch (err) {
+            showAlert(err.message);
+        }
+    }
+
+    window.removeDomain = async function (domain) {
+        if (!confirm(`Are you sure you want to remove ${domain}?`)) return;
+        await submitRemove([domain]);
+    };
+
+    async function removeSelected() {
+        if (selectedDomains.size === 0) return;
+        if (!confirm(`Remove ${selectedDomains.size} domains?`)) return;
+        await submitRemove(Array.from(selectedDomains));
+    }
+
+    async function submitRemove(domainsArray) {
+        try {
+            await requestJson('/api/admin/restricted-sites-policy/domains', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domains: domainsArray })
+            });
+            showAlert('Domain(s) removed', 'info');
+            await loadPolicy();
+        } catch (err) {
+            showAlert(err.message);
+        }
+    }
+
+    // Save legacy settings
+    async function saveLegacyConfig(e) {
+        e.preventDefault();
+        const btn = el('saveBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        try {
+            const payload = {
+                enabled: el('enabled').checked,
+                blocked_domains: currentDomains,
+                cooldown_seconds: Number(el('cooldownSeconds').value || 900),
+                dns_poll_seconds: Number(el('dnsPollSeconds').value || 60),
+                window_poll_seconds: Number(el('windowPollSeconds').value || 10),
+                dns_seen_ttl_seconds: Number(el('dnsSeenTtlSeconds').value || 1800),
+            };
+            await requestJson('/api/tracking/restricted-sites/policy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            showAlert('Legacy settings saved.', 'success');
+            await loadPolicy();
+        } catch (error) {
+            showAlert(error.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> Save Legacy Settings';
+        }
+    }
+
+    el('enabled').addEventListener('change', toggleMode);
+    el('addDomainForm').addEventListener('submit', addDomain);
+    el('removeSelectedBtn').addEventListener('click', removeSelected);
+    el('reloadBtn').addEventListener('click', loadPolicy);
+    el('policyForm').addEventListener('submit', saveLegacyConfig);
+
+    loadPolicy();
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Strict Enterprise Baseline */
+    .restricted-policy-page {
+        background-color: var(--bg-base);
+    }
+
+    .restricted-policy-page .enterprise-panel {
+        background: var(--bg-surface) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 2px !important;
+    }
+
+    .restricted-policy-page .panel-header {
+        border-bottom: 1px solid var(--border);
+        padding: 0.8rem 1rem;
+    }
+
+    .restricted-policy-page .panel-header h5 {
+        font-family: var(--font-sans);
+        font-weight: 600;
+        font-size: 16px;
+        color: var(--text-primary);
+        letter-spacing: 0.02em;
+    }
+
+    .restricted-policy-page .panel-header .text-muted {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-muted) !important;
+    }
+
+    .restricted-policy-page .badge {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        border: 1px solid var(--border);
+    }
+
+    .restricted-policy-page .bg-danger {
+        color: var(--red) !important;
+        background: rgba(255, 77, 77, 0.1) !important;
+        border-color: var(--red) !important;
+    }
+
+    .restricted-policy-page .bg-secondary {
+        color: var(--teal) !important;
+        background: rgba(0, 229, 160, 0.05) !important;
+        border-color: rgba(0, 229, 160, 0.3) !important;
+    }
+
+    .restricted-policy-page .panel-body {
+        padding: 1rem;
+        background: var(--bg-surface);
+    }
+
+    .restricted-policy-page .policy-section-card {
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        background: var(--bg-elevated);
+        padding: 0.8rem;
+        min-height: 100%;
+    }
+
+    .restricted-policy-page .policy-meta-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        align-content: start;
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        background: var(--bg-elevated);
+        padding: 0.8rem;
+        min-width: 0;
+    }
+
+    .restricted-policy-page .policy-preview-title {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+    }
+
+    .restricted-policy-page .policy-meta-item {
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 0;
+        padding: 6px 0;
+        background: transparent;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .restricted-policy-page .policy-meta-item:last-child {
+        border-bottom: none;
+    }
+
+    .restricted-policy-page .policy-meta-item span {
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .restricted-policy-page .policy-meta-item strong {
+        color: var(--text-primary);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .restricted-policy-page .policy-domain-stats {
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        padding: 2px 6px;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    /* Forms */
+    .restricted-policy-page .form-label {
+        color: var(--text-muted);
+        font-size: 10px;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    .restricted-policy-page .form-check-label {
+        color: var(--text-primary);
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+    }
+
+    .restricted-policy-page .form-control,
+    .restricted-policy-page .form-select {
+        background: var(--bg-surface) !important;
+        border: 1px solid var(--border) !important;
+        color: var(--text-primary) !important;
+        border-radius: 2px !important;
+        font-family: var(--font-mono) !important;
+        font-size: 12px !important;
+        padding: 0.3rem 0.5rem !important;
+        box-shadow: none !important;
+    }
+
+    .restricted-policy-page .form-control:focus,
+    .restricted-policy-page .form-select:focus {
+        border-color: var(--teal) !important;
+        outline: none !important;
+    }
+
+    /* Buttons */
+    .restricted-policy-page .tactical-btn {
+        border-radius: 2px;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-primary);
+        padding: 0 12px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .restricted-policy-page .tactical-btn-outline {
+        border-color: var(--border);
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .restricted-policy-page .tactical-btn-outline:hover {
+        background: var(--bg-elevated);
+        border-color: var(--border-medium);
+        color: var(--text-primary);
+    }
+
+    .restricted-policy-page .tactical-btn.btn-primary {
+        background: var(--teal);
+        color: #000;
+        border-color: var(--teal);
+    }
+
+    .restricted-policy-page .tactical-btn.btn-primary:hover {
+        background: #00faaf;
+        border-color: #00faaf;
+        color: #000;
+    }
+
+    .restricted-policy-page .tactical-btn.text-danger {
+        color: var(--red) !important;
+        border-color: rgba(255, 77, 77, 0.3) !important;
+        background: rgba(255, 77, 77, 0.05) !important;
+    }
+
+    .restricted-policy-page .tactical-btn.text-danger:hover {
+        background: rgba(255, 77, 77, 0.15) !important;
+        border-color: rgba(255, 77, 77, 0.6) !important;
+        color: #fff !important;
+    }
+
+    /* Custom scrollbar for domain list */
+    .restricted-policy-page .policy-domain-list {
+        margin-top: 8px;
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        background: var(--bg-base);
+    }
+
+    .restricted-policy-page .policy-domain-list::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .restricted-policy-page .policy-domain-list::-webkit-scrollbar-track {
+        background: var(--bg-base);
+    }
+
+    .restricted-policy-page .policy-domain-list::-webkit-scrollbar-thumb {
+        background-color: var(--border-strong);
+        border-radius: 2px;
+    }
+</style>
+{% endblock %}

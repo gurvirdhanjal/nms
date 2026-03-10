@@ -1,0 +1,883 @@
+{% extends "base.html" %}
+
+{% block title %}Device Live View - {{ device.device_name }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-enterprise device-live-page">
+    <div class="enterprise-panel device-command-bar mb-3">
+        <div class="panel-body">
+            {% set initial_status = (device.availability_status or 'offline')|lower %}
+            <div class="row g-3 align-items-start">
+                <div class="col-12">
+                    <section class="mo-header-panel"
+                        style="background-color: var(--mo-surface); border: 1px solid var(--mo-border); border-radius: 6px; padding: 1.5rem; font-family: 'Rajdhani', sans-serif;">
+
+                        <!-- Title & Badge Row -->
+                        <div class="d-flex align-items-center justify-content-between mb-4">
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex align-items-center gap-3">
+                                    <h1 class="m-0 fw-bold tracking-tight text-white fs-3">{{ device.device_name }}</h1>
+                                    <div class="d-flex gap-2">
+                                        <span id="deviceHeaderStatus"
+                                            class="mo-badge {% if initial_status == 'online' %}mo-badge-online{% else %}mo-badge-risk{% endif %}">{{
+                                            initial_status|upper }}</span>
+                                        <span id="headerRiskBadge" class="mo-badge mo-badge-online">RISK: LOW</span>
+                                        <span id="headerPolicyBadge"
+                                            class="mo-badge {% if policy_status == 'violating' %}mo-badge-policy{% else %}mo-badge-online{% endif %}">
+                                            {% if policy_status == 'violating' %}<span
+                                                class="mo-badge-pulse-dot"></span>{% endif %}
+                                            {{ 'VIOLATING (' ~ (device.restricted_site_alerts|selectattr('hit_count',
+                                            'gt', 0)|list|length) ~ ')' if policy_status == 'violating' else 'COMPLIANT'
+                                            }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-3 text-uppercase font-monospace"
+                                    style="font-size: 11px; color: var(--mo-muted);">
+                                    <span><i class="fas fa-desktop text-secondary"></i> <span id="identityDeviceType">{{
+                                            device_type_label or 'Workstation' }}</span></span>
+                                    <span><i class="fas fa-user text-secondary"></i> <span id="metaEmployee">{{
+                                            device.employee_name or 'Unassigned' }}</span></span>
+                                    <span><i class="fas fa-server text-secondary"></i> <span id="metaHostname">{{
+                                            device.hostname or 'Unknown' }}</span></span>
+                                    <span><i class="fas fa-network-wired text-secondary"></i> <span id="metaMac">{{
+                                            device.mac_address or 'Unknown' }}</span></span>
+                                </div>
+                            </div>
+
+                            <!-- Action Button Hierarchy -->
+                            <div class="d-flex align-items-center gap-2">
+                                <!-- Ghost / Secondary -->
+                                <button id="deviceForcePollBtn" type="button" class="mo-btn mo-btn-ghost">
+                                    <i class="fas fa-sync-alt"></i> FORCE SYNC
+                                </button>
+                                <div class="dropdown d-inline-block">
+                                    <button class="mo-btn mo-btn-ghost dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown" aria-expanded="false" style="border: none;">
+                                        <i class="fas fa-ellipsis-h"></i> MORE
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-dark"
+                                        style="background: var(--mo-surface); border-color: var(--mo-border);">
+                                        <li><button id="deviceRestartBtn" class="dropdown-item" type="button"><i
+                                                    class="fas fa-power-off text-muted"></i> Restart Agent</button></li>
+                                        <li><button id="deviceMessageBtn" class="dropdown-item" type="button"><i
+                                                    class="fas fa-comment-dots text-muted"></i> Send Message</button>
+                                        </li>
+                                        <li>
+                                            <hr class="dropdown-divider" style="border-color: var(--mo-border);">
+                                        </li>
+                                        <li><a class="dropdown-item"
+                                                href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}"><i
+                                                    class="fas fa-chart-area text-muted"></i> Reports</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"><i
+                                                    class="fas fa-history text-muted"></i> History</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{{ url_for('tracking_bp.device_tracking') }}"><i
+                                                    class="fas fa-arrow-left text-muted"></i> Back to Fleet</a></li>
+                                    </ul>
+                                </div>
+
+                                <!-- Destructive -->
+                                <button id="deviceIsolateBtn" type="button" class="mo-btn mo-btn-destructive ms-2"
+                                    title="Isolation workflow">
+                                    <i class="fas fa-shield-alt"></i> ISOLATE
+                                </button>
+
+                                <!-- Primary -->
+                                <button id="deviceRemoteViewBtn" type="button" class="mo-btn mo-btn-primary ms-1">
+                                    <i class="fas fa-image"></i> REMOTE VIEW
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Brutalist Stat Grid -->
+                        <div class="row g-4 pt-4" style="border-top: 1px solid var(--mo-border);">
+                            <div class="col-md-2">
+                                <div class="text-uppercase fw-bold mb-1"
+                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">IP Address
+                                </div>
+                                <div id="metaIp" class="font-monospace fs-4 text-white lh-1">{{ display_ip or 'N/A' }}
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-uppercase fw-bold mb-1"
+                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Latency
+                                </div>
+                                <div class="font-monospace fs-4 lh-1" style="color: var(--mo-teal);"><span
+                                        id="metaLatency">--</span> <span class="fs-6"
+                                        style="color: var(--mo-muted);">ms</span></div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-uppercase fw-bold mb-1"
+                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Uptime
+                                    (Today)</div>
+                                <div class="font-monospace fs-4 text-white lh-1"><span id="metaTotalUptime">N/A</span>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-uppercase fw-bold mb-1"
+                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Agent Status
+                                </div>
+                                <div id="metaAgentState" class="font-monospace fs-4 text-white lh-1">Never Seen</div>
+                            </div>
+
+                            <!-- Security Posture with Context Gauge -->
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between align-items-end mb-2">
+                                    <div class="text-uppercase fw-bold"
+                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Security
+                                        Posture</div>
+                                    <div class="font-monospace fs-4 lh-1" style="color: var(--mo-amber);"><span
+                                            id="metaSecurityScore">--</span><span class="fs-6"
+                                            style="color: var(--mo-muted);">/100</span></div>
+                                </div>
+                                <div
+                                    style="height: 6px; width: 100%; background: var(--mo-bg-void); border-radius: 3px; overflow: hidden;">
+                                    <div id="metaSecurityGauge"
+                                        style="height: 100%; background: var(--mo-amber); width: 0%; transition: width 0.5s ease; position: relative;">
+                                        <div
+                                            style="position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2));">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden JS binding IDs -->
+                        <div class="d-none">
+                            <span id="agentHealthAwaiting"></span>
+                            <span id="metaSystem"></span>
+                            <span id="metaLastSeen"></span>
+                            <span id="metaUptime"></span>
+                            <span id="metaAgentVersion"></span>
+                            <span id="metaAgentHealth"></span>
+                            <span id="metaDowntime"></span>
+                            <span id="metaStatusReason"></span>
+                            <span id="headerDeviceTypeBadge"></span>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="deviceLiveErrorBanner" class="alert alert-danger d-none mb-3" role="alert"></div>
+
+    <div class="enterprise-panel">
+        <div class="panel-header device-tab-header">
+            <div class="device-tabs-scroll">
+                <div class="device-tabs" role="tablist" aria-label="Device telemetry tabs">
+                    <button class="device-tab-btn active" data-tab="overview">
+                        <i class="fas fa-chart-pie" aria-hidden="true"></i>
+                        <span class="device-tab-label">Overview</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="performance">
+                        <i class="fas fa-bolt" aria-hidden="true"></i>
+                        <span class="device-tab-label">Performance</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="activity">
+                        <i class="fas fa-user-clock" aria-hidden="true"></i>
+                        <span class="device-tab-label">Activity</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="processes">
+                        <i class="fas fa-cogs" aria-hidden="true"></i>
+                        <span class="device-tab-label">Processes</span>
+                        <span id="tabCountProcesses" class="tab-counter tab-counter-warning d-none">0</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="network">
+                        <i class="fas fa-globe" aria-hidden="true"></i>
+                        <span class="device-tab-label">Network</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="surveillance">
+                        <i class="fas fa-video" aria-hidden="true"></i>
+                        <span class="device-tab-label">Surveillance</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="website-policy">
+                        <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                        <span class="device-tab-label">Website Policy</span>
+                        <span id="tabCountPolicy" class="tab-counter tab-counter-policy d-none">0</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="alerts">
+                        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                        <span class="device-tab-label">Alerts</span>
+                        <span id="tabCountAlerts" class="tab-counter tab-counter-danger d-none">0</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="history">
+                        <i class="fas fa-scroll" aria-hidden="true"></i>
+                        <span class="device-tab-label">History</span>
+                    </button>
+                </div>
+            </div>
+            <div class="telemetry-status-indicator" role="status" aria-live="polite">
+                <div class="telemetry-status-title">
+                    <span id="telemetryStatusTitle" class="telemetry-status-pill">LIVE TELEMETRY</span>
+                </div>
+                <div id="devicePollMeta" class="telemetry-status-meta">Polling 5s - Latency -- ms - 0s ago</div>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div id="telemetryWaitingBanner" class="telemetry-state-banner d-none mb-2" role="status"
+                aria-live="polite">
+                <strong>Awaiting telemetry from agent...</strong>
+                <span id="telemetryBannerHeartbeat">Last heartbeat: Never</span>
+                <span id="telemetryBannerPoll">Polling every 5s</span>
+            </div>
+
+            <section class="device-tab-panel active" data-panel="overview">
+                <div class="row g-2">
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">CPU</div>
+                            <div class="stat-value" id="overviewCpu">--</div>
+                            <div class="kpi-trend-row">
+                                <span id="overviewCpuTrend">-</span>
+                                <svg id="overviewCpuSpark" class="overview-sparkline" viewBox="0 0 80 18"
+                                    preserveAspectRatio="none"></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">RAM</div>
+                            <div class="stat-value" id="overviewRam">--</div>
+                            <div class="kpi-trend-row">
+                                <span id="overviewRamTrend">-</span>
+                                <svg id="overviewRamSpark" class="overview-sparkline" viewBox="0 0 80 18"
+                                    preserveAspectRatio="none"></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">Disk</div>
+                            <div class="stat-value" id="overviewDisk">--</div>
+                            <span class="metric-sub">Awaiting telemetry</span>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">Upload</div>
+                            <div class="stat-value" id="overviewUpload">--</div>
+                            <span class="metric-sub">Awaiting telemetry</span>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">Download</div>
+                            <div class="stat-value" id="overviewDownload">--</div>
+                            <span class="metric-sub">Awaiting telemetry</span>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <div class="enterprise-kpi metric-kpi-card">
+                            <div class="stat-label">Idle</div>
+                            <div class="stat-value" id="overviewIdle">--</div>
+                            <span class="metric-sub">Awaiting telemetry</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-lg-7">
+                        <div class="device-info-card">
+                            <h6>Current Activity</h6>
+                            <div class="activity-status-bar">
+                                <div class="activity-pill"><span>Keyboard</span><strong
+                                        id="overviewKeyboardState">Awaiting</strong></div>
+                                <div class="activity-pill"><span>Mouse</span><strong
+                                        id="overviewMouseState">Awaiting</strong></div>
+                                <div class="activity-pill"><span>Idle</span><strong id="activityIdleCompact">--</strong>
+                                </div>
+                            </div>
+                            <div class="device-info-row"><span>Active App</span><strong id="overviewActiveApp">Awaiting
+                                    activity data</strong></div>
+                            <div class="device-info-row"><span>Window Title</span><strong
+                                    id="overviewWindowTitle">Awaiting activity data</strong></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="device-info-card">
+                            <h6>Session</h6>
+                            <div class="device-info-row"><span>Active Time</span><strong
+                                    id="overviewActiveTime">--</strong></div>
+                            <div class="device-info-row"><span>Total Time</span><strong
+                                    id="overviewTotalTime">--</strong></div>
+                            <div class="device-info-row"><span>Applications Used</span><strong
+                                    id="overviewAppCount">--</strong></div>
+                            <div class="device-info-row"><span>Last Poll</span><strong id="overviewLastPoll">Awaiting
+                                    first telemetry sample</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="performance">
+                <div class="row g-2">
+                    <div class="col-lg-4">
+                        <div class="device-chart-card">
+                            <h6>CPU Trend</h6>
+                            <svg id="chartCpu" class="device-sparkline" viewBox="0 0 240 60"
+                                preserveAspectRatio="none"></svg>
+                            <div class="device-chart-meta" id="chartCpuMeta">Awaiting telemetry</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="device-chart-card">
+                            <h6>RAM Trend</h6>
+                            <svg id="chartRam" class="device-sparkline" viewBox="0 0 240 60"
+                                preserveAspectRatio="none"></svg>
+                            <div class="device-chart-meta" id="chartRamMeta">Awaiting telemetry</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="device-chart-card">
+                            <h6>Network Trend</h6>
+                            <svg id="chartNetwork" class="device-sparkline" viewBox="0 0 240 60"
+                                preserveAspectRatio="none"></svg>
+                            <div class="device-chart-meta" id="chartNetworkMeta">Awaiting telemetry</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="activity">
+                <div class="row g-2">
+                    <div class="col-lg-6">
+                        <div class="device-info-card">
+                            <h6>Input State</h6>
+                            <div class="device-info-row"><span>Keyboard Events</span><strong
+                                    id="activityKeyboardCount">--</strong></div>
+                            <div class="device-info-row"><span>Mouse Events</span><strong
+                                    id="activityMouseCount">--</strong></div>
+                            <div class="device-info-row"><span>Scroll Events</span><strong
+                                    id="activityScrollCount">--</strong></div>
+                            <div class="device-info-row"><span>Idle Duration</span><strong
+                                    id="activityIdleDuration">--</strong></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="device-info-card">
+                            <h6>Focus Timeline</h6>
+                            <div class="device-info-row"><span>Focused App</span><strong
+                                    id="activityFocusedApp">Awaiting activity data</strong></div>
+                            <div class="device-info-row"><span>Focused Window</span><strong
+                                    id="activityFocusedWindow">Awaiting activity data</strong></div>
+                            <div class="device-info-row"><span>Last Focus Change</span><strong
+                                    id="activityFocusChanged">Awaiting activity data</strong></div>
+                            <div class="device-info-row"><span>Activity Confidence</span><strong
+                                    id="activityConfidence">Pending</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="processes">
+                <div class="table-responsive">
+                    <table class="tactical-table">
+                        <thead>
+                            <tr>
+                                <th>Process</th>
+                                <th class="metric">CPU %</th>
+                                <th class="metric">Memory MB</th>
+                                <th class="metric">PID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="processTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="processEmptyState" class="text-muted small mt-2">No process data available.</div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="network">
+                <div class="row g-2">
+                    <div class="col-lg-5">
+                        <div class="device-info-card">
+                            <h6>Network Summary</h6>
+                            <div class="device-info-row"><span>Upload Speed</span><strong id="networkUpload">--</strong>
+                            </div>
+                            <div class="device-info-row"><span>Download Speed</span><strong
+                                    id="networkDownload">--</strong></div>
+                            <div class="device-info-row"><span>Total Upload</span><strong
+                                    id="networkUploadTotal">--</strong></div>
+                            <div class="device-info-row"><span>Total Download</span><strong
+                                    id="networkDownloadTotal">--</strong></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <div class="device-info-card">
+                            <h6>Top Network Consumers</h6>
+                            <div id="networkConsumersList" class="device-list-plain text-muted small">Awaiting telemetry
+                                data.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="surveillance">
+                <div class="surveillance-tab-head mb-2">
+                    <h6 class="surveillance-tab-title mb-0">Surveillance Controls</h6>
+                    <span id="survTabStateBadge" class="surveillance-ready-indicator state-offline" role="status"
+                        aria-live="polite">
+                        <i class="fas fa-circle" aria-hidden="true"></i>
+                        <span id="survTabStateText">Device Offline</span>
+                    </span>
+                </div>
+                <div class="row g-2 surveillance-grid">
+                    <div class="col-lg-8">
+                        <div class="surveillance-panel surveillance-panel-camera">
+                            <div class="surveillance-panel-head">
+                                <h6><i class="fas fa-video"></i> Webcam</h6>
+                                <div class="surveillance-badge-stack">
+                                    <span id="survCameraCapabilityBadge"
+                                        class="surveillance-status-badge status-neutral">
+                                        Capability: <strong id="survCameraHeaderState">Unknown</strong>
+                                    </span>
+                                    <span id="survCameraStatusBadge" class="surveillance-status-badge status-bad">
+                                        Status: <strong id="survCameraState">Disabled</strong>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="survCameraRecordingIndicator" class="surveillance-recording-indicator d-none">
+                                <i class="fas fa-circle" aria-hidden="true"></i>
+                                <span>Live stream active</span>
+                            </div>
+                            <div id="survCameraPreviewWrap" class="surveillance-preview-wrap inactive mt-2">
+                                <button id="survCameraFullscreenBtn" type="button"
+                                    class="surveillance-overlay-btn d-none" title="Fullscreen preview"
+                                    aria-label="Fullscreen preview">
+                                    <i class="fas fa-expand" aria-hidden="true"></i>
+                                </button>
+                                <img id="survCameraPreview" class="surveillance-preview d-none"
+                                    alt="Webcam live preview">
+                                <div id="survCameraFallback" class="surveillance-placeholder">
+                                    <i class="fas fa-camera" aria-hidden="true"></i>
+                                    <span id="survCameraFallbackText">Stream inactive</span>
+                                </div>
+                                <canvas id="survCaptureCanvas" class="d-none"></canvas>
+                            </div>
+                            <div class="surveillance-controls mt-2">
+                                <button id="survCameraStartBtn" type="button" class="mo-btn mo-btn-ghost">Start
+                                    Stream</button>
+                                <button id="survCameraStopBtn" type="button"
+                                    class="mo-btn mo-btn-destructive surveillance-btn-danger d-none">Shutdown
+                                    Camera</button>
+                                <button id="survCameraCaptureBtn" type="button" class="mo-btn mo-btn-ghost">Capture
+                                    Snapshot</button>
+                            </div>
+                            <a id="survCaptureDownload" class="mo-btn mo-btn-ghost mt-2 d-none"
+                                download="surveillance_snapshot.jpg">Download Snapshot</a>
+                            <div class="surveillance-activity mt-2">
+                                <div class="surveillance-activity-title">Recent Activity</div>
+                                <div id="survCameraLog" class="surveillance-log-list">
+                                    <div class="surveillance-log-empty">No recent activity.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="surveillance-panel surveillance-panel-mic">
+                            <div class="surveillance-panel-head">
+                                <h6><i class="fas fa-microphone"></i> Microphone</h6>
+                                <div class="surveillance-badge-stack">
+                                    <span id="survMicCapabilityBadge" class="surveillance-status-badge status-neutral">
+                                        Capability: <strong id="survMicHeaderState">Unknown</strong>
+                                    </span>
+                                    <span id="survMicStatusBadge" class="surveillance-status-badge status-bad">
+                                        Status: <strong id="survMicState">Disabled</strong>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="survMicAudioShell" class="surveillance-audio-shell mt-2 d-none">
+                                <audio id="survMicAudio" controls preload="none" class="surveillance-audio"></audio>
+                                <div class="surveillance-level-meter" aria-hidden="true">
+                                    <span></span><span></span><span></span><span></span><span></span>
+                                </div>
+                                <div class="surveillance-audio-meta">
+                                    <span id="survMicPlaybackState">Awaiting stream</span>
+                                    <label class="surveillance-volume-label" for="survMicVolume">Volume</label>
+                                    <input id="survMicVolume" class="surveillance-volume-slider" type="range" min="0"
+                                        max="100" step="1" value="100" aria-label="Microphone volume">
+                                </div>
+                            </div>
+                            <div id="survMicFallback" class="surveillance-placeholder mt-2">
+                                <i class="fas fa-microphone-slash" aria-hidden="true"></i>
+                                <span id="survMicFallbackText">Microphone monitor inactive</span>
+                            </div>
+                            <div class="surveillance-controls mt-2">
+                                <button id="survMicStartBtn" type="button" class="mo-btn mo-btn-ghost">Start
+                                    Monitor</button>
+                                <button id="survMicStopBtn" type="button" class="mo-btn mo-btn-ghost d-none">Stop
+                                    Monitor</button>
+                            </div>
+                            <div class="surveillance-activity mt-2">
+                                <div class="surveillance-activity-title">Recent Activity</div>
+                                <div id="survMicLog" class="surveillance-log-list">
+                                    <div class="surveillance-log-empty">No recent activity.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="website-policy">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="policy-engine-card">
+                            <h6 class="panel-eyebrow">Policy Engine Status</h6>
+                            <div class="policy-engine-row policy-engine-row-mode">
+                                <span class="policy-engine-key">Mode</span>
+                                <strong class="policy-engine-mode">
+                                    <span id="policyModeValue">ACTIVE</span>
+                                    <span id="policyModeDot" class="policy-mode-dot"></span>
+                                </strong>
+                            </div>
+                            <div class="policy-engine-row">
+                                <span class="policy-engine-key">Device Rules</span>
+                                <strong id="policyRestrictedCount" class="policy-engine-value">0</strong>
+                            </div>
+                            <div class="policy-engine-row">
+                                <span class="policy-engine-key">Global Rules</span>
+                                <strong id="policyGlobalCount" class="policy-engine-value">0</strong>
+                            </div>
+                            <div class="policy-engine-row">
+                                <span class="policy-engine-key">Effective Domains</span>
+                                <strong id="policyEffectiveCount" class="policy-engine-value">0</strong>
+                            </div>
+                            <div class="policy-engine-row">
+                                <span class="policy-engine-key">Violations 24h</span>
+                                <strong id="policyViolationsToday"
+                                    class="policy-engine-value policy-engine-value-danger">0</strong>
+                            </div>
+                            <div class="policy-engine-meta">
+                                <div class="policy-engine-meta-row">
+                                    <span>Effective Version</span>
+                                    <strong id="policyEffectiveVersion" title="--">--</strong>
+                                </div>
+                                <div class="policy-engine-meta-row">
+                                    <span>Agent Version</span>
+                                    <strong id="policyAgentVersion" title="--">--</strong>
+                                </div>
+                                <div class="policy-engine-meta-row">
+                                    <span>Agent Last Seen</span>
+                                    <strong id="policyAgentSeenAt" title="--">--</strong>
+                                </div>
+                                <div class="policy-engine-meta-row">
+                                    <span>Cache State</span>
+                                    <strong id="policyCacheState" title="--">--</strong>
+                                </div>
+                            </div>
+                            <div id="policyCacheWarning" class="policy-cache-warning d-none" role="status">
+                                Configuration needs sync.
+                            </div>
+                            <div class="policy-action-stack">
+                                <button id="policyAddSiteBtn" type="button"
+                                    class="policy-action-button policy-action-button-add">
+                                    + Add restriction
+                                </button>
+                                <button id="policyRemoveSiteBtn" type="button"
+                                    class="policy-action-button policy-action-button-remove">
+                                    &mdash; Remove restriction
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="policy-scope-card">
+                            <div class="policy-panel-header">
+                                <h6 class="panel-eyebrow m-0">Stored Device Restrictions</h6>
+                                <span class="policy-status-pill policy-status-pill-teal"><i class="fas fa-check"></i>
+                                    Synced to server</span>
+                            </div>
+                            <div id="policyRestrictedSitesList" class="policy-scope-list policy-list-scroll">
+                                Awaiting synchronization...
+                            </div>
+                        </div>
+
+                        <div class="policy-scope-card">
+                            <div class="policy-panel-header">
+                                <h6 class="panel-eyebrow m-0">Effective Policy Scope</h6>
+                                <span class="policy-status-pill policy-status-pill-blue">Merged payload</span>
+                            </div>
+                            <div id="policyEffectiveSitesList" class="policy-scope-list policy-list-scroll">
+                                Awaiting synchronization...
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-8">
+                        <div class="policy-timeline-card">
+                            <div class="policy-timeline-header">
+                                <h6 class="panel-eyebrow m-0 d-flex align-items-center gap-2">
+                                    Live Violation Timeline
+                                    <span class="policy-live-dot" aria-hidden="true"></span>
+                                </h6>
+                                <button id="policyViewFullLogsBtn" type="button" class="policy-inline-link">
+                                    Full log &rarr;
+                                </button>
+                            </div>
+                            <div id="policyRecentViolationsList" class="policy-incident-list policy-log-scroll">
+                                <div class="text-muted font-monospace" style="font-size: 12px;"><i
+                                        class="fas fa-circle-notch fa-spin me-2"></i> Awaiting event streams...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="alerts">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="alerts-risk-card">
+                            <div class="panel-eyebrow">Risk Score</div>
+                            <div class="alerts-risk-level risk-unknown" id="alertsRiskScore">UNKNOWN</div>
+                            <div class="alerts-risk-meter" aria-hidden="true">
+                                <div class="alerts-risk-track">
+                                    <div id="alertsRiskBarFill" class="alerts-risk-fill"></div>
+                                    <div id="alertsRiskBarMarker" class="alerts-risk-marker"></div>
+                                </div>
+                            </div>
+                            <div id="alertsRiskValue" class="alerts-risk-value">0 / 100</div>
+                            <div id="alertsRiskContext" class="alerts-risk-context">
+                                <span class="alerts-health-dot" aria-hidden="true"></span>
+                                <span id="alertsRiskContextText">Awaiting telemetry</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-8">
+                        <div class="alerts-list-card">
+                            <h6 class="panel-eyebrow">Policy Alerts</h6>
+                            <div id="policyViolationList" class="policy-alert-list">Awaiting policy checks.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="history">
+                <div class="device-info-card history-card">
+                    <h6>History Snapshot (7d)</h6>
+                    <div class="history-kpi-grid mt-2">
+                        <div class="history-kpi-item">
+                            <span class="meta-label">Reachability</span>
+                            <strong id="historyReachability">N/A</strong>
+                        </div>
+                        <div class="history-kpi-item">
+                            <span class="meta-label">Confidence</span>
+                            <strong id="historyConfidence">N/A</strong>
+                        </div>
+                        <div class="history-kpi-item">
+                            <span class="meta-label">Samples</span>
+                            <strong id="historySamples">0</strong>
+                        </div>
+                    </div>
+                    <div class="device-info-row mt-2"><span>Current Status</span><strong
+                            id="historyCurrentStatus">Unknown</strong></div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <a class="mo-btn mo-btn-ghost"
+                            href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}">
+                            <i class="fas fa-history"></i> Full History
+                        </a>
+                        <a class="mo-btn mo-btn-ghost"
+                            href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}">
+                            <i class="fas fa-chart-area"></i> Availability Reports
+                        </a>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div id="deviceConsoleToastRoot" class="device-toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="modal fade" id="isolateConfirmModal" tabindex="-1" aria-labelledby="isolateConfirmModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="isolateConfirmModalLabel">Confirm Isolation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    This will disconnect the device from the network.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button id="deviceConfirmIsolateBtn" type="button"
+                        class="mo-btn mo-btn-destructive">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="messageModalLabel">Send Message</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="deviceMessageText" class="form-label small text-muted">Message to active user
+                        session</label>
+                    <textarea id="deviceMessageText" class="form-control tactical-input" rows="4" maxlength="500"
+                        placeholder="Enter operational message..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button id="deviceMessageSendBtn" type="button" class="mo-btn mo-btn-primary">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade remote-view-modal" id="remoteViewModal" tabindex="-1" aria-labelledby="remoteViewModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="remoteViewModalLabel">Remote View</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="remote-view-frame">
+                        <img id="remoteViewImage" src="" alt="Remote view screenshot" decoding="async" draggable="false">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div id="remoteViewStatus" class="text-muted small me-auto">Adaptive snapshots enabled</div>
+                    <button id="remoteViewRefreshBtn" type="button" class="mo-btn mo-btn-ghost">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button id="remoteViewFullscreenBtn" type="button" class="mo-btn mo-btn-primary">
+                        <i class="fas fa-expand"></i> Fullscreen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="policyAddSiteModal" tabindex="-1" aria-labelledby="policyAddSiteModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="policyAddSiteModalLabel">Add Restricted Domain</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="policyAddSiteInput" class="form-label small text-muted">Domain</label>
+                    <input id="policyAddSiteInput" class="form-control tactical-input" type="text"
+                        placeholder="example.com">
+                    <label for="policyAddSiteCategory" class="form-label small text-muted mt-2">Category</label>
+                    <select id="policyAddSiteCategory" class="form-select tactical-select">
+                        <option value="Productivity">Productivity</option>
+                        <option value="Security">Security</option>
+                        <option value="Custom">Custom</option>
+                    </select>
+                    <label for="policyAddSiteReason" class="form-label small text-muted mt-2">Reason</label>
+                    <input id="policyAddSiteReason" class="form-control tactical-input" type="text"
+                        placeholder="Optional">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button id="policyAddSiteConfirmBtn" type="button" class="mo-btn mo-btn-primary">Add
+                        Domain</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="policyRemoveSiteModal" tabindex="-1" aria-labelledby="policyRemoveSiteModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="policyRemoveSiteModalLabel">Remove Restricted Site</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="policyRemoveSiteList" class="form-label small text-muted">Select domain</label>
+                    <select id="policyRemoveSiteList" class="form-select tactical-select" multiple size="8"></select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button id="policyRemoveSiteConfirmBtn" type="button" class="mo-btn mo-btn-destructive">Remove
+                        Site</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="policyLogsModal" tabindex="-1" aria-labelledby="policyLogsModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="policyLogsModalLabel">Website Policy Log</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="policy-summary-grid">
+                        <div class="policy-summary-chip">
+                            <span>Stored Rules</span>
+                            <strong id="policyLogsStoredCount">0</strong>
+                        </div>
+                        <div class="policy-summary-chip">
+                            <span>Effective Domains</span>
+                            <strong id="policyLogsEffectiveCount">0</strong>
+                        </div>
+                        <div class="policy-summary-chip">
+                            <span>Violations (24h)</span>
+                            <strong id="policyLogsViolationCount">0</strong>
+                        </div>
+                        <div class="policy-summary-chip">
+                            <span>Agent Version</span>
+                            <strong id="policyLogsAgentVersion">--</strong>
+                        </div>
+                    </div>
+                    <div class="policy-modal-caption mt-3 mb-2">Showing the latest policy violations returned by the
+                        live device policy API.</div>
+                    <div id="policyLogsModalList" class="policy-incident-list policy-log-scroll policy-log-modal-list">
+                        <div class="text-muted font-monospace" style="font-size: 12px;">Awaiting policy history...</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a href="{{ url_for('tracking_bp.device_history', device_id=device.id, focus='policy') }}"
+                        class="mo-btn mo-btn-ghost">Open History Page</a>
+                    <button type="button" class="mo-btn mo-btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=6">
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.TRACKING_DEVICE_LIVE_CONFIG = {
+        deviceId: {{ device.id }},
+        macAddress: {{ (device.mac_address or '') | tojson }},
+        pollMs: 5000,
+        initialDisplayIp: {{ (display_ip or '') | tojson }},
+        initialStatus: {{ (device.availability_status or 'offline') | tojson }},
+        initialAgentSyncAt: {{ ((device.last_agent_sync_at.isoformat() + 'Z') if device.last_agent_sync_at else '') | tojson }},
+        initialLastSeenUtc: {{ (initial_last_seen_utc or '') | tojson }},
+        deviceType: {{ (device_type_label or 'Workstation') | tojson }},
+        policyStatus: {{ (policy_status or 'compliant') | tojson }},
+        policyDomain: {{ (policy_domain or '') | tojson }},
+        initialDailyUptime: {{ (initial_daily_uptime or {}) | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/tracking/console/stateMachine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/risk.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/telemetryState.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/cacheStore.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/mutationLocks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/eventFeedStore.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/ackFallbackStore.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/apiNormalizer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}"></script>
+{% endblock %}

@@ -1,10 +1,14 @@
 import schedule
 import time
 import threading
+import logging
 from datetime import datetime
 from services.device_monitor import DeviceMonitor
+from services.operational_error_handling import log_operational_exception, summarize_exception
 import asyncio
 from extensions import db
+
+logger = logging.getLogger(__name__)
 
 class MonitoringScheduler:
     def __init__(self, app):
@@ -24,6 +28,23 @@ class MonitoringScheduler:
 
         # Tracking reconciliation every 60 seconds
         schedule.every(60).seconds.do(self.run_tracking_reconciliation)
+
+        # Reporting rollups: closed hours/days materialized before cleanup windows.
+        schedule.every().hour.at(self.app.config.get('SERVER_HEALTH_HOURLY_ROLLUP_AT', ':08')).do(
+            self.run_server_health_hourly_rollup
+        )
+        schedule.every().hour.at(self.app.config.get('TRACKING_HOURLY_ROLLUP_AT', ':12')).do(
+            self.run_tracking_hourly_rollup
+        )
+        schedule.every().day.at(self.app.config.get('DAILY_DEVICE_STATS_SCHEDULE', '00:15')).do(
+            self.run_daily_device_stats_rollup
+        )
+        schedule.every().day.at(self.app.config.get('SERVER_HEALTH_DAILY_ROLLUP_SCHEDULE', '00:25')).do(
+            self.run_server_health_daily_rollup
+        )
+        schedule.every().day.at(self.app.config.get('TRACKING_DAILY_ROLLUP_SCHEDULE', '00:35')).do(
+            self.run_tracking_daily_rollup
+        )
         
         # Daily report at 23:59
         schedule.every().day.at("23:59").do(self.generate_daily_report)
@@ -40,6 +61,9 @@ class MonitoringScheduler:
         tracking_integrity_time = self.app.config.get('TRACKING_INTEGRITY_CHECK_SCHEDULE', '03:30')
         schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_integrity)
         schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_retention)
+        
+        # Sync maintenance windows to devices every minute
+        schedule.every(1).minutes.do(self.sync_maintenance_windows)
         
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self.run_scheduler)
@@ -66,6 +90,37 @@ class MonitoringScheduler:
         while self.is_running:
             schedule.run_pending()
             time.sleep(1)
+
+    def sync_maintenance_windows(self):
+        """Synchronize active maintenance windows with the boolean device.maintenance_mode column."""
+        with self.app.app_context():
+            try:
+                from models.device import Device
+                from services.maintenance_window_service import maintenance_window_service
+                
+                devices = Device.query.all()
+                device_ids = [d.device_id for d in devices]
+                active_map = maintenance_window_service.get_active_window_map(device_ids)
+                
+                updates = 0
+                for device in devices:
+                    current_status = bool(getattr(device, "maintenance_mode", False))
+                    should_be_in_maintenance = device.device_id in active_map
+                    
+                    if current_status != should_be_in_maintenance:
+                        device.maintenance_mode = should_be_in_maintenance
+                        updates += 1
+                        
+                if updates > 0:
+                    db.session.commit()
+                    logger.info(f"[MAINTENANCE] Synced maintenance mode for {updates} devices.")
+                    
+            except Exception as e:
+                logger.error(f"[MAINTENANCE] Error syncing maintenance windows: {e}")
+                db.session.rollback()
+            finally:
+                db.session.remove()
+
     
     def run_monitoring_task(self):
         """Run monitoring task within application context"""
@@ -87,12 +142,18 @@ class MonitoringScheduler:
 
                 report = run_reconciliation(force_discovery=False, dry_run=None)
                 if not report.success and report.error_code != 'TRACKING_RECONCILIATION_BUSY':
-                    print(
-                        "[TRACKING] reconciliation failed: "
-                        f"code={report.error_code} error={report.error}"
+                    logger.warning(
+                        "[TRACKING] reconciliation failed: code=%s error=%s",
+                        report.error_code,
+                        summarize_exception(Exception(report.error or 'unknown')),
                     )
             except Exception as e:
-                print(f"[TRACKING] scheduler reconciliation error: {e}")
+                log_operational_exception(
+                    logger,
+                    "[TRACKING] scheduler reconciliation error",
+                    e,
+                    error_code='TRACKING_SCHEDULER_FAILED',
+                )
             finally:
                 db.session.remove()
     
@@ -144,6 +205,87 @@ class MonitoringScheduler:
                 print(f"Server health retention completed: success={result.get('success')}")
             except Exception as e:
                 print(f"Error running metrics retention: {e}")
+            finally:
+                db.session.remove()
+
+    def run_daily_device_stats_rollup(self):
+        """Aggregate the previous day's scan history into daily stats."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.aggregate_daily_stats()
+                print(
+                    "[REPORTING] daily device stats completed: "
+                    f"success={result.get('success')} date={result.get('target_date')} "
+                    f"devices={result.get('devices_aggregated', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running daily device stats rollup: {e}")
+            finally:
+                db.session.remove()
+
+    def run_server_health_hourly_rollup(self):
+        """Materialize closed hourly server-health buckets."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.rollup_server_health_hourly()
+                print(
+                    "[ROLLUP] server health hourly completed: "
+                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running server health hourly rollup: {e}")
+            finally:
+                db.session.remove()
+
+    def run_server_health_daily_rollup(self):
+        """Materialize closed daily server-health buckets."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.rollup_server_health_daily()
+                print(
+                    "[ROLLUP] server health daily completed: "
+                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running server health daily rollup: {e}")
+            finally:
+                db.session.remove()
+
+    def run_tracking_hourly_rollup(self):
+        """Materialize closed hourly tracking buckets."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.rollup_tracking_hourly()
+                print(
+                    "[ROLLUP] tracking hourly completed: "
+                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running tracking hourly rollup: {e}")
+            finally:
+                db.session.remove()
+
+    def run_tracking_daily_rollup(self):
+        """Materialize closed daily tracking buckets."""
+        with self.app.app_context():
+            try:
+                from services.maintenance_service import maintenance_service
+
+                result = maintenance_service.rollup_tracking_daily()
+                print(
+                    "[ROLLUP] tracking daily completed: "
+                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                )
+            except Exception as e:
+                print(f"Error running tracking daily rollup: {e}")
             finally:
                 db.session.remove()
 

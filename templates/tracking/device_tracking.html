@@ -11,44 +11,38 @@
             <div class="tracking-page-header d-flex flex-column gap-3">
                 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
                     <div>
-                        <h1 class="tracking-title"><i data-lucide="monitor"></i> Live Tracking</h1>
-                        <p class="lead mb-0">Operator control center for stored workstations, live agent discovery, and IP reconciliation.</p>
-                    </div>
-                    <div class="tracking-realtime-pill d-flex align-items-center gap-2">
-                        <span class="status-dot healthy"></span>
-                        <span id="trackingRefreshStatus">Auto-refresh every 15s</span>
-                        <button class="tactical-btn-outline tactical-btn-icon-only" id="trackingManualRefreshBtn" type="button" title="Refresh now">
-                            <i data-lucide="refresh-cw" class="tracking-icon-sm"></i>
-                        </button>
+                        <h1 class="tracking-title-ops"><i data-lucide="monitor"></i> LIVE TRACKING</h1>
+                        <p class="tracking-subtitle-ops mb-0">Operator control center for stored workstations, live
+                            agent discovery, and IP reconciliation.</p>
                     </div>
                 </div>
 
-                <div class="tracking-action-bar d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="ops-action-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <button class="tactical-btn-primary" type="button" id="trackingScanBtn">
+                        <button class="ops-btn ops-btn-primary" type="button" id="trackingScanBtn">
                             <i data-lucide="search" class="tracking-icon-sm"></i> Scan Network
                         </button>
-                        <button class="tactical-btn-outline open-add-device" type="button">
+                        <button class="ops-btn ops-btn-ghost" type="button">
                             <i data-lucide="plus" class="tracking-icon-sm"></i> Add Device
                         </button>
-                        <button class="tactical-btn-outline tracking-btn-secondary" type="button" id="syncBtn">
+                        <button class="ops-btn ops-btn-ghost" type="button" id="syncBtn">
                             <i data-lucide="refresh-cw" class="tracking-icon-sm"></i> Sync IPs
                         </button>
-                        <a href="{{ url_for('tracking_bp.live_tracking') }}" class="tactical-btn-outline">
+                        <a href="{{ url_for('tracking_bp.live_tracking') }}"
+                            class="ops-btn ops-btn-ghost text-decoration-none">
                             <i data-lucide="activity" class="tracking-icon-sm"></i> Go Live
                         </a>
                         {% if session.get('role') == 'admin' %}
-                        <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}" class="tactical-btn-outline tracking-btn-secondary">
+                        <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}"
+                            class="ops-btn ops-btn-ghost text-decoration-none">
                             <i data-lucide="shield-alert" class="tracking-icon-sm"></i> Restricted Sites
                         </a>
                         {% endif %}
                     </div>
-                    <div class="tracking-action-meta d-flex align-items-center gap-2 flex-wrap">
-                        <span class="tracking-info-badge">
-                            <i data-lucide="info" class="tracking-icon-xs"></i>
-                            Scanner probes port 5002 for agent identity
-                        </span>
-                        <small class="text-muted" id="trackingLastRefreshedText">Last refreshed: n/a</small>
+                    <div class="ops-refresh-info d-flex align-items-center gap-2">
+                        <span class="ops-last-refresh" id="trackingLastRefreshedText">Last refreshed n/a</span>
+                        <span class="status-dot ops-dot-breathing tracking-indicator-dot healthy"></span>
+                        <span id="trackingRefreshStatus" class="d-none">Live polling active</span>
                     </div>
                 </div>
             </div>
@@ -57,333 +51,284 @@
 
     <div class="row g-3 mb-4 tracking-section-ops" id="device-kpi-row">
         <div class="col-md-3 col-sm-6">
-            <div class="tactical-stat-card device-kpi-card enterprise-kpi">
-                <div class="kpi-view-icon"><i data-lucide="laptop" class="tracking-icon-sm"></i></div>
-                <div class="stat-label">TOTAL DEVICES</div>
-                <div class="stat-value text-white" id="trackingKpiTotal">{{ saved_devices|length }}</div>
-                <div class="metric-sub">
-                    <span class="text-secondary">Managed endpoints</span>
-                    <span class="tracking-kpi-trend" id="trackingKpiTotalTrend">Stable</span>
+            <div class="ops-kpi-card ops-kpi-total">
+                <div class="ops-kpi-accent"></div>
+                <div class="kpi-header">
+                    <span class="stat-label">TOTAL DEVICES</span>
                 </div>
+                <div class="stat-value" id="trackingKpiTotal">{{ saved_devices|length }}</div>
+                <div class="metric-sub">Managed endpoints</div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
-            <div class="tactical-stat-card device-kpi-card enterprise-kpi healthy">
-                <div class="kpi-view-icon text-success"><i data-lucide="wifi" class="tracking-icon-sm"></i>
+            <div class="ops-kpi-card ops-kpi-healthy">
+                <div class="ops-kpi-accent bg-teal"></div>
+                <div class="kpi-header">
+                    <span class="stat-label">REACHABLE NOW</span>
                 </div>
-                <div class="stat-label">REACHABLE NOW</div>
-                <div class="stat-value status-text-online" id="trackingKpiReachable">{{ reachable_count|default(online_count|default(0)) }}</div>
-                <div class="metric-sub">
-                    <span class="text-secondary">Online + degraded</span>
-                    <span class="tracking-kpi-trend" id="trackingKpiReachableTrend">Stable</span>
+                <div class="stat-value" id="trackingKpiReachable">{{ reachable_count|default(online_count|default(0)) }}
                 </div>
+                <div class="metric-sub">Online + degraded</div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
-            <div
-                class="tactical-stat-card device-kpi-card enterprise-kpi {% if offline_count|default(0) > 0 %}critical{% endif %}">
-                <div
-                    class="kpi-view-icon {% if offline_count|default(0) > 0 %}text-danger{% else %}text-muted{% endif %}">
-                    <i data-lucide="power-off" class="tracking-icon-sm"></i>
+            <div class="ops-kpi-card ops-kpi-critical {% if offline_count|default(0) > 0 %}pulse-offline{% endif %}">
+                <div class="ops-kpi-accent bg-red"></div>
+                <div class="kpi-header">
+                    <span class="stat-label">OFFLINE</span>
                 </div>
-                <div class="stat-label">OFFLINE</div>
-                <div class="stat-value {% if offline_count|default(0) > 0 %}text-danger{% else %}text-white{% endif %}" id="trackingKpiOffline">
-                    {{ offline_count|default(0) }}</div>
-                <div class="metric-sub">
-                    <span class="text-secondary">Unreachable agents</span>
-                    <span class="tracking-kpi-trend" id="trackingKpiOfflineTrend">Stable</span>
-                </div>
+                <div class="stat-value" id="trackingKpiOffline">{{ offline_count|default(0) }}</div>
+                <div class="metric-sub">Unreachable agents</div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
-            <div class="tactical-stat-card device-kpi-card enterprise-kpi warning">
-                <div class="kpi-view-icon text-warning"><i data-lucide="history" class="tracking-icon-sm"></i>
+            <div class="ops-kpi-card ops-kpi-warning">
+                <div class="ops-kpi-accent bg-amber"></div>
+                <div class="kpi-header">
+                    <span class="stat-label">ACTIVE AGENT CHECK-INS</span>
                 </div>
-                <div class="stat-label">ACTIVE AGENT CHECK-INS</div>
-                <div class="stat-value text-warning" id="trackingKpiActive24h">{{ active_agent_checkins|default(0) }}</div>
-                <div class="metric-sub">
-                    <span class="text-secondary">Recent push syncs</span>
-                    <span class="tracking-kpi-trend" id="trackingKpiActive24hTrend">{{ (active_agent_checkins|default(0)) ~ ' in ' ~ (agent_sync_window_seconds|default(180)) ~ 's window' }}</span>
-                </div>
+                <div class="stat-value" id="trackingKpiActive24h">{{ active_agent_checkins|default(0) }}</div>
+                <div class="metric-sub">Recent push syncs</div>
             </div>
         </div>
     </div>
 
     <div class="row mt-4 tracking-section-devices">
-        <div class="col-md-12">
-            <div class="tactical-stat-card tracking-stored-card mt-4">
-                <div
-                    class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
-                    <div class="d-flex align-items-center gap-2">
-                        <i data-lucide="laptop" class="tracking-icon-md"></i> <span>STORED EMPLOYEE
-                            DEVICES</span>
-                    </div>
-                    <button class="tactical-btn-outline open-add-device" type="button">
-                        <i data-lucide="plus" class="tracking-icon-sm"></i> Add Device
-                    </button>
+        <div class="ops-stored-card mt-4">
+            <div
+                class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="ops-section-title">STORED EMPLOYEE DEVICES</span>
                 </div>
-                <div class="card-body p-0">
-                    <div class="tracking-device-summary-strip">
-                        <span class="tracking-summary-pill"><strong id="managedCount">{{ saved_devices|length }}</strong> Managed</span>
-                        <span class="tracking-summary-pill"><strong id="unassignedCount">0</strong> Unassigned</span>
-                        <span class="tracking-summary-pill attention" id="needsAttentionPill"><strong id="needsAttentionCount">0</strong> Needs Attention</span>
-                    </div>
-                    <div class="row g-2 align-items-center p-3 border-bottom mb-0 tracking-filter-row">
-                        <div class="col-lg-5 col-md-7">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text px-2 bg-transparent border-secondary text-secondary"><i
-                                        data-lucide="search" class="tracking-icon-sm"></i></span>
-                                <input type="text" class="form-control tactical-input m-0 w-auto flex-grow-1 h-auto tracking-search-input"
-                                    id="deviceSearchInput"
-                                    placeholder="Search by device, employee, hostname...">
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-5">
-                            <div class="tracking-chip-group" id="quickDeviceFilters">
-                                <button type="button" class="tracking-chip active" data-chip-filter="all">All</button>
-                                <button type="button" class="tracking-chip" data-chip-filter="online">Online</button>
-                                <button type="button" class="tracking-chip" data-chip-filter="offline">Offline</button>
-                                <button type="button" class="tracking-chip" data-chip-filter="unassigned">Unassigned</button>
-                                <button type="button" class="tracking-chip" data-chip-filter="needs_sync">Needs Sync</button>
-                            </div>
-                        </div>
-                        <div class="col-lg-2 col-md-6">
-                            <select class="form-select tactical-select m-0 w-100 h-auto py-1 text-secondary"
-                                id="deviceStatusFilter">
-                                <option value="all">All Status</option>
-                                <option value="online">Online</option>
-                                <option value="degraded">Degraded</option>
-                                <option value="offline">Offline</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2 col-md-6 text-md-end">
-                            <small class="text-muted"><span id="deviceVisibleCount">{{ saved_devices|length }}</span>
-                                shown</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="row g-2 align-items-center px-4 py-3 border-bottom mb-0 tracking-filter-row">
+                    <div class="col-lg-5 col-md-5">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-transparent border-0 pe-1 pl-0 text-muted">
+                                <i data-lucide="search" class="tracking-icon-sm"></i>
+                            </span>
+                            <input type="text" class="form-control ops-search-input shadow-none" id="deviceSearchInput"
+                                placeholder="Search devices...">
                         </div>
                     </div>
+                    <div class="col-lg-5 col-md-4">
+                        <div class="d-flex gap-2 ops-filter-tabs" id="quickDeviceFilters">
+                            <button type="button" class="ops-tab active" data-chip-filter="all">All <span
+                                    class="ops-tab-count" id="tabCountAll">{{ saved_devices|length }}</span></button>
+                            <button type="button" class="ops-tab" data-chip-filter="online">Online <span
+                                    class="ops-tab-count">0</span></button>
+                            <button type="button" class="ops-tab" data-chip-filter="offline">Offline <span
+                                    class="ops-tab-count">0</span></button>
+                            <button type="button" class="ops-tab" data-chip-filter="unassigned">Unassigned <span
+                                    class="ops-tab-count">0</span></button>
+                            <button type="button" class="ops-tab" data-chip-filter="needs_sync">Needs Sync <span
+                                    class="ops-tab-count">0</span></button>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-3 d-flex justify-content-end align-items-center gap-3">
+                        <select class="form-select ops-select shadow-none" id="deviceStatusFilter">
+                            <option value="all">All Status</option>
+                            <option value="online">Online</option>
+                            <option value="degraded">Degraded</option>
+                            <option value="offline">Offline</option>
+                        </select>
+                    </div>
+                </div>
 
-                    <div class="table-responsive border border-secondary rounded overflow-auto tracking-table-wrap">
-                        <table class="table table-hover tactical-table tracking-device-table w-100 mb-0 border-0">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Device</th>
-                                    <th>Status</th>
-                                    <th>Network Info</th>
-                                    <th>Last Seen</th>
-                                    <th class="text-end">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="deviceList">
-                                {% for device in saved_devices %}
-                                {% set device_status = check_device_status(device) %}
-                                <tr id="device-row-{{ device.id }}" data-device-row="true"
-                                    data-device-status="{{ device_status }}" data-mac="{{ device.mac_address }}"
-                                    data-unassigned="{{ 1 if not (device.employee_name or '')|trim else 0 }}"
-                                    data-needs-sync="{{ 1 if (not device.ip_address) or device_status == 'offline' else 0 }}"
-                                    data-search-index="{{ ((device.device_name or '') ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or '') ~ ' ' ~ (device.site_id or '') ~ ' ' ~ (device.department_id or ''))|lower }}">
-                                    <td class="device-name-cell">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <div class="tracking-device-icon">
-                                                <i data-lucide="laptop" class="text-muted tracking-icon-sm tracking-icon-stroke"></i>
-                                            </div>
-                                            <div>
-                                                <strong>{{ device.device_name }}</strong>
-                                                <div class="device-mac">{{ device.employee_name or 'Unassigned' }}</div>
-                                                <div class="tracking-scope-meta">Site: {{ device.site_id or '-' }} | Dept: {{ device.department_id or '-' }}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="tracking-status-cell">
-                                        {% if device_status == 'online' %}
-                                        <span class="tactical-badge tactical-badge-healthy status-badge">ONLINE</span>
-                                        {% elif device_status == 'degraded' %}
-                                        <span class="tactical-badge tactical-badge-warning status-badge">DEGRADED</span>
-                                        {% elif device_status == 'offline' %}
-                                        <span class="tactical-badge tactical-badge-critical status-badge">OFFLINE</span>
+                <div class="table-responsive border-0 overflow-auto tracking-table-wrap mt-3">
+                    <table class="table ops-table w-100 mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-4">DEVICE</th>
+                                <th>STATUS</th>
+                                <th>NETWORK INFO</th>
+                                <th>LAST SEEN</th>
+                                <th class="text-end pe-4">ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceList">
+                            {% for device in saved_devices %}
+                            {% set device_status = check_device_status(device) %}
+                            <tr id="device-row-{{ device.id }}" class="ops-device-row status-{{ device_status }}"
+                                data-device-row="true" data-device-status="{{ device_status }}"
+                                data-mac="{{ device.mac_address }}"
+                                data-unassigned="{{ 1 if not (device.employee_name or '')|trim else 0 }}"
+                                data-needs-sync="{{ 1 if (not device.ip_address) or device_status == 'offline' else 0 }}"
+                                data-search-index="{{ ((device.device_name or '') ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or '') ~ ' ' ~ (device.site_id or '') ~ ' ' ~ (device.department_id or ''))|lower }}">
+                                <td class="ps-4">
+                                    <div class="ops-hostname">{{ device.device_name or device.hostname }}</div>
+                                    <div class="ops-assignee">{{ device.employee_name or 'Unassigned' }}</div>
+                                </td>
+                                <td>
+                                    <span class="ops-status-badge {{ device_status }}">{{ device_status|upper }}</span>
+                                </td>
+                                <td>
+                                    <div class="ops-network-line">IP <strong>{{ device.ip_address or 'N/A' }}</strong>
+                                    </div>
+                                    <div class="ops-network-line">MAC <strong>{{ device.mac_address }}</strong></div>
+                                </td>
+                                <td>
+                                    <div class="ops-time-main">
+                                        {% if device.last_seen %}
+                                        {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
                                         {% else %}
-                                        <span class="tactical-badge tactical-badge-warning status-badge">UNKNOWN</span>
+                                        Never
                                         {% endif %}
-                                        <br>
-                                        <div class="text-muted tracking-status-meta mt-1">
-                                            {% if device.last_seen %}
-                                            Last seen: {{ device.last_seen.strftime('%Y-%m-%d') }}
-                                            {% else %}
-                                            Last seen: Never
-                                            {% endif %}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="tracking-network-line"><span>IP</span><strong class="text-success tracking-ip-value">{{ device.ip_address or 'N/A' }}</strong></div>
-                                        <div class="tracking-network-line"><span>MAC</span><strong>{{ device.mac_address }}</strong></div>
-                                        <div class="tracking-network-line"><span>HOST</span><strong class="tracking-host-value">{{ device.hostname or 'N/A' }}</strong></div>
-                                    </td>
-                                    <td>
-                                        <div class="tracking-last-seen-main">
-                                            {% if device.last_seen %}
-                                            {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
-                                            {% else %}
-                                            <span class="text-muted">Never</span>
-                                            {% endif %}
-                                        </div>
-                                        <div class="text-muted mt-1 tracking-last-seen-sub">
-                                            {% if device.created_at %}
-                                            Added: {{ device.created_at.strftime('%Y-%m-%d') }}
-                                            {% endif %}
-                                        </div>
-                                    </td>
-                                    <td class="text-end">
-                                        <div class="btn-group device-actions justify-content-end">
-                                            <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}"
-                                                class="tactical-btn-live" title="Live Tracking">
-                                                <i data-lucide="play"
-                                                    class="tracking-icon-sm me-1"></i> Live
-                                            </a>
-                                            <a href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"
-                                                class="tactical-btn-outline tactical-btn-icon-only" title="View History">
-                                                <i data-lucide="history" class="tracking-icon-sm"></i>
-                                            </a>
-                                            {% if workstation_ui_v2 %}
-                                            <a href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}"
-                                                class="tactical-btn-outline tactical-btn-icon-only" title="Monitor Workstation">
-                                                <i data-lucide="monitor" class="tracking-icon-sm"></i>
-                                            </a>
-                                            {% endif %}
-                                            <button class="tactical-btn-outline tactical-btn-icon-only edit-device"
-                                                data-device='{{ device.to_dict() | tojson | e }}' type="button"
-                                                title="Edit Device">
-                                                <i data-lucide="edit" class="tracking-icon-sm"></i>
-                                            </button>
-                                            <button class="tactical-btn-outline tactical-btn-icon-only delete-device tracking-delete-btn"
-                                                data-device-id="{{ device.id }}"
-                                                data-mac="{{ device.mac_address }}"
-                                                data-device-name="{{ device.device_name }}" type="button"
-                                                title="Delete Device">
-                                                <i data-lucide="trash-2" class="tracking-icon-sm"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr id="deviceListEmptyRow">
-                                    <td colspan="5" class="text-center py-4">
-                                        <i data-lucide="laptop" class="text-muted mb-3 tracking-icon-lg"></i>
-                                        <h5>No Devices Configured</h5>
-                                        <p class="text-muted mb-2">Add your first employee endpoint, then use scan and
-                                            sync to keep the list current.</p>
-                                        <button
-                                            class="tactical-btn-outline open-add-device"
-                                            type="button">
-                                            <i data-lucide="plus"></i> Add Your First Device
+                                    </div>
+                                </td>
+                                <td class="text-end pe-4">
+                                    <div class="btn-group ops-actions justify-content-end align-items-center gap-2">
+                                        <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}"
+                                            class="ops-btn ops-btn-live text-decoration-none"
+                                            title="Live Tracking">LIVE</a>
+                                        <button class="ops-btn ops-btn-icon edit-device"
+                                            data-device='{{ device.to_dict() | tojson | e }}' type="button"
+                                            title="Edit Device">
+                                            <i data-lucide="edit" class="tracking-icon-sm"></i>
                                         </button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div id="deviceFilterEmptyState" class="tracking-filter-empty-state text-center py-4 d-none">
-                        <i data-lucide="filter" class="text-muted mb-2 tracking-icon-lg"></i>
-                        <p class="mb-0">No stored devices match the current filter.</p>
-                    </div>
-
-                    {% if saved_devices %}
-                    <div class="p-3 border-top border-secondary">
-                        <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-                            <div class="d-flex gap-2">
-                                <button class="tactical-btn-outline text-secondary border-secondary" id="exportDevicesBtn" type="button">
-                                    <i data-lucide="download" class="tracking-icon-sm"></i> Export List
-                                </button>
-                                <div class="dropdown">
-                                    <button class="tactical-btn-outline dropdown-toggle" type="button" id="bulkActionsMenu" data-bs-toggle="dropdown" aria-expanded="false">
-                                        <i data-lucide="settings-2" class="tracking-icon-sm"></i> Bulk Actions
+                                        <button class="ops-btn ops-btn-icon delete-device tracking-delete-btn"
+                                            data-device-id="{{ device.id }}" data-mac="{{ device.mac_address }}"
+                                            data-device-name="{{ device.device_name }}" type="button"
+                                            title="Delete Device">
+                                            <i data-lucide="trash-2" class="tracking-icon-sm"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr id="deviceListEmptyRow">
+                                <td colspan="5" class="text-center py-4">
+                                    <i data-lucide="laptop" class="text-muted mb-3 tracking-icon-lg"></i>
+                                    <h5>No Devices Configured</h5>
+                                    <p class="text-muted mb-2">Add your first employee endpoint, then use scan and sync
+                                        to keep the list current.</p>
+                                    <button class="tactical-btn-outline open-add-device" type="button">
+                                        <i data-lucide="plus"></i> Add Your First Device
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-                                        <li>
-                                            <button class="dropdown-item text-warning" id="bulkEditBtn" type="button">
-                                                <i data-lucide="edit" class="tracking-icon-sm me-1"></i> Bulk Edit
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <small class="text-muted ms-lg-2">{{ saved_devices|length }} device(s) total</small>
-                        </div>
-                    </div>
-                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
+
+                <div id="deviceFilterEmptyState" class="tracking-filter-empty-state text-center py-4 d-none">
+                    <i data-lucide="filter" class="text-muted mb-2 tracking-icon-lg"></i>
+                    <p class="mb-0">No stored devices match the current filter.</p>
+                </div>
+
+                {% if saved_devices %}
+                <div class="p-3 border-top border-secondary">
+                    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+                        <div class="d-flex gap-2">
+                            <button class="tactical-btn-outline text-secondary border-secondary" id="exportDevicesBtn"
+                                type="button">
+                                <i data-lucide="download" class="tracking-icon-sm"></i> Export List
+                            </button>
+                            <div class="dropdown">
+                                <button class="tactical-btn-outline dropdown-toggle" type="button" id="bulkActionsMenu"
+                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i data-lucide="settings-2" class="tracking-icon-sm"></i> Bulk Actions
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                                    <li>
+                                        <button class="dropdown-item text-warning" id="bulkEditBtn" type="button">
+                                            <i data-lucide="edit" class="tracking-icon-sm me-1"></i> Bulk Edit
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <small class="text-muted ms-lg-2">{{ saved_devices|length }} device(s) total</small>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 
     <div class="row mt-4 tracking-section-discovery">
         <div class="col-md-12">
-            <div class="tactical-stat-card tracking-scanner-card mt-4">
+            <div class="ops-stored-card mt-4">
                 <div
-                    class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                    class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 border-bottom-0 pb-0">
                     <div class="d-flex align-items-center gap-2">
-                        <i data-lucide="radio" class="tracking-icon-md"></i> <span>AGENT DISCOVERY AND
-                            SYNC</span>
+                        <span class="ops-section-title">AGENT DISCOVERY PIPELINE</span>
                     </div>
-                    <small class="text-muted">Scan -> Detect Agents -> Save -> Sync -> Monitor</small>
                 </div>
-                <div class="card-body">
-                    <div class="tracking-flow-strip mb-3">
-                        <span class="flow-step">Scan</span>
-                        <i data-lucide="chevron-right" class="tracking-icon-xs"></i>
-                        <span class="flow-step">Detect Agents</span>
-                        <i data-lucide="chevron-right" class="tracking-icon-xs"></i>
-                        <span class="flow-step">Save</span>
-                        <i data-lucide="chevron-right" class="tracking-icon-xs"></i>
-                        <span class="flow-step">Sync</span>
-                        <i data-lucide="chevron-right" class="tracking-icon-xs"></i>
-                        <span class="flow-step">Monitor</span>
+                <div class="card-body pt-3">
+                    <div class="ops-pipeline-stepper mb-4 mt-2">
+                        <div class="ops-step complete">
+                            <div class="ops-step-node"></div>
+                            <span class="ops-step-label">SCAN</span>
+                        </div>
+                        <div class="ops-step-divider complete"></div>
+                        <div class="ops-step active">
+                            <div class="ops-step-node"></div>
+                            <span class="ops-step-label">DETECT</span>
+                        </div>
+                        <div class="ops-step-divider"></div>
+                        <div class="ops-step">
+                            <div class="ops-step-node"></div>
+                            <span class="ops-step-label">SAVE</span>
+                        </div>
+                        <div class="ops-step-divider"></div>
+                        <div class="ops-step">
+                            <div class="ops-step-node"></div>
+                            <span class="ops-step-label">SYNC</span>
+                        </div>
+                        <div class="ops-step-divider"></div>
+                        <div class="ops-step">
+                            <div class="ops-step-node"></div>
+                            <span class="ops-step-label">MONITOR</span>
+                        </div>
                     </div>
+
+                    <div class="d-flex flex-wrap gap-3 mb-4">
+                        <div class="ops-discovery-stat">
+                            <div class="stat-main">
+                                <i data-lucide="activity" class="stat-icon text-teal"></i>
+                                <span class="stat-num text-teal">24</span>
+                            </div>
+                            <div class="stat-sub">Tracking Active</div>
+                            <div class="stat-meta text-muted">last 60s</div>
+                        </div>
+                        <div class="ops-discovery-stat">
+                            <div class="stat-main">
+                                <i data-lucide="unlock" class="stat-icon text-blue"></i>
+                                <span class="stat-num text-blue">5</span>
+                            </div>
+                            <div class="stat-sub">Port Open</div>
+                            <div class="stat-meta text-muted">last 60s</div>
+                        </div>
+                        <div class="ops-discovery-stat">
+                            <div class="stat-main">
+                                <i data-lucide="plus-circle" class="stat-icon text-amber"></i>
+                                <span class="stat-num text-amber">2</span>
+                            </div>
+                            <div class="stat-sub">New Devices</div>
+                            <div class="stat-meta text-muted">last 60s</div>
+                        </div>
+                    </div>
+
                     <div id="scanResultsBanner" class="alert alert-info d-none mb-3" role="status"></div>
 
-                    <div class="row g-3 mb-3" id="scanSummaryCards">
-                        <div class="col-md-4">
-                            <div class="tactical-stat-card device-kpi-card enterprise-kpi healthy">
-                                <div class="kpi-view-icon text-success"><i data-lucide="radio"
-                                        class="tracking-icon-sm"></i></div>
-                                <div class="stat-label">TRACKING ACTIVE</div>
-                                <div class="stat-value text-white" id="scanTrackingActiveCount">0</div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="tactical-stat-card device-kpi-card enterprise-kpi warning">
-                                <div class="kpi-view-icon text-warning"><i data-lucide="unlock"
-                                        class="tracking-icon-sm"></i></div>
-                                <div class="stat-label">PORT OPEN ONLY</div>
-                                <div class="stat-value text-warning" id="scanPortOnlyCount">0</div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="tactical-stat-card device-kpi-card enterprise-kpi">
-                                <div class="kpi-view-icon text-info"><i data-lucide="plus-circle"
-                                        class="tracking-icon-sm"></i></div>
-                                <div class="stat-label">NEW DEVICES</div>
-                                <div class="stat-value text-info" id="scanNewDevicesCount">0</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="scanResultsEmptyState" class="text-center text-muted py-4">
+                    <div id="scanResultsEmptyState" class="text-center text-muted py-4 d-none">
                         <i data-lucide="search" class="mb-3 discovery-empty-icon tracking-icon-lg"></i>
                         <p class="mb-1">No tracking-active agents discovered yet.</p>
                         <small class="text-muted">Run Scan Network to detect active endpoints.</small>
                     </div>
 
-                    <div class="table-responsive border border-secondary rounded overflow-auto tracking-table-wrap"
-                        id="scanResultsTableWrap" hidden>
-                        <table class="table table-hover tactical-table tracking-scan-table w-100 mb-0 border-0">
-                            <thead class="table-dark">
+                    <div class="table-responsive tracking-table-wrap" id="scanResultsTableWrap" hidden>
+                        <table class="table ops-table w-100 mb-0 border-0">
+                            <thead>
                                 <tr>
-                                    <th>Device</th>
-                                    <th>Status</th>
-                                    <th>Network Info</th>
-                                    <th>Tracking</th>
-                                    <th class="text-end">Action</th>
+                                    <th class="ps-4">DEVICE</th>
+                                    <th>STATUS</th>
+                                    <th>NETWORK INFO</th>
+                                    <th>TRACKING</th>
+                                    <th class="text-end pe-4">ACTION</th>
                                 </tr>
                             </thead>
                             <tbody id="scanResultsBody"></tbody>
@@ -393,97 +338,96 @@
             </div>
         </div>
     </div>
+</div>
+<div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Add Employee Device</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="deviceForm">
+                    <input type="hidden" id="editMac" name="mac_address">
 
-    <div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalTitle">Add Employee Device</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="deviceForm">
-                        <input type="hidden" id="editMac" name="mac_address">
+                    <div class="mb-3">
+                        <label class="form-label">Device Name</label>
+                        <input type="text" class="form-control tactical-input" id="deviceName" name="device_name"
+                            placeholder="Optional (auto-filled from hostname if empty)">
+                    </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Device Name</label>
-                            <input type="text" class="form-control tactical-input" id="deviceName" name="device_name"
-                                placeholder="Optional (auto-filled from hostname if empty)">
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label">Employee Name</label>
+                        <input type="text" class="form-control tactical-input" id="employeeName" name="employee_name"
+                            placeholder="Optional assignment label">
+                    </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Employee Name</label>
-                            <input type="text" class="form-control tactical-input" id="employeeName"
-                                name="employee_name" placeholder="Optional assignment label">
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">MAC Address</label>
-                                    <input type="text" class="form-control tactical-input" id="macAddress"
-                                        name="mac_address" pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
-                                    <div class="form-text">Optional when IP is provided. Format: 00:1A:2B:3C:4D:5E</div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">IP Address</label>
-                                    <input type="text" class="form-control tactical-input" id="ipAddress"
-                                        name="ip_address" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                                    <div class="form-text">Required if MAC is unknown. Backend resolves identity via Agent</div>
-                                </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">MAC Address</label>
+                                <input type="text" class="form-control tactical-input" id="macAddress"
+                                    name="mac_address" pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
+                                <div class="form-text">Optional when IP is provided. Format: 00:1A:2B:3C:4D:5E</div>
                             </div>
                         </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Hostname</label>
-                                    <input type="text" class="form-control tactical-input" id="hostname"
-                                        name="hostname">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Department</label>
-                                    <input type="text" class="form-control tactical-input" id="department"
-                                        name="department">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">IP Address</label>
+                                <input type="text" class="form-control tactical-input" id="ipAddress" name="ip_address"
+                                    pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                                <div class="form-text">Required if MAC is unknown. Backend resolves identity via Agent
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Notes</label>
-                            <textarea class="form-control tactical-input" id="notes" name="notes" rows="3"></textarea>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Hostname</label>
+                                <input type="text" class="form-control tactical-input" id="hostname" name="hostname">
+                            </div>
                         </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="tactical-btn-outline"
-                        id="saveDeviceBtn">Save Device</button>
-                </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Department</label>
+                                <input type="text" class="form-control tactical-input" id="department"
+                                    name="department">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control tactical-input" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="tactical-btn-outline" id="saveDeviceBtn">Save Device</button>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title"><i data-lucide="archive"></i> Confirm Archive</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Are you sure you want to archive device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
-                    <p class="text-muted mb-0"><small>Archive keeps history for audits. Super-admin purge is required for permanent deletion.</small></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="tactical-btn-outline text-danger border-danger"
-                        id="confirmDeleteBtn">Archive Device</button>
-                </div>
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i data-lucide="archive"></i> Confirm Archive</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to archive device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
+                <p class="text-muted mb-0"><small>Archive keeps history for audits. Super-admin purge is required for
+                        permanent deletion.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="tactical-btn-outline text-danger border-danger"
+                    id="confirmDeleteBtn">Archive Device</button>
             </div>
         </div>
     </div>
@@ -491,7 +435,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=11">
 {% endblock %}
 
 {% block extra_js %}

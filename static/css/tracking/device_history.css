@@ -1,0 +1,464 @@
+#device-history-page {
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-header-row {
+    margin-bottom: 0.2rem;
+}
+
+#device-history-page .history-page-title {
+    margin: 0;
+    font-size: 1.06rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-device-title {
+    font-size: 0.84rem;
+    color: var(--e-text-secondary, #c3cfdb);
+}
+
+#device-history-page .history-meta {
+    font-size: 0.68rem;
+    color: var(--e-text-muted, #8a97a6);
+    font-family: var(--t-sans, 'IBM Plex Sans', sans-serif);
+}
+
+#device-history-page .history-surface {
+    background: var(--e-bg-panel, rgba(16, 19, 27, 0.92));
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 6px;
+    box-shadow: none;
+}
+
+#device-history-page .card {
+    background: var(--e-bg-panel, rgba(16, 19, 27, 0.92));
+    border-color: rgba(148, 163, 184, 0.14);
+}
+
+#device-history-page .history-control-card .card-body,
+#device-history-page .history-main-card .card-body,
+#device-history-page .history-actions-card .card-body {
+    padding: 0.74rem 0.82rem;
+}
+
+#device-history-page .history-control-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--e-text-muted, #8a97a6);
+    margin-bottom: 0.3rem;
+}
+
+#device-history-page .history-control-select,
+#device-history-page .history-control-card .form-select {
+    height: 32px;
+    border-radius: 4px;
+}
+
+#device-history-page .history-time-controls {
+    row-gap: 0.35rem;
+}
+
+#device-history-page .history-time-fixed {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    border-radius: 4px;
+    border: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--e-text-secondary, #c3cfdb);
+    font-size: 0.64rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.58rem;
+}
+
+#device-history-page .history-time-btn,
+#device-history-page .history-refresh-btn,
+#device-history-page .history-nav-btn,
+#device-history-page .history-inline-btn,
+#device-history-page .history-action-btn {
+    border-radius: 4px;
+    font-size: 0.69rem;
+    line-height: 1.2;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 0.32rem 0.62rem;
+}
+
+#device-history-page .tactical-btn-outline {
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    color: var(--e-text-secondary, #c3cfdb);
+}
+
+#device-history-page .tactical-btn-outline:hover,
+#device-history-page .tactical-btn-outline.active {
+    border-color: rgba(148, 163, 184, 0.26);
+    background: rgba(148, 163, 184, 0.10);
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .tactical-btn-outline:focus,
+#device-history-page .tactical-btn-outline:focus-visible,
+#device-history-page .history-control-select:focus,
+#device-history-page .form-select:focus {
+    border-color: rgba(148, 163, 184, 0.28);
+    box-shadow: 0 0 0 0.11rem rgba(148, 163, 184, 0.16);
+    outline: none;
+}
+
+#device-history-page .history-time-btn.active {
+    border-color: var(--e-border-strong, rgba(148, 163, 184, 0.32));
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-integrity-legend {
+    margin-top: 0.4rem;
+}
+
+#device-history-page .history-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    font-size: 0.59rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1;
+    padding: 0.2rem 0.48rem;
+}
+
+#device-history-page .history-badge-verified {
+    background: var(--s-healthy-bg, rgba(32, 201, 151, 0.10));
+    border-color: var(--s-healthy-bd, rgba(32, 201, 151, 0.24));
+    color: #7acfb8;
+}
+
+#device-history-page .history-badge-legacy {
+    background: var(--s-warning-bg, rgba(255, 193, 7, 0.10));
+    border-color: var(--s-warning-bd, rgba(255, 193, 7, 0.28));
+    color: #f2d47a;
+}
+
+#device-history-page .history-badge-partial {
+    background: rgba(56, 139, 192, 0.18);
+    border-color: rgba(56, 139, 192, 0.36);
+    color: #98bdd7;
+}
+
+#device-history-page .history-badge-invalid,
+#device-history-page .history-action-danger {
+    background: var(--s-critical-bg, rgba(220, 53, 69, 0.12));
+    border-color: var(--s-critical-bd, rgba(220, 53, 69, 0.30));
+    color: #f5a0a8;
+}
+
+#device-history-page .history-badge-stale {
+    background: rgba(108, 117, 125, 0.14);
+    border-color: rgba(108, 117, 125, 0.28);
+    color: #9aabb8;
+}
+
+#device-history-page .history-muted {
+    color: var(--e-text-muted, #8a97a6);
+    font-size: 0.74rem;
+}
+
+#device-history-page .history-verdict-banner {
+    padding: 0.74rem 0.9rem;
+}
+
+#device-history-page .history-verdict-title {
+    font-size: 0.86rem;
+    letter-spacing: 0.03em;
+}
+
+#device-history-page .history-kpi-card {
+    position: relative;
+    min-height: 84px;
+    background: var(--e-bg-panel-soft, rgba(16, 19, 27, 0.72));
+    border: 1px solid var(--e-border-panel, rgba(148, 163, 184, 0.20));
+    padding: 0;
+    transition: transform var(--a-micro, 130ms) ease, border-color var(--a-micro, 130ms) ease;
+}
+
+#device-history-page .history-kpi-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+#device-history-page .history-kpi-card:hover {
+    border-color: var(--e-border-strong, rgba(148, 163, 184, 0.32));
+    transform: translateY(-1px);
+}
+
+#device-history-page .history-kpi-body {
+    padding: 0.52rem 0.64rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+#device-history-page .history-kpi-label {
+    font-size: var(--t-kpi-label, 0.63rem);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--e-text-muted, #8a97a6);
+    line-height: 1.1;
+}
+
+#device-history-page .history-kpi-value {
+    margin: 0;
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.02rem;
+    line-height: 1.05;
+    color: var(--e-text-primary, #e6edf5);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#device-history-page #stateLastSeen,
+#device-history-page #summarySamplingHealth {
+    font-size: 0.96rem;
+}
+
+#device-history-page .history-risk-card .card-body {
+    padding: 0.48rem 0.72rem;
+}
+
+#device-history-page .history-tabs-header,
+#device-history-page .history-actions-header {
+    padding: 0.58rem 0.82rem;
+    border-bottom: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    background: transparent;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--e-text-secondary, #c3cfdb);
+}
+
+#device-history-page .history-tabs {
+    gap: 0.36rem;
+    border-bottom: none;
+}
+
+#device-history-page .history-tabs .nav-link {
+    border: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.06);
+    color: var(--e-text-muted, #8a97a6);
+    font-size: 0.61rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.22rem 0.56rem;
+}
+
+#device-history-page .history-tabs .nav-link:hover {
+    border-color: var(--e-border-strong, rgba(148, 163, 184, 0.32));
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-tabs .nav-link.active {
+    border-color: var(--e-border-strong, rgba(148, 163, 184, 0.32));
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-loading-alert,
+#device-history-page .history-error-alert {
+    padding: 0.42rem 0.62rem;
+    font-size: 0.73rem;
+    border-radius: 4px;
+}
+
+#device-history-page .history-table {
+    margin-bottom: 0.4rem;
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--e-text-secondary, #c3cfdb);
+    --bs-table-border-color: rgba(148, 163, 184, 0.14);
+}
+
+#device-history-page .history-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0.44rem 0.58rem;
+    font-size: var(--t-table-header, 0.62rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--e-text-secondary, #c3cfdb);
+    background: rgba(12, 15, 22, 0.97);
+    border-bottom: 1px solid var(--e-border-strong, rgba(148, 163, 184, 0.32));
+}
+
+#device-history-page .history-table tbody td {
+    padding: 0.4rem 0.58rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    color: var(--e-text-secondary, #c3cfdb);
+    font-size: 0.78rem;
+    line-height: 1.28;
+    vertical-align: top;
+}
+
+#device-history-page .history-table tbody tr + tr td {
+    border-top: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+#device-history-page .history-table tbody tr:nth-child(even) {
+    background: var(--e-bg-row-alt, rgba(255, 255, 255, 0.018));
+}
+
+#device-history-page .history-table tbody tr:hover {
+    background: var(--e-bg-row-hover, rgba(148, 163, 184, 0.10));
+}
+
+#device-history-page .history-table .metric,
+#device-history-page .history-table td.metric,
+#device-history-page #activityBody td:nth-child(3),
+#device-history-page #resourcesBody td:nth-child(2),
+#device-history-page #resourcesBody td:nth-child(3),
+#device-history-page #resourcesBody td:nth-child(4),
+#device-history-page #resourcesBody td:nth-child(5),
+#device-history-page #resourcesBody td:nth-child(6),
+#device-history-page #applicationsBody td:nth-child(3) {
+    text-align: right;
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    font-variant-numeric: tabular-nums;
+}
+
+#device-history-page .history-inline-btn {
+    min-height: 30px;
+}
+
+#device-history-page .timeline-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16px, 1fr));
+    gap: 4px;
+    min-height: 22px;
+}
+
+#device-history-page .timeline-cell {
+    height: 18px;
+    border-radius: 3px;
+    opacity: 0.9;
+}
+
+#device-history-page .timeline-cell.verified {
+    background: #00a56f;
+}
+
+#device-history-page .timeline-cell.partial {
+    background: #357ea5;
+}
+
+#device-history-page .timeline-cell.legacy_approx {
+    background: #a88633;
+}
+
+#device-history-page .timeline-cell.invalid {
+    background: #a54854;
+}
+
+#device-history-page .timeline-cell.unknown {
+    background: #6b7385;
+}
+
+#device-history-page .history-actions-card {
+    position: sticky;
+    top: 14px;
+}
+
+#device-history-page .history-actions-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.44rem;
+}
+
+#device-history-page .history-action-btn {
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+#device-history-page .history-insight-card {
+    background: rgba(148, 163, 184, 0.06);
+    border: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    border-radius: 4px;
+    min-height: 66px;
+}
+
+#device-history-page .history-insight-card .card-body {
+    padding: 0.4rem 0.58rem;
+}
+
+#device-history-page .history-insight-label {
+    font-size: 0.61rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--e-text-muted, #8a97a6);
+}
+
+#device-history-page .history-insight-value {
+    margin-top: 0.1rem;
+    font-size: 0.76rem;
+    color: var(--e-text-primary, #e6edf5);
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    line-height: 1.25;
+}
+
+#device-history-page .history-time-cell-main {
+    font-family: var(--t-mono, 'IBM Plex Mono', monospace);
+    font-variant-numeric: tabular-nums;
+    color: var(--e-text-primary, #e6edf5);
+}
+
+#device-history-page .history-risk-pill {
+    background: rgba(108, 117, 125, 0.16);
+    border: 1px solid rgba(108, 117, 125, 0.3);
+    color: #9aabb8;
+}
+
+#device-history-page .history-risk-pill.warning {
+    background: var(--s-warning-bg, rgba(255, 193, 7, 0.10));
+    border-color: var(--s-warning-bd, rgba(255, 193, 7, 0.28));
+    color: #f2d47a;
+}
+
+#device-history-page .history-risk-pill.high {
+    background: var(--s-critical-bg, rgba(220, 53, 69, 0.12));
+    border-color: var(--s-critical-bd, rgba(220, 53, 69, 0.30));
+    color: #f5a0a8;
+}
+
+@media (max-width: 1199.98px) {
+    #device-history-page .history-actions-card {
+        position: static;
+    }
+}
+
+@media (max-width: 767.98px) {
+    #device-history-page .history-kpi-value {
+        font-size: 1.02rem;
+    }
+
+    #device-history-page .history-time-controls {
+        justify-content: flex-start;
+    }
+}

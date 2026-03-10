@@ -13,6 +13,7 @@ from .topology import SwitchTopology
 from .tracked_device import (
     TrackedDevice,
     TrackedDeviceIpHistory,
+    RemoteDeviceScanHistory,
     DeviceActivityLog,
     DeviceResourceLog,
     DeviceApplicationLog,
@@ -22,6 +23,13 @@ from .tracked_device import (
     TrackingHourlyRollup,
     TrackingDailyRollup,
 )
+from .device_identity_link import DeviceIdentityLink
+from .device_identity_link_candidate import DeviceIdentityLinkCandidate
+from .device_effective_policy_cache import DeviceEffectivePolicyCache
+from .policy_rebuild_task import PolicyRebuildTask
+from .alert_fanout_task import AlertFanoutTask
+from .tracking_sync_envelope import TrackingSyncEnvelope
+from .report_export_job import ReportExportJob
 from .restricted_site_policy import (
     RestrictedSitePolicy,
     TrackingAgentKeyBinding,
@@ -31,6 +39,8 @@ from .restricted_site_policy import (
 )
 from .audit_log import AuditLog
 from .server_health import ServerHealthLog
+from .server_metric_threshold_state import ServerMetricThresholdState
+from .server_threshold_config import ServerThresholdConfig
 from .server_health_rollups import (
     ServerHealthHourlyRollup,
     ServerHealthDailyRollup,
@@ -43,11 +53,15 @@ __all__ = [
     'DashboardEvent', 'DailyDeviceStats', 'DashboardSnapshot', 'DeviceInterface', 'InterfaceTrafficHistory',
     'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice',
     'TrackedDeviceIpHistory',
+    'RemoteDeviceScanHistory',
     'DeviceActivityLog', 'DeviceResourceLog', 'DeviceApplicationLog',
     'TrackingSample', 'TrackingHistoryIntegrityAudit', 'TrackedDeviceAvailabilityEvent',
     'TrackingHourlyRollup', 'TrackingDailyRollup',
+    'DeviceIdentityLink', 'DeviceIdentityLinkCandidate',
+    'DeviceEffectivePolicyCache', 'PolicyRebuildTask',
+    'AlertFanoutTask', 'TrackingSyncEnvelope', 'ReportExportJob',
     'RestrictedSitePolicy', 'TrackingAgentKeyBinding', 'RestrictedSiteEvent',
     'RestrictedSiteAlertState', 'RestrictedSiteDomainMeta',
-    'AuditLog', 'ServerHealthLog',
+    'AuditLog', 'ServerHealthLog', 'ServerThresholdConfig', 'ServerMetricThresholdState',
     'ServerHealthHourlyRollup', 'ServerHealthDailyRollup', 'ServerHealthRollupState'
 ]

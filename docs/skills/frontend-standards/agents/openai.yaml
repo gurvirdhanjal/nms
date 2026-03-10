@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Standards"
+  short_description: "Frontend API parsing, state, and UI consistency"
+  default_prompt: "Use $frontend-standards to update templates and static JS with strict API parsing, predictable state management, and consistent UI behavior."

@@ -5,6 +5,7 @@ from models.device import Device
 from models.department import Department
 from models.dashboard import DashboardEvent
 from models.server_health import ServerHealthLog
+from services.dashboard_availability import build_device_availability_snapshot
 from services.sites_service import SitesService
 from middleware.rbac import require_role
 from datetime import datetime, timedelta
@@ -31,24 +32,17 @@ def site_dashboard(site_id):
     # Get site
     site = scoped_query(Site).get_or_404(site_id)
     
-    # Get site statistics
     sites_service = SitesService()
-    stats = sites_service.get_site_stats(site_id)
+    all_site_devices = sites_service.get_site_devices(site_id)
+    availability_snapshot = build_device_availability_snapshot(all_site_devices)
+    stats = sites_service.get_site_stats(
+        site_id,
+        devices=all_site_devices,
+        availability_snapshot=availability_snapshot,
+    )
     
     # Get all devices for the site (directly assigned OR assigned via department)
     departments = site.departments.all() if hasattr(site, 'departments') else []
-    dept_ids = [d.id for d in departments]
-    
-    if dept_ids:
-        all_site_devices = Device.query.filter(
-            db.or_(
-                Device.site_id == site_id,
-                Device.department_id.in_(dept_ids)
-            )
-        ).all()
-    else:
-        all_site_devices = Device.query.filter_by(site_id=site_id).all()
-        
     device_ids = [d.device_id for d in all_site_devices]
     recent_alerts = []
     if device_ids:
@@ -97,15 +91,7 @@ def site_dashboard(site_id):
     # Get all aggregated devices for the site
     devices = sorted(all_site_devices, key=lambda d: (d.device_name or "").lower())
     
-    # Determine which devices are online (have recent health logs)
-    online_device_ids = set()
-    if device_ids:
-        cutoff = datetime.utcnow() - timedelta(minutes=10)
-        online_results = db.session.query(ServerHealthLog.device_id).filter(
-            ServerHealthLog.device_id.in_(device_ids),
-            ServerHealthLog.timestamp >= cutoff
-        ).distinct().all()
-        online_device_ids = {d[0] for d in online_results}
+    online_device_ids = set(availability_snapshot.get("online_device_ids") or set())
 
     # Devices per department (including unassigned)
     dept_stats_map = {}

@@ -1,0 +1,73 @@
+{
+  "python": {
+    "unit_integration_exit_code": 0,
+    "coverage_json_exit_code": 0,
+    "coverage_percent": 32.82133676092545,
+    "per_file": {
+      "models/device_identity_link.py": 100.0,
+      "models/device_identity_link_candidate.py": 100.0,
+      "models/device_effective_policy_cache.py": 100.0,
+      "models/policy_rebuild_task.py": 100.0,
+      "models/alert_fanout_task.py": 100.0,
+      "models/tracking_sync_envelope.py": 100.0,
+      "services/device_link_service.py": 99.43502824858757,
+      "services/effective_policy_service.py": 100.0,
+      "services/operational_error_handling.py": 96.66666666666667,
+      "services/restricted_site_ingest_service.py": 98.99497487437186,
+      "services/db_task_queue.py": 95.06172839506173,
+      "services/tracking_freshness.py": 99.42528735632185,
+      "services/tracking_sync_core_service.py": 100.0,
+      "services/tracking_sync_intake_service.py": 100.0,
+      "workers/policy_rebuild_worker.py": 100.0,
+      "workers/alert_fanout_worker.py": 100.0,
+      "workers/tracking_sync_worker.py": 100.0,
+      "workers/violation_ingest_worker.py": 96.875,
+      "routes/device_identity_admin.py": 100.0
+    },
+    "failures": []
+  },
+  "javascript": {
+    "unit_exit_code": 0,
+    "coverage_exit_code": 0,
+    "coverage_percent": 99.59,
+    "per_file": {
+      "static/js/tracking/console/apiNormalizer.js": {
+        "lines": 100.0,
+        "functions": 100.0,
+        "statements": 100.0,
+        "branches": 86.66
+      },
+      "static/js/tracking/console/eventFeedStore.js": {
+        "lines": 100.0,
+        "functions": 100.0,
+        "statements": 100.0,
+        "branches": 71.87
+      },
+      "static/js/dashboard/sseClient.js": {
+        "lines": 99.37,
+        "functions": 100.0,
+        "statements": 99.37,
+        "branches": 94.11
+      }
+    },
+    "failures": []
+  },
+  "performance": {
+    "python_perf_exit_code": 0,
+    "js_perf_exit_code": 0
+  },
+  "checks": {
+    "python_coverage_gate": true,
+    "js_coverage_gate": true,
+    "unit_integration_pass": true,
+    "performance_sla_gate": true,
+    "thresholds": {
+      "python_coverage": 95.0,
+      "js_lines": 95.0,
+      "js_functions": 95.0,
+      "js_statements": 95.0,
+      "js_branches": 50.0,
+      "performance_sla": 95.0
+    }
+  }
+}

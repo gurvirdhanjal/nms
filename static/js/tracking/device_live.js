@@ -4,7 +4,8 @@
     const config = window.TRACKING_DEVICE_LIVE_CONFIG || {};
     const deviceId = Number(config.deviceId || 0);
     const macAddress = String(config.macAddress || '').trim();
-    const pollMs = Math.max(3000, Number(config.pollMs || 5000));
+    const initialPollMs = Math.max(3000, Number(config.pollMs || 5000));
+    const initialRequestTimeoutMs = 8000;
 
     if (!deviceId || !macAddress) {
         return;
@@ -34,14 +35,33 @@
 
     const state = {
         pollTimer: null,
+        pollMs: initialPollMs,
         lastPollTs: null,
         lastPollDurationMs: null,
+        pageState: 'initial-loading',
+        hasEstablishedState: false,
+        liveRequestToken: 0,
+        liveAbortController: null,
+        initialRequestTimer: null,
+        renderFrame: null,
+        liveFreshness: null,
+        liveControls: null,
+        lastBannerMessage: '',
         activeTab: 'overview',
         historyLoaded: false,
         lastKnownStatus: normalizeStatus(config.initialStatus || 'offline'),
         baseRiskLevel: 'UNKNOWN',
         cameraStreaming: false,
         micStreaming: false,
+        remoteView: {
+            active: false,
+            expanded: false,
+            timer: null,
+            inFlight: false,
+            abortController: null,
+            objectUrl: null,
+            refreshMs: 1400,
+        },
         modals: {},
         lazyLoaded: {
             history: false,
@@ -67,6 +87,15 @@
             mode: 'Inactive',
             restrictedSites: [],
             restrictedMeta: [],
+            globalRestrictedSites: [],
+            effectiveRestrictedSites: [],
+            effectivePolicyVersion: '',
+            agentPolicyVersion: '',
+            agentPolicyLastSeenAt: null,
+            policyCacheState: 'pending',
+            policyCacheAgeSeconds: 0,
+            policyStale: false,
+            rebuildEnqueued: false,
             violationsToday: 0,
             recentViolations: [],
             source: 'unavailable',
@@ -100,10 +129,12 @@
         bindEvents();
         initModalHandles();
         applyInitialIdentityBadges();
+        setLiveViewState('initial-loading');
+        applyLiveControls({});
+        armInitialRequestTimeout();
         stopCameraStream(true, { forceRemote: true });
         switchTab('overview', { skipLazyLoad: true });
-        refreshLiveData(false, { preferCache: true });
-        state.pollTimer = window.setInterval(() => refreshLiveData(false), pollMs);
+        void refreshLiveData(false, { preferCache: true });
     }
 
     function cacheDom() {
@@ -112,7 +143,6 @@
         dom.riskBadge = document.getElementById('headerRiskBadge');
         dom.policyBadge = document.getElementById('headerPolicyBadge');
         dom.pollMeta = document.getElementById('devicePollMeta');
-        dom.pollDot = document.getElementById('devicePollDot');
         dom.forcePollBtn = document.getElementById('deviceForcePollBtn');
         dom.isolateBtn = document.getElementById('deviceIsolateBtn');
         dom.restartBtn = document.getElementById('deviceRestartBtn');
@@ -122,15 +152,28 @@
         dom.messageText = document.getElementById('deviceMessageText');
         dom.messageSendBtn = document.getElementById('deviceMessageSendBtn');
         dom.toastRoot = document.getElementById('deviceConsoleToastRoot');
+        dom.remoteViewModal = document.getElementById('remoteViewModal');
+        dom.remoteViewDialog = dom.remoteViewModal?.querySelector('.modal-dialog') || null;
+        dom.remoteViewFrame = dom.remoteViewModal?.querySelector('.remote-view-frame') || null;
         dom.remoteViewImage = document.getElementById('remoteViewImage');
+        dom.remoteViewStatus = document.getElementById('remoteViewStatus');
         dom.remoteViewRefreshBtn = document.getElementById('remoteViewRefreshBtn');
         dom.remoteViewFullscreenBtn = document.getElementById('remoteViewFullscreenBtn');
         dom.policyModeValue = document.getElementById('policyModeValue');
         dom.policyModeDot = document.getElementById('policyModeDot');
         dom.policyRestrictedCount = document.getElementById('policyRestrictedCount');
+        dom.policyGlobalCount = document.getElementById('policyGlobalCount');
+        dom.policyEffectiveCount = document.getElementById('policyEffectiveCount');
         dom.policyViolationsToday = document.getElementById('policyViolationsToday');
+        dom.policyEffectiveVersion = document.getElementById('policyEffectiveVersion');
+        dom.policyAgentVersion = document.getElementById('policyAgentVersion');
+        dom.policyAgentSeenAt = document.getElementById('policyAgentSeenAt');
+        dom.policyCacheState = document.getElementById('policyCacheState');
+        dom.policyCacheWarning = document.getElementById('policyCacheWarning');
         dom.policyRestrictedSitesList = document.getElementById('policyRestrictedSitesList');
+        dom.policyEffectiveSitesList = document.getElementById('policyEffectiveSitesList');
         dom.policyRecentViolationsList = document.getElementById('policyRecentViolationsList');
+        dom.policyViewFullLogsBtn = document.getElementById('policyViewFullLogsBtn');
         dom.policyAddSiteBtn = document.getElementById('policyAddSiteBtn');
         dom.policyRemoveSiteBtn = document.getElementById('policyRemoveSiteBtn');
         dom.policyAddSiteInput = document.getElementById('policyAddSiteInput');
@@ -139,6 +182,11 @@
         dom.policyAddSiteConfirmBtn = document.getElementById('policyAddSiteConfirmBtn');
         dom.policyRemoveSiteList = document.getElementById('policyRemoveSiteList');
         dom.policyRemoveSiteConfirmBtn = document.getElementById('policyRemoveSiteConfirmBtn');
+        dom.policyLogsStoredCount = document.getElementById('policyLogsStoredCount');
+        dom.policyLogsEffectiveCount = document.getElementById('policyLogsEffectiveCount');
+        dom.policyLogsViolationCount = document.getElementById('policyLogsViolationCount');
+        dom.policyLogsAgentVersion = document.getElementById('policyLogsAgentVersion');
+        dom.policyLogsModalList = document.getElementById('policyLogsModalList');
         dom.tabCountProcesses = document.getElementById('tabCountProcesses');
         dom.tabCountPolicy = document.getElementById('tabCountPolicy');
         dom.tabCountAlerts = document.getElementById('tabCountAlerts');
@@ -148,7 +196,11 @@
         dom.telemetryPoll = document.getElementById('telemetryBannerPoll');
         dom.telemetryIndicator = document.querySelector('.telemetry-status-indicator');
         dom.policyViolationList = document.getElementById('policyViolationList');
-        dom.alertsRiskBar = document.getElementById('alertsRiskBar');
+        dom.alertsRiskBarFill = document.getElementById('alertsRiskBarFill');
+        dom.alertsRiskBarMarker = document.getElementById('alertsRiskBarMarker');
+        dom.alertsRiskValue = document.getElementById('alertsRiskValue');
+        dom.alertsRiskContext = document.getElementById('alertsRiskContext');
+        dom.alertsRiskContextText = document.getElementById('alertsRiskContextText');
         dom.surveillanceStateBadge = document.getElementById('survTabStateBadge');
         dom.surveillanceStateText = document.getElementById('survTabStateText');
         dom.cameraCapabilityBadge = document.getElementById('survCameraCapabilityBadge');
@@ -194,14 +246,16 @@
         dom.confirmIsolateBtn?.addEventListener('click', confirmIsolateAction);
         dom.messageSendBtn?.addEventListener('click', submitMessageAction);
         dom.remoteViewBtn?.addEventListener('click', openRemoteViewModal);
-        dom.remoteViewRefreshBtn?.addEventListener('click', refreshRemoteViewSnapshot);
+        dom.remoteViewRefreshBtn?.addEventListener('click', () => {
+            void refreshRemoteViewSnapshot(true);
+        });
         dom.remoteViewFullscreenBtn?.addEventListener('click', openRemoteViewFullscreen);
         dom.policyAddSiteBtn?.addEventListener('click', () => showModal('policyAddSite'));
-        dom.policyRemoveSiteBtn?.addEventListener('click', submitPolicyRemoveSite);
+        dom.policyRemoveSiteBtn?.addEventListener('click', openPolicyRemoveModal);
+        dom.policyViewFullLogsBtn?.addEventListener('click', openPolicyLogsModal);
         dom.policyAddSiteConfirmBtn?.addEventListener('click', submitPolicyAddSite);
         dom.policyRemoveSiteConfirmBtn?.addEventListener('click', submitPolicyRemoveSite);
         dom.policyRestrictedSitesList?.addEventListener('click', handlePolicyDomainListClick);
-        dom.policyRestrictedSitesList?.addEventListener('change', handlePolicyDomainCheckboxToggle);
         dom.policyRecentViolationsList?.addEventListener('click', handleRetryActions);
         dom.policyViolationList?.addEventListener('click', handleAlertActionClick);
         dom.policyViolationList?.addEventListener('click', handleRetryActions);
@@ -214,6 +268,24 @@
         dom.micStartBtn?.addEventListener('click', () => startMicMonitor());
         dom.micStopBtn?.addEventListener('click', () => stopMicMonitor(false));
         dom.micVolume?.addEventListener('input', applyMicVolumeSetting);
+        document.addEventListener('visibilitychange', () => {
+            if (!state.remoteView.active) return;
+            if (document.hidden) {
+                if (state.remoteView.timer) {
+                    clearTimeout(state.remoteView.timer);
+                    state.remoteView.timer = null;
+                }
+                if (state.remoteView.abortController) {
+                    state.remoteView.abortController.abort();
+                    state.remoteView.abortController = null;
+                }
+                state.remoteView.inFlight = false;
+                setRemoteViewStatus('Snapshots paused while tab is hidden');
+                return;
+            }
+            scheduleRemoteViewRefresh(0);
+            void refreshRemoteViewSnapshot(true);
+        });
         dom.micAudio?.addEventListener('playing', () => {
             setText('survMicPlaybackState', 'Live audio connected');
         });
@@ -229,11 +301,241 @@
 
         window.addEventListener('beforeunload', () => {
             if (state.pollTimer) {
-                clearInterval(state.pollTimer);
+                clearTimeout(state.pollTimer);
+            }
+            if (state.initialRequestTimer) {
+                clearTimeout(state.initialRequestTimer);
+            }
+            if (state.liveAbortController) {
+                state.liveAbortController.abort();
             }
             stopCameraStream(true, { forceRemote: true });
             stopMicMonitor(true);
         });
+    }
+
+    function getPageRoot() {
+        return document.querySelector('.device-live-page');
+    }
+
+    function setLiveViewState(stateName) {
+        const normalized = String(stateName || 'initial-loading').trim().toLowerCase();
+        state.pageState = normalized;
+        const root = getPageRoot();
+        if (root) {
+            root.setAttribute('data-live-state', normalized);
+        }
+    }
+
+    function clearInitialRequestTimeout() {
+        if (state.initialRequestTimer) {
+            clearTimeout(state.initialRequestTimer);
+            state.initialRequestTimer = null;
+        }
+    }
+
+    function armInitialRequestTimeout() {
+        clearInitialRequestTimeout();
+        state.initialRequestTimer = window.setTimeout(() => {
+            if (state.hasEstablishedState) {
+                return;
+            }
+            if (state.liveAbortController) {
+                state.liveAbortController.abort();
+            }
+            setLiveViewState('request-error');
+            showBanner('Live telemetry request timed out. Retrying...', 'warning', 2600);
+            renderFreshnessBanner({
+                telemetryState: 'request-error',
+                reasonCode: 'REQUEST_TIMEOUT',
+                lastAgentSyncAt: null,
+            });
+            applyTelemetryPlaceholderState({
+                summaryMessage: 'Live telemetry request timed out',
+                lastPollText: 'Retrying telemetry request',
+                feedMessage: 'Live telemetry request timed out. Retrying.',
+                riskScore: 45,
+                riskLevel: 'MEDIUM',
+                riskTone: 'degraded',
+                deviceTelemetry: 'degraded',
+                connectivityStatus: state.lastKnownStatus,
+                confidenceLabel: 'Pending',
+            });
+            applyLiveControls({});
+            scheduleNextPoll(10000);
+            updatePollMeta();
+        }, initialRequestTimeoutMs);
+    }
+
+    function resolvePollIntervalMs(telemetryState) {
+        const normalized = String(telemetryState || '').trim().toLowerCase();
+        if (normalized === 'live') return 5000;
+        if (normalized === 'degraded' || normalized === 'stale' || normalized === 'request-error') return 10000;
+        if (normalized === 'offline-fallback' || normalized === 'offline-empty') return 30000;
+        return initialPollMs;
+    }
+
+    function scheduleNextPoll(delayMs) {
+        const duration = Math.max(3000, Number(delayMs || state.pollMs || initialPollMs));
+        state.pollMs = duration;
+        if (state.pollTimer) {
+            clearTimeout(state.pollTimer);
+        }
+        state.pollTimer = window.setTimeout(() => {
+            void refreshLiveData(false);
+        }, duration);
+    }
+
+    function runDomBatch(callback) {
+        return new Promise((resolve) => {
+            if (state.renderFrame) {
+                window.cancelAnimationFrame(state.renderFrame);
+            }
+            state.renderFrame = window.requestAnimationFrame(() => {
+                state.renderFrame = null;
+                callback();
+                resolve();
+            });
+        });
+    }
+
+    function normalizeFreshnessPayload(rawFreshness, payload) {
+        const source = ensureObject(rawFreshness);
+        const fallbackReason = payload?.error_code || payload?.probe?.error_code || '';
+        const telemetryState = String(
+            source.telemetry_state
+            || (payload?.success === false ? 'offline-empty' : 'live')
+        ).trim().toLowerCase();
+        return {
+            telemetryState: telemetryState || 'live',
+            dataSource: String(source.data_source || (payload?.sync_recent_fallback ? 'sync_recent_fallback' : 'live_probe')).trim().toLowerCase() || 'live_probe',
+            isFallback: Boolean(source.is_fallback),
+            reasonCode: String(source.reason_code || fallbackReason || '').trim(),
+            lastAgentSyncAt: source.last_agent_sync_at || payload?.device_info?.last_agent_sync_at || null,
+            lastSuccessfulSampleAt: source.last_successful_sample_at || null,
+            lastAvailabilityEventAt: source.last_availability_event_at || null,
+            agentSyncAgeSeconds: toNumber(source.agent_sync_age_seconds, NaN),
+            sampleAgeSeconds: toNumber(source.sample_age_seconds, NaN),
+            staleAfterSeconds: Math.max(30, toNumber(source.stale_after_seconds, 180)),
+            reportEligible: Boolean(source.report_eligible),
+        };
+    }
+
+    function normalizeControlsPayload(rawControls, freshness) {
+        const source = ensureObject(rawControls);
+        const enabledByState = ['live', 'degraded', 'stale'].includes(String(freshness?.telemetryState || '').toLowerCase());
+        const fallbackReason = freshness?.reasonCode || 'AGENT_UNREACHABLE';
+        const normalizeControl = (entry) => {
+            const control = ensureObject(entry);
+            const enabled = control.enabled !== undefined ? Boolean(control.enabled) : enabledByState;
+            return {
+                enabled,
+                reasonCode: enabled ? '' : String(control.reason_code || fallbackReason).trim(),
+            };
+        };
+        return {
+            remoteView: normalizeControl(source.remote_view),
+            camera: normalizeControl(source.camera),
+            mic: normalizeControl(source.mic),
+            message: normalizeControl(source.message),
+        };
+    }
+
+    function humanizeReasonCode(value) {
+        const code = String(value || '').trim().toUpperCase();
+        if (!code) return 'Agent state unavailable';
+        const mapping = {
+            AGENT_UNREACHABLE: 'Agent unavailable',
+            DEVICE_NO_IP: 'Device has no known IP',
+            AGENT_PUBLIC_IP_SKIPPED: 'Agent probe skipped for public IP',
+            AGENT_LINK_LOCAL_SKIPPED: 'Agent probe skipped for link-local IP',
+            AGENT_REQUEST_FAILED: 'Agent request failed',
+            AGENT_SERVICE_NOT_IDENTIFIED: 'Agent not identified',
+            REQUEST_TIMEOUT: 'Request timed out',
+        };
+        return mapping[code] || titleCase(code.replace(/_/g, ' '));
+    }
+
+    function mapFreshnessToTelemetrySignal(telemetryState) {
+        const normalized = String(telemetryState || '').trim().toLowerCase();
+        if (normalized === 'live') return 'healthy';
+        if (normalized === 'degraded') return 'degraded';
+        if (normalized === 'stale') return 'stale';
+        if (normalized === 'offline-fallback' || normalized === 'offline-empty') return 'offline';
+        if (normalized === 'request-error') return 'degraded';
+        return 'stale';
+    }
+
+    function renderFreshnessBanner(freshness) {
+        const data = freshness || {};
+        const telemetryState = String(data.telemetryState || data.telemetry_state || state.pageState || '').toLowerCase();
+        if (!dom.telemetryBanner) return;
+
+        let title = '';
+        if (telemetryState === 'initial-loading') {
+            title = 'Waiting for first telemetry sample...';
+        } else if (telemetryState === 'request-error') {
+            title = 'Live telemetry request timed out. Retrying.';
+        } else if (telemetryState === 'stale') {
+            title = 'Agent reachable, metrics incomplete. Showing last persisted telemetry.';
+        } else if (telemetryState === 'offline-fallback') {
+            title = 'Agent unavailable. Showing last persisted telemetry.';
+        } else if (telemetryState === 'offline-empty') {
+            title = 'Agent unavailable. No persisted telemetry is available.';
+        }
+
+        const shouldShow = Boolean(title);
+        dom.telemetryBanner.classList.toggle('d-none', !shouldShow);
+        if (!shouldShow) {
+            return;
+        }
+        const strongNode = dom.telemetryBanner.querySelector('strong');
+        if (strongNode) {
+            strongNode.textContent = title;
+        }
+        if (dom.telemetryHeartbeat) {
+            const candidate = data.lastAgentSyncAt || data.last_agent_sync_at || data.lastSuccessfulSampleAt || data.last_successful_sample_at;
+            dom.telemetryHeartbeat.textContent = `Last heartbeat: ${formatRelativeFromIso(candidate)}`;
+        }
+        if (dom.telemetryPoll) {
+            dom.telemetryPoll.textContent = `Polling every ${Math.round(state.pollMs / 1000)}s`;
+        }
+    }
+
+    function applyLiveControls(controls) {
+        const hasConfig = controls && Object.keys(controls).length > 0;
+        const disabledFallback = { enabled: false, reasonCode: 'AGENT_UNREACHABLE' };
+        const normalized = hasConfig ? controls : {
+            remoteView: disabledFallback,
+            camera: disabledFallback,
+            mic: disabledFallback,
+            message: disabledFallback,
+        };
+        applyButtonAvailability(dom.remoteViewBtn, normalized.remoteView);
+        applyButtonAvailability(dom.messageBtn, normalized.message);
+        applyButtonAvailability(dom.cameraStartBtn, normalized.camera);
+        applyButtonAvailability(dom.cameraStopBtn, normalized.camera);
+        applyButtonAvailability(dom.cameraCaptureBtn, normalized.camera);
+        applyButtonAvailability(dom.micStartBtn, normalized.mic);
+        applyButtonAvailability(dom.micStopBtn, normalized.mic);
+
+        if (normalized.camera && !normalized.camera.enabled && state.cameraStreaming) {
+            stopCameraStream(true, { forceRemote: false });
+        }
+        if (normalized.mic && !normalized.mic.enabled && state.micStreaming) {
+            stopMicMonitor(true);
+        }
+    }
+
+    function applyButtonAvailability(button, control) {
+        const node = button;
+        if (!node) return;
+        const cfg = control || {};
+        const enabled = cfg.enabled !== false;
+        node.disabled = !enabled;
+        const reason = enabled ? '' : humanizeReasonCode(cfg.reasonCode || cfg.reason_code);
+        node.title = enabled ? '' : reason;
+        node.classList.toggle('is-disabled-by-state', !enabled);
     }
 
     function applyInitialIdentityBadges() {
@@ -264,12 +566,9 @@
         if (config.initialDisplayIp) {
             setText('metaIp', config.initialDisplayIp);
         }
-        if (dom.telemetryPoll) {
-            dom.telemetryPoll.textContent = `Polling every ${Math.round(pollMs / 1000)}s`;
-        }
+        renderFreshnessBanner({ telemetryState: 'initial-loading', lastAgentSyncAt: initialSyncIso });
         applyMicVolumeSetting();
         setAgentAwaitingVisibility(!initialSyncIso);
-        showTelemetryBanner(!initialSyncIso, initialSyncIso);
         renderPolicyViolations([]);
         renderAlertFeedTimeline([]);
         setTabCounter('processes', 0);
@@ -278,6 +577,13 @@
         renderWebsitePolicyPanel({
             mode: 'Awaiting',
             restrictedSites: [],
+            globalRestrictedSites: [],
+            effectiveRestrictedSites: [],
+            effectivePolicyVersion: '',
+            agentPolicyVersion: '',
+            agentPolicyLastSeenAt: null,
+            policyCacheState: 'pending',
+            policyStale: false,
             violationsToday: 0,
             recentViolations: [],
             source: 'pending',
@@ -346,21 +652,32 @@
     }
 
     async function refreshLiveData(force, options) {
-        clearError();
         const started = Date.now();
         const opts = options || {};
+        const requestToken = state.liveRequestToken + 1;
+        state.liveRequestToken = requestToken;
+        if (state.liveAbortController) {
+            state.liveAbortController.abort();
+        }
+        state.liveAbortController = new AbortController();
 
         try {
             let payloadEnvelope;
             try {
-                payloadEnvelope = await fetchLiveTelemetryEnvelope(force, opts);
+                payloadEnvelope = await fetchLiveTelemetryEnvelope(force, opts, requestToken);
             } catch (firstError) {
+                if (firstError?.name === 'AbortError') {
+                    return;
+                }
                 if (isTransientLiveFetchError(firstError) && !opts.retryAttempted) {
                     await waitMs(220);
-                    payloadEnvelope = await fetchLiveTelemetryEnvelope(false, { preferCache: true, retryAttempted: true });
+                    payloadEnvelope = await fetchLiveTelemetryEnvelope(false, { preferCache: true, retryAttempted: true }, requestToken);
                 } else {
                     throw firstError;
                 }
+            }
+            if (!payloadEnvelope || payloadEnvelope.requestToken !== state.liveRequestToken) {
+                return;
             }
             const { payload } = payloadEnvelope;
             if (!payload || typeof payload !== 'object') {
@@ -375,61 +692,110 @@
 
             state.lastPollTs = Date.now();
             state.lastPollDurationMs = state.lastPollTs - started;
-
-            renderSnapshot({
+            clearInitialRequestTimeout();
+            state.hasEstablishedState = true;
+            clearError();
+            state.liveFreshness = normalizeFreshnessPayload(payload.freshness, payload);
+            state.liveControls = normalizeControlsPayload(payload.controls, state.liveFreshness);
+            state.pollMs = resolvePollIntervalMs(state.liveFreshness.telemetryState);
+            setLiveViewState(state.liveFreshness.telemetryState);
+            await runDomBatch(() => renderSnapshot({
                 status: availabilityStatus,
                 trackingData,
                 deviceInfo,
                 probeErrorCode: payload.error_code || payload.probe?.error_code || '',
                 timestampIso: payload.timestamp || new Date().toISOString(),
                 metricsAvailable: Boolean(payload.metrics_available),
-            });
+                freshness: state.liveFreshness,
+                controls: state.liveControls,
+            }));
         } catch (error) {
+            if (error?.name === 'AbortError' || requestToken !== state.liveRequestToken) {
+                return;
+            }
             if (error?.status === 401 || error?.status === 403) {
                 if (state.pollTimer) {
-                    clearInterval(state.pollTimer);
+                    clearTimeout(state.pollTimer);
                     state.pollTimer = null;
                 }
             }
-            showError(error?.message || 'Failed to fetch live telemetry.');
-            setBadgeStatus(state.lastKnownStatus || 'offline');
-            updateSurveillanceReadiness(state.lastKnownStatus || 'offline');
-            if (dom.telemetryIndicator) {
-                dom.telemetryIndicator.classList.remove('state-healthy', 'state-degraded', 'state-critical');
-                dom.telemetryIndicator.classList.add('state-offline');
+            state.lastPollTs = Date.now();
+            state.lastPollDurationMs = state.lastPollTs - started;
+            if (!state.hasEstablishedState) {
+                setLiveViewState('request-error');
+                renderFreshnessBanner({ telemetryState: 'request-error', reasonCode: 'REQUEST_TIMEOUT' });
+                applyTelemetryPlaceholderState({
+                    summaryMessage: 'Live telemetry request failed',
+                    lastPollText: 'Retrying telemetry request',
+                    feedMessage: error?.message || 'Unable to fetch telemetry right now.',
+                    riskScore: 45,
+                    riskLevel: 'MEDIUM',
+                    riskTone: 'degraded',
+                    deviceTelemetry: 'degraded',
+                    connectivityStatus: state.lastKnownStatus || 'offline',
+                    confidenceLabel: 'Pending',
+                });
+                applyLiveControls({});
+            } else {
+                showError(error?.message || 'Failed to fetch live telemetry.');
             }
-            setText('telemetryStatusTitle', 'OFFLINE');
-            reconcileGlobalDeviceState({
-                connectivity: normalizeStatus(state.lastKnownStatus || 'offline'),
-                telemetry: 'offline',
-                policyViolations: state.policy.activeViolationCount,
-                riskLevel: 'high',
-                riskScore: 88,
-            });
         } finally {
+            if (requestToken !== state.liveRequestToken) {
+                return;
+            }
             try {
                 const nowTs = Date.now();
-                const refreshWindowMs = Math.max(3500, pollMs - 300);
+                const refreshWindowMs = Math.max(3500, state.pollMs - 300);
                 const shouldForcePolicyRefresh = !state.policy.lastFetchedAt || ((nowTs - state.policy.lastFetchedAt) >= refreshWindowMs);
                 await refreshPolicyViolations(shouldForcePolicyRefresh);
             } catch (error) {
                 // Policy/alerts failures must not block telemetry polling.
             }
+            scheduleNextPoll(state.pollMs);
             updatePollMeta();
         }
     }
 
-    async function fetchLiveTelemetryEnvelope(force, options) {
+    async function fetchLiveTelemetryEnvelope(force, options, requestToken) {
         const opts = options || {};
         const query = [];
         if (force) query.push('force=1');
         if (opts.preferCache) query.push('prefer_cache=1');
         const endpoint = `/api/tracking/real-time/${encodeURIComponent(macAddress)}${query.length ? `?${query.join('&')}` : ''}`;
-        return requestJson(endpoint, {
+        const response = await fetch(endpoint, {
             method: 'GET',
             headers: { Accept: 'application/json' },
             credentials: 'same-origin',
+            signal: state.liveAbortController?.signal,
         });
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.includes('application/json')) {
+            if (response.status === 401 || response.status === 403) {
+                const authError = new Error(response.status === 401 ? 'Session expired. Please sign in again.' : 'Access denied for this action.');
+                authError.status = response.status;
+                throw authError;
+            }
+            const nonJsonError = new Error(`Unexpected response format (${response.status}).`);
+            nonJsonError.status = response.status;
+            throw nonJsonError;
+        }
+        const payload = await response.json().catch(() => null);
+        if (!payload || typeof payload !== 'object') {
+            const invalidPayloadError = new Error('Invalid live telemetry payload.');
+            invalidPayloadError.status = response.status;
+            throw invalidPayloadError;
+        }
+        if ((response.status === 401 || response.status === 403) && payload.success === false) {
+            const authError = new Error(response.status === 401 ? 'Session expired. Please sign in again.' : 'Access denied for this action.');
+            authError.status = response.status;
+            throw authError;
+        }
+        if (!response.ok && response.status !== 503) {
+            const requestError = new Error(payload.error || payload.message || `Request failed (${response.status}).`);
+            requestError.status = response.status;
+            throw requestError;
+        }
+        return { response, payload, requestToken };
     }
 
     function isTransientLiveFetchError(error) {
@@ -458,6 +824,8 @@
         const meta = ensureObject(tracking.meta);
         const network = extractNetworkMetrics(tracking);
         const hasTelemetry = hasTelemetrySnapshot(snapshot, tracking);
+        const freshness = normalizeFreshnessPayload(snapshot.freshness, snapshot);
+        const controls = normalizeControlsPayload(snapshot.controls, freshness);
 
         const cpu = toNumber(systemMetrics.cpu_percent ?? systemMetrics.cpu_usage, 0);
         const ram = toNumber(systemMetrics.memory_percent ?? systemMetrics.ram_percent ?? systemMetrics.memory_usage, 0);
@@ -473,12 +841,16 @@
         const lastSeenIso = snapshot.deviceInfo.last_seen || snapshot.deviceInfo.last_agent_sync_at || null;
         const awaitingFirstTelemetry = !snapshot.deviceInfo.last_agent_sync_at && !hasTelemetry;
         const agentState = resolveAgentState(snapshot.status, syncAge, snapshot.deviceInfo.last_agent_sync_at);
-        const statusReason = deriveStatusReason(snapshot.status, snapshot.probeErrorCode, hasTelemetry, snapshot.deviceInfo.last_agent_sync_at);
-        const agentHealth = resolveAgentHealthLabel(snapshot.status, hasTelemetry, syncAge, snapshot.deviceInfo.last_agent_sync_at);
+        const statusReason = deriveStatusReason(snapshot.status, freshness.reasonCode || snapshot.probeErrorCode, hasTelemetry, snapshot.deviceInfo.last_agent_sync_at);
+        const agentHealth = resolveAgentHealthLabel(snapshot.status, hasTelemetry, syncAge, snapshot.deviceInfo.last_agent_sync_at, freshness.telemetryState);
         const previousStatus = state.lastKnownStatus;
         state.lastKnownStatus = normalizeStatus(snapshot.status);
+        state.liveFreshness = freshness;
+        state.liveControls = controls;
         setBadgeStatus(state.lastKnownStatus);
         updateSurveillanceReadiness(state.lastKnownStatus);
+        applyLiveControls(controls);
+        renderFreshnessBanner(freshness);
         if (previousStatus !== state.lastKnownStatus) {
             eventFeedStore?.push?.({
                 id: `status:${Date.now()}`,
@@ -508,16 +880,11 @@
         setText('metaLatency', `${Math.round(toNumber(state.lastPollDurationMs, 0))} ms`);
         setText('metaAgentHealth', agentHealth);
         setAgentAwaitingVisibility(awaitingFirstTelemetry);
-        showTelemetryBanner(awaitingFirstTelemetry, snapshot.deviceInfo.last_agent_sync_at);
 
-        const telemetrySignal = typeof telemetryStateApi.deriveTelemetryState === 'function'
-            ? telemetryStateApi.deriveTelemetryState({
-                latencyMs: toNumber(state.lastPollDurationMs, 0),
-                heartbeatAgeSeconds: Math.max(0, toNumber(syncAge, 0)),
-                pollSeconds: Math.round(pollMs / 1000),
-                hasResponse: true,
-            })
-            : { state: hasTelemetry ? 'healthy' : 'partial', label: 'LIVE TELEMETRY' };
+        const telemetrySignal = {
+            state: mapFreshnessToTelemetrySignal(freshness.telemetryState),
+            label: freshness.telemetryState === 'live' ? 'LIVE TELEMETRY' : 'TELEMETRY DEGRADED',
+        };
         reconcileGlobalDeviceState({
             connectivity: state.lastKnownStatus,
             telemetry: telemetrySignal.state,
@@ -528,8 +895,30 @@
         });
 
         if (!hasTelemetry) {
-            applyAwaitingTelemetryState(snapshot.status, snapshot.probeErrorCode, awaitingFirstTelemetry);
-            if (snapshot.status === 'online' || snapshot.status === 'degraded') {
+            applyAwaitingTelemetryState(snapshot.status, freshness.reasonCode || snapshot.probeErrorCode, awaitingFirstTelemetry, {
+                summaryMessage: freshness.telemetryState === 'stale'
+                    ? 'Agent reachable, metrics incomplete'
+                    : (freshness.telemetryState === 'offline-empty'
+                        ? 'Agent unavailable'
+                        : (freshness.telemetryState === 'request-error'
+                            ? 'Live telemetry request timed out'
+                            : 'Telemetry not yet available')),
+                lastPollText: freshness.telemetryState === 'stale'
+                    ? 'Last persisted telemetry unavailable'
+                    : (freshness.telemetryState === 'offline-empty'
+                        ? 'No persisted telemetry available'
+                        : 'Awaiting telemetry data'),
+                feedMessage: freshness.telemetryState === 'stale'
+                    ? 'Agent reachable, metrics incomplete.'
+                    : `${humanizeReasonCode(freshness.reasonCode || snapshot.probeErrorCode)}.`,
+                riskScore: freshness.telemetryState === 'offline-empty' ? 90 : 45,
+                riskLevel: freshness.telemetryState === 'offline-empty' ? 'HIGH' : 'MEDIUM',
+                riskTone: freshness.telemetryState === 'offline-empty' ? 'critical' : 'degraded',
+                deviceTelemetry: mapFreshnessToTelemetrySignal(freshness.telemetryState),
+                connectivityStatus: freshness.telemetryState === 'stale' ? snapshot.status : (freshness.telemetryState === 'offline-empty' ? 'offline' : snapshot.status),
+                confidenceLabel: freshness.telemetryState === 'stale' ? 'Fallback' : 'Pending',
+            });
+            if (controls.camera?.enabled || controls.mic?.enabled) {
                 setCameraStates('Available', state.cameraStreaming ? 'Active' : 'Inactive', {
                     isActive: state.cameraStreaming,
                     fallbackText: 'Stream inactive',
@@ -565,7 +954,10 @@
         setText('overviewActiveTime', formatDuration(todayStats.active_time_seconds ?? todayStats.total_active_seconds ?? 0));
         setText('overviewTotalTime', formatDuration(todayStats.total_time_seconds ?? todayStats.tracked_seconds ?? 0));
         setText('overviewAppCount', String(Array.isArray(todayStats.applications_used) ? todayStats.applications_used.length : 0));
-        setText('overviewLastPoll', formatTimestamp(snapshot.timestampIso));
+        setText(
+            'overviewLastPoll',
+            formatTimestamp(freshness.isFallback ? (freshness.lastSuccessfulSampleAt || snapshot.timestampIso) : snapshot.timestampIso)
+        );
 
         setText('activityKeyboardCount', String(keyboardEvents));
         setText('activityMouseCount', String(mouseEvents));
@@ -602,13 +994,20 @@
         setThresholdClass('overviewCpu', cpu);
         setThresholdClass('overviewRam', ram);
 
-        const riskSnapshot = renderAlerts(snapshot.status, cpu, ram, disk, idleSeconds, snapshot.probeErrorCode);
+        const riskSnapshot = renderAlerts(snapshot.status, cpu, ram, disk, idleSeconds, freshness.reasonCode || snapshot.probeErrorCode);
         state.baseRiskLevel = String(riskSnapshot.level || 'LOW').toUpperCase();
         setHeaderRiskBadge(state.baseRiskLevel);
         setText('metaSecurityScore', String(riskSnapshot.securityScore));
         applyRiskScoreVisual(riskSnapshot.riskScore, String(riskSnapshot.level || 'LOW').toLowerCase());
+        if (freshness.telemetryState === 'stale') {
+            setRiskTelemetryContext('Agent reachable, metrics incomplete', 'degraded');
+        } else if (freshness.telemetryState === 'offline-fallback') {
+            setRiskTelemetryContext('Last persisted telemetry', 'degraded');
+        } else if (freshness.telemetryState === 'offline-empty') {
+            setRiskTelemetryContext('Agent offline', 'critical');
+        }
 
-        if (snapshot.status === 'online' || snapshot.status === 'degraded') {
+        if (controls.camera?.enabled || controls.mic?.enabled) {
             setCameraStates('Available', state.cameraStreaming ? 'Active' : 'Inactive', {
                 isActive: state.cameraStreaming,
                 fallbackText: 'Stream inactive',
@@ -636,7 +1035,7 @@
 
         const processes = Array.isArray(systemMetrics.top_processes) ? systemMetrics.top_processes : [];
         if (!processes.length) {
-            patchKeyedChildren(body, [], () => '', 'tr', () => {});
+            patchKeyedChildren(body, [], () => '', 'tr', () => { });
             empty?.classList.remove('d-none');
             return;
         }
@@ -697,9 +1096,8 @@
 
     function renderAlerts(status, cpu, ram, disk, idleSeconds, probeErrorCode) {
         const riskNode = document.getElementById('alertsRiskScore');
-        const riskContextNode = document.getElementById('alertsRiskContext');
         const feedNode = document.getElementById('alertsFeedList');
-        if (!riskNode || !feedNode) return { level: 'LOW', securityScore: 92 };
+        if (!riskNode) return { level: 'LOW', securityScore: 92, riskScore: 20 };
 
         const alerts = [];
         let risk = 'LOW';
@@ -747,7 +1145,7 @@
         if (risk === 'HIGH') riskNode.classList.add('risk-high');
         else if (risk === 'MEDIUM') riskNode.classList.add('risk-medium');
         else riskNode.classList.add('risk-low');
-        if (riskContextNode) riskContextNode.textContent = context;
+        setRiskTelemetryContext(context, status === 'offline' || status === 'degraded' || risk !== 'LOW' ? 'degraded' : 'healthy');
         const timeLabel = formatClockTime(new Date());
         const timelineRows = alerts.map((line, index) => ({
             id: `telemetry:${timeLabel}:${index}`,
@@ -757,9 +1155,9 @@
         timelineRows.forEach((event) => eventFeedStore?.push?.(event));
         const persisted = eventFeedStore?.list?.() || [];
         const feedRows = timelineRows.length ? timelineRows : persisted.slice(0, 8);
-        if (!feedRows.length) {
+        if (feedNode && !feedRows.length) {
             feedNode.innerHTML = '<div class="policy-violation-empty">No alerts detected</div>';
-        } else {
+        } else if (feedNode) {
             patchKeyedChildren(
                 feedNode,
                 feedRows,
@@ -841,7 +1239,7 @@
                 dom.policyViolationList.innerHTML = `
                     <div class="policy-error-card">
                         <strong>Alerts failed to load</strong>
-                        <button type="button" class="tactical-btn tactical-btn-outline" data-action-retry-alerts="1">Retry</button>
+                        <button type="button" class="mo-btn mo-btn-ghost" data-action-retry-alerts="1">Retry</button>
                     </div>
                 `;
             }
@@ -894,60 +1292,52 @@
         if (!dom.policyViolationList) {
             return;
         }
-        if (dom.policyViolationList.childElementCount === 0 && dom.policyViolationList.textContent.trim()) {
-            dom.policyViolationList.textContent = '';
-        }
-
-        if (!Array.isArray(alerts) || alerts.length === 0) {
-            patchKeyedChildren(
-                dom.policyViolationList,
-                [{ id: 'no-violations' }],
-                (row) => row.id,
-                'div',
-                (row) => {
-                    row.className = 'policy-violation-empty';
-                    row.innerHTML = '<span class="policy-violation-ok">&#10003; No policy violations</span>';
-                }
-            );
+        const rows = Array.isArray(alerts) ? alerts.slice(0, 12) : [];
+        if (!rows.length) {
+            dom.policyViolationList.innerHTML = '<div class="policy-alert-empty">No policy alerts detected</div>';
             return;
         }
 
-        patchKeyedChildren(
-            dom.policyViolationList,
-            alerts.slice(0, 12),
-            (alert, index) => String(alert.eventId || alert.dashboard_event_id || `${alert.domain || 'domain'}:${alert.time || alert.timestamp || index}`),
-            'div',
-            (row, alert) => {
-                const domain = escapeHtml(String(alert.site || alert.site_visited || alert.domain || 'N/A'));
-                const matchedRule = escapeHtml(String(alert.matched_rule || alert.action || 'Blocked'));
-                const status = normalizeViolationStatus(alert.status);
-                const statusLabel = status === 'active' ? 'Active' : (status === 'acknowledged' ? 'Acknowledged' : 'Resolved');
-                const severity = normalizeViolationSeverity(alert.severity || alert.confidence);
-                const source = String(alert.source || '').trim().toLowerCase();
-                const sourceLabel = source === 'window_title'
-                    ? 'Foreground window'
-                    : (source === 'dns_cache' ? 'DNS cache' : 'Unknown');
-                const detectedAt = formatTimestamp(alert.time || alert.timestamp || alert.observed_at_utc);
-                const eventId = String(alert.eventId || alert.dashboard_event_id || '').trim();
-                const ackLocked = status !== 'active' || Boolean(ackFallbackStore?.isAcked?.(eventId));
+        dom.policyViolationList.innerHTML = rows.map((alert, index) => {
+            const domain = escapeHtml(String(alert.site || alert.site_visited || alert.domain || 'Unknown'));
+            const status = normalizeViolationStatus(alert.status);
+            const severity = normalizeViolationSeverity(alert.severity || alert.confidence);
+            const ruleLabel = escapeHtml(String(alert.matched_rule || alert.action || 'Blocked'));
+            const detectedLabel = escapeHtml(formatHumanTimestamp(alert.time || alert.timestamp || alert.observed_at_utc));
+            const sourceLabel = String(alert.source || '').trim();
+            const sourceDisplay = sourceLabel
+                ? `<strong>${escapeHtml(formatPolicySourceLabel(sourceLabel))}</strong>`
+                : '<strong class="policy-alert-source-empty"><em>Unknown</em></strong>';
+            const eventId = String(alert.eventId || alert.dashboard_event_id || '').trim();
+            const isAcknowledged = status !== 'active' || Boolean(ackFallbackStore?.isAcked?.(eventId));
+            const ackButton = !isAcknowledged
+                ? `<button type="button" class="policy-alert-ack" data-policy-action="ack" data-alert-event-id="${escapeHtml(eventId)}">Acknowledge</button>`
+                : '<span class="policy-alert-acknowledged"><i class="fas fa-check"></i> Acknowledged</span>';
+            const investigateAction = !isAcknowledged
+                ? `<button type="button" class="policy-alert-link" data-policy-action="investigate" data-alert-event-id="${escapeHtml(eventId)}">Investigate &rarr;</button>`
+                : '';
 
-                row.className = `policy-violation-card severity-${severity.toLowerCase()} status-${status}`;
-                row.innerHTML = `
-                    <div class="policy-violation-head">
-                        <strong class="policy-violation-site">${domain}</strong>
-                        <span class="policy-severity-badge severity-${severity.toLowerCase()}">${severity}</span>
-                        <span class="policy-status-badge status-${status}">${escapeHtml(statusLabel.toUpperCase())}</span>
+            return `
+                <article class="policy-alert-card ${isAcknowledged ? 'is-passive' : ''}" data-alert-key="${escapeHtml(getAlertIdentityKey(alert, index))}">
+                    <div class="policy-alert-header">
+                        <strong class="policy-alert-domain">${domain}</strong>
+                        <div class="policy-alert-tags">
+                            <span class="policy-badge policy-badge-severity-${severity.toLowerCase()}">${escapeHtml(severity)}</span>
+                            <span class="policy-badge policy-badge-status-${status}">${escapeHtml(titleCase(status))}</span>
+                        </div>
                     </div>
-                    <div class="policy-violation-row"><span>Rule</span><strong>${matchedRule}</strong></div>
-                    <div class="policy-violation-row"><span>Detected</span><strong>${escapeHtml(detectedAt)}</strong></div>
-                    <div class="policy-violation-row"><span>Source</span><strong>${escapeHtml(sourceLabel)}</strong></div>
-                    <div class="policy-violation-actions">
-                        <button type="button" class="tactical-btn tactical-btn-outline policy-action-btn" data-policy-action="ack" data-alert-event-id="${escapeHtml(eventId)}" ${ackLocked ? 'disabled' : ''}>Acknowledge</button>
-                        <button type="button" class="tactical-btn tactical-btn-outline policy-action-btn" data-policy-action="investigate" data-alert-event-id="${escapeHtml(eventId)}">Investigate</button>
+                    <div class="policy-alert-grid">
+                        <div class="policy-alert-grid-row"><span>Rule</span><strong>${ruleLabel}</strong></div>
+                        <div class="policy-alert-grid-row"><span>Detected</span><strong>${detectedLabel}</strong></div>
+                        <div class="policy-alert-grid-row"><span>Source</span>${sourceDisplay}</div>
                     </div>
-                `;
-            }
-        );
+                    <div class="policy-alert-actions">
+                        ${ackButton}
+                        ${investigateAction}
+                    </div>
+                </article>
+            `;
+        }).join('');
     }
 
     function handleAlertActionClick(event) {
@@ -1056,6 +1446,85 @@
         );
     }
 
+    function formatNullableValue(value) {
+        const raw = String(value ?? '').trim();
+        return raw ? raw : '--';
+    }
+
+    function formatPolicyHashPreview(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return '--';
+        return raw.length > 8 ? `${raw.slice(0, 8)}...` : raw;
+    }
+
+    function setPolicyMetaValue(nodeId, rawValue, options) {
+        const node = document.getElementById(nodeId);
+        if (!node) return;
+        const opts = options || {};
+        const full = formatNullableValue(rawValue);
+        const display = opts.hash ? formatPolicyHashPreview(rawValue) : full;
+        node.textContent = display;
+        node.title = full;
+        node.classList.toggle('is-empty', full === '--');
+    }
+
+    function latencyTone(latencyMs) {
+        const value = Number(latencyMs);
+        if (!Number.isFinite(value) || value <= 0) return 'muted';
+        if (value < 50) return 'healthy';
+        if (value <= 100) return 'warning';
+        return 'critical';
+    }
+
+    function latencyToneClass(latencyMs) {
+        const tone = latencyTone(latencyMs);
+        if (tone === 'healthy') return 'telemetry-latency-healthy';
+        if (tone === 'warning') return 'telemetry-latency-warning';
+        if (tone === 'critical') return 'telemetry-latency-critical';
+        return 'telemetry-latency-muted';
+    }
+
+    function formatHumanTimestamp(value) {
+        const parsed = parseUniversalDate(value);
+        if (!parsed) return '--';
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const parsedDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+        const timeLabel = parsed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+        if (parsedDay === today) {
+            return `Today ${timeLabel}`;
+        }
+        if (parsedDay === (today - 86400000)) {
+            return `Yesterday ${timeLabel}`;
+        }
+        return parsed.toLocaleString([], {
+            month: 'numeric',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    }
+
+    function formatPolicySourceLabel(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return 'Unknown';
+        return titleCase(raw.replace(/[_-]+/g, ' '));
+    }
+
+    function setRiskTelemetryContext(message, tone) {
+        if (!dom.alertsRiskContext || !dom.alertsRiskContextText) return;
+        const normalizedTone = String(tone || 'muted').toLowerCase();
+        dom.alertsRiskContext.classList.remove('state-healthy', 'state-degraded', 'state-critical', 'state-muted');
+        if (normalizedTone === 'healthy') dom.alertsRiskContext.classList.add('state-healthy');
+        else if (normalizedTone === 'critical') dom.alertsRiskContext.classList.add('state-critical');
+        else if (normalizedTone === 'warning' || normalizedTone === 'degraded') dom.alertsRiskContext.classList.add('state-degraded');
+        else dom.alertsRiskContext.classList.add('state-muted');
+        dom.alertsRiskContextText.textContent = String(message || 'Awaiting telemetry');
+    }
+
     function applyRiskScoreVisual(riskScore, riskLevel) {
         const score = Math.max(0, Math.min(100, Math.floor(toNumber(riskScore, 0))));
         const normalizedLevel = String(riskLevel || '').trim().toLowerCase() || normalizeRiskLevel(score >= 70 ? 'HIGH' : (score >= 35 ? 'MEDIUM' : 'LOW')).toLowerCase();
@@ -1067,13 +1536,22 @@
             else if (normalizedLevel === 'medium') riskNode.classList.add('risk-medium');
             else riskNode.classList.add('risk-low');
         }
-        const barSegments = typeof riskApi.riskBarSegments === 'function' ? riskApi.riskBarSegments(score, 10) : Math.round((score / 100) * 10);
-        const filled = Math.max(0, Math.min(10, barSegments));
-        const bar = `${'█'.repeat(filled)}${'░'.repeat(10 - filled)}`;
-        if (dom.alertsRiskBar) {
-            dom.alertsRiskBar.textContent = bar;
-            dom.alertsRiskBar.classList.remove('low', 'medium', 'high');
-            dom.alertsRiskBar.classList.add(normalizedLevel === 'high' ? 'high' : (normalizedLevel === 'medium' ? 'medium' : 'low'));
+        if (dom.alertsRiskBarFill) {
+            dom.alertsRiskBarFill.style.width = `${score}%`;
+        }
+        if (dom.alertsRiskBarMarker) {
+            dom.alertsRiskBarMarker.style.left = `${score}%`;
+        }
+        if (dom.alertsRiskValue) {
+            dom.alertsRiskValue.textContent = `${score} / 100`;
+        }
+        const latencyMs = Number.isFinite(state.lastPollDurationMs) ? Math.round(state.lastPollDurationMs) : NaN;
+        const tone = latencyTone(latencyMs);
+        if (!Number.isFinite(latencyMs)) {
+            setRiskTelemetryContext('Awaiting telemetry', 'muted');
+        } else {
+            const label = tone === 'healthy' ? 'Telemetry healthy' : 'Telemetry degraded';
+            setRiskTelemetryContext(label, tone);
         }
         setText('metaSecurityScore', String(Math.max(0, 100 - score)));
     }
@@ -1200,6 +1678,8 @@
         state.modals.remoteView = createModal('remoteViewModal');
         state.modals.policyAddSite = createModal('policyAddSiteModal');
         state.modals.policyRemoveSite = createModal('policyRemoveSiteModal');
+        state.modals.policyLogs = createModal('policyLogsModal');
+        bindRemoteViewModalLifecycle();
     }
 
     function createModal(id) {
@@ -1228,6 +1708,17 @@
         }
     }
 
+    function bindRemoteViewModalLifecycle() {
+        if (!dom.remoteViewModal) return;
+        dom.remoteViewModal.addEventListener('shown.bs.modal', () => {
+            startRemoteViewSession();
+        });
+        dom.remoteViewModal.addEventListener('hidden.bs.modal', () => {
+            stopRemoteViewSession();
+            setRemoteViewExpanded(false);
+        });
+    }
+
     async function loadTabDataIfNeeded(tabKey) {
         const normalized = String(tabKey || '').trim().toLowerCase();
         if (!normalized) {
@@ -1251,30 +1742,178 @@
     }
 
     async function openRemoteViewModal() {
-        refreshRemoteViewSnapshot();
         if (!showModal('remoteView')) {
             window.open(`/api/tracking/stream/screenshot/${encodeURIComponent(macAddress)}`, '_blank', 'noopener,noreferrer');
         }
     }
 
-    function refreshRemoteViewSnapshot() {
+    function getRemoteViewSnapshotUrl() {
+        return `/api/tracking/stream/screenshot/${encodeURIComponent(macAddress)}?single=1&t=${Date.now()}`;
+    }
+
+    function getRemoteViewRefreshIntervalMs() {
+        return state.remoteView.expanded ? 2200 : 1400;
+    }
+
+    function setRemoteViewStatus(message) {
+        if (!dom.remoteViewStatus) return;
+        const fallback = state.remoteView.expanded
+            ? 'Fullscreen mode | adaptive snapshots enabled'
+            : 'Adaptive snapshots enabled';
+        dom.remoteViewStatus.textContent = String(message || fallback);
+    }
+
+    function revokeRemoteViewObjectUrl() {
+        const objectUrl = state.remoteView.objectUrl;
+        if (!objectUrl) return;
+        try {
+            URL.revokeObjectURL(objectUrl);
+        } catch (_error) {
+            // Best-effort URL cleanup.
+        }
+        state.remoteView.objectUrl = null;
+    }
+
+    function clearRemoteViewFrame() {
+        if (dom.remoteViewImage) {
+            dom.remoteViewImage.src = '';
+            dom.remoteViewImage.removeAttribute('src');
+        }
+        revokeRemoteViewObjectUrl();
+    }
+
+    function scheduleRemoteViewRefresh(delayMs) {
+        if (state.remoteView.timer) {
+            clearTimeout(state.remoteView.timer);
+        }
+        if (!state.remoteView.active) {
+            state.remoteView.timer = null;
+            return;
+        }
+        const delay = Math.max(900, Number(delayMs || getRemoteViewRefreshIntervalMs()));
+        state.remoteView.refreshMs = delay;
+        state.remoteView.timer = window.setTimeout(() => {
+            void refreshRemoteViewSnapshot(false);
+        }, delay);
+    }
+
+    function setRemoteViewExpanded(expanded) {
+        const nextExpanded = Boolean(expanded);
+        state.remoteView.expanded = nextExpanded;
+
+        if (dom.remoteViewDialog) {
+            dom.remoteViewDialog.classList.toggle('modal-fullscreen', nextExpanded);
+            dom.remoteViewDialog.classList.toggle('modal-dialog-centered', !nextExpanded);
+            dom.remoteViewDialog.classList.toggle('modal-dialog-scrollable', !nextExpanded);
+            dom.remoteViewDialog.classList.toggle('modal-xl', !nextExpanded);
+        }
+
+        if (dom.remoteViewFullscreenBtn) {
+            dom.remoteViewFullscreenBtn.innerHTML = nextExpanded
+                ? '<i class="fas fa-compress"></i> Exit Fullscreen'
+                : '<i class="fas fa-expand"></i> Fullscreen';
+        }
+
+        try {
+            if (state.modals.remoteView && typeof state.modals.remoteView.handleUpdate === 'function') {
+                state.modals.remoteView.handleUpdate();
+            }
+        } catch (_error) {
+            // Best-effort modal reflow.
+        }
+
+        setRemoteViewStatus();
+    }
+
+    function startRemoteViewSession() {
+        state.remoteView.active = true;
+        setRemoteViewExpanded(state.remoteView.expanded);
+        scheduleRemoteViewRefresh(0);
+        void refreshRemoteViewSnapshot(true);
+    }
+
+    function stopRemoteViewSession() {
+        state.remoteView.active = false;
+        if (state.remoteView.timer) {
+            clearTimeout(state.remoteView.timer);
+            state.remoteView.timer = null;
+        }
+        if (state.remoteView.abortController) {
+            state.remoteView.abortController.abort();
+            state.remoteView.abortController = null;
+        }
+        state.remoteView.inFlight = false;
+        clearRemoteViewFrame();
+        setRemoteViewStatus('Adaptive snapshots paused');
+    }
+
+    async function refreshRemoteViewSnapshot(forceRestart) {
         if (!dom.remoteViewImage) return;
-        dom.remoteViewImage.src = `/api/tracking/stream/screenshot/${encodeURIComponent(macAddress)}?t=${Date.now()}`;
+        if (!state.remoteView.active && !forceRestart) return;
+
+        if (state.remoteView.inFlight) {
+            if (!forceRestart) return;
+            try {
+                state.remoteView.abortController?.abort();
+            } catch (_error) {
+                // Best-effort abort.
+            }
+        }
+
+        if (state.remoteView.timer) {
+            clearTimeout(state.remoteView.timer);
+            state.remoteView.timer = null;
+        }
+
+        state.remoteView.inFlight = true;
+        const controller = new AbortController();
+        state.remoteView.abortController = controller;
+        setRemoteViewStatus('Refreshing snapshot...');
+
+        try {
+            const response = await fetch(getRemoteViewSnapshotUrl(), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { Accept: 'image/jpeg' },
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const nextObjectUrl = URL.createObjectURL(blob);
+            const previousObjectUrl = state.remoteView.objectUrl;
+            state.remoteView.objectUrl = nextObjectUrl;
+            dom.remoteViewImage.src = nextObjectUrl;
+            if (previousObjectUrl) {
+                try {
+                    URL.revokeObjectURL(previousObjectUrl);
+                } catch (_error) {
+                    // Best-effort URL cleanup.
+                }
+            }
+            setRemoteViewStatus();
+        } catch (error) {
+            if (error?.name !== 'AbortError') {
+                setRemoteViewStatus('Snapshot unavailable | retrying');
+            }
+        } finally {
+            if (state.remoteView.abortController === controller) {
+                state.remoteView.abortController = null;
+            }
+            state.remoteView.inFlight = false;
+            if (state.remoteView.active) {
+                scheduleRemoteViewRefresh(getRemoteViewRefreshIntervalMs());
+            }
+        }
     }
 
     async function openRemoteViewFullscreen() {
-        const imageNode = dom.remoteViewImage;
-        if (!imageNode) return;
-        try {
-            if (document.fullscreenElement) {
-                await document.exitFullscreen();
-                return;
-            }
-            if (imageNode.requestFullscreen) {
-                await imageNode.requestFullscreen();
-            }
-        } catch (error) {
-            showInfo('Fullscreen mode is not available in this browser context.');
+        setRemoteViewExpanded(!state.remoteView.expanded);
+        if (state.remoteView.active) {
+            scheduleRemoteViewRefresh(getRemoteViewRefreshIntervalMs());
+            void refreshRemoteViewSnapshot(true);
         }
     }
 
@@ -1354,6 +1993,15 @@
                 mode: normalized.mode || 'active',
                 restrictedSites: normalized.restrictedDomains.map((row) => row.domain),
                 restrictedMeta: normalized.restrictedDomains,
+                globalRestrictedSites: normalized.globalRestrictedSites || [],
+                effectiveRestrictedSites: normalized.effectiveRestrictedSites || [],
+                effectivePolicyVersion: normalized.effectivePolicyVersion || '',
+                agentPolicyVersion: normalized.agentPolicyVersion || '',
+                agentPolicyLastSeenAt: normalized.agentPolicyLastSeenAt || null,
+                policyCacheState: normalized.policyCacheState || 'fresh',
+                policyCacheAgeSeconds: toNumber(normalized.policyCacheAgeSeconds, 0),
+                policyStale: Boolean(normalized.policyStale),
+                rebuildEnqueued: Boolean(normalized.rebuildEnqueued),
                 violationsToday: toNumber(normalized.violationsToday, 0),
                 recentViolations: normalized.recentViolations,
             };
@@ -1376,6 +2024,15 @@
             mode: String(source.mode || 'active').toLowerCase(),
             restrictedSites: restrictedMeta.map((row) => row.domain),
             restrictedMeta: restrictedMeta,
+            globalRestrictedSites: Array.isArray(source.global_restricted_sites) ? source.global_restricted_sites : [],
+            effectiveRestrictedSites: Array.isArray(source.effective_restricted_sites) ? source.effective_restricted_sites : [],
+            effectivePolicyVersion: String(source.effective_policy_version || '').trim(),
+            agentPolicyVersion: String(source.agent_policy_version || '').trim(),
+            agentPolicyLastSeenAt: source.agent_policy_last_seen_at || null,
+            policyCacheState: String(source.policy_cache_state || 'fresh').trim().toLowerCase(),
+            policyCacheAgeSeconds: Math.max(0, Math.floor(toNumber(source.policy_cache_age_seconds, 0))),
+            policyStale: Boolean(source.policy_stale),
+            rebuildEnqueued: Boolean(source.rebuild_enqueued),
             violationsToday: Math.max(0, Math.floor(toNumber(source.violations_today, 0))),
             recentViolations: Array.isArray(source.recent_violations) ? source.recent_violations : [],
         };
@@ -1419,6 +2076,15 @@
                 mode: 'unavailable',
                 restrictedSites: [],
                 restrictedMeta: [],
+                globalRestrictedSites: [],
+                effectiveRestrictedSites: [],
+                effectivePolicyVersion: '',
+                agentPolicyVersion: '',
+                agentPolicyLastSeenAt: null,
+                policyCacheState: 'error',
+                policyCacheAgeSeconds: 0,
+                policyStale: false,
+                rebuildEnqueued: false,
                 recentViolations: [],
                 violationsToday: 0,
                 source: 'error',
@@ -1430,25 +2096,47 @@
     }
 
     function renderWebsitePolicyUnavailable() {
+        const errorMarkup = `
+            <div class="policy-error-card">
+                <strong>Policy data unavailable</strong>
+                <button type="button" class="mo-btn mo-btn-ghost" data-action-retry-policy="1">Retry</button>
+            </div>
+        `;
         if (dom.policyRestrictedSitesList) {
-            dom.policyRestrictedSitesList.innerHTML = `
-                <div class="policy-error-card">
-                    <strong>Policy data unavailable</strong>
-                    <button type="button" class="tactical-btn tactical-btn-outline" data-action-retry-policy="1">Retry</button>
-                </div>
-            `;
+            dom.policyRestrictedSitesList.innerHTML = errorMarkup;
+        }
+        if (dom.policyEffectiveSitesList) {
+            dom.policyEffectiveSitesList.innerHTML = errorMarkup;
         }
         if (dom.policyRecentViolationsList) {
-            dom.policyRecentViolationsList.innerHTML = `
-                <div class="policy-error-card">
-                    <strong>Policy data unavailable</strong>
-                    <button type="button" class="tactical-btn tactical-btn-outline" data-action-retry-policy="1">Retry</button>
-                </div>
-            `;
+            dom.policyRecentViolationsList.innerHTML = errorMarkup;
         }
-        setText('policyModeValue', 'Unavailable');
+        setText('policyModeValue', 'UNAVAILABLE');
         setText('policyRestrictedCount', '0');
+        setText('policyGlobalCount', '0');
+        setText('policyEffectiveCount', '0');
         setText('policyViolationsToday', '0');
+        setPolicyMetaValue('policyEffectiveVersion', '--');
+        setPolicyMetaValue('policyAgentVersion', '--');
+        setPolicyMetaValue('policyAgentSeenAt', '--');
+        setPolicyMetaValue('policyCacheState', 'Unavailable');
+        if (dom.policyModeDot) {
+            dom.policyModeDot.classList.add('offline');
+        }
+        if (dom.policyModeValue) {
+            dom.policyModeValue.classList.add('is-inactive');
+        }
+        if (dom.policyCacheWarning) {
+            dom.policyCacheWarning.classList.add('d-none');
+        }
+        syncPolicyRemoveSiteOptions([]);
+        renderPolicyLogsModal({
+            restrictedMeta: [],
+            effectiveRestrictedSites: [],
+            recentViolations: [],
+            violationsToday: 0,
+            agentPolicyVersion: '',
+        });
         setTabCounter('websitePolicy', state.policy.activeViolationCount);
     }
 
@@ -1468,6 +2156,7 @@
             status: normalizeViolationStatus(alert?.status),
             user: alert?.user || 'unknown',
             action: alert?.action || 'Blocked',
+            source: alert?.source || 'policy-monitor',
         }));
         setTabCounter('alerts', activeCount);
         setTabCounter('websitePolicy', activeCount);
@@ -1481,71 +2170,171 @@
         const data = ensureObject(payload);
         const mode = String(data.mode || 'unavailable').toLowerCase();
         const restrictedMeta = Array.isArray(data.restrictedMeta) ? data.restrictedMeta : [];
+        const globalRestrictedSites = Array.isArray(data.globalRestrictedSites) ? data.globalRestrictedSites : [];
+        const effectiveRestrictedSites = Array.isArray(data.effectiveRestrictedSites) ? data.effectiveRestrictedSites : [];
         const recentViolations = Array.isArray(data.recentViolations) ? data.recentViolations : [];
         const violationsToday = Math.max(0, Math.floor(toNumber(data.violationsToday, 0)));
+        const cacheState = String(data.policyCacheState || '').trim();
 
         setText('policyModeValue', mode.toUpperCase());
         setText('policyRestrictedCount', String(restrictedMeta.length));
+        setText('policyGlobalCount', String(globalRestrictedSites.length));
+        setText('policyEffectiveCount', String(effectiveRestrictedSites.length));
         setText('policyViolationsToday', String(violationsToday));
+        setPolicyMetaValue('policyEffectiveVersion', data.effectivePolicyVersion, { hash: true });
+        setPolicyMetaValue('policyAgentVersion', data.agentPolicyVersion, { hash: true });
+        setPolicyMetaValue('policyAgentSeenAt', data.agentPolicyLastSeenAt ? formatHumanTimestamp(data.agentPolicyLastSeenAt) : '--');
+        setPolicyMetaValue('policyCacheState', cacheState ? titleCase(cacheState.replace(/[_-]+/g, ' ')) : '--');
         if (dom.policyModeDot) {
             dom.policyModeDot.classList.toggle('offline', mode !== 'active');
         }
-
-        if (dom.policyRestrictedSitesList) {
-            if (!restrictedMeta.length) {
-                dom.policyRestrictedSitesList.innerHTML = '<div class="policy-sites-empty">No restricted domains configured</div>';
-            } else {
-                patchKeyedChildren(
-                    dom.policyRestrictedSitesList,
-                    restrictedMeta,
-                    (entry) => String(entry.domain || ''),
-                    'div',
-                    (row, entry) => {
-                        const domain = String(entry.domain || '').trim();
-                        const category = String(entry.category || 'Custom').trim();
-                        const checked = state.websitePolicy.selectedDomains.includes(domain);
-                        row.className = 'policy-domain-pill';
-                        row.innerHTML = `
-                            <input type="checkbox" data-policy-domain-check="${escapeHtml(domain)}" ${checked ? 'checked' : ''} aria-label="Select ${escapeHtml(domain)}">
-                            <span>${escapeHtml(domain)}</span>
-                            <span class="policy-domain-meta">${escapeHtml(category)}</span>
-                            <button type="button" class="policy-domain-remove" data-policy-remove="${escapeHtml(domain)}" aria-label="Remove ${escapeHtml(domain)}">✖</button>
-                        `;
-                    }
-                );
-            }
+        if (dom.policyModeValue) {
+            dom.policyModeValue.classList.toggle('is-inactive', mode !== 'active');
+        }
+        if (dom.policyCacheWarning) {
+            dom.policyCacheWarning.classList.toggle('d-none', !data.policyStale);
+            dom.policyCacheWarning.textContent = data.policyStale
+                ? 'Policy cache is stale. Last known effective policy is being shown.'
+                : 'Configuration needs sync.';
         }
 
-        if (dom.policyRecentViolationsList) {
-            if (!recentViolations.length) {
-                dom.policyRecentViolationsList.innerHTML = '<div class="policy-recent-empty">No violations detected today</div>';
-            } else {
-                patchKeyedChildren(
-                    dom.policyRecentViolationsList,
-                    recentViolations,
-                    (item, index) => `${item.domain || item.site || 'site'}:${item.time || index}`,
-                    'div',
-                    (row, item) => {
-                        const domain = item.domain || item.site || 'N/A';
-                        row.className = 'policy-recent-row';
-                        row.innerHTML = `
-                            <span class="policy-recent-time">${escapeHtml(formatClockTime(item.time))}</span>
-                            <strong class="policy-recent-site">${escapeHtml(String(domain))}</strong>
-                        `;
-                    }
-                );
-            }
+        renderStoredPolicyDomains(restrictedMeta);
+        renderEffectivePolicyDomains(effectiveRestrictedSites, globalRestrictedSites);
+        renderPolicyViolationTimeline(dom.policyRecentViolationsList, recentViolations, 'No violations detected today');
+        syncPolicyRemoveSiteOptions(restrictedMeta);
+        renderPolicyLogsModal(data);
+    }
+
+    function renderStoredPolicyDomains(restrictedMeta) {
+        if (!dom.policyRestrictedSitesList) return;
+        if (!restrictedMeta.length) {
+            dom.policyRestrictedSitesList.innerHTML = '<div class="policy-scope-empty">No device-specific restrictions are stored</div>';
+            return;
+        }
+
+        dom.policyRestrictedSitesList.innerHTML = restrictedMeta.map((entry) => {
+            const domain = String(entry?.domain || '').trim();
+            const category = String(entry?.category || 'Custom').trim() || 'Custom';
+            const reason = String(entry?.reason || '').trim();
+            return `
+                <div class="policy-record-row">
+                    <div class="policy-record-copy">
+                        <div class="policy-record-domain">${escapeHtml(domain)}</div>
+                        <div class="policy-record-reason ${reason ? '' : 'is-empty'}">${reason ? escapeHtml(reason) : '&mdash;'}</div>
+                    </div>
+                    <div class="policy-record-actions">
+                        <span class="policy-status-pill policy-status-pill-amber">${escapeHtml(category.toUpperCase())}</span>
+                        <button type="button" class="policy-icon-button" data-policy-remove="${escapeHtml(domain)}" aria-label="Remove ${escapeHtml(domain)}" title="Remove restriction">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderEffectivePolicyDomains(effectiveRestrictedSites, globalRestrictedSites) {
+        if (!dom.policyEffectiveSitesList) return;
+        if (!effectiveRestrictedSites.length) {
+            dom.policyEffectiveSitesList.innerHTML = '<div class="policy-scope-empty">No merged domains are currently active</div>';
+            return;
+        }
+
+        const globalSet = new Set((Array.isArray(globalRestrictedSites) ? globalRestrictedSites : []).map((entry) => String(entry || '').trim()));
+        dom.policyEffectiveSitesList.innerHTML = effectiveRestrictedSites.map((entry) => {
+            const domain = String(entry || '').trim();
+            const origin = globalSet.has(domain) ? 'GLOBAL' : 'DEVICE';
+            const detail = origin === 'GLOBAL'
+                ? 'Inherited from the global policy set'
+                : 'Applied from device-specific restrictions';
+            return `
+                <div class="policy-scope-row">
+                    <div class="policy-scope-copy">
+                        <div class="policy-scope-domain">${escapeHtml(domain)}</div>
+                        <div class="policy-scope-detail">${escapeHtml(detail)}</div>
+                    </div>
+                    <div class="policy-scope-actions">
+                        <span class="policy-status-pill ${origin === 'GLOBAL' ? 'policy-status-pill-blue' : 'policy-status-pill-teal'}">${escapeHtml(origin)}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderPolicyViolationTimeline(container, recentViolations, emptyMessage) {
+        if (!container) return;
+        const rows = Array.isArray(recentViolations) ? recentViolations : [];
+        if (!rows.length) {
+            container.innerHTML = `<div class="policy-log-empty">${escapeHtml(String(emptyMessage || 'No policy activity recorded'))}</div>`;
+            return;
+        }
+
+        container.innerHTML = rows.map((item) => {
+            const domain = String(item?.domain || item?.site || 'Unknown').trim() || 'Unknown';
+            const action = String(item?.action || 'Blocked').trim() || 'Blocked';
+            const source = String(item?.source || 'policy-monitor').trim() || 'policy-monitor';
+            const status = normalizeViolationStatus(item?.status);
+            const severity = normalizeViolationSeverity(item?.severity || item?.confidence);
+            return `
+                <article class="policy-incident-card">
+                    <div class="policy-incident-header">
+                        <strong class="policy-incident-domain">${escapeHtml(domain)}</strong>
+                        <span class="policy-incident-time">${escapeHtml(formatClockTime(item?.time || item?.timestamp || item?.observed_at_utc))}</span>
+                    </div>
+                    <div class="policy-incident-tags">
+                        <span class="policy-badge policy-badge-severity-${severity.toLowerCase()}">${escapeHtml(severity)}</span>
+                        <span class="policy-badge policy-badge-status-${status}">${escapeHtml(titleCase(status))}</span>
+                        <span class="policy-badge policy-badge-source">${escapeHtml(String(source).replace(/[_\s]+/g, '-').toUpperCase())}</span>
+                    </div>
+                    <div class="policy-incident-blocked">
+                        <i class="fas fa-ban"></i>
+                        <span>${escapeHtml(action.toLowerCase() === 'blocked' ? 'Blocked by policy' : `${action} by policy`)}</span>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    function renderPolicyLogsModal(data) {
+        const source = ensureObject(data);
+        const restrictedMeta = Array.isArray(source.restrictedMeta) ? source.restrictedMeta : [];
+        const effectiveRestrictedSites = Array.isArray(source.effectiveRestrictedSites) ? source.effectiveRestrictedSites : [];
+        const recentViolations = Array.isArray(source.recentViolations) ? source.recentViolations : [];
+        setText('policyLogsStoredCount', String(restrictedMeta.length));
+        setText('policyLogsEffectiveCount', String(effectiveRestrictedSites.length));
+        setText('policyLogsViolationCount', String(Math.max(0, Math.floor(toNumber(source.violationsToday, 0)))));
+        setPolicyMetaValue('policyLogsAgentVersion', source.agentPolicyVersion, { hash: true });
+        renderPolicyViolationTimeline(dom.policyLogsModalList, recentViolations, 'No policy violations available for this device');
+    }
+
+    function syncPolicyRemoveSiteOptions(restrictedMeta) {
+        if (!dom.policyRemoveSiteList) return;
+        const rows = Array.isArray(restrictedMeta) ? restrictedMeta : [];
+        const selected = new Set(state.websitePolicy.selectedDomains || []);
+        dom.policyRemoveSiteList.innerHTML = rows.map((entry) => {
+            const domain = String(entry?.domain || '').trim();
+            const category = String(entry?.category || 'Custom').trim() || 'Custom';
+            const isSelected = selected.size ? selected.has(domain) : false;
+            return `<option value="${escapeHtml(domain)}"${isSelected ? ' selected' : ''}>${escapeHtml(domain)} [${escapeHtml(category)}]</option>`;
+        }).join('');
+        if (!selected.size && dom.policyRemoveSiteList.options.length) {
+            dom.policyRemoveSiteList.options[0].selected = true;
         }
     }
 
-    function handlePolicyDomainCheckboxToggle(event) {
-        const target = event?.target;
-        const domain = String(target?.getAttribute('data-policy-domain-check') || '').trim();
-        if (!domain) return;
-        const selected = new Set(state.websitePolicy.selectedDomains || []);
-        if (target.checked) selected.add(domain);
-        else selected.delete(domain);
-        state.websitePolicy.selectedDomains = Array.from(selected);
+    function openPolicyRemoveModal() {
+        const restrictedMeta = Array.isArray(state.websitePolicy.restrictedMeta) ? state.websitePolicy.restrictedMeta : [];
+        if (!restrictedMeta.length) {
+            showInfo('No stored device restrictions are available to remove.');
+            return;
+        }
+        syncPolicyRemoveSiteOptions(restrictedMeta);
+        showModal('policyRemoveSite');
+    }
+
+    function openPolicyLogsModal() {
+        renderPolicyLogsModal(state.websitePolicy);
+        showModal('policyLogs');
     }
 
     function handlePolicyDomainListClick(event) {
@@ -1606,9 +2395,12 @@
     }
 
     async function submitPolicyRemoveSite(singleDomain) {
+        const selectedFromModal = !singleDomain && dom.policyRemoveSiteList
+            ? Array.from(dom.policyRemoveSiteList.selectedOptions || []).map((option) => String(option.value || '').trim().toLowerCase()).filter(Boolean)
+            : [];
         const domains = singleDomain
             ? [String(singleDomain).trim().toLowerCase()]
-            : (Array.isArray(state.websitePolicy.selectedDomains) ? state.websitePolicy.selectedDomains.slice() : []);
+            : (selectedFromModal.length ? selectedFromModal : (Array.isArray(state.websitePolicy.selectedDomains) ? state.websitePolicy.selectedDomains.slice() : []));
         if (!domains.length) {
             showError('Select at least one domain to remove.');
             return;
@@ -1616,6 +2408,7 @@
 
         const run = async () => {
             setButtonBusy(dom.policyRemoveSiteBtn, true);
+            setButtonBusy(dom.policyRemoveSiteConfirmBtn, true);
             try {
                 await requestJson(`/api/devices/${encodeURIComponent(deviceId)}/website-policy`, {
                     method: 'DELETE',
@@ -1626,6 +2419,7 @@
                     credentials: 'same-origin',
                     body: JSON.stringify({ domains }),
                 });
+                hideModal('policyRemoveSite');
                 state.websitePolicy.selectedDomains = [];
                 invalidateDeviceConsoleCaches();
                 await loadWebsitePolicyData(true);
@@ -1633,6 +2427,7 @@
                 showInfo('Policy updated');
             } finally {
                 setButtonBusy(dom.policyRemoveSiteBtn, false);
+                setButtonBusy(dom.policyRemoveSiteConfirmBtn, false);
             }
         };
 
@@ -1958,8 +2753,11 @@
         return 'OFFLINE';
     }
 
-    function resolveAgentHealthLabel(status, hasTelemetry, syncAgeSeconds, lastSyncIso) {
+    function resolveAgentHealthLabel(status, hasTelemetry, syncAgeSeconds, lastSyncIso, telemetryState) {
+        const freshnessState = String(telemetryState || '').trim().toLowerCase();
         if (!lastSyncIso) return 'Awaiting telemetry';
+        if (freshnessState === 'stale') return 'Metrics incomplete';
+        if (freshnessState === 'offline-fallback' || freshnessState === 'offline-empty') return 'Agent unavailable';
         if (status === 'offline') return 'Unreachable';
         if (!hasTelemetry) return 'Awaiting telemetry';
         if (!Number.isFinite(syncAgeSeconds)) return 'Unknown';
@@ -2375,7 +3173,7 @@
             dom.telemetryHeartbeat.textContent = `Last heartbeat: ${formatRelativeFromIso(lastHeartbeatIso)}`;
         }
         if (dom.telemetryPoll) {
-            dom.telemetryPoll.textContent = `Polling every ${Math.round(pollMs / 1000)}s`;
+            dom.telemetryPoll.textContent = `Polling every ${Math.round(state.pollMs / 1000)}s`;
         }
     }
 
@@ -2384,7 +3182,18 @@
         dom.agentHealthAwaiting.classList.toggle('d-none', !isVisible);
     }
 
-    function applyAwaitingTelemetryState(status, probeErrorCode, awaitingFirstTelemetry) {
+    function applyTelemetryPlaceholderState(options) {
+        const source = options || {};
+        const summaryMessage = String(source.summaryMessage || 'Awaiting telemetry data');
+        const lastPollText = String(source.lastPollText || summaryMessage);
+        const feedMessage = String(source.feedMessage || summaryMessage);
+        const confidenceLabel = String(source.confidenceLabel || 'Pending');
+        const connectivityStatus = normalizeStatus(source.connectivityStatus || 'offline');
+        const deviceTelemetry = String(source.deviceTelemetry || 'partial').toLowerCase();
+        const riskLevel = String(source.riskLevel || 'MEDIUM').toUpperCase();
+        const riskScore = Math.max(0, Math.floor(toNumber(source.riskScore, 45)));
+        const riskTone = String(source.riskTone || 'degraded').toLowerCase();
+
         setText('overviewCpu', '--');
         setText('overviewRam', '--');
         setText('overviewDisk', '--');
@@ -2392,34 +3201,34 @@
         setText('overviewDownload', '--');
         setText('overviewIdle', '--');
         setText('activityIdleCompact', '--');
-        setText('overviewActiveApp', 'Awaiting activity data');
-        setText('overviewWindowTitle', 'Awaiting activity data');
+        setText('overviewActiveApp', summaryMessage);
+        setText('overviewWindowTitle', summaryMessage);
         setText('overviewKeyboardState', 'Awaiting');
         setText('overviewMouseState', 'Awaiting');
         setText('overviewActiveTime', '--');
         setText('overviewTotalTime', '--');
         setText('overviewAppCount', '--');
-        setText('overviewLastPoll', awaitingFirstTelemetry ? 'Awaiting first telemetry sample' : 'Awaiting telemetry data');
+        setText('overviewLastPoll', lastPollText);
 
         setText('activityKeyboardCount', '--');
         setText('activityMouseCount', '--');
         setText('activityScrollCount', '--');
         setText('activityIdleDuration', '--');
-        setText('activityFocusedApp', 'Awaiting activity data');
-        setText('activityFocusedWindow', 'Awaiting activity data');
-        setText('activityFocusChanged', 'Awaiting activity data');
-        setText('activityConfidence', 'Pending');
+        setText('activityFocusedApp', summaryMessage);
+        setText('activityFocusedWindow', summaryMessage);
+        setText('activityFocusChanged', summaryMessage);
+        setText('activityConfidence', confidenceLabel);
 
         setText('networkUpload', '--');
         setText('networkDownload', '--');
         setText('networkUploadTotal', '--');
         setText('networkDownloadTotal', '--');
 
-        patchKeyedChildren(document.getElementById('processTableBody'), [], () => '', 'tr', () => {});
+        patchKeyedChildren(document.getElementById('processTableBody'), [], () => '', 'tr', () => { });
         setTabCounter('processes', 0);
         patchKeyedChildren(
             document.getElementById('networkConsumersList'),
-            [{ id: 'empty', text: 'Awaiting telemetry data.' }],
+            [{ id: 'empty', text: `${summaryMessage}.` }],
             (row) => row.id,
             'div',
             (node, row) => {
@@ -2429,7 +3238,7 @@
         );
         patchKeyedChildren(
             document.getElementById('alertsFeedList'),
-            [{ id: 'awaiting', text: `Awaiting telemetry data${probeErrorCode ? ` (${probeErrorCode})` : ''}.` }],
+            [{ id: 'awaiting', text: feedMessage }],
             (row) => row.id,
             'div',
             (node, row) => {
@@ -2446,61 +3255,90 @@
         setText('overviewRamTrend', '-');
         document.getElementById('overviewCpu')?.classList.remove('metric-critical', 'metric-warning', 'metric-ok');
         document.getElementById('overviewRam')?.classList.remove('metric-critical', 'metric-warning', 'metric-ok');
-        setText('alertsRiskScore', status === 'offline' ? 'HIGH' : 'UNKNOWN');
-        const riskNode = document.getElementById('alertsRiskScore');
-        riskNode?.classList.remove('risk-high', 'risk-medium', 'risk-low', 'risk-unknown');
-        if (riskNode) {
-            if (status === 'offline') riskNode.classList.add('risk-high');
-            else riskNode.classList.add('risk-unknown');
-        }
-        setText('alertsRiskContext', awaitingFirstTelemetry ? 'Waiting for first telemetry sample' : 'Telemetry not yet available');
-        state.baseRiskLevel = status === 'offline' ? 'HIGH' : 'UNKNOWN';
+        applyRiskScoreVisual(riskScore, riskLevel);
+        setRiskTelemetryContext(summaryMessage, riskTone);
+        state.baseRiskLevel = riskLevel;
         setHeaderRiskBadge(state.baseRiskLevel);
         reconcileGlobalDeviceState({
-            connectivity: normalizeStatus(status),
-            telemetry: status === 'offline' ? 'offline' : 'partial',
+            connectivity: connectivityStatus,
+            telemetry: deviceTelemetry,
             policyViolations: state.policy.activeViolationCount,
-            riskLevel: status === 'offline' ? 'high' : 'medium',
-            riskScore: status === 'offline' ? 90 : 45,
+            riskLevel: riskLevel.toLowerCase(),
+            riskScore: riskScore,
+        });
+    }
+
+    function applyAwaitingTelemetryState(status, probeErrorCode, awaitingFirstTelemetry, options) {
+        const source = options || {};
+        const fallbackReason = String(probeErrorCode || '').trim();
+        const summaryMessage = source.summaryMessage
+            || (awaitingFirstTelemetry
+                ? 'Waiting for first telemetry sample'
+                : (fallbackReason ? `Telemetry unavailable (${humanizeReasonCode(fallbackReason)})` : 'Telemetry not yet available'));
+        applyTelemetryPlaceholderState({
+            summaryMessage,
+            lastPollText: source.lastPollText || (awaitingFirstTelemetry ? 'Awaiting first telemetry sample' : summaryMessage),
+            feedMessage: source.feedMessage || `${summaryMessage}.`,
+            riskScore: source.riskScore || (status === 'offline' ? 90 : 45),
+            riskLevel: source.riskLevel || (status === 'offline' ? 'HIGH' : 'MEDIUM'),
+            riskTone: source.riskTone || (status === 'offline' ? 'critical' : 'degraded'),
+            deviceTelemetry: source.deviceTelemetry || (status === 'offline' ? 'offline' : 'partial'),
+            connectivityStatus: source.connectivityStatus || status,
+            confidenceLabel: source.confidenceLabel || 'Pending',
         });
     }
 
     function updatePollMeta() {
         if (!dom.pollMeta) return;
-        const pollSeconds = Math.round(pollMs / 1000);
-        const latencyLabel = Number.isFinite(state.lastPollDurationMs)
-            ? `${Math.round(state.lastPollDurationMs)} ms`
-            : '-- ms';
-        if (!state.lastPollTs) {
-            dom.pollMeta.textContent = `Polling ${pollSeconds}s - Latency ${latencyLabel}`;
-            setText('telemetryStatusTitle', 'LIVE TELEMETRY');
-            if (dom.pollDot) dom.pollDot.classList.remove('live');
+        const pollSeconds = Math.round(state.pollMs / 1000);
+        const latencyMs = Number.isFinite(state.lastPollDurationMs) ? Math.round(state.lastPollDurationMs) : NaN;
+        const latencyDisplay = Number.isFinite(latencyMs) ? `${latencyMs} ms` : '-- ms';
+        const latencyClass = latencyToneClass(latencyMs);
+        const setTelemetryIndicator = (stateName, label) => {
+            if (dom.telemetryIndicator) {
+                dom.telemetryIndicator.classList.remove('state-healthy', 'state-degraded', 'state-critical', 'state-offline', 'state-muted');
+                dom.telemetryIndicator.classList.add(stateName);
+            }
+            const titleNode = document.getElementById('telemetryStatusTitle');
+            if (titleNode) {
+                titleNode.textContent = label;
+                titleNode.classList.remove('is-healthy', 'is-degraded', 'is-critical', 'is-muted');
+                if (stateName === 'state-healthy') titleNode.classList.add('is-healthy');
+                else if (stateName === 'state-degraded') titleNode.classList.add('is-degraded');
+                else if (stateName === 'state-critical' || stateName === 'state-offline') titleNode.classList.add('is-critical');
+                else titleNode.classList.add('is-muted');
+            }
+        };
+
+        const liveState = String(state.liveFreshness?.telemetryState || state.pageState || '').trim().toLowerCase();
+
+        if (liveState === 'initial-loading' || !state.lastPollTs) {
+            dom.pollMeta.innerHTML = `Polling ${pollSeconds}s <span class="telemetry-meta-separator">-</span> <span class="telemetry-latency ${latencyClass}">Latency ${latencyDisplay}</span>`;
+            setTelemetryIndicator('state-muted', 'INITIALIZING');
             return;
         }
+
         const age = Math.max(0, Math.floor((Date.now() - state.lastPollTs) / 1000));
-        dom.pollMeta.textContent = `Polling ${pollSeconds}s - Latency ${latencyLabel} - ${age}s ago`;
-        const telemetry = typeof telemetryStateApi.deriveTelemetryState === 'function'
-            ? telemetryStateApi.deriveTelemetryState({
-                latencyMs: toNumber(state.lastPollDurationMs, 0),
-                heartbeatAgeSeconds: age,
-                pollSeconds: pollSeconds,
-                hasResponse: true,
-            })
-            : { state: age <= pollSeconds * 2 ? 'healthy' : 'degraded', label: age <= pollSeconds * 2 ? 'LIVE TELEMETRY' : 'TELEMETRY DELAYED' };
-        if (dom.pollDot) {
-            dom.pollDot.classList.toggle('live', telemetry.state === 'healthy');
+        let stateName = 'state-muted';
+        let label = 'LIVE TELEMETRY';
+        if (liveState === 'live') {
+            stateName = 'state-healthy';
+            label = 'LIVE TELEMETRY';
+        } else if (liveState === 'degraded' || liveState === 'stale' || liveState === 'offline-fallback') {
+            stateName = latencyTone(latencyMs) === 'critical' ? 'state-critical' : 'state-degraded';
+            label = 'TELEMETRY DEGRADED';
+        } else if (liveState === 'offline-empty') {
+            stateName = 'state-offline';
+            label = 'AGENT UNAVAILABLE';
+        } else if (liveState === 'request-error') {
+            stateName = 'state-critical';
+            label = 'REQUEST RETRYING';
         }
-        if (dom.telemetryIndicator) {
-            dom.telemetryIndicator.classList.remove('state-healthy', 'state-degraded', 'state-critical', 'state-offline');
-            const className = telemetry.state === 'healthy'
-                ? 'state-healthy'
-                : (telemetry.state === 'offline' ? 'state-offline' : (telemetry.state === 'critical' ? 'state-critical' : 'state-degraded'));
-            dom.telemetryIndicator.classList.add(className);
-        }
-        setText('telemetryStatusTitle', telemetry.label || 'LIVE TELEMETRY');
+        dom.pollMeta.innerHTML = `Polling ${pollSeconds}s <span class="telemetry-meta-separator">-</span> <span class="telemetry-latency ${latencyClass}">Latency ${latencyDisplay}</span> <span class="telemetry-meta-separator">-</span> ${age}s ago`;
+        setTelemetryIndicator(stateName, label);
         reconcileGlobalDeviceState({
             connectivity: state.lastKnownStatus,
-            telemetry: telemetry.state,
+            telemetry: mapFreshnessToTelemetrySignal(liveState),
             policyViolations: state.policy.activeViolationCount,
             riskLevel: state.deviceState.risk,
             riskScore: state.deviceState.risk_score,
@@ -2558,8 +3396,13 @@
 
     function showBanner(message, level, autoHideMs) {
         if (!dom.errorBanner) return;
+        const text = String(message || '');
+        if (state.lastBannerMessage === text && !dom.errorBanner.classList.contains('d-none')) {
+            return;
+        }
+        state.lastBannerMessage = text;
         const variant = String(level || 'danger').toLowerCase();
-        dom.errorBanner.textContent = message;
+        dom.errorBanner.textContent = text;
         dom.errorBanner.classList.remove('d-none', 'alert-danger', 'alert-warning', 'alert-info', 'alert-success');
         dom.errorBanner.classList.add(`alert-${variant}`);
         if (Number.isFinite(autoHideMs) && autoHideMs > 0) {
@@ -2569,6 +3412,7 @@
 
     function clearError() {
         if (!dom.errorBanner) return;
+        state.lastBannerMessage = '';
         dom.errorBanner.textContent = '';
         dom.errorBanner.classList.remove('alert-warning', 'alert-info', 'alert-success');
         dom.errorBanner.classList.add('alert-danger');

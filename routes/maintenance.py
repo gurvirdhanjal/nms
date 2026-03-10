@@ -122,6 +122,29 @@ def run_all_maintenance():
 
 
 # ============================================================
+# POST /api/maintenance/backfill-rollups
+# ============================================================
+@maintenance_bp.route('/backfill-rollups', methods=['POST'])
+@require_role('admin')
+def backfill_rollups():
+    """Backfill reporting rollups across daily stats, server health, and tracking."""
+    try:
+        from services.maintenance_service import maintenance_service
+
+        data = request.get_json() or {}
+        days = int(data.get('days', 90) or 90)
+        rebuild_daily_stats = bool(data.get('rebuild_daily_stats', False))
+
+        result = maintenance_service.backfill_reporting_rollups(
+            days=days,
+            rebuild_daily_stats=rebuild_daily_stats,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
 # GET /api/maintenance/status
 # ============================================================
 @maintenance_bp.route('/status')
@@ -140,6 +163,13 @@ def get_maintenance_status():
             ServerHealthHourlyRollup,
             ServerHealthDailyRollup,
             ServerHealthRollupState
+        )
+        from models.tracked_device import (
+            DeviceActivityLog,
+            DeviceApplicationLog,
+            TrackingDailyRollup,
+            TrackingHourlyRollup,
+            TrackingSample,
         )
         
         status = {
@@ -231,7 +261,56 @@ def get_maintenance_status():
             'count': daily_count,
             'latest_date': latest_stat.date.isoformat() if latest_stat and latest_stat.date else None
         }
-        
+
+        tracking_sample_count = TrackingSample.query.count()
+        latest_tracking_sample = TrackingSample.query.order_by(TrackingSample.received_at.desc()).first()
+        status['tables']['tracking_samples'] = {
+            'count': tracking_sample_count,
+            'latest_record': latest_tracking_sample.received_at.isoformat() if latest_tracking_sample and latest_tracking_sample.received_at else None
+        }
+
+        tracking_activity_count = DeviceActivityLog.query.count()
+        latest_tracking_activity = DeviceActivityLog.query.order_by(DeviceActivityLog.timestamp.desc()).first()
+        status['tables']['device_activity_logs'] = {
+            'count': tracking_activity_count,
+            'latest_record': latest_tracking_activity.timestamp.isoformat() if latest_tracking_activity and latest_tracking_activity.timestamp else None
+        }
+
+        tracking_app_count = DeviceApplicationLog.query.count()
+        latest_tracking_app = DeviceApplicationLog.query.order_by(DeviceApplicationLog.timestamp.desc()).first()
+        status['tables']['device_application_logs'] = {
+            'count': tracking_app_count,
+            'latest_record': latest_tracking_app.timestamp.isoformat() if latest_tracking_app and latest_tracking_app.timestamp else None
+        }
+
+        tracking_hourly_count = TrackingHourlyRollup.query.count()
+        latest_tracking_hourly = TrackingHourlyRollup.query.order_by(TrackingHourlyRollup.bucket_hour.desc()).first()
+        status['tables']['tracking_hourly_rollups'] = {
+            'count': tracking_hourly_count,
+            'latest_record': latest_tracking_hourly.bucket_hour.isoformat() if latest_tracking_hourly and latest_tracking_hourly.bucket_hour else None
+        }
+
+        tracking_daily_count = TrackingDailyRollup.query.count()
+        latest_tracking_daily = TrackingDailyRollup.query.order_by(TrackingDailyRollup.bucket_day.desc()).first()
+        status['tables']['tracking_daily_rollups'] = {
+            'count': tracking_daily_count,
+            'latest_record': latest_tracking_daily.bucket_day.isoformat() if latest_tracking_daily and latest_tracking_daily.bucket_day else None
+        }
+
+        tracking_rollup_states = ServerHealthRollupState.query.filter(
+            ServerHealthRollupState.name.like('tracking_%')
+        ).order_by(ServerHealthRollupState.name).all()
+        status['tables']['tracking_rollup_state'] = {
+            'count': len(tracking_rollup_states),
+            'states': [
+                {
+                    'name': state.name,
+                    'rolled_until': state.rolled_until.isoformat() if state.rolled_until else None
+                }
+                for state in tracking_rollup_states
+            ]
+        }
+
         return jsonify(status)
         
     except Exception as e:
@@ -269,6 +348,99 @@ def get_maintenance_devices():
 
 
 # ============================================================
+# GET /api/maintenance/windows
+# ============================================================
+@maintenance_bp.route('/windows')
+@require_login
+def get_maintenance_windows():
+    """Get the schedule of maintenance windows."""
+    try:
+        from services.maintenance_window_service import maintenance_window_service
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+        windows = maintenance_window_service.list_windows(include_inactive=include_inactive)
+        
+        return jsonify({'windows': [w.to_dict() for w in windows]})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# POST /api/maintenance/schedule
+# ============================================================
+@maintenance_bp.route('/schedule', methods=['POST'])
+@require_role('admin')
+def schedule_maintenance():
+    """Schedule a new maintenance window."""
+    try:
+        from services.maintenance_window_service import maintenance_window_service
+        from flask import session
+        
+        data = request.get_json() or {}
+        device_id = data.get('device_id')
+        start_time_str = data.get('start_time')
+        end_time_str = data.get('end_time')
+        reason = data.get('reason')
+        
+        if not all([device_id, start_time_str, end_time_str]):
+            return jsonify({'error': 'device_id, start_time, and end_time are required'}), 400
+            
+        start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+        
+        # Remove tzinfo for storing in DB (we assume UTC across the board)
+        start_time = start_time.replace(tzinfo=None)
+        end_time = end_time.replace(tzinfo=None)
+        
+        created_by = session.get('username') or session.get('user_id') or 'admin'
+        
+        window = maintenance_window_service.schedule_window(
+            device_id=device_id,
+            start_time=start_time,
+            end_time=end_time,
+            reason=reason,
+            created_by=created_by
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Maintenance window scheduled successfully',
+            'window': window.to_dict()
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except LookupError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# POST /api/maintenance/windows/<id>/cancel
+# ============================================================
+@maintenance_bp.route('/windows/<int:window_id>/cancel', methods=['POST'])
+@require_role('admin')
+def cancel_maintenance_window(window_id):
+    """Cancel an active scheduled maintenance window."""
+    try:
+        from services.maintenance_window_service import maintenance_window_service
+        
+        window = maintenance_window_service.cancel_window(window_id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Maintenance window cancelled successfully',
+            'window': window.to_dict()
+        })
+    except LookupError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+
+# ============================================================
 # POST /api/maintenance/toggle  — Toggle maintenance mode
 # ============================================================
 @maintenance_bp.route('/toggle', methods=['POST'])
@@ -279,6 +451,9 @@ def toggle_maintenance():
     """
     try:
         from models.device import Device
+        from services.maintenance_window_service import maintenance_window_service
+        from flask import session
+        from datetime import timedelta
 
         data = request.get_json() or {}
         device_id = data.get('device_id')
@@ -294,6 +469,22 @@ def toggle_maintenance():
         # Reset strikes when toggling maintenance off
         if not device.maintenance_mode:
             device.health_alert_strikes = 0
+            
+            # Cancel any scheduled windows
+            windows = maintenance_window_service.list_windows()
+            for w in windows:
+                if w.device_id == device.device_id and w.is_active:
+                    maintenance_window_service.cancel_window(w.id)
+        else:
+            # Create a manual 24-hour window
+            created_by = session.get('username') or session.get('user_id') or 'admin'
+            maintenance_window_service.schedule_window(
+                device_id=device.device_id,
+                start_time=datetime.utcnow() - timedelta(minutes=1), # small buffer
+                end_time=datetime.utcnow() + timedelta(hours=24),
+                reason="Dashboard Quick Toggle",
+                created_by=created_by
+            )
 
         db.session.commit()
 
@@ -310,3 +501,4 @@ def toggle_maintenance():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+

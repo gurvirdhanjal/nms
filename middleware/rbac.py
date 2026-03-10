@@ -11,11 +11,13 @@ Current role model:
 import secrets
 import threading
 import time
+import logging
 from functools import wraps
 
 from flask import current_app, flash, g, jsonify, redirect, request, session, url_for
 from extensions import db
 
+logger = logging.getLogger(__name__)
 
 ROLE_PERMISSIONS = {
     'admin': {'*'},
@@ -380,11 +382,16 @@ def current_scope_cache_fragment():
 def require_login(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        print(f"DEBUG REQUIRE_LOGIN: logged_in={session.get('logged_in')}, has_api_key={_has_valid_api_key()}")
+        logger.debug(
+            "[RBAC] require_login logged_in=%s has_api_key=%s endpoint=%s",
+            session.get('logged_in'),
+            _has_valid_api_key(),
+            request.endpoint,
+        )
         if not session.get('logged_in') and not _has_valid_api_key():
-            print(f"DEBUG REQUIRE_LOGIN: Returning unauthorized")
+            logger.debug("[RBAC] require_login unauthorized endpoint=%s", request.endpoint)
             return _unauthorized_response()
-        print(f"DEBUG REQUIRE_LOGIN: Auth passed")
+        logger.debug("[RBAC] require_login passed endpoint=%s", request.endpoint)
         return func(*args, **kwargs)
 
     return wrapper

@@ -249,7 +249,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-muted mb-1">Total Devices</h6>
-                            <h3 class="mb-0">{{ stats.device_count }}</h3>
+                            <h3 class="mb-0" id="siteKpiTotal">{{ stats.device_count }}</h3>
                         </div>
                         <div class="text-primary">
                             <i class="fas fa-server fa-2x"></i>
@@ -265,7 +265,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-muted mb-1">Online</h6>
-                            <h3 class="mb-0">{{ stats.online_count }}</h3>
+                            <h3 class="mb-0" id="siteKpiOnline">{{ stats.online_count }}</h3>
                         </div>
                         <div class="text-success">
                             <i class="fas fa-check-circle fa-2x"></i>
@@ -281,7 +281,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-muted mb-1">Offline</h6>
-                            <h3 class="mb-0">{{ stats.offline_count }}</h3>
+                            <h3 class="mb-0" id="siteKpiOffline">{{ stats.offline_count }}</h3>
                         </div>
                         <div class="text-danger">
                             <i class="fas fa-times-circle fa-2x"></i>
@@ -297,7 +297,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-muted mb-1">Warnings</h6>
-                            <h3 class="mb-0">{{ stats.warning_count }}</h3>
+                            <h3 class="mb-0" id="siteKpiWarnings">{{ stats.warning_count }}</h3>
                         </div>
                         <div class="text-warning">
                             <i class="fas fa-exclamation-triangle fa-2x"></i>
@@ -463,7 +463,7 @@
                             </thead>
                             <tbody>
                                 {% for row in dept_device_stats %}
-                                <tr>
+                                <tr data-department-name="{{ row.name }}">
                                     <td><strong>{{ row.name }}</strong></td>
                                     <td>{{ row.device_count }}</td>
                                     <td>{{ row.online_count }}</td>
@@ -506,12 +506,12 @@
                             </thead>
                             <tbody>
                                 {% for device in devices %}
-                                <tr>
+                                <tr data-device-id="{{ device.device_id }}">
                                     <td>
                                         {% if device.device_id in online_device_ids %}
-                                        <span class="status-chip status-online">Online</span>
+                                        <span class="status-chip status-online" data-device-status="online">Online</span>
                                         {% else %}
-                                        <span class="status-chip status-offline">Offline</span>
+                                        <span class="status-chip status-offline" data-device-status="offline">Offline</span>
                                         {% endif %}
                                     </td>
                                     <td><strong>{{ device.device_name }}</strong></td>

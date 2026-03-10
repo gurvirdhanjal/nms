@@ -15,6 +15,11 @@ import urllib.request
 import struct
 import random
 import time
+import logging
+
+from services.operational_error_handling import log_operational_exception
+
+logger = logging.getLogger(__name__)
 
 class NetworkScanner:
     """
@@ -50,6 +55,35 @@ class NetworkScanner:
     MAX_HOSTS_HARD_CAP = 4096        # hard safety cap to avoid freezes
     DEFAULT_WORKERS = 80             # async concurrency (safe on LAN; tune 40-120)
     EXECUTOR_WORKERS = 12            # threads for blocking ops (ARP/DNS/vendor)
+    VIRTUAL_INTERFACE_HINTS = (
+        "loopback",
+        "vmware",
+        "virtual",
+        "vbox",
+        "hyper-v",
+        "vethernet",
+        "docker",
+        "br-",
+        "virbr",
+        "tailscale",
+        "zerotier",
+        "hamachi",
+        "tun",
+        "tap",
+        "wireguard",
+        "wg",
+        "vpn",
+        "npcap",
+    )
+    PREFERRED_INTERFACE_HINTS = (
+        "ethernet",
+        "wi-fi",
+        "wifi",
+        "wlan",
+        "lan",
+        "eth",
+        "en",
+    )
 
     def __init__(self):
         self.mac_lookup = MacLookup()
@@ -66,57 +100,123 @@ class NetworkScanner:
     # Local network detection
     # ---------------------------
 
+    def _detect_primary_ipv4(self):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(2)
+            sock.connect(("8.8.8.8", 80))
+            primary_ip = sock.getsockname()[0]
+            sock.close()
+            return primary_ip
+        except Exception:
+            return None
+
+    def _build_ipv4_network(self, ip_address, netmask):
+        if not ip_address or not netmask:
+            return None
+        try:
+            return ipaddress.IPv4Network(f"{ip_address}/{netmask}", strict=False)
+        except Exception:
+            return None
+
+    def _is_virtual_interface(self, interface_name):
+        normalized = (interface_name or "").strip().lower()
+        return any(hint in normalized for hint in self.VIRTUAL_INTERFACE_HINTS)
+
+    def _is_preferred_interface(self, interface_name):
+        normalized = (interface_name or "").strip().lower()
+        return any(hint in normalized for hint in self.PREFERRED_INTERFACE_HINTS)
+
+    def _score_interface_candidate(self, interface_name, ip_address, network, primary_ip):
+        ip_obj = ipaddress.IPv4Address(ip_address)
+        score = 0
+
+        if ip_address == primary_ip:
+            score += 24
+        if ip_obj.is_private:
+            score += 40
+        else:
+            score -= 20
+        if ip_obj.is_link_local:
+            score -= 70
+        if self._is_virtual_interface(interface_name):
+            score -= 48
+        if self._is_preferred_interface(interface_name):
+            score += 10
+        if network.prefixlen >= 31:
+            score -= 40
+
+        return score
+
+    def _iter_ipv4_candidates(self, interfaces, stats, primary_ip):
+        candidates = []
+
+        for interface_name, addrs in interfaces.items():
+            interface_stats = stats.get(interface_name)
+            if interface_stats and not getattr(interface_stats, "isup", False):
+                continue
+
+            for addr in addrs:
+                if getattr(addr, "family", None) != socket.AF_INET:
+                    continue
+
+                ip_address = getattr(addr, "address", None)
+                if not ip_address:
+                    continue
+
+                try:
+                    ip_obj = ipaddress.IPv4Address(ip_address)
+                except Exception:
+                    continue
+
+                if ip_obj.is_loopback or ip_obj.is_unspecified or ip_obj.is_multicast:
+                    continue
+
+                network = self._build_ipv4_network(ip_address, getattr(addr, "netmask", None))
+                if network is None:
+                    continue
+
+                candidates.append({
+                    "interface": interface_name,
+                    "ip": ip_address,
+                    "network": str(network),
+                    "prefixlen": network.prefixlen,
+                    "is_private": ip_obj.is_private and not ip_obj.is_link_local,
+                    "score": self._score_interface_candidate(interface_name, ip_address, network, primary_ip),
+                })
+
+        return candidates
+
     def get_local_ip_range(self):
         """Get the local IP range based on the machine's primary network interface."""
         try:
-            # Method 1: Connect to specific external server to find accurate "main" IP
-            # We don't actually send data, just determine the routing source IP
-            primary_ip = None
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.settimeout(2)
-                s.connect(("8.8.8.8", 80))
-                primary_ip = s.getsockname()[0]
-                s.close()
-            except Exception:
-                pass
-
+            primary_ip = self._detect_primary_ipv4()
             interfaces = psutil.net_if_addrs()
-            
-            # If we found the primary IP, search for it directly
-            if primary_ip:
-                for interface_name, addrs in interfaces.items():
-                    for addr in addrs:
-                        if addr.family == socket.AF_INET and addr.address == primary_ip:
-                             if addr.netmask:
-                                 network = ipaddress.IPv4Network(f"{primary_ip}/{addr.netmask}", strict=False)
-                                 return str(network)
-
-            # Method 2: Fallback to iterating interfaces (Status UP, not loopback)
             stats = psutil.net_if_stats()
-            for interface_name, addrs in interfaces.items():
-                st = stats.get(interface_name)
-                if st and not st.isup:
-                    continue
-
-                for addr in addrs:
-                    if addr.family == socket.AF_INET:
-                        ip = addr.address
-                        netmask = addr.netmask
-
-                        if not ip or not netmask:
-                            continue
-                        if ip.startswith("127."):
-                            continue
-
-                        try:
-                            network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
-                            return str(network)
-                        except Exception:
-                            continue
+            candidates = self._iter_ipv4_candidates(interfaces, stats, primary_ip)
+            if candidates:
+                candidates.sort(
+                    key=lambda item: (
+                        item["score"],
+                        1 if item["is_private"] else 0,
+                        1 if item["ip"] == primary_ip else 0,
+                        item["prefixlen"],
+                    ),
+                    reverse=True,
+                )
+                selected = candidates[0]
+                logger.info(
+                    "Selected local IP range %s via interface=%s ip=%s primary_ip=%s score=%s",
+                    selected["network"],
+                    selected["interface"],
+                    selected["ip"],
+                    primary_ip,
+                    selected["score"],
+                )
+                return selected["network"]
 
         except Exception as e:
-            print(f"Error getting local IP range: {e}")
+            logger.warning("Error getting local IP range: %s", e)
 
         # fallback
         return ipaddress.IPv4Network("192.168.1.0/24")
@@ -331,7 +431,7 @@ class NetworkScanner:
 
     async def ping_device(self, ip: str, timeout: int = 2, count: int = 4):
         """
-        Ping a device and return status, latency (ms), and packet loss (%).
+        Ping a device and return status, latency (ms), packet loss (%), and jitter (ms).
         Safe fallback to system ping if aioping lacks permissions.
         """
         successful_pings = 0
@@ -359,9 +459,15 @@ class NetworkScanner:
         
         if successful_pings > 0:
             avg_latency = round(sum(latencies) / len(latencies), 2)
-            return "Online", avg_latency, packet_loss
+            # Calculate simple jitter: average absolute difference between successive latencies
+            jitter = 0.0
+            if len(latencies) > 1:
+                diffs = [abs(latencies[j] - latencies[j-1]) for j in range(1, len(latencies))]
+                jitter = round(sum(diffs) / len(diffs), 2)
+                
+            return "Online", avg_latency, packet_loss, jitter
         else:
-            return "Offline", None, 100.0
+            return "Offline", None, 100.0, None
 
     async def _ping_system(self, ip: str, timeout: int, is_windows: bool) -> float:
         """Fallback system ping (executes ping command). Returns delay in seconds or None."""
@@ -447,22 +553,28 @@ class NetworkScanner:
     async def check_tactical_agent(self, ip: str):
         """Check if device is running the Tactical Agent service on port 5002."""
         try:
-            print(f"[DEBUG] Checking agent on {ip}:5002...")
+            logger.debug("[AgentScan] probing ip=%s port=5002", ip)
             # First check if port is open quickly
             _, is_open = await self.check_port(ip, 5002)
             if not is_open:
-                print(f"[DEBUG] {ip}:5002 is CLOSED")
+                logger.debug("[AgentScan] ip=%s port=5002 state=closed", ip)
                 return None
             
-            print(f"[DEBUG] {ip}:5002 is OPEN, fetching identity...")
+            logger.debug("[AgentScan] ip=%s port=5002 state=open fetching_identity=true", ip)
 
             # Fetch identity endpoints
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(self._executor, self._fetch_agent_identity, ip)
-            print(f"[DEBUG] Identity result for {ip}: {result}")
+            logger.debug("[AgentScan] ip=%s identity_found=%s", ip, bool(result))
             return result
         except Exception as e:
-            print(f"[DEBUG] Error checking agent on {ip}: {e}")
+            log_operational_exception(
+                logger,
+                f"[AgentScan] probe failed ip={ip}",
+                e,
+                error_code='AGENT_DISCOVERY_FAILED',
+                expected_level='debug',
+            )
             return None
 
     async def check_port(self, ip, port, timeout=1.0):
@@ -485,8 +597,13 @@ class NetworkScanner:
                 if response.status == 200:
                     return json.loads(response.read().decode())
         except Exception as e:
-            print(f"[DEBUG] Fetch identity failed for {ip}: {e}")
-            pass
+            log_operational_exception(
+                logger,
+                f"[AgentScan] identity fetch failed ip={ip}",
+                e,
+                error_code='AGENT_IDENTITY_FAILED',
+                expected_level='debug',
+            )
         return None
     
     # ---------------------------
@@ -495,22 +612,28 @@ class NetworkScanner:
     async def check_tactical_agent(self, ip: str):
         """Check if device is running the Tactical Agent service on port 5002."""
         try:
-            print(f"[DEBUG] Checking agent on {ip}:5002...")
+            logger.debug("[AgentScan] probing ip=%s port=5002", ip)
             # First check if port is open quickly
             _, is_open = await self.check_port(ip, 5002)
             if not is_open:
-                print(f"[DEBUG] {ip}:5002 is CLOSED")
+                logger.debug("[AgentScan] ip=%s port=5002 state=closed", ip)
                 return None
             
-            print(f"[DEBUG] {ip}:5002 is OPEN, fetching identity...")
+            logger.debug("[AgentScan] ip=%s port=5002 state=open fetching_identity=true", ip)
 
             # Fetch identity endpoints
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(self._executor, self._fetch_agent_identity, ip)
-            print(f"[DEBUG] Identity result for {ip}: {result}")
+            logger.debug("[AgentScan] ip=%s identity_found=%s", ip, bool(result))
             return result
         except Exception as e:
-            print(f"[DEBUG] Error checking agent on {ip}: {e}")
+            log_operational_exception(
+                logger,
+                f"[AgentScan] probe failed ip={ip}",
+                e,
+                error_code='AGENT_DISCOVERY_FAILED',
+                expected_level='debug',
+            )
             return None
 
     async def check_port(self, ip, port, timeout=1.0):
@@ -533,8 +656,13 @@ class NetworkScanner:
                 if response.status == 200:
                     return json.loads(response.read().decode())
         except Exception as e:
-            print(f"[DEBUG] Fetch identity failed for {ip}: {e}")
-            pass
+            log_operational_exception(
+                logger,
+                f"[AgentScan] identity fetch failed ip={ip}",
+                e,
+                error_code='AGENT_IDENTITY_FAILED',
+                expected_level='debug',
+            )
         return None
 
     # ---------------------------
@@ -544,13 +672,14 @@ class NetworkScanner:
     async def scan_single_device(self, ip: str, scan_mode: str = 'heavy'):
         """Comprehensive scan of a single device (fast + safe)."""
         try:
-            status, latency, packet_loss = await self.ping_device(ip, timeout=self.timeout)
+            status, latency, packet_loss, jitter = await self.ping_device(ip, timeout=self.timeout)
 
             device_info = {
                 "ip": ip,
                 "status": status,
                 "latency": latency,
                 "packet_loss": packet_loss,  # NEW: Include packet loss
+                "jitter": jitter,            # NEW: Include jitter
                 "hostname": "Unknown",
                 "mac": "N/A",
                 "manufacturer": "Unknown",

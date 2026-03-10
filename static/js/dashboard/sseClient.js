@@ -154,15 +154,17 @@ function handleEvent(eventType, event) {
     try {
         const data = JSON.parse(event.data);
 
+        const dedupeKey = data.delivery_key || data.event_id;
+
         // Deduplicate events
-        if (data.event_id && lastEventIds.has(data.event_id)) {
-            console.log('[SSE] Duplicate event ignored:', data.event_id);
+        if (dedupeKey && lastEventIds.has(dedupeKey)) {
+            console.log('[SSE] Duplicate event ignored:', dedupeKey);
             return;
         }
 
-        // Track event ID for deduplication
-        if (data.event_id) {
-            lastEventIds.add(data.event_id);
+        // Track event key for deduplication
+        if (dedupeKey) {
+            lastEventIds.add(dedupeKey);
             // Keep last 100 event IDs
             if (lastEventIds.size > 100) {
                 const firstId = lastEventIds.values().next().value;
@@ -178,6 +180,21 @@ function handleEvent(eventType, event) {
         console.error('[SSE] Failed to parse event:', error, event.data);
     }
 }
+
+export const __test__ = {
+    handleEvent,
+    resetDeduper() {
+        lastEventIds = new Set();
+        eventBuffer = [];
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            debounceTimer = null;
+        }
+    },
+    getDeduperSize() {
+        return lastEventIds.size;
+    }
+};
 
 /**
  * Debounce and batch event processing.

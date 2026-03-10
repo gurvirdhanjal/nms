@@ -105,19 +105,6 @@ DEFAULT_RESTRICTED_POLICY = {
     'policy_version': '',
 }
 HOSTNAME_RE = re.compile(r'(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b', re.IGNORECASE)
-# ============================================================
-# MISSING IMPORTS AND HELPER FUNCTIONS
-# ============================================================
-
-def require_api_key(f):
-    """API key authentication decorator"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        api_key = request.headers.get('X-API-Key')
-# ============================================================
-# MISSING IMPORTS AND HELPER FUNCTIONS
-# ============================================================
-
 def require_api_key(f):
     """API key authentication decorator"""
     @wraps(f)

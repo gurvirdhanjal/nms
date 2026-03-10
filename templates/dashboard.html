@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Tactical Dashboard{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -1044,14 +1044,18 @@
         text-align: center;
     }
 
+    #subnetDetailsModal .modal-content,
     #subnetDetailsModal .subnet-details-modal {
-        border: 1px solid var(--e-border) !important;
-        background: var(--e-bg-panel) !important;
+        background: var(--bg-surface, #0a0c0f) !important;
+        border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06)) !important;
+        border-radius: 8px !important;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9) !important;
     }
 
     #subnetDetailsModal .modal-header {
         padding: 0.56rem 0.74rem 0.46rem;
-        border-bottom: 1px solid var(--e-border);
+        border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04));
+        border-top: none !important;
     }
 
     #subnetDetailsModal .modal-title {
@@ -1063,8 +1067,9 @@
     }
 
     #subnetDetailsModal .modal-title i {
-        color: var(--e-text-muted);
+        color: var(--e-text-secondary);
         font-size: 0.74rem;
+        opacity: 0.6;
     }
 
     #subnetDetailsModal .modal-body.subnet-details-modal-body {
@@ -1086,10 +1091,10 @@
     }
 
     #subnetDetailsModal .subnet-modal-health-pill {
-        border: 1px solid var(--e-border);
+        border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.08));
         border-radius: 4px;
         padding: 0.18rem 0.44rem;
-        background: rgba(148, 163, 184, 0.06);
+        background: rgba(255, 255, 255, 0.02);
         font-family: var(--t-mono);
         font-variant-numeric: tabular-nums;
         font-size: 0.64rem;
@@ -1252,14 +1257,16 @@
     #subnetDetailsModal .subnet-device-status-chip {
         display: inline-flex;
         align-items: center;
-        border: 1px solid var(--e-border);
-        border-radius: 3px;
-        padding: 0.07rem 0.34rem;
+        gap: 4px;
         font-family: var(--t-mono);
-        font-size: 0.58rem;
+        font-size: 0.62rem;
         line-height: 1;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
+        padding: 0;
+        border: none;
+        background: none;
+        border-radius: 0;
     }
 
     #subnetDetailsModal .subnet-device-status.status-online {
@@ -1279,27 +1286,19 @@
     }
 
     #subnetDetailsModal .subnet-device-status-chip.status-online {
-        color: #7acfb8;
-        border-color: var(--s-healthy-bd);
-        background: var(--s-healthy-bg);
+        color: var(--s-healthy);
     }
 
     #subnetDetailsModal .subnet-device-status-chip.status-degraded {
-        color: #f2d47a;
-        border-color: var(--s-warning-bd);
-        background: var(--s-warning-bg);
+        color: var(--s-warning);
     }
 
     #subnetDetailsModal .subnet-device-status-chip.status-offline {
-        color: #f5a0a8;
-        border-color: var(--s-critical-bd);
-        background: var(--s-critical-bg);
+        color: var(--s-critical);
     }
 
     #subnetDetailsModal .subnet-device-status-chip.status-unknown {
         color: var(--e-text-muted);
-        border-color: var(--e-border);
-        background: rgba(148, 163, 184, 0.08);
     }
 
     #subnetDetailsModal .subnet-ip-pill {
@@ -1316,11 +1315,12 @@
     }
 
     #subnetDetailsModal .subnet-status-dot {
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         display: inline-block;
         flex: 0 0 auto;
+        margin-right: 2px;
     }
 
     #subnetDetailsModal .subnet-status-dot.status-online {
@@ -2051,9 +2051,9 @@
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-devices-healthy">
                 <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Healthy Devices</div>
+                <div class="stat-label">Reachable Devices</div>
                 <div class="stat-value text-success" id="val-devices-healthy">-</div>
-                <div class="metric-sub"><span class="text-secondary">All discovered</span></div>
+                <div class="metric-sub" id="sub-devices-healthy"><span class="text-secondary">Healthy and degraded devices</span></div>
             </div>
         </div>
         <div class="col">
@@ -2130,7 +2130,7 @@
                             <h5 class="enterprise-section-title mb-0">
                                 <i class="fas fa-chart-area me-2"></i>Availability Detail
                             </h5>
-                            <div class="enterprise-section-sub">24h uptime heatmap and worst availability</div>
+                            <div class="enterprise-section-sub" id="availability-modal-subtitle">Interval-based uptime view and worst availability</div>
                         </div>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
@@ -2139,13 +2139,27 @@
                             <div class="col-12">
                                 <div class="tactical-card breakdown-subcard">
                                     <div class="card-header small d-flex justify-content-between align-items-center">
-                                        <span><i class="fas fa-th me-2"></i>24h Uptime Heatmap</span>
+                                        <span id="availability-heatmap-title"><i class="fas fa-th me-2"></i>Availability Heatmap</span>
                                         <span class="text-secondary">Updated: <span
                                                 id="availability-modal-updated">-</span></span>
                                     </div>
                                     <div class="card-body">
-                                        <div class="availability-heatmap" id="availability-heatmap">
-                                            <div class="text-secondary">Loading...</div>
+                                        <div class="availability-controls">
+                                            <div class="availability-range-group" id="availability-range-group">
+                                                <button type="button" class="availability-range-btn active" data-availability-range="24h">24H</button>
+                                                <button type="button" class="availability-range-btn" data-availability-range="7d">7D</button>
+                                                <button type="button" class="availability-range-btn" data-availability-range="30d">30D</button>
+                                            </div>
+                                            <div class="availability-range-meta" id="availability-range-meta">12 buckets · 2h intervals · interval-majority status</div>
+                                        </div>
+                                        <div class="availability-summary-strip" id="availability-summary-strip">
+                                            <div class="availability-summary-empty">Loading summary...</div>
+                                        </div>
+                                        <div class="availability-heatmap-shell">
+                                            <div class="availability-heatmap-axis" id="availability-heatmap-axis"></div>
+                                            <div class="availability-heatmap" id="availability-heatmap">
+                                                <div class="text-secondary">Loading...</div>
+                                            </div>
                                         </div>
                                         <div class="availability-legend mt-3">
                                             <span class="legend-item"><span
@@ -2159,7 +2173,7 @@
                                             <span class="legend-item"><span
                                                     class="legend-swatch avail-unknown"></span>No data</span>
                                         </div>
-                                        <div class="small text-secondary mt-2">Hover a cell for hourly details.</div>
+                                        <div class="small text-secondary mt-2" id="availability-window-copy">Each cell represents a rolled-up interval. Hover a bucket for live/total detail.</div>
                                     </div>
                                 </div>
                             </div>
@@ -2168,13 +2182,13 @@
                                     <div class="card-header small"><i class="fas fa-arrow-down me-2"></i>Devices
                                         Contributing to Downtime</div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive availability-table-wrap">
                                             <table class="tactical-table table-hover mb-0">
                                                 <thead>
                                                     <tr>
                                                         <th>Device</th>
                                                         <th>IP</th>
-                                                        <th>Offline Scans</th>
+                                                        <th id="availability-downtime-count-header">Down Intervals</th>
                                                         <th>Downtime</th>
                                                     </tr>
                                                 </thead>
@@ -2194,14 +2208,14 @@
                                     <div class="card-header small"><i class="fas fa-exclamation-circle me-2"></i>Top 5
                                         Worst Availability</div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive availability-table-wrap">
                                             <table class="tactical-table table-hover mb-0">
                                                 <thead>
                                                     <tr>
                                                         <th>Device</th>
                                                         <th>IP</th>
                                                         <th>Uptime</th>
-                                                        <th>Offline Scans</th>
+                                                        <th id="availability-worst-count-header">Down Intervals</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="availability-worst-body">
@@ -2301,85 +2315,372 @@
             font-size: 0.68rem;
         }
 
-        .availability-heatmap {
-            display: grid;
-            grid-template-columns: repeat(12, minmax(0, 1fr));
-            gap: 6px;
+        #availability-modal .modal-dialog {
+            max-width: min(1320px, calc(100vw - 1rem));
         }
 
-        .availability-cell {
-            height: 24px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(18, 24, 32, 0.85);
-            box-shadow: none;
-            transition: border-color 130ms ease;
+        #availability-modal .modal-content {
+            background:
+                radial-gradient(circle at top right, rgba(23, 59, 107, 0.22), transparent 38%),
+                linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(11, 15, 24, 0.98));
+            border: 1px solid rgba(96, 118, 154, 0.34);
+            box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
         }
 
-        .availability-cell:hover {
-            /* v5.0: no transform on availability hover */
-            transform: none;
-            box-shadow: none;
+        #availability-modal .modal-header {
+            padding: 0.82rem 1rem 0.36rem;
+            border-bottom: 1px solid rgba(96, 118, 154, 0.18) !important;
         }
 
-        /* v5.0: muted availability tiers — no vivid gradients */
-        .availability-cell.avail-excellent,
-        .legend-swatch.avail-excellent {
-            background: rgba(32, 201, 151, 0.18);
-            border-color: rgba(32, 201, 151, 0.24);
-            box-shadow: none;
+        #availability-modal .modal-body {
+            padding: 0.55rem 1rem 1rem;
         }
 
-        .availability-cell.avail-good,
-        .legend-swatch.avail-good {
-            background: rgba(56, 139, 192, 0.18);
-            border-color: rgba(56, 139, 192, 0.24);
-            box-shadow: none;
+        #availability-modal .breakdown-subcard {
+            overflow: hidden;
         }
 
-        .availability-cell.avail-warning,
-        .legend-swatch.avail-warning {
-            background: rgba(255, 193, 7, 0.18);
-            border-color: rgba(255, 193, 7, 0.28);
-            box-shadow: none;
+        #availability-modal .breakdown-subcard .card-header {
+            padding: 0.58rem 0.82rem;
+            background: linear-gradient(90deg, rgba(0, 224, 196, 0.05), transparent 62%);
+            border-bottom: 1px solid rgba(96, 118, 154, 0.18);
         }
 
-        .availability-cell.avail-bad,
-        .legend-swatch.avail-bad {
-            background: rgba(220, 53, 69, 0.20);
-            border-color: rgba(220, 53, 69, 0.30);
-            box-shadow: none;
+        #availability-modal .breakdown-subcard .card-body {
+            padding: 0.78rem 0.82rem;
         }
 
-        .availability-cell.avail-unknown,
-        .legend-swatch.avail-unknown {
-            background: repeating-linear-gradient(45deg,
-                    rgba(148, 163, 184, 0.16),
-                    rgba(148, 163, 184, 0.16) 5px,
-                    rgba(148, 163, 184, 0.06) 5px,
-                    rgba(148, 163, 184, 0.06) 10px);
-            border-color: rgba(148, 163, 184, 0.38);
+        #availability-modal .breakdown-subcard .card-body.p-0 {
+            padding: 0 !important;
         }
 
-        .availability-legend {
+        #availability-modal .availability-controls {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            margin-bottom: 0.72rem;
         }
 
-        .availability-legend .legend-item {
+        #availability-modal .availability-range-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.22rem;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 118, 154, 0.22);
+            background: rgba(12, 18, 28, 0.82);
+        }
+
+        #availability-modal .availability-range-btn {
+            border: 0;
+            background: transparent;
+            color: #8ea0b6;
+            padding: 0.34rem 0.68rem;
+            border-radius: 999px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            transition: background-color 120ms ease, color 120ms ease;
+        }
+
+        #availability-modal .availability-range-btn:hover {
+            color: #eef5ff;
+            background: rgba(96, 118, 154, 0.12);
+        }
+
+        #availability-modal .availability-range-btn.is-active {
+            color: #eef5ff;
+            background: linear-gradient(180deg, rgba(0, 224, 196, 0.24), rgba(27, 108, 132, 0.18));
+            box-shadow: inset 0 0 0 1px rgba(84, 236, 214, 0.16);
+        }
+
+        #availability-modal .availability-range-meta {
+            font-size: 0.68rem;
+            color: #90a1b7;
+            letter-spacing: 0.03em;
+        }
+
+        #availability-modal .availability-summary-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.48rem;
+            margin-bottom: 0.72rem;
+        }
+
+        #availability-modal .availability-summary-kpi,
+        #availability-modal .availability-summary-empty {
+            min-height: 64px;
+            padding: 0.56rem 0.66rem;
+            border-radius: 8px;
+            border: 1px solid rgba(96, 118, 154, 0.22);
+            background: linear-gradient(180deg, rgba(17, 24, 36, 0.9), rgba(11, 16, 26, 0.84));
+        }
+
+        #availability-modal .availability-summary-empty {
+            display: flex;
+            align-items: center;
+            color: var(--e-text-muted);
+            font-size: 0.76rem;
+        }
+
+        #availability-modal .availability-summary-label {
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #6f8198;
+        }
+
+        #availability-modal .availability-summary-value {
+            margin-top: 0.28rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.02rem;
+            line-height: 1;
+            color: #eef5ff;
+        }
+
+        #availability-modal .availability-summary-meta {
+            margin-top: 0.28rem;
+            font-size: 0.68rem;
+            color: #90a1b7;
+            line-height: 1.35;
+        }
+
+        #availability-modal .availability-heatmap-shell {
+            padding: 0.62rem;
+            border-radius: 10px;
+            border: 1px solid rgba(96, 118, 154, 0.2);
+            background: linear-gradient(180deg, rgba(9, 14, 22, 0.92), rgba(10, 14, 22, 0.68));
+            overflow-x: auto;
+        }
+
+        #availability-modal .availability-heatmap-axis,
+        #availability-modal .availability-heatmap {
+            display: grid;
+            gap: 4px;
+        }
+
+        #availability-modal .availability-heatmap-axis {
+            margin-bottom: 4px;
+        }
+
+        #availability-modal .availability-axis-label {
+            min-height: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.56rem;
+            line-height: 1;
+            text-align: center;
+            color: #607286;
+            letter-spacing: 0.05em;
+        }
+
+        #availability-modal .availability-axis-label.is-major {
+            color: #a8b7ca;
+        }
+
+        #availability-modal .availability-axis-label.is-minor {
+            opacity: 0.48;
+        }
+
+        #availability-modal .availability-cell {
+            position: relative;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(118, 136, 166, 0.18);
+            background: rgba(18, 24, 32, 0.75);
+            overflow: hidden;
+            box-shadow: none;
+            transition: border-color 120ms ease, filter 120ms ease;
+        }
+
+        #availability-modal .availability-cell::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 48%, transparent 100%);
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        #availability-modal .availability-cell:hover {
+            transform: none;
+            filter: brightness(1.06);
+            border-color: rgba(200, 214, 235, 0.42);
+        }
+
+        #availability-modal .availability-cell.avail-excellent,
+        #availability-modal .legend-swatch.avail-excellent {
+            background: linear-gradient(180deg, rgba(24, 212, 176, 0.86), rgba(12, 108, 100, 0.76));
+            border-color: rgba(91, 241, 209, 0.38);
+        }
+
+        #availability-modal .availability-cell.avail-good,
+        #availability-modal .legend-swatch.avail-good {
+            background: linear-gradient(180deg, rgba(74, 140, 255, 0.84), rgba(40, 74, 168, 0.76));
+            border-color: rgba(133, 178, 255, 0.36);
+        }
+
+        #availability-modal .availability-cell.avail-warning,
+        #availability-modal .legend-swatch.avail-warning {
+            background: linear-gradient(180deg, rgba(242, 181, 76, 0.84), rgba(154, 94, 27, 0.76));
+            border-color: rgba(255, 213, 132, 0.38);
+        }
+
+        #availability-modal .availability-cell.avail-bad,
+        #availability-modal .legend-swatch.avail-bad {
+            background: linear-gradient(180deg, rgba(237, 90, 111, 0.86), rgba(136, 39, 57, 0.8));
+            border-color: rgba(255, 154, 168, 0.4);
+        }
+
+        #availability-modal .availability-cell.avail-unknown,
+        #availability-modal .legend-swatch.avail-unknown {
+            background: repeating-linear-gradient(45deg,
+                    rgba(108, 122, 144, 0.26),
+                    rgba(108, 122, 144, 0.26) 4px,
+                    rgba(35, 43, 55, 0.78) 4px,
+                    rgba(35, 43, 55, 0.78) 8px);
+            border-color: rgba(126, 141, 164, 0.28);
+        }
+
+        #availability-modal .availability-cell.avail-unknown::after,
+        #availability-modal .legend-swatch.avail-unknown::after {
+            display: none;
+        }
+
+        #availability-modal .availability-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.44rem;
+        }
+
+        #availability-modal .availability-legend .legend-item {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 0.75rem;
-            color: var(--tactical-text-dim);
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 118, 154, 0.18);
+            background: rgba(14, 20, 31, 0.72);
+            font-size: 0.67rem;
+            line-height: 1;
+            color: #9cafc4;
         }
 
-        .availability-legend .legend-swatch {
-            width: 12px;
-            height: 12px;
+        #availability-modal .availability-legend .legend-swatch {
+            width: 10px;
+            height: 10px;
             border-radius: 3px;
-            border: 1px solid var(--tactical-border);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #availability-modal .availability-table-wrap {
+            max-height: 272px;
+            overflow: auto;
+        }
+
+        #availability-modal .tactical-table th {
+            padding: 0.56rem 0.72rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.12em;
+            color: #7fd7d5;
+        }
+
+        #availability-modal .tactical-table td {
+            padding: 0.7rem 0.72rem;
+            font-size: 0.82rem;
+            vertical-align: middle;
+        }
+
+        #availability-modal .availability-device-name {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #eef5ff;
+        }
+
+        #availability-modal .availability-device-meta {
+            margin-top: 0.18rem;
+            font-size: 0.63rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6f8198;
+        }
+
+        #availability-modal .availability-inline-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 58px;
+            padding: 0.28rem 0.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(96, 118, 154, 0.2);
+            background: rgba(18, 25, 39, 0.84);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.73rem;
+            line-height: 1;
+            color: #d7e5f7;
+        }
+
+        #availability-modal .availability-inline-pill-ip {
+            justify-content: flex-start;
+            min-width: 0;
+            color: #63e0d2;
+        }
+
+        #availability-modal .availability-inline-pill-count {
+            color: #cdd8e5;
+        }
+
+        #availability-modal .availability-inline-pill.tone-excellent {
+            color: #aaf5df;
+            border-color: rgba(24, 212, 176, 0.26);
+            background: rgba(17, 101, 89, 0.3);
+        }
+
+        #availability-modal .availability-inline-pill.tone-good {
+            color: #bfd8ff;
+            border-color: rgba(74, 140, 255, 0.26);
+            background: rgba(34, 70, 146, 0.26);
+        }
+
+        #availability-modal .availability-inline-pill.tone-warning {
+            color: #ffe0a6;
+            border-color: rgba(242, 181, 76, 0.28);
+            background: rgba(116, 70, 23, 0.3);
+        }
+
+        #availability-modal .availability-inline-pill.tone-bad {
+            color: #ffc0cb;
+            border-color: rgba(237, 90, 111, 0.3);
+            background: rgba(110, 32, 46, 0.34);
+        }
+
+        @media (max-width: 1199px) {
+            #availability-modal .availability-range-meta {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #availability-modal .modal-header {
+                padding-inline: 0.82rem;
+            }
+
+            #availability-modal .modal-body {
+                padding-inline: 0.82rem;
+            }
+
+            #availability-modal .availability-summary-strip {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            #availability-modal .availability-controls {
+                align-items: flex-start;
+            }
         }
 
         /* Dense layout + enhanced tables for expanded breakdown row */
@@ -2835,6 +3136,9 @@
             </div>
 
             <div class="d-flex align-items-center gap-3">
+                <a href="{{ url_for('monitoring_bp.server_dashboard') }}" class="btn btn-sm tactical-btn-outline" style="font-size: 11px;">
+                    <i class="fas fa-server me-1"></i>Server Dashboard
+                </a>
                 <div class="tactical-text-muted small server-health-meta d-none d-md-block me-3">
                     Last check: <span id="server-last-check">-</span>
                 </div>
@@ -2898,13 +3202,16 @@
                                         <th>CPU</th>
                                         <th>Memory</th>
                                         <th>Disk</th>
+                                        <th class="d-none d-xl-table-cell">Ping</th>
+                                        <th class="d-none d-xl-table-cell">Loss %</th>
+                                        <th class="d-none d-xl-table-cell">Jitter</th>
                                         <th>Last Seen</th>
                                         <th class="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="table-server-health-body">
                                     <tr>
-                                        <td colspan="7" class="text-center text-secondary p-3">
+                                        <td colspan="10" class="text-center text-secondary p-3">
                                             Loading...
                                         </td>
                                     </tr>
@@ -3089,7 +3396,7 @@
 <div class="modal fade subnet-details-modal-shell" id="subnetDetailsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content tactical-card subnet-details-modal">
-            <div class="modal-header border-bottom-0">
+            <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="fas fa-project-diagram me-2"></i><span id="subnet-modal-title">Subnet Details</span>
                 </h5>
@@ -3136,6 +3443,10 @@
                         <span class="subnet-modal-breakdown-label">Vendors</span>
                         <span class="subnet-modal-breakdown-value" id="subnet-modal-vendors">-</span>
                     </div>
+                </div>
+                <div class="mb-3">
+                    <input type="text" class="tactical-input w-100" id="subnet-modal-filter"
+                        placeholder="Filter devices by name, IP, type or vendor...">
                 </div>
                 <div class="table-responsive subnet-modal-device-scroll">
                     <table class="tactical-table table-hover mb-0">
@@ -3270,6 +3581,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v=2.9"></script>
+<script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v=2.16"></script>
 {% endblock %}
-

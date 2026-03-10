@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 # Standardized Metric Constants
 DEVICE_AVAILABILITY = "device_availability"
 NETWORK_LATENCY_MS = "network_latency_ms"
-PACKET_LOSS_PERCENT = "packet_loss_percent"  # NEW
+PACKET_LOSS_PERCENT = "packet_loss_percent"
+NETWORK_JITTER_MS = "network_jitter_ms"
 OPEN_PORTS_COUNT = "open_ports_count"
 
 @dataclass
@@ -42,7 +43,8 @@ class MetricNormalizer:
         status: str, 
         latency_ms: Optional[float], 
         timestamp: Optional[datetime] = None,
-        packet_loss: Optional[float] = None  # NEW parameter
+        packet_loss: Optional[float] = None,
+        jitter: Optional[float] = None
     ) -> List[Metric]:
         """
         Convert ping results into metrics.
@@ -80,9 +82,13 @@ class MetricNormalizer:
         if latency_ms is not None:
             metrics.append(create_metric(NETWORK_LATENCY_MS, float(latency_ms), "ms"))
         
-        # 3. Packet Loss Metric (NEW)
+        # 3. Packet Loss Metric
         if packet_loss is not None:
             metrics.append(create_metric(PACKET_LOSS_PERCENT, float(packet_loss), "percent"))
+            
+        # 4. Jitter Metric
+        if jitter is not None:
+            metrics.append(create_metric(NETWORK_JITTER_MS, float(jitter), "ms"))
             
         return metrics
 

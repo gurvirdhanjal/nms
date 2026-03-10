@@ -55,6 +55,8 @@ def test_tracking_sync_merges_global_and_device_policy(client):
 
     assert data['success'] is True
     assert 'restricted_sites_policy' in data
+    assert data['restricted_sites_policy_version']
+    assert data['sync_mode'] == 'inline'
 
     sync_policy = data['restricted_sites_policy']
     merged_domains = sync_policy.get('blocked_domains', [])
@@ -64,6 +66,8 @@ def test_tracking_sync_merges_global_and_device_policy(client):
     assert 'global1.com' in merged_domains
     assert 'global2.com' in merged_domains
     assert 'device1.com' in merged_domains
+    db.session.refresh(device)
+    assert device.last_policy_sync_at is not None
 
 
 def test_tracking_sync_ingests_restricted_site_events(client):
@@ -101,6 +105,8 @@ def test_tracking_sync_ingests_restricted_site_events(client):
     data = response.get_json()
     assert data['success'] is True
     assert int((data.get('restricted_site_ingest') or {}).get('ingested_events', 0)) == 1
+    db.session.refresh(device)
+    assert device.last_policy_sync_at is not None
 
     persisted_event = RestrictedSiteEvent.query.filter_by(device_id=device.id, domain='example.com').first()
     assert persisted_event is not None
@@ -109,3 +115,21 @@ def test_tracking_sync_ingests_restricted_site_events(client):
     alert_state = RestrictedSiteAlertState.query.filter_by(device_id=device.id, domain='example.com').first()
     assert alert_state is not None
     assert int(alert_state.hit_count or 0) == 1
+
+def test_tracking_sync_persists_agent_policy_version(client):
+    device = _create_tracked_device(mac_address='AA:BB:CC:00:11:44')
+
+    response = client.post(
+        '/api/tracking/sync',
+        json={
+            'mac_address': device.mac_address,
+            'hostname': 'Policy-Version-PC',
+            'restricted_sites_policy_version': 'agent-v9',
+        },
+        headers={'X-API-Key': Config.API_KEY},
+    )
+
+    assert response.status_code == 200
+    db.session.refresh(device)
+    assert device.last_policy_version_seen == 'agent-v9'
+    assert device.last_policy_sync_at is not None

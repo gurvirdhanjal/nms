@@ -50,7 +50,8 @@
 <div class="container-fluid mt-3 maintenance-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-            <h5 class="mb-1" style="font-family:'Orbitron',monospace;letter-spacing:0.08em;color:var(--ui-accent-strong);">
+            <h5 class="mb-1"
+                style="font-family:'Orbitron',monospace;letter-spacing:0.08em;color:var(--ui-accent-strong);">
                 <i class="fas fa-calendar-alt me-2" style="color:var(--ui-accent);"></i>Maintenance Windows
             </h5>
             <p class="mb-0 text-muted small">Alert suppression follows scheduled windows. Polling remains active.</p>
@@ -74,7 +75,8 @@
                 <div class="col-lg-4 col-md-6">
                     <div class="input-group input-group-sm">
                         <span class="input-group-text"><i class="fas fa-search"></i></span>
-                        <input type="text" class="form-control" id="maintenanceSearch" placeholder="Search device, IP, reason...">
+                        <input type="text" class="form-control" id="maintenanceSearch"
+                            placeholder="Search device, IP, reason...">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6">
@@ -165,7 +167,8 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="scheduleReason">Reason</label>
-                        <textarea class="form-control" id="scheduleReason" rows="3" maxlength="500" placeholder="Patch deployment, firmware upgrade, power work..." required></textarea>
+                        <textarea class="form-control" id="scheduleReason" rows="3" maxlength="500"
+                            placeholder="Patch deployment, firmware upgrade, power work..." required></textarea>
                     </div>
                 </form>
             </div>
@@ -181,5 +184,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/maintenance.js') }}"></script>
+<script src="{{ url_for('static', filename='js/maintenance.js') }}?v=2.2"></script>
 {% endblock %}

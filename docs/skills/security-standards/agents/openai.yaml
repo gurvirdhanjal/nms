@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Standards"
+  short_description: "Auth, RBAC, and encryption standards"
+  default_prompt: "Use $security-standards to enforce authentication, RBAC, and secure secret/encryption practices across backend and agent-facing code."

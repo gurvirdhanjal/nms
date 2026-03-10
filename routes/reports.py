@@ -1,15 +1,17 @@
+import copy
 import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint,
     current_app,
+    has_request_context,
     jsonify,
     render_template,
     request,
@@ -20,8 +22,16 @@ from flask import (
 from sqlalchemy import text
 
 from extensions import db
-from middleware.rbac import require_login
+from middleware.rbac import build_scope_context, require_login
 from services.device_monitor import DeviceMonitor
+from services.report_export_job_service import (
+    cleanup_export_jobs as _job_cleanup,
+    count_running_export_jobs as _job_count_running,
+    create_export_job as _job_create,
+    get_export_job as _job_get,
+    update_export_job as _job_update,
+)
+from services.report_meta import build_report_meta
 
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
@@ -35,14 +45,12 @@ def _reports_auth_guard():
 
 
 _report_cache = {}
-_report_cache_expiry = {}
 _report_cache_lock = threading.Lock()
 
 _rate_limit_hits = {}
 _rate_limit_lock = threading.Lock()
 
-_export_jobs = {}
-_export_jobs_lock = threading.Lock()
+_NAIVE_ISO_DATETIME_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$')
 
 
 class ReportValidationError(Exception):
@@ -57,8 +65,40 @@ def _json_error(message, status_code=400, **extra):
     return jsonify(payload), status_code
 
 
-def _auth_check():
-    return None
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utcnow_naive() -> datetime:
+    return _utcnow().replace(tzinfo=None)
+
+
+def _request_id() -> str:
+    if has_request_context():
+        return str(request.headers.get('X-Request-ID') or '-')
+    return '-'
+
+
+def _to_utc_iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace('+00:00', 'Z')
+
+
+def _normalize_report_timestamps(value):
+    if isinstance(value, datetime):
+        return _to_utc_iso(value)
+    if isinstance(value, dict):
+        return {key: _normalize_report_timestamps(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_report_timestamps(item) for item in value]
+    if isinstance(value, tuple):
+        return [_normalize_report_timestamps(item) for item in value]
+    if isinstance(value, str) and _NAIVE_ISO_DATETIME_RE.match(value):
+        return f'{value}Z'
+    return value
 
 
 def _param(name, default=None, params=None):
@@ -86,7 +126,7 @@ def _max_days_for_report(report_type):
 
 def _parse_date_range(max_days=None, params=None):
     range_type = (_param('range', '24h', params) or '24h').strip().lower()
-    end_date = datetime.utcnow()
+    end_date = _utcnow_naive()
 
     custom_start = _param('start', None, params)
     custom_end = _param('end', None, params)
@@ -163,12 +203,24 @@ def _productivity_disabled_response():
 
 
 def _current_user_key():
-    return str(
-        session.get('user_id')
-        or session.get('username')
-        or request.remote_addr
-        or 'anonymous'
-    )
+    if has_request_context():
+        return str(
+            session.get('user_id')
+            or session.get('username')
+            or request.remote_addr
+            or 'anonymous'
+        )
+    return 'system'
+
+
+def _current_scope_details():
+    scope = build_scope_context()
+    scope_id = None
+    if scope.get('scope_type') == 'site':
+        scope_id = scope.get('site_id')
+    elif scope.get('scope_type') == 'department':
+        scope_id = scope.get('department_id')
+    return scope, scope_id
 
 
 def _count_devices(device_ids):
@@ -177,6 +229,8 @@ def _count_devices(device_ids):
     from models.device import Device
     from middleware.rbac import scoped_query
 
+    if not has_request_context():
+        return max(Device.query.count(), 1)
     return max(scoped_query(Device).count(), 1)
 
 
@@ -205,6 +259,10 @@ def _estimate_report_rows(report_type, start_date, end_date, device_ids=None):
         return device_count * hourly_buckets * max(iface_factor, 1)
     if report_type == 'productivity':
         return device_count * hourly_buckets
+    if report_type in ('maintenance-availability', 'security-compliance'):
+        return 1000
+    if report_type in ('inventory-assets', 'tracking-operations', 'printer-operations'):
+        return 1500
 
     return 5000
 
@@ -241,10 +299,48 @@ def _count_report_rows(report_type, payload):
         app_rows = sum(len((dev or {}).get('apps') or []) for dev in app_breakdown.values())
         return app_rows + len(payload.get('category_totals') or {}) + len(payload.get('activity_summary') or {})
 
+    if report_type == 'maintenance-availability':
+        return (
+            len(payload.get('scheduled_windows') or [])
+            + len(payload.get('maintenance_devices') or [])
+            + len(payload.get('downtime_leaders') or [])
+            + len(payload.get('tracked_instability') or [])
+        )
+
+    if report_type == 'security-compliance':
+        return (
+            len(payload.get('recent_alerts') or [])
+            + len(payload.get('recent_audit_log') or [])
+            + len(payload.get('restricted_site_violations') or [])
+            + len(payload.get('threshold_breaches') or [])
+            + len(payload.get('integrity_breakdown') or {})
+        )
+
+    if report_type == 'inventory-assets':
+        return (
+            len(payload.get('inventory_devices') or [])
+            + len(payload.get('tracked_devices') or [])
+            + len(payload.get('active_links') or [])
+            + len(payload.get('pending_candidates') or [])
+        )
+
+    if report_type == 'tracking-operations':
+        return (
+            len(payload.get('device_freshness') or [])
+            + len(payload.get('top_applications') or [])
+            + len(payload.get('activity_totals') or [])
+            + len(payload.get('availability_breakdown') or [])
+            + len(payload.get('integrity_breakdown') or {})
+        )
+
+    if report_type == 'printer-operations':
+        return len(payload.get('printer_status') or []) + len(payload.get('print_volume') or [])
+
     return len(payload)
 
 
 def _build_cache_key(report_type, start_date, end_date, device_ids=None, extras=None):
+    scope, _ = _current_scope_details() if has_request_context() else ({'scope_type': 'background'}, None)
     payload = {
         'report_type': report_type,
         'start': start_date.isoformat(),
@@ -252,6 +348,8 @@ def _build_cache_key(report_type, start_date, end_date, device_ids=None, extras=
         'device_ids': sorted(device_ids or []),
         'extras': extras or {},
         'user': _current_user_key(),
+        'scope': scope.get('scope_type'),
+        'scope_key': scope.get('scope_key'),
     }
     raw = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     digest = hashlib.sha256(raw.encode('utf-8')).hexdigest()
@@ -261,21 +359,46 @@ def _build_cache_key(report_type, start_date, end_date, device_ids=None, extras=
 def _get_cached_report(cache_key):
     now = time.time()
     with _report_cache_lock:
-        exp = _report_cache_expiry.get(cache_key)
-        if exp and now < exp:
-            return _report_cache.get(cache_key)
+        entry = _report_cache.get(cache_key)
+        if entry and now < float(entry.get('expires_at', 0)):
+            return dict(entry)
         _report_cache.pop(cache_key, None)
-        _report_cache_expiry.pop(cache_key, None)
     return None
 
 
-def _set_cached_report(cache_key, payload):
-    ttl = int(current_app.config.get('REPORT_CACHE_TTL_SECONDS', 180))
+def _cache_ttl_seconds(report_type, start_date, end_date):
+    if report_type in ('executive', 'operational'):
+        return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 300))
+    span = end_date - start_date
+    if span <= timedelta(hours=24):
+        return int(current_app.config.get('REPORT_CACHE_TTL_24H_SECONDS', 60))
+    if span <= timedelta(days=30):
+        return int(current_app.config.get('REPORT_CACHE_TTL_7D_30D_SECONDS', 180))
+    return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 300))
+
+
+def _set_cached_report(cache_key, payload, ttl):
     if ttl <= 0:
         return
     with _report_cache_lock:
-        _report_cache[cache_key] = payload
-        _report_cache_expiry[cache_key] = time.time() + ttl
+        now = time.time()
+        _report_cache[cache_key] = {
+            'payload': copy.deepcopy(payload),
+            'created_at': now,
+            'expires_at': now + ttl,
+            'ttl': ttl,
+        }
+        max_entries = int(current_app.config.get('MAX_REPORT_CACHE_ENTRIES', 500))
+        if max_entries > 0 and len(_report_cache) > max_entries:
+            oldest_keys = [
+                key
+                for key, _ in sorted(
+                    _report_cache.items(),
+                    key=lambda item: float(item[1].get('created_at', 0)),
+                )[:-max_entries]
+            ]
+            for key in oldest_keys:
+                _report_cache.pop(key, None)
 
 
 def _enforce_rate_limit(report_type, is_export=False):
@@ -288,8 +411,8 @@ def _enforce_rate_limit(report_type, is_export=False):
     if limit <= 0:
         return
 
-    # Per-user cap across all report types to prevent burst abuse.
-    key = f"{_current_user_key()}:{'export' if is_export else 'query'}"
+    # Rate-limit per user and report type so normal tab switching does not exhaust a shared bucket.
+    key = f"{_current_user_key()}:{'export' if is_export else 'query'}:{report_type}"
     now = time.time()
     window_sec = 60
 
@@ -328,14 +451,26 @@ def _build_report_generator(service, report_type, start_date, end_date, device_i
         'alerts': lambda: service.get_alert_history_report(start_date, end_date, severity, device_ids),
         'executive': lambda: service.get_executive_fleet_health(start_date, end_date),
         'operational': lambda: service.get_operational_report(start_date, end_date),
+        'maintenance-availability': lambda: service.get_maintenance_availability_report(start_date, end_date),
+        'security-compliance': lambda: service.get_security_compliance_report(start_date, end_date),
+        'inventory-assets': lambda: service.get_inventory_assets_report(start_date, end_date),
+        'tracking-operations': lambda: service.get_tracking_operations_report(start_date, end_date),
+        'printer-operations': lambda: service.get_printer_operations_report(start_date, end_date),
     }
     return generators.get(report_type)
+
+
+def _validate_report_type(report_type):
+    probe_end = _utcnow_naive()
+    probe_start = probe_end - timedelta(seconds=1)
+    if _build_report_generator(_get_service(), report_type, probe_start, probe_end) is None:
+        raise ReportValidationError(f'Unknown report type: {report_type}', 404)
 
 
 def _log_report(report_type, start_date, end_date, estimated_rows, row_count, duration_s, cached=False, is_export=False, granularity='n/a'):
     range_days = round((end_date - start_date).total_seconds() / 86400, 3)
     logger.info(
-        '[REPORT] type=%s export=%s range_days=%s granularity=%s est_rows=%s rows=%s duration=%.3fs cached=%s user=%s',
+        '[REPORT] type=%s export=%s range_days=%s granularity=%s est_rows=%s rows=%s duration=%.3fs cached=%s user=%s request_id=%s',
         report_type,
         str(is_export).lower(),
         range_days,
@@ -345,7 +480,25 @@ def _log_report(report_type, start_date, end_date, estimated_rows, row_count, du
         duration_s,
         str(cached).lower(),
         _current_user_key(),
+        _request_id(),
     )
+
+
+def _decorate_report_payload(report_type, payload, start_date, end_date, row_count, cache_meta):
+    if not isinstance(payload, dict):
+        return payload
+    enriched = _normalize_report_timestamps(copy.deepcopy(payload))
+    enriched['meta'] = _normalize_report_timestamps(build_report_meta(
+        report_type,
+        enriched,
+        start_date=start_date,
+        end_date=end_date,
+        row_count=row_count,
+        cache_hit=bool(cache_meta.get('cache_hit')),
+        cache_ttl_seconds=int(cache_meta.get('cache_ttl_seconds', 0) or 0),
+        cache_age_seconds=float(cache_meta.get('cache_age_seconds', 0.0) or 0.0),
+    ))
+    return enriched
 
 
 def _run_report(
@@ -357,10 +510,8 @@ def _run_report(
     is_export=False,
     use_cache=True,
     enforce_rate_limit=True,
+    cache_key_override=None,
 ):
-    if enforce_rate_limit:
-        _enforce_rate_limit(report_type, is_export=is_export)
-
     max_rows = _max_rows_limit(is_export=is_export)
     estimated_rows = _estimate_report_rows(report_type, start_date, end_date, device_ids)
 
@@ -374,17 +525,19 @@ def _run_report(
             'Projected result exceeds allowed size. Please reduce time range or filter devices.'
         )
 
+    ttl = _cache_ttl_seconds(report_type, start_date, end_date)
     cache_key = None
-    if use_cache and not is_export:
-        cache_key = _build_cache_key(
+    if use_cache:
+        cache_key = cache_key_override or _build_cache_key(
             report_type,
             start_date,
             end_date,
             device_ids=device_ids,
             extras={'severity': severity},
         )
-        cached_payload = _get_cached_report(cache_key)
-        if cached_payload is not None:
+        cached_entry = _get_cached_report(cache_key)
+        if cached_entry is not None:
+            cached_payload = copy.deepcopy(cached_entry.get('payload'))
             row_count = _count_report_rows(report_type, cached_payload)
             granularity = (
                 (cached_payload.get('granularity') if isinstance(cached_payload, dict) else None)
@@ -402,7 +555,15 @@ def _run_report(
                 is_export=is_export,
                 granularity=granularity,
             )
-            return cached_payload, row_count, 0.0, True
+            return cached_payload, row_count, 0.0, {
+                'cache_hit': True,
+                'cache_ttl_seconds': int(cached_entry.get('ttl') or ttl),
+                'cache_age_seconds': max(0.0, time.time() - float(cached_entry.get('created_at') or time.time())),
+                'cache_key': cache_key,
+            }
+
+    if enforce_rate_limit:
+        _enforce_rate_limit(report_type, is_export=is_export)
 
     service = _get_service()
     generator = _build_report_generator(
@@ -449,19 +610,24 @@ def _run_report(
     )
 
     if cache_key:
-        _set_cached_report(cache_key, payload)
+        _set_cached_report(cache_key, payload, ttl)
 
-    return payload, row_count, duration, False
+    return payload, row_count, duration, {
+        'cache_hit': False,
+        'cache_ttl_seconds': int(ttl or 0),
+        'cache_age_seconds': 0.0,
+        'cache_key': cache_key,
+    }
 
 
 def _handle_report_exception(report_type, exc):
     db.session.rollback()
     message = str(exc).lower()
     if 'statement timeout' in message or 'canceling statement due to statement timeout' in message:
-        logger.warning('[REPORT] type=%s timeout=%s', report_type, exc)
+        logger.warning('[REPORT] type=%s timeout=%s request_id=%s', report_type, exc, _request_id())
         return _json_error('Report query timed out. Please reduce time range or filters.', 504)
 
-    logger.exception('Report request failed: type=%s error=%s', report_type, exc)
+    logger.exception('Report request failed: type=%s error=%s request_id=%s', report_type, exc, _request_id())
     return _json_error('Failed to generate report.', 500)
 
 
@@ -474,76 +640,43 @@ def _collect_params_from_request():
 
 
 def _cleanup_export_jobs():
-    ttl = int(current_app.config.get('REPORT_ASYNC_JOB_TTL_SECONDS', 3600))
-    now = time.time()
-    stale_job_ids = []
-
-    with _export_jobs_lock:
-        for job_id, job in _export_jobs.items():
-            finished_at = job.get('finished_at')
-            if finished_at and (now - finished_at) > ttl:
-                stale_job_ids.append(job_id)
-
-        for job_id in stale_job_ids:
-            job = _export_jobs.pop(job_id, None)
-            file_path = job.get('file_path') if job else None
-            if file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except OSError:
-                    pass
+    _job_cleanup()
 
 
-def _create_export_job(owner, report_type, export_format, start_date, end_date):
-    job_id = uuid.uuid4().hex
-    now = time.time()
-    job = {
-        'job_id': job_id,
-        'owner': owner,
-        'report_type': report_type,
-        'format': export_format,
-        'status': 'pending',
-        'error': None,
-        'row_count': None,
-        'filename': None,
-        'file_path': None,
-        'duration_seconds': None,
-        'created_at': now,
-        'updated_at': now,
-        'started_at': None,
-        'finished_at': None,
-        'range': {
+def _create_export_job(owner, report_type, export_format, start_date, end_date, params=None, payload_cache_key=None):
+    scope, scope_id = _current_scope_details()
+    return _job_create(
+        owner_key=owner,
+        scope_type=scope.get('scope_type') or 'global',
+        scope_id=scope_id,
+        report_type=report_type,
+        export_format=export_format,
+        params=params
+        or {
             'start': start_date.isoformat(),
             'end': end_date.isoformat(),
+            'report_type': report_type,
         },
-    }
-    with _export_jobs_lock:
-        _export_jobs[job_id] = job
-    return job_id
+        payload_cache_key=payload_cache_key,
+    )
 
 
 def _update_export_job(job_id, **updates):
-    with _export_jobs_lock:
-        job = _export_jobs.get(job_id)
-        if not job:
-            return
-        job.update(updates)
-        job['updated_at'] = time.time()
+    for field_name in ('finished_at', 'started_at'):
+        if field_name in updates and isinstance(updates[field_name], (int, float)):
+            updates[field_name] = datetime.fromtimestamp(
+                updates[field_name],
+                tz=timezone.utc,
+            ).replace(tzinfo=None)
+    _job_update(job_id, **updates)
 
 
 def _get_export_job(job_id, owner):
-    with _export_jobs_lock:
-        job = _export_jobs.get(job_id)
-        if not job:
-            return None
-        if job.get('owner') != owner:
-            return None
-        return dict(job)
+    return _job_get(job_id, owner_key=owner)
 
 
 def _count_running_export_jobs():
-    with _export_jobs_lock:
-        return sum(1 for job in _export_jobs.values() if job.get('status') in ('pending', 'running'))
+    return _job_count_running()
 
 
 def _run_export_job_worker(
@@ -555,6 +688,7 @@ def _run_export_job_worker(
     end_date,
     device_ids,
     severity,
+    payload_cache_key,
 ):
     with app.app_context():
         _update_export_job(job_id, status='running', started_at=time.time())
@@ -566,22 +700,20 @@ def _run_export_job_worker(
                 device_ids=device_ids,
                 severity=severity,
                 is_export=True,
-                use_cache=False,
+                use_cache=True,
                 enforce_rate_limit=False,
+                cache_key_override=payload_cache_key,
             )
+            payload = _normalize_report_timestamps(copy.deepcopy(payload))
 
-            from services.export_service import export_to_csv, export_to_excel
+            from services.export_service import export_report_buffer
 
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M')
+            timestamp = _utcnow().strftime('%Y%m%d_%H%M')
             filename = f'{report_type}_report_{timestamp}.{export_format}'
             export_dir = os.path.join(app.instance_path, 'report_exports')
             os.makedirs(export_dir, exist_ok=True)
             file_path = os.path.join(export_dir, f'{job_id}_{filename}')
-
-            if export_format == 'csv':
-                buf = export_to_csv(payload, report_type)
-            else:
-                buf = export_to_excel(payload, report_type)
+            buf = export_report_buffer(payload, report_type, export_format)
 
             with open(file_path, 'wb') as handle:
                 handle.write(buf.getvalue())
@@ -603,7 +735,12 @@ def _run_export_job_worker(
                 finished_at=time.time(),
             )
         except Exception as exc:
-            logger.exception('Async export job failed: job_id=%s error=%s', job_id, exc)
+            logger.exception(
+                'Async export job failed: job_id=%s error=%s request_id=%s',
+                job_id,
+                exc,
+                _request_id(),
+            )
             _update_export_job(
                 job_id,
                 status='failed',
@@ -624,10 +761,6 @@ def reports_page():
 
 @reports_bp.route('/api/device_statistics')
 def get_device_statistics():
-    err = _auth_check()
-    if err:
-        return err
-
     device_ip = request.args.get('device_ip')
     period = request.args.get('period', '24h')
 
@@ -646,10 +779,6 @@ def get_device_statistics():
 
 @reports_bp.route('/api/daily_report')
 def get_daily_report():
-    err = _auth_check()
-    if err:
-        return err
-
     date_str = request.args.get('date')
     if date_str:
         date = datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -662,16 +791,12 @@ def get_daily_report():
 
 @reports_bp.route('/api/device_history')
 def get_device_history():
-    err = _auth_check()
-    if err:
-        return err
-
     from models.scan_history import DeviceScanHistory
 
     device_ip = request.args.get('device_ip')
     hours = int(request.args.get('hours', 24))
 
-    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+    cutoff_time = _utcnow_naive() - timedelta(hours=hours)
 
     scans = DeviceScanHistory.query.filter(
         DeviceScanHistory.device_ip == device_ip,
@@ -692,19 +817,16 @@ def get_device_history():
 
 
 def _run_report_endpoint(report_type, include_severity=False):
-    err = _auth_check()
-    if err:
-        return err
-
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
 
     try:
+        _validate_report_type(report_type)
         start_date, end_date = _parse_date_range(max_days=_max_days_for_report(report_type))
         device_ids = _parse_device_ids()
         severity = _parse_severity() if include_severity else None
 
-        payload, _, _, _ = _run_report(
+        payload, row_count, _, cache_meta = _run_report(
             report_type,
             start_date,
             end_date,
@@ -714,7 +836,7 @@ def _run_report_endpoint(report_type, include_severity=False):
             use_cache=True,
             enforce_rate_limit=True,
         )
-        return jsonify(payload)
+        return jsonify(_decorate_report_payload(report_type, payload, start_date, end_date, row_count, cache_meta))
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
     except Exception as exc:
@@ -751,25 +873,47 @@ def get_alerts_report():
     return _run_report_endpoint('alerts', include_severity=True)
 
 
+@reports_bp.route('/api/reports/maintenance-availability')
+def get_maintenance_availability_report():
+    return _run_report_endpoint('maintenance-availability')
+
+
+@reports_bp.route('/api/reports/security-compliance')
+def get_security_compliance_report():
+    return _run_report_endpoint('security-compliance')
+
+
+@reports_bp.route('/api/reports/inventory-assets')
+def get_inventory_assets_report():
+    return _run_report_endpoint('inventory-assets')
+
+
+@reports_bp.route('/api/reports/tracking-operations')
+def get_tracking_operations_report():
+    return _run_report_endpoint('tracking-operations')
+
+
+@reports_bp.route('/api/reports/printer-operations')
+def get_printer_operations_report():
+    return _run_report_endpoint('printer-operations')
+
+
 @reports_bp.route('/api/reports/<report_type>/export')
 def export_report(report_type):
-    err = _auth_check()
-    if err:
-        return err
-
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
 
     export_format = (request.args.get('format', 'csv') or 'csv').lower()
-    if export_format not in ('csv', 'xlsx'):
-        return _json_error('format must be csv or xlsx')
+    if export_format not in ('csv', 'xlsx', 'pdf'):
+        return _json_error('format must be csv, xlsx, or pdf')
 
     try:
+        _validate_report_type(report_type)
         start_date, end_date = _parse_date_range(max_days=_max_days_for_report(report_type))
         device_ids = _parse_device_ids()
         severity = _parse_severity()
 
-        payload, _, _, _ = _run_report(
+        payload, row_count, _, cache_meta = _run_report(
             report_type,
             start_date,
             end_date,
@@ -779,27 +923,24 @@ def export_report(report_type):
             use_cache=False,
             enforce_rate_limit=True,
         )
+        payload = _decorate_report_payload(report_type, payload, start_date, end_date, row_count, cache_meta)
 
-        from services.export_service import export_to_csv, export_to_excel
+        from services.export_service import export_report_buffer
 
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M')
+        timestamp = _utcnow().strftime('%Y%m%d_%H%M')
         filename = f'{report_type}_report_{timestamp}'
-
+        buf = export_report_buffer(payload, report_type, export_format)
         if export_format == 'csv':
-            buf = export_to_csv(payload, report_type)
-            return send_file(
-                buf,
-                mimetype='text/csv',
-                as_attachment=True,
-                download_name=f'{filename}.csv',
-            )
-
-        buf = export_to_excel(payload, report_type)
+            mimetype = 'text/csv'
+        elif export_format == 'xlsx':
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        else:
+            mimetype = 'application/pdf'
         return send_file(
             buf,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mimetype=mimetype,
             as_attachment=True,
-            download_name=f'{filename}.xlsx',
+            download_name=f'{filename}.{export_format}',
         )
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
@@ -809,19 +950,16 @@ def export_report(report_type):
 
 @reports_bp.route('/api/reports/<report_type>/export-jobs', methods=['POST'])
 def create_export_job(report_type):
-    err = _auth_check()
-    if err:
-        return err
-
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
 
     export_params = _collect_params_from_request()
     export_format = str(export_params.get('format', 'xlsx')).lower()
-    if export_format not in ('csv', 'xlsx'):
-        return _json_error('format must be csv or xlsx')
+    if export_format not in ('csv', 'xlsx', 'pdf'):
+        return _json_error('format must be csv, xlsx, or pdf')
 
     try:
+        _validate_report_type(report_type)
         _cleanup_export_jobs()
         max_concurrent = int(current_app.config.get('REPORT_MAX_CONCURRENT_EXPORT_JOBS', 2))
         if _count_running_export_jobs() >= max_concurrent:
@@ -843,8 +981,35 @@ def create_export_job(report_type):
                 413,
             )
 
+        payload_cache_key = _build_cache_key(
+            report_type,
+            start_date,
+            end_date,
+            device_ids=device_ids,
+            extras={'severity': severity},
+        )
+        _run_report(
+            report_type,
+            start_date,
+            end_date,
+            device_ids=device_ids,
+            severity=severity,
+            is_export=False,
+            use_cache=True,
+            enforce_rate_limit=False,
+            cache_key_override=payload_cache_key,
+        )
+
         owner = _current_user_key()
-        job_id = _create_export_job(owner, report_type, export_format, start_date, end_date)
+        job_id = _create_export_job(
+            owner,
+            report_type,
+            export_format,
+            start_date,
+            end_date,
+            params=export_params,
+            payload_cache_key=payload_cache_key,
+        )
 
         app_obj = current_app._get_current_object()
         worker = threading.Thread(
@@ -858,6 +1023,7 @@ def create_export_job(report_type):
                 end_date,
                 device_ids,
                 severity,
+                payload_cache_key,
             ),
             daemon=True,
         )
@@ -882,15 +1048,20 @@ def create_export_job(report_type):
 
 @reports_bp.route('/api/reports/export-jobs/<job_id>', methods=['GET'])
 def get_export_job_status(job_id):
-    err = _auth_check()
-    if err:
-        return err
-
     _cleanup_export_jobs()
     owner = _current_user_key()
     job = _get_export_job(job_id, owner)
     if not job:
         return _json_error('Export job not found.', 404)
+
+    duration_seconds = job.get('duration_seconds')
+    if duration_seconds is None and job.get('started_at') and job.get('finished_at'):
+        try:
+            started_at = datetime.fromisoformat(str(job.get('started_at')))
+            finished_at = datetime.fromisoformat(str(job.get('finished_at')))
+            duration_seconds = round((finished_at - started_at).total_seconds(), 3)
+        except Exception:
+            duration_seconds = None
 
     payload = {
         'job_id': job['job_id'],
@@ -899,9 +1070,9 @@ def get_export_job_status(job_id):
         'status': job['status'],
         'error': job['error'],
         'row_count': job['row_count'],
-        'duration_seconds': job['duration_seconds'],
-        'created_at': datetime.utcfromtimestamp(job['created_at']).isoformat() if job.get('created_at') else None,
-        'updated_at': datetime.utcfromtimestamp(job['updated_at']).isoformat() if job.get('updated_at') else None,
+        'duration_seconds': duration_seconds,
+        'created_at': job.get('created_at'),
+        'updated_at': job.get('updated_at'),
     }
     if job.get('status') == 'completed':
         payload['download_url'] = url_for('reports_bp.download_export_job', job_id=job_id)
@@ -910,10 +1081,6 @@ def get_export_job_status(job_id):
 
 @reports_bp.route('/api/reports/export-jobs/<job_id>/download', methods=['GET'])
 def download_export_job(job_id):
-    err = _auth_check()
-    if err:
-        return err
-
     _cleanup_export_jobs()
     owner = _current_user_key()
     job = _get_export_job(job_id, owner)

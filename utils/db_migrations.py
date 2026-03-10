@@ -2,6 +2,14 @@ from sqlalchemy import inspect, text
 from extensions import db
 
 
+def _portable_datetime_type(backend_name=None) -> str:
+    """Return a datetime column type accepted by supported backends."""
+    backend = backend_name or db.engine.url.get_backend_name()
+    if backend == 'postgresql':
+        return 'TIMESTAMP'
+    return 'DATETIME'
+
+
 def _ensure_server_health_columns(inspector=None):
     """
     Light-weight migration to add new columns to server_health_logs
@@ -745,6 +753,99 @@ def _ensure_restricted_site_tables():
         db.session.rollback()
         print(f"[DB] Migration warning (restricted-site tables): {exc}")
 
+
+def _ensure_tracking_stabilization_columns(inspector=None):
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        if 'tracked_devices' in inspector.get_table_names():
+            existing = {col['name'] for col in inspector.get_columns('tracked_devices')}
+            statements = []
+            if 'last_policy_version_seen' not in existing:
+                statements.append('ALTER TABLE tracked_devices ADD COLUMN last_policy_version_seen VARCHAR(128)')
+            if 'last_policy_sync_at' not in existing:
+                statements.append(f'ALTER TABLE tracked_devices ADD COLUMN last_policy_sync_at {_portable_datetime_type()}')
+            for stmt in statements:
+                db.session.execute(text(stmt))
+            if statements:
+                db.session.commit()
+                print(f"[DB] Applied tracking stabilization migrations: {len(statements)} tracked_devices columns added.")
+            else:
+                db.session.rollback()
+
+        from models.alert_fanout_task import AlertFanoutTask
+        from models.device_effective_policy_cache import DeviceEffectivePolicyCache
+        from models.device_identity_link import DeviceIdentityLink
+        from models.device_identity_link_candidate import DeviceIdentityLinkCandidate
+        from models.policy_rebuild_task import PolicyRebuildTask
+        from models.tracking_sync_envelope import TrackingSyncEnvelope
+
+        DeviceIdentityLink.__table__.create(bind=db.engine, checkfirst=True)
+        DeviceIdentityLinkCandidate.__table__.create(bind=db.engine, checkfirst=True)
+        DeviceEffectivePolicyCache.__table__.create(bind=db.engine, checkfirst=True)
+        PolicyRebuildTask.__table__.create(bind=db.engine, checkfirst=True)
+        AlertFanoutTask.__table__.create(bind=db.engine, checkfirst=True)
+        TrackingSyncEnvelope.__table__.create(bind=db.engine, checkfirst=True)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (tracking stabilization): {exc}")
+
+
+def _ensure_server_threshold_tables():
+    try:
+        from models.server_metric_threshold_state import ServerMetricThresholdState
+        from models.server_threshold_config import ServerThresholdConfig
+        from services.server_thresholds import build_default_thresholds
+
+        ServerThresholdConfig.__table__.create(bind=db.engine, checkfirst=True)
+        ServerMetricThresholdState.__table__.create(bind=db.engine, checkfirst=True)
+
+        config_row = db.session.get(ServerThresholdConfig, 1)
+        if config_row is None:
+            db.session.add(
+                ServerThresholdConfig(
+                    id=1,
+                    version=1,
+                    thresholds_json=build_default_thresholds(),
+                )
+            )
+        else:
+            changed = False
+            if not int(getattr(config_row, "version", 0) or 0):
+                config_row.version = 1
+                changed = True
+            if not isinstance(getattr(config_row, "thresholds_json", None), dict) or "metrics" not in (config_row.thresholds_json or {}):
+                config_row.thresholds_json = build_default_thresholds()
+                changed = True
+            if changed:
+                db.session.add(config_row)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (server threshold tables): {exc}")
+
+
+def ensure_report_export_job_tables():
+    try:
+        from models.report_export_job import ReportExportJob
+
+        ReportExportJob.__table__.create(bind=db.engine, checkfirst=True)
+        statements = [
+            "CREATE INDEX IF NOT EXISTS ix_report_export_jobs_owner_created ON report_export_jobs (owner_key, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_report_export_jobs_status_created ON report_export_jobs (status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_report_export_jobs_report_created ON report_export_jobs (report_type, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_report_export_jobs_scope_created ON report_export_jobs (scope_type, scope_id, created_at)",
+        ]
+        for stmt in statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (report export jobs): {exc}")
+
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -760,6 +861,13 @@ def ensure_server_health_columns():
     _ensure_tracking_history_tables()
     _ensure_tracking_history_columns_and_indexes(inspector)
     _ensure_restricted_site_tables()
+    _ensure_server_threshold_tables()
+    ensure_report_export_job_tables()
     # temporarily disabling this to allow Subnet migrations to run without triggering
     # SQLAlchemy mapper InvalidRequestErrors for the missing site_id column
     # _ensure_user_ldap_columns(inspector)
+
+
+def ensure_tracking_stabilization_columns():
+    inspector = inspect(db.engine)
+    _ensure_tracking_stabilization_columns(inspector)

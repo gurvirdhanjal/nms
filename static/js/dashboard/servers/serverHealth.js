@@ -58,12 +58,15 @@ export function renderServerHealthTable(payload) {
             ? 'No servers found'
             : `No servers match "${currentFilter}"`;
         patchKeyedTableRows(tableBody, [], {
-            emptyColSpan: 3,
+            emptyColSpan: 10,
             emptyMessage: msg,
             emptyClassName: 'text-center text-secondary p-3'
         });
         return;
     }
+
+    const formatPct = (val) => (val !== null && val !== undefined) ? `${parseFloat(val).toFixed(1)}%` : '-';
+    const formatMs = (val) => (val !== null && val !== undefined) ? `${parseFloat(val).toFixed(2)} ms` : '-';
 
     patchKeyedTableRows(tableBody, servers, {
         getKey: (server, index) => server.device_id || server.ip || `server-${index}`,
@@ -79,17 +82,48 @@ export function renderServerHealthTable(payload) {
 
             return `
                 <td>
-                    <div class="fw-bold">${name}</div>
+                    <div class="fw-bold text-truncate" style="max-width: 180px;">${name}</div>
                     <div class="small text-secondary font-monospace">${server.ip || '-'}</div>
                 </td>
                 <td>
-                    <span class="${dotClass}"></span>
-                    <span class="tactical-badge ${badgeClass}">${health}</span>
-                    <div class="small ${healthClass} mt-1">${statusHint}</div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="${dotClass}"></span>
+                        <span class="tactical-badge ${badgeClass}">${health}</span>
+                    </div>
                 </td>
                 <td>
-                    <div class="fw-bold">${lastSeenLabel}</div>
-                    <div class="small text-secondary">${lastSeenExact}</div>
+                    <div class="fw-bold">${formatPct(server.cpu_usage)}</div>
+                </td>
+                <td>
+                    <div class="fw-bold">${formatPct(server.memory_usage)}</div>
+                </td>
+                <td>
+                    <div class="fw-bold">${formatPct(server.disk_usage)}</div>
+                </td>
+                <td class="d-none d-xl-table-cell">
+                    <div class="fw-bold">${formatMs(server.latency)}</div>
+                </td>
+                <td class="d-none d-xl-table-cell">
+                    <div class="fw-bold text-secondary">${formatPct(server.packet_loss)}</div>
+                </td>
+                <td class="d-none d-xl-table-cell">
+                    <div class="fw-bold text-secondary">${formatMs(server.jitter)}</div>
+                </td>
+                <td>
+                    <div class="fw-bold text-nowrap">${lastSeenLabel}</div>
+                    <div class="small text-secondary text-nowrap">${lastSeenExact}</div>
+                </td>
+                <td class="text-end">
+                    <div class="dropdown">
+                        <button class="btn btn-xs tactical-btn-outline dropdown-toggle no-caret" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <ul class="dropdown-menu tactical-dropdown">
+                            <li><a class="dropdown-item" href="/device/${server.device_id}">View Details</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#">Acknowledge</a></li>
+                        </ul>
+                    </div>
                 </td>
             `;
         },
@@ -225,7 +259,7 @@ export function renderEnhancedServerTable(payload) {
 
     if (servers.length === 0) {
         patchKeyedTableRows(tableBody, [], {
-            emptyColSpan: 7,
+            emptyColSpan: 10,
             emptyMessage: 'No servers match filter',
             emptyClassName: 'text-center text-secondary p-3'
         });
@@ -246,8 +280,15 @@ export function renderEnhancedServerTable(payload) {
             const cpu = server.cpu_usage ?? 0;
             const mem = server.memory_usage ?? 0;
             const disk = server.disk_usage ?? 0;
+            const latency = server.latency;
+            const packetLoss = server.packet_loss;
+            const jitter = server.jitter;
+            const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
+            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString() : '-';
 
             const getValClass = (val) => val > 90 ? 'text-danger fw-bold' : (val > 75 ? 'text-warning fw-bold' : '');
+            const formatPct = (val) => (val !== null && val !== undefined) ? `${Number(val).toFixed(1)}%` : '-';
+            const formatMs = (val) => (val !== null && val !== undefined) ? `${Number(val).toFixed(1)} ms` : '-';
 
             return `
                 <td>
@@ -267,18 +308,44 @@ export function renderEnhancedServerTable(payload) {
                 <td class="${getValClass(cpu)}">${cpu.toFixed(1)}%</td>
                 <td class="${getValClass(mem)}">${mem.toFixed(1)}%</td>
                 <td class="${getValClass(disk)}">${disk.toFixed(1)}%</td>
-                <td>
-                    <div class="text-secondary small">${server.last_seen ? timeAgo(server.last_seen) : 'Never'}</div>
+                <td class="d-none d-xl-table-cell">
+                    <div class="fw-semibold">${formatMs(latency)}</div>
+                </td>
+                <td class="d-none d-xl-table-cell">
+                    <div class="${packetLoss > 0 ? 'text-warning fw-semibold' : 'text-secondary'}">${formatPct(packetLoss)}</div>
+                </td>
+                <td class="d-none d-xl-table-cell">
+                    <div class="text-secondary">${formatMs(jitter)}</div>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-dark border-secondary px-3">View</button>
+                    <div class="fw-semibold text-nowrap">${lastSeenLabel}</div>
+                    <div class="small text-secondary text-nowrap">${lastSeenExact}</div>
+                </td>
+                <td class="text-end">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${server.device_id}" title="Quick View Modal">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <a href="/devices/${server.device_id}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2" title="Full Page Monitoring">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </div>
                 </td>
             `;
         },
         applyRow: (row, server) => {
             row.className = 'server-health-row';
-            row.style.cursor = 'pointer';
             row.dataset.id = server.device_id || '';
+            
+            // Add click handler for modal button
+            const modalBtn = row.querySelector('.server-modal-btn');
+            if (modalBtn) {
+                modalBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const deviceId = modalBtn.dataset.deviceId;
+                    if (deviceId) openServerModal(deviceId);
+                });
+            }
         }
     });
 }

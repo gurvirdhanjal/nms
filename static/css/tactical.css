@@ -104,16 +104,56 @@
     /* Transitions */
     --tactical-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --tactical-transition-fast: all 0.15s ease;
+
+    /* Typography Spacing */
+    --tactical-h1: 2rem;
+    --tactical-h2: 1.5rem;
+    --tactical-h3: 1.25rem;
+    --tactical-body: 0.9rem;
+    --tactical-small: 0.8rem;
+    --tactical-tiny: 0.7rem;
+
+    /* Minimal Ops Variables */
+    --mo-bg-void: #0B0E14;
+    --mo-surface: #151A22;
+    --mo-border: #2A3241;
+    --mo-teal: #00E5A0;
+    --mo-amber: #FF9B05;
+    --mo-red: #FF3366;
+    --mo-blue: #3DB2FF;
+    --mo-muted: #64748B;
+
+    /* Tactical Ops Design V2 */
+    --bg-base: #0a0c0f;
+    --bg-surface: #111418;
+    --bg-elevated: #181c22;
+    --accent-primary: #00e5a0;
+    --accent-warn: #f5a623;
+    --accent-danger: #ff4d4d;
+    --accent-info: #4d9fff;
+    --text-primary: #e8edf2;
+    --text-muted: #556070;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-subtle: var(--border);
+    --border-medium: var(--border);
+
+    --teal: var(--accent-primary);
+    --amber: var(--accent-warn);
+    --red: var(--accent-danger);
+    --blue: var(--accent-info);
+
+    --font-sans: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Geist Mono', 'DM Mono', monospace;
 }
 
 /* ============================================================
    BASE STYLES
    ============================================================ */
 body.tactical-theme {
-    background: var(--tactical-bg-darkest) !important;
+    background-color: var(--bg-base) !important;
     background-image: none !important;
-    color: var(--tactical-text-primary);
-    font-family: 'IBM Plex Sans', 'Rajdhani', 'Segoe UI', sans-serif;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     min-height: 100vh;
 }
 
@@ -422,6 +462,68 @@ body.tactical-theme {
 }
 
 /* ============================================================
+   MINIMAL OPS BUTTONS
+   ============================================================ */
+.mo-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: 'IBM Plex Sans', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 2px;
+    transition: all 0.075s ease;
+    border: 1px solid transparent;
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.mo-btn svg,
+.mo-btn i {
+    font-size: 0.875rem;
+    width: 14px;
+    height: 14px;
+}
+
+.mo-btn-primary {
+    background: var(--mo-teal);
+    color: #000;
+    box-shadow: 0 0 15px rgba(0, 229, 160, 0.15);
+}
+
+.mo-btn-primary:hover {
+    background: #00c98d;
+    box-shadow: 0 0 20px rgba(0, 229, 160, 0.25);
+    color: #000;
+}
+
+.mo-btn-destructive {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--mo-red) 50%, transparent);
+    color: var(--mo-red);
+}
+
+.mo-btn-destructive:hover {
+    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
+    border-color: var(--mo-red);
+    color: var(--mo-red);
+    box-shadow: 0 0 15px rgba(255, 51, 102, 0.2);
+}
+
+.mo-btn-ghost {
+    background: transparent;
+    color: var(--mo-muted);
+}
+
+.mo-btn-ghost:hover {
+    background: var(--mo-border);
+    color: #fff;
+}
+
+/* ============================================================
    TACTICAL TABS (Underline Style)
    ============================================================ */
 .tactical-tab {
@@ -429,23 +531,25 @@ body.tactical-theme {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    color: var(--tactical-text-muted);
-    font-family: 'Rajdhani', sans-serif;
+    color: var(--text-muted);
+    font-family: 'IBM Plex Sans', var(--t-sans, sans-serif);
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     padding: 0.5rem 1rem;
-    transition: all 0.3s ease;
+    transition: all var(--a-micro, 150ms) ease;
+    opacity: 0.7;
 }
 
 .tactical-tab:hover {
-    color: var(--tactical-text-primary);
+    color: var(--text-primary);
+    opacity: 1;
 }
 
 .tactical-tab.active {
-    color: var(--tactical-accent);
-    border-bottom-color: var(--tactical-accent);
-    background: linear-gradient(to top, rgba(0, 212, 170, 0.1), transparent);
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-primary);
+    opacity: 1;
 }
 
 .tactical-btn-outline {
@@ -654,6 +758,61 @@ body.tactical-theme {
     border: 1px solid transparent;
     font-family: 'IBM Plex Mono', monospace;
     line-height: 1;
+}
+
+/* ============================================================
+   MINIMAL OPS BADGES
+   ============================================================ */
+.mo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.2;
+    border: 1px solid transparent;
+}
+
+.mo-badge-online {
+    background: color-mix(in srgb, var(--mo-teal) 10%, transparent);
+    color: var(--mo-teal);
+    border-color: color-mix(in srgb, var(--mo-teal) 20%, transparent);
+}
+
+.mo-badge-risk {
+    background: color-mix(in srgb, var(--mo-amber) 10%, transparent);
+    color: var(--mo-amber);
+    border-color: color-mix(in srgb, var(--mo-amber) 30%, transparent);
+}
+
+.mo-badge-policy {
+    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
+    color: var(--mo-red);
+    border-color: color-mix(in srgb, var(--mo-red) 30%, transparent);
+}
+
+.mo-badge-pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: pulse-mo 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-mo {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
 }
 
 .tactical-badge-success {

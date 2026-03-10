@@ -1,0 +1,16 @@
+{
+  "name": "device-monitoring-tactical",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Device console frontend test harness",
+  "scripts": {
+    "test:js": "vitest run",
+    "test:js:coverage": "vitest run --coverage",
+    "test:js:perf": "vitest run static/js/tracking/console/__tests__/stateMachine.perf.test.js"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "jsdom": "^26.0.0",
+    "vitest": "^2.1.8"
+  }
+}

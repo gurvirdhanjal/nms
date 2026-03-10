@@ -23,6 +23,8 @@ def app(tmp_path_factory):
             'TESTING': True,
             'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_file}',
             'WTF_CSRF_ENABLED': False,
+            'REPORT_RATE_LIMIT_PER_MINUTE': 100,
+            'REPORT_EXPORT_RATE_LIMIT_PER_MINUTE': 100,
         }
     )
 

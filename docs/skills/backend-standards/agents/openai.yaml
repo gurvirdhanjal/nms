@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Standards"
+  short_description: "Backend API, DB, logging, and scaling standards"
+  default_prompt: "Use $backend-standards to review and implement Flask backend changes with safe API contracts, error handling, DB performance, logging, and scaling behavior."

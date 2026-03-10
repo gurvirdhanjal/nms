@@ -31,6 +31,8 @@ class TrackedDevice(db.Model):
     last_probe_at = db.Column(db.DateTime)
     last_agent_sync_at = db.Column(db.DateTime, index=True)
     last_agent_sync_ip = db.Column(db.String(45))
+    last_policy_version_seen = db.Column(db.String(128), index=True)
+    last_policy_sync_at = db.Column(db.DateTime, index=True)
 
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -81,6 +83,8 @@ class TrackedDevice(db.Model):
             'last_probe_at': self.last_probe_at.isoformat() if self.last_probe_at else None,
             'last_agent_sync_at': self.last_agent_sync_at.isoformat() if self.last_agent_sync_at else None,
             'last_agent_sync_ip': self.last_agent_sync_ip,
+            'last_policy_version_seen': self.last_policy_version_seen,
+            'last_policy_sync_at': self.last_policy_sync_at.isoformat() if self.last_policy_sync_at else None,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
@@ -88,7 +92,7 @@ class TrackedDevice(db.Model):
     def __repr__(self):
         return f'<TrackedDevice {self.device_name} ({self.mac_address})>'
 
-class DeviceScanHistory(db.Model):
+class RemoteDeviceScanHistory(db.Model):
     __tablename__ = 'device_scan_history_remote'
     
     id = db.Column(db.Integer, primary_key=True)

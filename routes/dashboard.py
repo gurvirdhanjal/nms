@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, jsonify, request, session
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case, or_
 import time
+from services.dashboard_availability import build_device_availability_snapshot
 from utils.server_health import compute_server_health, is_server_device
 from extensions import db
 from middleware.rbac import (
@@ -188,6 +189,72 @@ def _scope_cache_suffix():
     return current_scope_cache_fragment().replace(':', '__')
 
 
+AVAILABILITY_RANGE_CONFIG = {
+    '24h': {
+        'label': 'Last 24 Hours',
+        'bucket_count': 12,
+        'bucket_hours': 2,
+    },
+    '7d': {
+        'label': 'Last 7 Days',
+        'bucket_count': 14,
+        'bucket_hours': 12,
+    },
+    '30d': {
+        'label': 'Last 30 Days',
+        'bucket_count': 30,
+        'bucket_hours': 24,
+    },
+}
+AVAILABILITY_ONLINE_INTERVAL_THRESHOLD_PCT = 50.0
+
+
+def _get_availability_range_config(range_key):
+    key = str(range_key or '24h').strip().lower()
+    config = AVAILABILITY_RANGE_CONFIG.get(key, AVAILABILITY_RANGE_CONFIG['24h']).copy()
+    config['key'] = key if key in AVAILABILITY_RANGE_CONFIG else '24h'
+    return config
+
+
+def _floor_utc_bucket_start(ts, bucket_hours):
+    bucket_hours = max(int(bucket_hours or 1), 1)
+    normalized = ts.replace(minute=0, second=0, microsecond=0)
+    if bucket_hours >= 24:
+        return normalized.replace(hour=0)
+    bucket_hour = (normalized.hour // bucket_hours) * bucket_hours
+    return normalized.replace(hour=bucket_hour)
+
+
+def _coerce_utc_naive(ts):
+    if ts is None:
+        return None
+    if isinstance(ts, str):
+        raw = ts.strip()
+        if raw.endswith('Z'):
+            raw = raw[:-1] + '+00:00'
+        try:
+            ts = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    if getattr(ts, 'tzinfo', None) is not None:
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+    return ts
+
+
+def _availability_hour_bucket_expr(scan_model):
+    backend = db.engine.url.get_backend_name()
+    if backend == 'sqlite':
+        return func.strftime('%Y-%m-%dT%H:00:00', scan_model.scan_timestamp).label('hour')
+    return func.date_trunc('hour', scan_model.scan_timestamp).label('hour')
+
+
+def _event_device_ips(event, device_map):
+    device = device_map.get(event.device_id) if event and getattr(event, 'device_id', None) in device_map else None
+    current_ip = getattr(device, 'device_ip', None) if device else None
+    original_ip = getattr(event, 'device_ip', None)
+    return current_ip or original_ip, original_ip
+
+
 def _snapshot_meta():
     context = get_ui_rbac_context()
     return {
@@ -364,7 +431,6 @@ def get_summary():
         return jsonify(cached)
     
     try:
-        from models.device import Device
         from models.scan_history import DeviceScanHistory
         from models.dashboard import DashboardEvent
 
@@ -386,82 +452,19 @@ def get_summary():
         # Fallback to avoid division by zero
         monitored_denominator = monitored_count if monitored_count > 0 else 1
 
-        latest_scans = []
-        if scoped_device_ips:
-            latest_subq = db.session.query(
-                DeviceScanHistory.device_ip,
-                func.max(DeviceScanHistory.scan_id).label('max_id')
-            ).filter(
-                DeviceScanHistory.device_ip.in_(scoped_device_ips)
-            ).group_by(DeviceScanHistory.device_ip).subquery()
-
-            latest_scans = db.session.query(DeviceScanHistory).join(
-                latest_subq,
-                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
-            ).all()
+        availability_snapshot = build_device_availability_snapshot(scoped_devices)
+        availability_counts = availability_snapshot.get('counts') or {}
+        network_health = availability_snapshot.get('network_health') or {}
         
-        healthy_count = 0
-        degraded_count = 0
-        offline_count = 0
-        latencies = []
-        packet_losses = []
+        healthy_count = int(availability_counts.get('healthy') or 0)
+        degraded_count = int(availability_counts.get('degraded') or 0)
+        offline_count = int(availability_counts.get('offline') or 0)
+        unknown_count = int(availability_counts.get('unknown') or 0)
+        online_count = int(availability_counts.get('online_total') or 0)
         
-        DEGRADED_LATENCY_THRESHOLD = 200  # ms
-        DEGRADED_PACKET_LOSS_THRESHOLD = 5  # %
         
-        scanned_ips = set()
-        
-        for scan in latest_scans:
-            scanned_ips.add(scan.device_ip)
-            status = (scan.status or '').lower()
-            
-            # Count as offline if status is explicitly 'offline' OR anything other than 'online'
-            if status == 'offline' or status == 'unknown' or status == '':
-                offline_count += 1
-                continue
-                
-            # Only process if status is 'online'
-            if status != 'online':
-                # Non-standard status: count as offline
-                offline_count += 1
-                continue
-
-            # Device is online - check if degraded
-            is_degraded = False
-            if scan.ping_time_ms and scan.ping_time_ms > DEGRADED_LATENCY_THRESHOLD:
-                is_degraded = True
-            if scan.packet_loss and scan.packet_loss > DEGRADED_PACKET_LOSS_THRESHOLD:
-                is_degraded = True
-
-            if is_degraded:
-                degraded_count += 1
-            else:
-                healthy_count += 1
-
-            if scan.ping_time_ms:
-                latencies.append(scan.ping_time_ms)
-            if scan.packet_loss is not None:
-                packet_losses.append(scan.packet_loss)
-        
-        # CRITICAL FIX: Count devices without scan history as "Unknown"
-        # Get all device IPs from Device table
-        all_devices = scoped_devices
-        all_device_ips = set([d.device_ip for d in all_devices])
         
         # Build device_ip → subnet_cidr map for subnet grouping
-        ip_to_subnet = {d.device_ip: (d.subnet_cidr or 'Unassigned') for d in all_devices}
-        
-        # Devices without any scan history are truly "Unknown"
-        devices_without_scans = all_device_ips - scanned_ips
-        unknown_count = len(devices_without_scans)
-        
-        # Online count = healthy + degraded (only from scanned devices with status='online')
-        online_count = healthy_count + degraded_count
-        
-        # If we have monitored devices that weren't in latest_scans, treat as Unknown/Offline
-        # But for the "Online" metric, we strictly use confirmed online.
-        
         # Instant Availability (Current State)
         # Cap at 100% to prevent display bugs (e.g., 300% when calculations are off)
         availability_live = min(round((online_count / monitored_denominator) * 100, 1), 100.0)
@@ -497,8 +500,8 @@ def get_summary():
         availability_24h = round(total_uptime_pct / devices_with_history, 1) if devices_with_history > 0 else 0.0
 
         # Network Health Stats
-        avg_latency = round(sum(latencies) / len(latencies), 2) if latencies else 0
-        avg_packet_loss = round(sum(packet_losses) / len(packet_losses), 2) if packet_losses else 0
+        avg_latency = network_health.get('avg_latency_ms') or 0
+        avg_packet_loss = network_health.get('avg_packet_loss_pct') or 0
         
         # Alerts
         if scoped_device_ids:
@@ -571,7 +574,7 @@ def get_summary():
                     'network_health': 'General health based on latency and packet loss.'
                 }
             },
-            'subnet_health': _build_subnet_health(all_devices, latest_scans, ip_to_subnet)
+            'subnet_health': availability_snapshot.get('subnet_health') or []
         }
         
         set_cached(scope_cache_key, result, ttl_seconds=30)
@@ -790,6 +793,10 @@ def get_top_problems():
             ).limit(10).all()
         else:
             recent_alerts = []
+
+        alert_device_ids = [event.device_id for event in recent_alerts if event.device_id]
+        alert_devices = scoped_query(Device).filter(Device.device_id.in_(alert_device_ids)).all() if alert_device_ids else []
+        alert_device_map = {device.device_id: device for device in alert_devices}
         
         result = {
             'high_latency': [
@@ -828,7 +835,8 @@ def get_top_problems():
             'recent_alerts': [
                 {
                     'id': e.event_id,
-                    'device_ip': e.device_ip,
+                    'device_ip': _event_device_ips(e, alert_device_map)[0],
+                    'original_device_ip': _event_device_ips(e, alert_device_map)[1],
                     'message': e.message, 
                     'severity': e.severity, 
                     'time': iso_utc(e.timestamp),
@@ -904,7 +912,8 @@ def get_all_alerts():
         return jsonify([{
             'id': e.event_id,
             'device_id': e.device_id,
-            'device_ip': e.device_ip,
+            'device_ip': _event_device_ips(e, device_map)[0],
+            'original_device_ip': _event_device_ips(e, device_map)[1],
             'device_name': device_map.get(e.device_id).device_name if e.device_id in device_map else None,
             'device_type': device_map.get(e.device_id).device_type if e.device_id in device_map else None,
             'scope': classify_scope(device_map.get(e.device_id).device_type) if e.device_id in device_map else 'Device',
@@ -926,6 +935,8 @@ def get_all_alerts():
 # ============================================================
 # POST /api/alerts/<id>/acknowledge
 # ============================================================
+@dashboard_bp.route('/alerts/<event_id>/acknowledge', methods=['POST'])
+@require_permission('devices.edit')
 def acknowledge_alert(event_id):
     try:
         from models.dashboard import DashboardEvent
@@ -1134,15 +1145,16 @@ def get_trends():
 @dashboard_bp.route('/availability-details')
 def get_availability_details():
     """
-    Returns availability detail data for the last 24 hours:
-    - 24h uptime heatmap (hourly buckets)
-    - Devices contributing to downtime (offline scans)
-    - Top 5 worst availability
+    Returns availability detail data for the selected range:
+    - Interval-based uptime heatmap
+    - Devices contributing to downtime across intervals
+    - Top 5 worst availability over the selected range
     Cache: 60s (unless fresh=1)
     """
 
+    range_config = _get_availability_range_config(request.args.get('range'))
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
-    scoped_cache_key = f"availability-details:{_scope_cache_suffix()}"
+    scoped_cache_key = f"availability-details:{range_config['key']}:{_scope_cache_suffix()}"
     if not force_fresh:
         cached = get_cached(scoped_cache_key, 60)
         if cached:
@@ -1150,102 +1162,154 @@ def get_availability_details():
 
     try:
         from models.scan_history import DeviceScanHistory
-        from models.device import Device
 
         scoped_devices, _ = _scoped_devices()
         scoped_ips = {device.device_ip for device in scoped_devices if getattr(device, 'device_ip', None)}
+        device_by_ip = {
+            device.device_ip: device
+            for device in scoped_devices
+            if getattr(device, 'device_ip', None)
+        }
 
         now = datetime.utcnow()
-        bucket_start = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
+        bucket_count = int(range_config['bucket_count'])
+        bucket_hours = int(range_config['bucket_hours'])
+        bucket_anchor = _floor_utc_bucket_start(now, bucket_hours)
+        bucket_start = bucket_anchor - timedelta(hours=(bucket_count - 1) * bucket_hours)
         cutoff = bucket_start
 
-        # Build 24 hourly buckets
-        buckets = {}
-        for i in range(24):
-            ts = bucket_start + timedelta(hours=i)
-            buckets[ts] = {'online': 0, 'total': 0}
+        bucket_times = [
+            bucket_start + timedelta(hours=index * bucket_hours)
+            for index in range(bucket_count)
+        ]
+        bucket_device_stats = [dict() for _ in range(bucket_count)]
 
-        scans = []
         if scoped_ips:
-            scans = DeviceScanHistory.query.filter(
+            hour_bucket = _availability_hour_bucket_expr(DeviceScanHistory)
+            hourly_rows = db.session.query(
+                DeviceScanHistory.device_ip.label('device_ip'),
+                hour_bucket,
+                func.count(DeviceScanHistory.scan_id).label('total'),
+                func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
+            ).filter(
                 DeviceScanHistory.scan_timestamp >= cutoff,
                 DeviceScanHistory.device_ip.in_(scoped_ips),
+            ).group_by(
+                DeviceScanHistory.device_ip,
+                hour_bucket
             ).all()
+        else:
+            hourly_rows = []
 
-        for scan in scans:
-            if not scan.scan_timestamp:
+        for row in hourly_rows:
+            hour_ts = _coerce_utc_naive(row.hour)
+            if not hour_ts or hour_ts < bucket_start:
                 continue
-            ts_bucket = scan.scan_timestamp.replace(minute=0, second=0, microsecond=0)
-            if ts_bucket in buckets:
-                buckets[ts_bucket]['total'] += 1
-                if scan.status == 'Online':
-                    buckets[ts_bucket]['online'] += 1
+            delta_hours = int((hour_ts - bucket_start).total_seconds() // 3600)
+            if delta_hours < 0:
+                continue
+            bucket_index = delta_hours // bucket_hours
+            if bucket_index < 0 or bucket_index >= bucket_count:
+                continue
+
+            ip_key = row.device_ip
+            if not ip_key:
+                continue
+            current = bucket_device_stats[bucket_index].get(ip_key)
+            if current is None:
+                current = {'total': 0, 'online': 0}
+                bucket_device_stats[bucket_index][ip_key] = current
+            current['total'] += int(row.total or 0)
+            current['online'] += int(row.online or 0)
 
         heatmap = []
-        for ts in sorted(buckets.keys()):
-            total = buckets[ts]['total']
-            online = buckets[ts]['online']
-            pct = round((online / total) * 100, 1) if total > 0 else 0.0
+        device_interval_stats = {}
+        threshold_ratio = AVAILABILITY_ONLINE_INTERVAL_THRESHOLD_PCT / 100.0
+
+        for bucket_index, ts in enumerate(bucket_times):
+            device_stats = bucket_device_stats[bucket_index]
+            observed_devices = 0
+            online_devices = 0
+
+            for ip_key, agg in device_stats.items():
+                total = int(agg.get('total') or 0)
+                online = int(agg.get('online') or 0)
+                if total <= 0:
+                    continue
+                interval_ratio = online / total
+                is_online_interval = interval_ratio >= threshold_ratio
+                observed_devices += 1
+                if is_online_interval:
+                    online_devices += 1
+
+                device_info = device_interval_stats.get(ip_key)
+                if device_info is None:
+                    scoped_device = device_by_ip.get(ip_key)
+                    device_info = {
+                        'device_name': getattr(scoped_device, 'device_name', None) or ip_key or 'Unknown',
+                        'ip': ip_key,
+                        'device_type': getattr(scoped_device, 'device_type', None) or 'Unknown',
+                        'observed_intervals': 0,
+                        'online_intervals': 0,
+                    }
+                    device_interval_stats[ip_key] = device_info
+
+                device_info['observed_intervals'] += 1
+                if is_online_interval:
+                    device_info['online_intervals'] += 1
+
+            pct = round((online_devices / observed_devices) * 100, 1) if observed_devices > 0 else 0.0
             heatmap.append({
                 'time': ts.replace(tzinfo=timezone.utc).isoformat(),
                 'value': pct,
-                'online': int(online),
-                'total': int(total)
+                'online': int(online_devices),
+                'total': int(observed_devices),
+                'bucket_hours': bucket_hours,
             })
 
-        stats_subq = db.session.query(
-            DeviceScanHistory.device_ip.label('device_ip'),
-            func.count(DeviceScanHistory.scan_id).label('total'),
-            func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
-        ).filter(
-            DeviceScanHistory.scan_timestamp >= cutoff,
-            DeviceScanHistory.device_ip.in_(scoped_ips) if scoped_ips else False,
-        ).group_by(DeviceScanHistory.device_ip).subquery()
-
-        stats = db.session.query(
-            stats_subq.c.device_ip,
-            stats_subq.c.total,
-            stats_subq.c.online,
-            Device.device_name,
-            Device.device_type
-        ).outerjoin(
-            Device,
-            Device.device_ip == stats_subq.c.device_ip
-        ).all()
-
         devices = []
-        for row in stats:
-            total = int(row.total or 0)
-            online = int(row.online or 0)
-            offline = max(total - online, 0)
-            uptime_pct = round((online / total) * 100, 1) if total > 0 else 0.0
-            downtime_pct = round(100.0 - uptime_pct, 1) if total > 0 else 0.0
+        for device_info in device_interval_stats.values():
+            observed_intervals = int(device_info['observed_intervals'] or 0)
+            online_intervals = int(device_info['online_intervals'] or 0)
+            down_intervals = max(observed_intervals - online_intervals, 0)
+            uptime_pct = round((online_intervals / observed_intervals) * 100, 1) if observed_intervals > 0 else 0.0
+            downtime_pct = round(100.0 - uptime_pct, 1) if observed_intervals > 0 else 0.0
             devices.append({
-                'device_name': row.device_name or row.device_ip or 'Unknown',
-                'ip': row.device_ip,
-                'device_type': row.device_type or 'Unknown',
-                'total_scans': total,
-                'offline_scans': offline,
+                'device_name': device_info['device_name'],
+                'ip': device_info['ip'],
+                'device_type': device_info['device_type'],
+                'observed_intervals': observed_intervals,
+                'online_intervals': online_intervals,
+                'down_intervals': down_intervals,
                 'uptime_pct': uptime_pct,
-                'downtime_pct': downtime_pct
+                'downtime_pct': downtime_pct,
             })
 
         downtime_contributors = sorted(
-            [d for d in devices if d['offline_scans'] > 0],
-            key=lambda d: (d['offline_scans'], d['downtime_pct']),
+            [d for d in devices if d['down_intervals'] > 0],
+            key=lambda d: (d['down_intervals'], d['downtime_pct'], d['observed_intervals']),
             reverse=True
         )[:10]
 
         worst_availability = sorted(
-            [d for d in devices if d['total_scans'] > 0],
-            key=lambda d: (d['uptime_pct'], -d['total_scans'])
+            [d for d in devices if d['observed_intervals'] > 0],
+            key=lambda d: (d['uptime_pct'], -d['observed_intervals'], -d['down_intervals'])
         )[:5]
 
         result = {
             'generated_at': now.replace(tzinfo=timezone.utc).isoformat(),
+            'range': range_config['key'],
             'heatmap': heatmap,
             'downtime_contributors': downtime_contributors,
-            'worst_availability': worst_availability
+            'worst_availability': worst_availability,
+            'meta': {
+                'range': range_config['key'],
+                'range_label': range_config['label'],
+                'bucket_count': bucket_count,
+                'bucket_hours': bucket_hours,
+                'bucket_label': f'{bucket_hours}h intervals',
+                'interval_online_threshold_pct': AVAILABILITY_ONLINE_INTERVAL_THRESHOLD_PCT,
+            },
         }
 
         set_cached(scoped_cache_key, result, ttl_seconds=60)

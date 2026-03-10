@@ -70,9 +70,14 @@ export async function fetchFleetMetrics() {
     return fetchAPI('/api/server/fleet-metrics');
 }
 
-export async function fetchAvailabilityDetails(forceFresh = false) {
-    const suffix = forceFresh ? '?fresh=1' : '';
-    return fetchAPI(`/api/dashboard/availability-details${suffix}`);
+export async function fetchAvailabilityDetails(range = '24h', forceFresh = false) {
+    const params = new URLSearchParams({
+        range: String(range || '24h')
+    });
+    if (forceFresh) {
+        params.set('fresh', '1');
+    }
+    return fetchAPI(`/api/dashboard/availability-details?${params.toString()}`);
 }
 
 export async function fetchSubnetDetails(subnet, limit = 500) {

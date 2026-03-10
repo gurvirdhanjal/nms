@@ -169,15 +169,20 @@ def create_app(test_config=None):
             DashboardEvent, DailyDeviceStats, 
             DeviceInterface, InterfaceTrafficHistory, DeviceSnmpConfig,
             SwitchTopology, TrackedDevice, TrackedDeviceIpHistory,
+            RemoteDeviceScanHistory,
             AuditLog,
             DeviceScanHistory, NetworkScan, PortScanResult,
-            ServerHealthLog, ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState,
+            ServerHealthLog, ServerThresholdConfig, ServerMetricThresholdState,
+            ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState,
             Subnet,
             RestrictedSitePolicy, TrackingAgentKeyBinding, RestrictedSiteEvent, RestrictedSiteAlertState,
             RestrictedSiteDomainMeta,
+            DeviceIdentityLink, DeviceIdentityLinkCandidate,
+            DeviceEffectivePolicyCache, PolicyRebuildTask,
+            AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
         )
         from models.discovery_config import DiscoveryConfig
-        from utils.db_migrations import ensure_server_health_columns
+        from utils.db_migrations import ensure_server_health_columns, ensure_tracking_stabilization_columns
 
         from services.discovery_service import get_discovery_service
         ds = get_discovery_service()
@@ -185,6 +190,7 @@ def create_app(test_config=None):
         if not os.environ.get('FLASK_RUN_FROM_CLI'):
             db.create_all()
             ensure_server_health_columns()
+            ensure_tracking_stabilization_columns()
     
             # ---------------------------
             # Prime Discovery Service (Singleton)
@@ -253,6 +259,7 @@ def create_app(test_config=None):
     from routes.subnets import subnets_bp
     from routes.audit import audit_bp
     from routes.device_console import device_console_bp
+    from routes.device_identity_admin import device_identity_admin_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -280,6 +287,7 @@ def create_app(test_config=None):
         subnets_bp,
         audit_bp,
         device_console_bp,
+        device_identity_admin_bp,
     ]
 
     for bp in protected_blueprints:

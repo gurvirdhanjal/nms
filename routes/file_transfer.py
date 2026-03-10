@@ -457,6 +457,49 @@ def upload_local_file():
         'failed_files': failed_files
     })
 
+
+@file_transfer_bp.route('/api/files/local/create_folder', methods=['POST'])
+@login_required
+def create_local_folder():
+    """Create folder on local server."""
+    data = request.get_json(silent=True) or {}
+    base_path = data.get('path', CLIENT_FOLDER) or CLIENT_FOLDER
+    folder_name = str(data.get('name', '')).strip()
+
+    if not folder_name:
+        return jsonify({'error': 'Folder name is required'}), 400
+
+    target_path = os.path.join(base_path, secure_filename(folder_name))
+    try:
+        os.makedirs(target_path, exist_ok=False)
+        return jsonify({'success': True, 'message': 'Folder created', 'path': target_path})
+    except FileExistsError:
+        return jsonify({'error': 'Folder already exists'}), 409
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
+@file_transfer_bp.route('/api/files/local/delete', methods=['DELETE', 'POST'])
+@login_required
+def delete_local_file():
+    """Delete file or folder on local server."""
+    data = request.get_json(silent=True) or {}
+    target_path = str(data.get('path', '')).strip()
+
+    if not target_path:
+        return jsonify({'error': 'Path is required'}), 400
+    if not os.path.exists(target_path):
+        return jsonify({'error': 'Path does not exist'}), 404
+
+    try:
+        if os.path.isdir(target_path):
+            shutil.rmtree(target_path)
+        else:
+            os.remove(target_path)
+        return jsonify({'success': True, 'message': 'Deleted', 'path': target_path})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
 @file_transfer_bp.route('/api/files/transfer_between', methods=['POST'])
 @login_required
 def transfer_between_systems():

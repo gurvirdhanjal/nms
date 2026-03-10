@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Device Identity Links{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-3">Device Identity Links</h1>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">Pending Candidates</div>
+                <div class="card-body">
+                    {% if pending_candidates %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Candidate</th>
+                                    <th>MAC</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in pending_candidates %}
+                                <tr>
+                                    <td>{{ row.device_id }} -> {{ row.tracked_device_id }}</td>
+                                    <td>{{ row.normalized_mac }}</td>
+                                    <td>{{ row.status }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted small">No candidates detected.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">Active Links</div>
+                <div class="card-body">
+                    {% if active_links %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Link</th>
+                                    <th>MAC</th>
+                                    <th>Source</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in active_links %}
+                                <tr>
+                                    <td>{{ row.device_id }} -> {{ row.tracked_device_id }}</td>
+                                    <td>{{ row.normalized_mac }}</td>
+                                    <td>{{ row.link_source }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted small">No active links.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

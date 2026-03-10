@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: monitoring_timescaledb
+    restart: unless-stopped
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with existing PostgreSQL 18
+    environment:
+      POSTGRES_USER: monitoring_man
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: monitoring_db
+      # TimescaleDB tuning
+      TIMESCALEDB_TELEMETRY: 'off'
+      # PostgreSQL performance tuning
+      POSTGRES_SHARED_BUFFERS: '2GB'
+      POSTGRES_EFFECTIVE_CACHE_SIZE: '6GB'
+      POSTGRES_MAINTENANCE_WORK_MEM: '512MB'
+      POSTGRES_WORK_MEM: '64MB'
+      POSTGRES_MAX_CONNECTIONS: '100'
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./scripts:/scripts:ro  # Mount scripts directory for easy access
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitoring_man -d monitoring_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=timescaledb
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - work_mem=64MB
+      - -c
+      - timescaledb.max_background_workers=8
+      - -c
+      - max_parallel_workers_per_gather=4
+      - -c
+      - max_parallel_workers=8
+      - -c
+      - max_worker_processes=16
+      - -c
+      - wal_compression=on
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+
+volumes:
+  timescaledb_data:
+    driver: local
+
+networks:
+  default:
+    name: monitoring_network

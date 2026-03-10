@@ -205,7 +205,7 @@ def ping_device():
     asyncio.set_event_loop(loop)
 
     try:
-        status, latency, packet_loss = loop.run_until_complete(
+        status, latency, packet_loss, *_ = loop.run_until_complete(
             service.scanner.ping_device(ip, timeout=PING_TIMEOUT)
         )
         

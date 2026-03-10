@@ -8,6 +8,7 @@ from models.printer import PrinterMetrics, PrintJobAudit
 from models.device import Device
 from models.tracked_device import TrackedDevice
 from services.snmp_service import snmp_service
+from services.device_link_service import DeviceLinkService
 from services.tracking_reconcile import normalize_mac
 
 printer_bp = Blueprint('printer', __name__)
@@ -40,12 +41,13 @@ def printer_detail_page(device_id):
     normalized_mac = normalize_mac(getattr(device, 'macaddress', None))
     tracked_live_url = None
     warning_code = None
-    if normalized_mac:
-        tracked = TrackedDevice.query.filter_by(mac_address=normalized_mac).first()
-        if tracked:
-            tracked_live_url = url_for('tracking_bp.live_tracking', mac=normalized_mac)
-        else:
-            warning_code = 'no_live_device'
+    link = DeviceLinkService.resolve_link_for_device(device.device_id)
+    if link:
+        tracked_live_url = url_for('tracking_bp.live_tracking', mac=link.normalized_mac)
+    elif DeviceLinkService.link_status_for_device(device.device_id).status == 'pending_review':
+        warning_code = 'identity_pending_review'
+    elif normalized_mac:
+        warning_code = 'no_live_device'
     else:
         warning_code = 'no_mac'
 

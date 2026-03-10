@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Server Operations Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .server-ops-dashboard {
+        --sod-bg: rgba(16, 19, 27, 0.92);
+        --sod-border: rgba(148, 163, 184, 0.12);
+        --sod-surface: rgba(24, 30, 42, 0.95);
+        min-height: 100vh;
+    }
+
+    .server-ops-dashboard .page-header {
+        background: rgba(16, 19, 27, 0.98);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--sod-border);
+        padding: 1.5rem 0;
+        margin-bottom: 1.5rem;
+    }
+
+    .server-ops-dashboard .page-title {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 20px;
+        font-weight: 600;
+        color: #fff;
+        margin: 0;
+        letter-spacing: 0.01em;
+    }
+
+    .server-ops-dashboard .page-subtitle {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    .server-ops-dashboard .kpi-card {
+        background: var(--sod-surface);
+        border: 1px solid var(--sod-border);
+        border-radius: 8px;
+        padding: 1.25rem;
+        transition: border-color 0.2s;
+    }
+
+    .server-ops-dashboard .kpi-card:hover {
+        border-color: rgba(148, 163, 184, 0.24);
+    }
+
+    .server-ops-dashboard .kpi-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+
+    .server-ops-dashboard .kpi-value {
+        font-size: 32px;
+        font-weight: 700;
+        font-family: 'IBM Plex Mono', monospace;
+        color: #fff;
+        line-height: 1;
+    }
+
+    .server-ops-dashboard .kpi-trend {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 6px;
+    }
+
+    .server-ops-dashboard .tactical-card {
+        background: var(--sod-surface);
+        border: 1px solid var(--sod-border);
+        border-radius: 8px;
+    }
+
+    .server-ops-dashboard .card-header {
+        background: transparent;
+        border-bottom: 1px solid var(--sod-border);
+        padding: 14px 18px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+    }
+
+    .server-ops-dashboard .resource-gauge {
+        height: 8px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .server-ops-dashboard .resource-gauge-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .server-ops-dashboard .chart-container {
+        height: 180px;
+        position: relative;
+    }
+
+    /* Skeleton Loading States */
+    .skeleton-text {
+        background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s ease-in-out infinite;
+        border-radius: 4px;
+        display: inline-block;
+        height: 1em;
+    }
+
+    .skeleton-row td {
+        padding: 12px 16px;
+    }
+
+    @keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* Smooth Transitions */
+    .server-ops-dashboard .kpi-value,
+    .server-ops-dashboard .resource-gauge-fill {
+        transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    .server-ops-dashboard .tactical-table tbody tr {
+        transition: background-color 0.2s ease;
+    }
+</style>
+{% endblock %}

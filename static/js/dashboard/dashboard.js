@@ -19,6 +19,7 @@ import { initSSE } from './sseClient.js';
 import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
 import { enforceSnapshotMeta } from './rbacGuard.js';
 import { renderScopeSummary } from './scopeSummary.js';
+import { renderAvailabilityHeatmap, renderAvailabilityRows } from './modals/availabilityDetail.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -46,6 +47,8 @@ let latestSubnetHealthRows = [];
 let subnetDetailsRequestSeq = 0;
 const SUBNET_DETAILS_CACHE_TTL_MS = 15000;
 const subnetDetailsCache = new Map();
+const AVAILABILITY_RANGE_STORAGE_KEY = 'tactical_dashboard_availability_range';
+let availabilityDetailRange = localStorage.getItem(AVAILABILITY_RANGE_STORAGE_KEY) || '24h';
 
 // Init
 if (document.readyState === 'loading') {
@@ -163,6 +166,7 @@ function initDashboard() {
 
         // 13. Init KPI interactions
         initDeviceBreakdown();
+        initAvailabilityControls();
         initServerKpiInteractions();
 
         console.log('[Dashboard] Initialization sequence complete.');
@@ -757,9 +761,99 @@ function getAvailabilityModal() {
     return availabilityModalInstance;
 }
 
+function defaultAvailabilityRangeMeta(rangeKey) {
+    if (rangeKey === '7d') {
+        return {
+            subtitle: 'Last 7 days · 14 half-day buckets',
+            helper: 'Each cell represents 12 hours. Devices are treated as online when the interval is mostly online.',
+            counterLabel: 'Down Intervals',
+            rangeMeta: '14 buckets · 12h intervals · interval-majority status',
+            heatmapTitle: '7D Availability Heatmap'
+        };
+    }
+    if (rangeKey === '30d') {
+        return {
+            subtitle: 'Last 30 days · daily interval buckets',
+            helper: 'Each cell represents 1 day. Devices are treated as online when the interval is mostly online.',
+            counterLabel: 'Down Days',
+            rangeMeta: '30 buckets · 24h intervals · interval-majority status',
+            heatmapTitle: '30D Availability Heatmap'
+        };
+    }
+    return {
+        subtitle: 'Last 24 hours · 12 rolled-up buckets',
+        helper: 'Each cell represents 2 hours. Devices are treated as online when the interval is mostly online.',
+        counterLabel: 'Down Intervals',
+        rangeMeta: '12 buckets · 2h intervals · interval-majority status',
+        heatmapTitle: '24H Availability Heatmap'
+    };
+}
+
+function updateAvailabilityRangeUi(meta = null) {
+    const effectiveMeta = {
+        ...defaultAvailabilityRangeMeta(availabilityDetailRange),
+        ...(meta || {})
+    };
+
+    document.querySelectorAll('[data-availability-range]').forEach((button) => {
+        const isActive = button.dataset.availabilityRange === availabilityDetailRange;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    const subtitleEl = document.getElementById('availability-modal-subtitle');
+    if (subtitleEl) subtitleEl.textContent = effectiveMeta.subtitle;
+
+    const helperEl = document.getElementById('availability-window-copy');
+    if (helperEl) helperEl.textContent = effectiveMeta.helper;
+
+    const rangeMetaEl = document.getElementById('availability-range-meta');
+    if (rangeMetaEl) rangeMetaEl.textContent = effectiveMeta.rangeMeta;
+
+    const heatmapTitleEl = document.getElementById('availability-heatmap-title');
+    if (heatmapTitleEl) {
+        heatmapTitleEl.innerHTML = `<i class="fas fa-th me-2"></i>${effectiveMeta.heatmapTitle || 'Availability Heatmap'}`;
+    }
+
+    const downtimeHeaderEl = document.getElementById('availability-downtime-count-header');
+    if (downtimeHeaderEl) downtimeHeaderEl.textContent = effectiveMeta.counterLabel;
+
+    const worstHeaderEl = document.getElementById('availability-worst-count-header');
+    if (worstHeaderEl) worstHeaderEl.textContent = effectiveMeta.counterLabel;
+}
+
+function setAvailabilityDetailRange(nextRange, { persist = true, rerender = false } = {}) {
+    const normalized = ['24h', '7d', '30d'].includes(String(nextRange || '').toLowerCase())
+        ? String(nextRange).toLowerCase()
+        : '24h';
+    availabilityDetailRange = normalized;
+    if (persist) {
+        localStorage.setItem(AVAILABILITY_RANGE_STORAGE_KEY, normalized);
+    }
+    updateAvailabilityRangeUi();
+    if (rerender) {
+        renderAvailabilityDetails().catch((error) => {
+            console.error('[Dashboard] Availability range refresh error:', error);
+        });
+    }
+}
+
+function initAvailabilityControls() {
+    updateAvailabilityRangeUi();
+    document.querySelectorAll('[data-availability-range]').forEach((button) => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+        button.addEventListener('click', () => {
+            if (button.dataset.availabilityRange === availabilityDetailRange) return;
+            setAvailabilityDetailRange(button.dataset.availabilityRange, { persist: true, rerender: true });
+        });
+    });
+}
+
 async function openAvailabilityModal() {
     const modal = getAvailabilityModal();
     if (!modal) return;
+    updateAvailabilityRangeUi();
     await renderAvailabilityDetails();
     modal.show();
 }
@@ -769,115 +863,44 @@ async function renderAvailabilityDetails() {
     availabilityInFlight = true;
 
     const heatmapEl = document.getElementById('availability-heatmap');
+    const axisEl = document.getElementById('availability-heatmap-axis');
+    const summaryEl = document.getElementById('availability-summary-strip');
     const updatedEl = document.getElementById('availability-modal-updated');
     const downtimeBody = document.getElementById('availability-downtime-body');
     const worstBody = document.getElementById('availability-worst-body');
 
     if (heatmapEl) heatmapEl.innerHTML = '<div class="text-secondary">Loading...</div>';
+    if (axisEl) axisEl.innerHTML = '';
+    if (summaryEl) summaryEl.innerHTML = '<div class="availability-summary-empty">Loading summary...</div>';
     if (downtimeBody) setTableMessageRow(downtimeBody, 4, 'Loading...', 'text-center text-secondary p-3');
     if (worstBody) setTableMessageRow(worstBody, 4, 'Loading...', 'text-center text-secondary p-3');
 
     try {
-        const data = await fetchAvailabilityDetails(true);
+        const data = await fetchAvailabilityDetails(availabilityDetailRange, true);
         if (updatedEl) {
             const timestamp = data.generated_at ? new Date(data.generated_at) : new Date();
             updatedEl.textContent = timestamp.toLocaleString();
         }
-        renderAvailabilityHeatmap(data.heatmap || [], heatmapEl);
+        updateAvailabilityRangeUi({
+            subtitle: `${data.meta?.range_label || defaultAvailabilityRangeMeta(availabilityDetailRange).subtitle} · ${data.meta?.bucket_label || ''}`.replace(/\s·\s$/, ''),
+            helper: `Each cell represents ${data.meta?.bucket_label || 'a rolled-up interval'}. Devices are considered online when at least ${data.meta?.interval_online_threshold_pct || 50}% of scans in that interval were online.`,
+            counterLabel: (data.meta?.bucket_hours || 0) >= 24 ? 'Down Days' : 'Down Intervals',
+            rangeMeta: `${data.meta?.bucket_count || (data.heatmap || []).length || 0} buckets · ${data.meta?.bucket_label || 'rolled-up intervals'} · interval-majority status`,
+            heatmapTitle: `${String(data.meta?.range_label || availabilityDetailRange).replace(/^Last\s+/i, '')} Heatmap`
+        });
+        renderAvailabilityHeatmap(data.heatmap || [], heatmapEl, { axisEl, summaryEl });
         renderAvailabilityRows(data.downtime_contributors || [], downtimeBody, 'downtime');
         renderAvailabilityRows(data.worst_availability || [], worstBody, 'worst');
     } catch (err) {
         console.error('[Dashboard] Availability detail error:', err);
         if (heatmapEl) heatmapEl.innerHTML = '<div class="text-danger">Failed to load heatmap.</div>';
+        if (axisEl) axisEl.innerHTML = '';
+        if (summaryEl) summaryEl.innerHTML = '<div class="availability-summary-empty text-danger">Failed to load summary.</div>';
         if (downtimeBody) setTableMessageRow(downtimeBody, 4, 'Failed to load data.', 'text-center text-danger p-3');
         if (worstBody) setTableMessageRow(worstBody, 4, 'Failed to load data.', 'text-center text-danger p-3');
     } finally {
         availabilityInFlight = false;
     }
-}
-
-function renderAvailabilityHeatmap(heatmap, targetEl) {
-    const el = targetEl || document.getElementById('availability-heatmap');
-    if (!el) return;
-    if (!Array.isArray(heatmap) || heatmap.length === 0) {
-        el.innerHTML = '<div class="text-secondary">No availability data for the last 24 hours.</div>';
-        return;
-    }
-
-    const cells = heatmap.map((entry) => {
-        const online = entry.online ?? 0;
-        const total = entry.total ?? 0;
-        const hasData = total > 0;
-        const value = hasData ? Number(entry.value ?? 0) : 0;
-        const className = hasData ? getAvailabilityClass(value) : 'avail-unknown';
-        const timeLabel = formatAvailabilityHour(entry.time);
-        const tooltip = hasData
-            ? `${timeLabel} - ${formatPercent(value)} (${online}/${total})`
-            : `${timeLabel} - No data`;
-        return `<div class="availability-cell ${className}" title="${tooltip}"></div>`;
-    });
-
-    el.innerHTML = cells.join('');
-}
-
-function renderAvailabilityRows(rows, tbody, mode) {
-    if (!tbody) return;
-    if (!Array.isArray(rows) || rows.length === 0) {
-        const emptyMessage = mode === 'worst'
-            ? 'No availability records yet.'
-            : 'No downtime recorded in the last 24 hours.';
-        setTableMessageRow(tbody, 4, emptyMessage, 'text-center text-secondary p-3');
-        return;
-    }
-
-    if (mode === 'downtime') {
-        patchKeyedTableRows(tbody, rows, {
-            getKey: (row, index) => row.device_id || row.ip || `downtime-${index}`,
-            renderCells: (row) => {
-                const name = row.device_name || 'Unknown';
-                const ip = row.ip || '-';
-                const offline = formatNumber(row.offline_scans ?? 0);
-                const downtimePct = formatPercent(row.downtime_pct ?? 0);
-                return `
-                    <td class="fw-bold text-white">${name}</td>
-                    <td><code>${ip}</code></td>
-                    <td>${offline}</td>
-                    <td>${downtimePct}</td>
-                `;
-            }
-        });
-        return;
-    }
-
-    patchKeyedTableRows(tbody, rows, {
-        getKey: (row, index) => row.device_id || row.ip || `worst-${index}`,
-        renderCells: (row) => {
-            const name = row.device_name || 'Unknown';
-            const ip = row.ip || '-';
-            const uptime = formatPercent(row.uptime_pct ?? 0);
-            const offline = formatNumber(row.offline_scans ?? 0);
-            return `
-                <td class="fw-bold text-white">${name}</td>
-                <td><code>${ip}</code></td>
-                <td>${uptime}</td>
-                <td>${offline}</td>
-            `;
-        }
-    });
-}
-
-function formatAvailabilityHour(isoString) {
-    if (!isoString) return 'Unknown';
-    const date = new Date(isoString);
-    if (isNaN(date.getTime())) return 'Unknown';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function getAvailabilityClass(value) {
-    if (value >= 99) return 'avail-excellent';
-    if (value >= 95) return 'avail-good';
-    if (value >= 90) return 'avail-warning';
-    return 'avail-bad';
 }
 
 function initServerKpiInteractions() {
@@ -1084,13 +1107,34 @@ function renderSubnetModalDetails(details) {
         healthPillEl.classList.add(`health-${healthTone}`);
     }
 
+    currentSubnetModalDevices = Array.isArray(payload.devices) ? payload.devices : [];
+    filterSubnetModalDevices();
+}
+let currentSubnetModalDevices = [];
+
+function filterSubnetModalDevices() {
+    const filterInput = document.getElementById('subnet-modal-filter');
+    const filterText = filterInput ? filterInput.value.toLowerCase().trim() : '';
+
+    let devicesToRender = currentSubnetModalDevices;
+    if (filterText) {
+        devicesToRender = currentSubnetModalDevices.filter(device => {
+            const name = (device.device_name || device.hostname || '').toLowerCase();
+            const ip = (device.device_ip || '').toLowerCase();
+            const type = (device.device_type || '').toLowerCase();
+            const vendor = (device.manufacturer || '').toLowerCase();
+            return name.includes(filterText) || ip.includes(filterText) ||
+                type.includes(filterText) || vendor.includes(filterText);
+        });
+    }
+
     const tbody = document.getElementById('subnet-modal-devices-body');
     if (!tbody) return;
 
-    patchKeyedTableRows(tbody, Array.isArray(payload.devices) ? payload.devices : [], {
+    patchKeyedTableRows(tbody, devicesToRender, {
         getKey: (device, index) => device.device_id || device.device_ip || `subnet-device-${index}`,
         emptyColSpan: 5,
-        emptyMessage: 'No devices mapped to this subnet yet.',
+        emptyMessage: filterText ? 'No devices match your filter.' : 'No devices mapped to this subnet yet.',
         emptyClassName: 'text-center text-secondary p-3',
         renderCells: (device) => {
             const name = escapeHtml(device.device_name || device.hostname || 'Unknown');
@@ -1112,15 +1156,15 @@ function renderSubnetModalDetails(details) {
                 <td>
                     <div class="subnet-device-name">${name}</div>
                     <div class="subnet-device-meta">
-                        <span class="subnet-status-dot ${statusClass}" aria-hidden="true"></span>
-                        <span class="subnet-device-status-chip ${statusClass}">${statusLabel.toUpperCase()}</span>
-                        <span aria-hidden="true">•</span>
+                        <span class="subnet-status-dot ${statusClass}" aria-hidden="true" style="width:6px; height:6px;"></span>
+                        <span class="subnet-device-status-text" style="font-size: 10px; font-weight: 600; color: var(--text-primary); margin-right: 6px;">${statusLabel.toUpperCase()}</span>
+                        <span aria-hidden="true" style="margin-right: 6px; opacity: 0.4">•</span>
                         <span>Seen ${lastSeen}</span>
                     </div>
                 </td>
-                <td><span class="subnet-ip-pill">${ip}</span></td>
-                <td>${type}</td>
-                <td>${vendor}</td>
+                <td><span class="subnet-ip-pill" style="border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color: var(--text-muted);">${ip}</span></td>
+                <td style="color: var(--text-secondary);">${type}</td>
+                <td style="color: var(--text-secondary);">${vendor}</td>
                 <td><span class="subnet-monitored-chip ${monitoredClass}">${monitoredText}</span></td>
             `;
         }
@@ -1149,6 +1193,13 @@ function initSubnetInteractions() {
         event.preventDefault();
         openSubnetDetails(row.dataset.subnetCidr);
     });
+
+    const filterInput = document.getElementById('subnet-modal-filter');
+    if (filterInput) {
+        filterInput.addEventListener('input', () => {
+            filterSubnetModalDevices();
+        });
+    }
 }
 
 async function openSubnetDetails(subnetCidr) {
@@ -1185,7 +1236,7 @@ function renderSubnetHealth(subnetHealth) {
     latestSubnetHealthRows = Array.isArray(subnetHealth) ? subnetHealth : [];
 
     patchKeyedTableRows(tbody, latestSubnetHealthRows, {
-        getKey: (subnet, index) => normalizeSubnetValue(subnet.subnet) || `subnet-${index}`,
+        getKey: (subnet, index) => normalizeSubnetValue(subnet.subnet) || `subnet - ${index} `,
         emptyColSpan: 5,
         emptyMessage: 'No subnet data available.',
         emptyClassName: 'text-center text-secondary p-3',

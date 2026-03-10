@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.device_name }} - Server Monitoring{% endblock %}
+
+{% block extra_css %}
+<style>
+    .server-details-page {
+        --sdp-bg: rgba(16, 19, 27, 0.92);
+        --sdp-border: rgba(148, 163, 184, 0.08);
+        --sdp-border-accent: rgba(148, 163, 184, 0.12);
+        --sdp-surface: rgba(24, 30, 42, 0.95);
+        min-height: 100vh;
+        background: var(--bg-primary);
+    }
+
+    .server-details-page .page-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(16, 19, 27, 0.98);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--sdp-border);
+        padding: 1rem 0;
+        margin-bottom: 1.5rem;
+    }
+
+    .server-details-page .page-header-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .server-details-page .server-identity {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .server-details-page .server-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        background: rgba(0, 229, 160, 0.08);
+        border: 1px solid rgba(0, 229, 160, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .server-details-page .server-title {
+        margin: 0;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 18px;
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: 0.01em;
+    }
+
+    .server-details-page .server-subtitle {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: 'IBM Plex Mono', monospace;
+        margin-top: 2px;
+    }
+
+    .server-details-page .page-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .server-details-page .btn-action {
+        font-size: 11px;
+        padding: 8px 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+    .server-details-page .btn-action:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.15);
+        color: var(--text-primary);
+    }
+
+    .server-details-page .btn-action i {
+        font-size: 10px;
+        margin-right: 6px;
+    }
+
+    .server-details-page .tactical-card {
+        background: var(--sdp-surface);
+        border: 1px solid var(--sdp-border);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .server-details-page .card-header {
+        background: transparent;
+        border-bottom: 1px solid var(--sdp-border);
+        padding: 12px 16px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+    }
+
+    .server-details-page .modal-chart-120 {
+        height: 120px;
+    }
+
+    .server-details-page .modal-chart-200 {
+        height: 200px;
+    }
+
+    .server-details-page .modal-chart-220 {
+        height: 220px;
+    }
+
+    @media (max-width: 768px) {
+        .server-details-page .page-header-content {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .server-details-page .page-actions {
+            width: 100%;
+            flex-wrap: wrap;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="server-details-page">
+    <div class="page-header">
+        <div class="container-fluid">
+            <div class="page-header-content">
+                <div class="server-identity">
+                    <div class="server-icon">
+                        <i class="fas fa-server" style="color: var(--teal); font-size: 20px;"></i>
+                    </div>
+                    <div>
+                        <h1 class="server-title">{{ device.device_name }}</h1>
+                        <div class="server-subtitle">
+                            {{ device.device_ip }} • 
+                            <span id="page-device-status">
+                                {% if device.maintenance_mode %}
+                                <span style="color: var(--amber);">Maintenance</span>
+                                {% else %}
+                                <span style="color: var(--teal);">Active</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="page-actions">
+                    <a href="{{ url_for('devices_bp.device_management') }}" class="btn btn-action">
+                        <i class="fas fa-arrow-left"></i>Back to Devices
+                    </a>
+                    <a href="{{ url_for('devices_bp.device_details_page', device_id=device.device_id) }}" class="btn btn-action">
+                        <i class="fas fa-cog"></i>Device Config
+                    </a>
+                    <button type="button" class="btn btn-action" id="btnRefreshMetrics">
+                        <i class="fas fa-sync-alt"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div id="server-page-surface" data-device-id="{{ device.device_id }}">
+            {% set telemetry_prefix = 'server-page' %}
+            {% set telemetry_show_threshold_editor = true %}
+            {% set telemetry_can_edit_thresholds = can_edit_server_thresholds %}
+            {% set telemetry_show_extended = true %}
+            {% include 'partials/server_metrics_panel.html' %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
+
+    const pageRoot = document.getElementById('server-page-surface');
+    const deviceId = Number(pageRoot?.dataset.deviceId || 0);
+    
+    if (!deviceId) {
+        console.error('No device ID found');
+    } else {
+        const view = createServerMetricsView({ 
+            root: pageRoot, 
+            prefix: 'server-page' 
+        });
+
+        let currentRange = '24h';
+
+        async function loadMetrics() {
+            try {
+                await view.load(deviceId, currentRange);
+            } catch (error) {
+                console.error('Failed to load server metrics:', error);
+            }
+        }
+
+        // Initial load
+        loadMetrics();
+
+        // Auto-refresh every 30 seconds
+        const refreshInterval = setInterval(loadMetrics, 30000);
+
+        // Manual refresh button
+        const refreshBtn = document.getElementById('btnRefreshMetrics');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i>Refreshing...';
+                loadMetrics().finally(() => {
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i>Refresh';
+                });
+            });
+        }
+
+        // Range toggle buttons
+        const rangeButtons = pageRoot.querySelectorAll('.server-range-toggle [data-range]');
+        rangeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                currentRange = button.dataset.range;
+                rangeButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.range === currentRange);
+                    btn.classList.toggle('tactical-btn-primary', btn.dataset.range === currentRange);
+                    btn.classList.toggle('tactical-btn-ghost', btn.dataset.range !== currentRange);
+                });
+                loadMetrics();
+            });
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(refreshInterval);
+            view?.destroy();
+        });
+    }
+</script>
+{% endblock %}

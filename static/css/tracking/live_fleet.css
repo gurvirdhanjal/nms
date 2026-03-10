@@ -1,0 +1,137 @@
+.live-fleet-page .fleet-kpi .stat-value {
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.live-fleet-page .fleet-telemetry-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.live-fleet-page .status-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    display: inline-block;
+}
+
+.live-fleet-page .status-dot.healthy {
+    background: var(--s-healthy);
+}
+
+.live-fleet-page .status-dot.offline {
+    background: var(--s-offline);
+}
+
+.live-fleet-page .fleet-filter-chip {
+    border: 1px solid var(--e-border);
+    background: var(--e-bg-panel-soft);
+    color: var(--e-text-secondary);
+    padding: 0.25rem 0.55rem;
+    font-size: var(--t-table-header);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 0.35rem;
+}
+
+.live-fleet-page .fleet-filter-chip.active {
+    border-color: var(--e-border-strong);
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--e-text-primary);
+}
+
+.live-fleet-page .fleet-table thead th {
+    white-space: nowrap;
+}
+
+.live-fleet-page .fleet-table tbody td {
+    padding: 0.44rem 0.62rem;
+    vertical-align: top;
+    font-size: 0.8rem;
+    line-height: 1.25;
+}
+
+.live-fleet-page .fleet-device-primary {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.live-fleet-page .fleet-device-icon {
+    margin-top: 0.14rem;
+    color: var(--e-text-muted);
+}
+
+.live-fleet-page .fleet-device-name {
+    color: var(--e-text-primary);
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.live-fleet-page .fleet-device-name-line {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.live-fleet-page .fleet-violation-icon {
+    color: var(--s-critical);
+    font-size: 0.74rem;
+}
+
+.live-fleet-page .fleet-device-meta {
+    font-size: 0.72rem;
+}
+
+.live-fleet-page .fleet-policy-note {
+    font-size: 0.69rem;
+    margin-top: 0.1rem;
+}
+
+.live-fleet-page .fleet-device-row.fleet-has-violation td:first-child {
+    border-left: 2px solid rgba(220, 53, 69, 0.45);
+}
+
+.live-fleet-page .fleet-network-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--e-text-muted);
+}
+
+.live-fleet-page .fleet-network-line strong {
+    color: var(--e-text-secondary);
+    font-weight: 600;
+}
+
+.live-fleet-page .fleet-last-seen {
+    color: var(--e-text-primary);
+    font-size: 0.74rem;
+}
+
+.live-fleet-page .fleet-status-reason,
+.live-fleet-page .fleet-sync-age,
+.live-fleet-page .fleet-risk-context {
+    font-size: 0.7rem;
+}
+
+.live-fleet-page .fleet-risk-badge.fleet-risk-low {
+    color: var(--s-warning);
+    background: var(--s-warning-bg);
+    border-color: var(--s-warning-bd);
+}
+
+.live-fleet-page .fleet-risk-badge.fleet-risk-medium {
+    color: var(--s-degraded);
+    background: rgba(253, 126, 20, 0.12);
+    border-color: rgba(253, 126, 20, 0.36);
+}
+
+.live-fleet-page .fleet-risk-badge.fleet-risk-high {
+    color: var(--s-critical);
+    background: var(--s-critical-bg);
+    border-color: var(--s-critical-bd);
+}

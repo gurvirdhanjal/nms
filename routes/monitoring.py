@@ -48,6 +48,18 @@ def dashboard():
     all_devices = all_devices_query.all()
     # filtered_devices = []
     # for d in all_devices: ...
+
+    monitored_devices = [d for d in all_devices if d.is_monitored]
+    
+    return render_template('dashboard.html',
+                         all_devices=all_devices,
+                         monitored_devices=monitored_devices)
+
+@monitoring_bp.route('/dashboard/servers')
+def server_dashboard():
+    """Dedicated server operations dashboard for fleet-wide server monitoring."""
+    return render_template('server_dashboard.html')
+
     
     # Use all devices
     total_devices = len(all_devices)
@@ -268,8 +280,8 @@ def get_monitoring_status():
 
                 if isinstance(result, Exception):
                     fallback_errors += 1
-                elif isinstance(result, tuple) and len(result) >= 2:
-                    status, latency, packet_loss = result
+                elif isinstance(result, tuple) and len(result) >= 3:
+                    status, latency, packet_loss, *_ = result
                     status = normalize_availability_status(status)
 
                 entry = device_index.get(device.device_id)
@@ -339,7 +351,7 @@ def get_monitoring_status():
 
         try:
             # Optimization: Single ping for dashboard speed
-            status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
+            status, latency, _packet_loss, *_ = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
             status = normalize_availability_status(status)
             
             # Fallback: Check Tactical Agent Port (5002) if Ping fails
@@ -463,7 +475,7 @@ def get_monitoring_statistics():
         async def check_device_online(device):
             try:
                 # 1. Try Standard Ping
-                status, latency, _packet_loss = await monitor.scanner.ping_device(device.device_ip)
+                status, latency, _packet_loss, *_ = await monitor.scanner.ping_device(device.device_ip)
                 if status == 'Online':
                     return True
                 

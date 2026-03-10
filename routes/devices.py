@@ -1,5 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, abort
+from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, abort, current_app
 from werkzeug.security import generate_password_hash
+from config import Config
 from extensions import db
 from services.network_scanner import NetworkScanner
 from services.device_identity import upsert_device_from_identity, compute_subnet_cidr
@@ -408,7 +409,7 @@ def check_connectivity():
     
     try:
         if mode == 'ping':
-            status, latency, packet_loss = asyncio.run(scanner.ping_device(ip, timeout=2, count=2))
+            status, latency, packet_loss, *_ = asyncio.run(scanner.ping_device(ip, timeout=2, count=2))
             if status == 'Online':
                 return jsonify({
                     'success': True, 
@@ -546,7 +547,7 @@ def save_device():
         if is_monitored and monitoring_mode == 'ping':
             try:
                 # Fast timeout
-                status, latency, _packet_loss = asyncio.run(scanner.ping_device(device_ip, timeout=1, count=1))
+                status, latency, _packet_loss, *_ = asyncio.run(scanner.ping_device(device_ip, timeout=1, count=1))
             except Exception:
                 status, latency, _packet_loss = "Offline", None, 100.0
         
@@ -915,7 +916,30 @@ def device_details_page(device_id):
         interfaces=interfaces,
         snmp_enabled=snmp_enabled,
         has_snmp_metrics=has_snmp_metrics,
+        enable_server_fullpage_telemetry=bool(
+            current_app.config.get('ENABLE_SERVER_FULLPAGE_TELEMETRY', Config.ENABLE_SERVER_FULLPAGE_TELEMETRY)
+        ),
+        can_edit_server_thresholds=str(session.get('role') or '').strip().lower() == 'admin',
     )
+
+@devices_bp.route('/devices/<int:device_id>/server-monitoring')
+def server_monitoring_page(device_id):
+    """Dedicated full-page server monitoring view for enterprise-grade telemetry."""
+    from models.device import Device
+    from middleware.rbac import scoped_query
+
+    device = scoped_query(Device).get_or_404(device_id)
+    
+    # Ensure this is actually a server device
+    if not device.device_type or device.device_type.lower() != 'server':
+        abort(400, description='This page is only available for server devices.')
+
+    return render_template(
+        'server_details_page.html',
+        device=device,
+        can_edit_server_thresholds=str(session.get('role') or '').strip().lower() == 'admin',
+    )
+
 
 @devices_bp.route('/api/devices/<int:device_id>/connections', methods=['GET'])
 def get_device_connections(device_id):
@@ -1182,27 +1206,44 @@ def bulk_add_devices():
             seen_ips.add(ip_address)
 
             try:
-                device, action, _prev_ip = upsert_device_from_identity(
-                    ip=ip_address,
-                    mac=mac_address,
-                    hostname=hostname,
-                    manufacturer=manufacturer,
-                    device_type=device_type or 'unknown',
-                    is_monitored=False,
-                    is_active=True
-                )
+                with db.session.begin_nested():
+                    device, action, _prev_ip = upsert_device_from_identity(
+                        ip=ip_address,
+                        mac=mac_address,
+                        hostname=hostname,
+                        manufacturer=manufacturer,
+                        device_type=device_type or 'unknown',
+                        is_monitored=False,
+                        is_active=True
+                    )
 
-                # Apply classification metadata when available (avoid overwriting manual)
-                if device and (classification_confidence or confidence_score is not None or classification_details):
-                    if (device.classification_confidence or '').strip().lower() != 'manual':
-                        if classification_confidence:
-                            device.classification_confidence = classification_confidence
-                        if confidence_score is not None:
-                            device.confidence_score = confidence_score
-                        if classification_details is not None:
-                            if not isinstance(classification_details, str):
-                                classification_details = json.dumps(classification_details)
-                            device.classification_details = classification_details
+                    # Apply classification metadata when available (avoid overwriting manual)
+                    if device and (classification_confidence or confidence_score is not None or classification_details):
+                        if (device.classification_confidence or '').strip().lower() != 'manual':
+                            if classification_confidence:
+                                device.classification_confidence = classification_confidence
+                            if confidence_score is not None:
+                                device.confidence_score = confidence_score
+                            if classification_details is not None:
+                                if not isinstance(classification_details, str):
+                                    classification_details = json.dumps(classification_details)
+                                device.classification_details = classification_details
+
+                    db.session.flush()
+
+                    _upsert_device_snmp_config(
+                        device=device,
+                        monitoring_mode='snmp' if data.get('snmp_working') else (device.monitoring_mode or 'ping'),
+                        is_monitored=bool(device.is_monitored),
+                        snmp_version=data.get('snmp_version') or device.snmp_version or '2c',
+                        snmp_port=data.get('snmp_port') or device.snmp_port or 161,
+                        snmp_community=data.get('snmp_community') or device.snmp_community or 'public',
+                        snmp_username='',
+                        snmp_auth_proto='',
+                        snmp_auth_password='',
+                        snmp_priv_proto='',
+                        snmp_priv_password='',
+                    )
 
                 if action == "created":
                     added_count += 1
@@ -1210,23 +1251,8 @@ def bulk_add_devices():
                     updated_count += 1
                 else:
                     skipped_count += 1
-
-                db.session.flush()
-
-                _upsert_device_snmp_config(
-                    device=device,
-                    monitoring_mode='snmp' if data.get('snmp_working') else (device.monitoring_mode or 'ping'),
-                    is_monitored=bool(device.is_monitored),
-                    snmp_version=data.get('snmp_version') or device.snmp_version or '2c',
-                    snmp_port=data.get('snmp_port') or device.snmp_port or 161,
-                    snmp_community=data.get('snmp_community') or device.snmp_community or 'public',
-                    snmp_username='',
-                    snmp_auth_proto='',
-                    snmp_auth_password='',
-                    snmp_priv_proto='',
-                    snmp_priv_password='',
-                )
             except Exception as item_error:
+                logger.warning("Bulk add failed for %s: %s", ip_address, item_error)
                 errors.append(f"Error adding {ip_address}: {str(item_error)}")
 
         db.session.commit()
@@ -1404,7 +1430,7 @@ def reclassify_all():
                     continue
 
             # Ping first (ICMP may be blocked; do not rely on it for classification)
-            status, _latency, _packet_loss = asyncio.run(scanner.ping_device(device.device_ip))
+            status, _latency, _packet_loss, *_ = asyncio.run(scanner.ping_device(device.device_ip))
 
             mac_address = device.macaddress or "N/A"
             hostname = device.hostname or ""

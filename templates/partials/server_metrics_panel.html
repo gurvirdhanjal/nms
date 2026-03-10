@@ -1,0 +1,586 @@
+{% set telemetry_prefix = telemetry_prefix|default('server-modal') %}
+{% set telemetry_show_threshold_editor = telemetry_show_threshold_editor|default(false) %}
+{% set telemetry_can_edit_thresholds = telemetry_can_edit_thresholds|default(false) %}
+{% set telemetry_show_extended = telemetry_show_extended|default(false) %}
+{% set telemetry_device_id = device.device_id if device is defined and device else '' %}
+
+<div class="server-telemetry-surface" id="{{ telemetry_prefix }}-surface"
+    data-telemetry-prefix="{{ telemetry_prefix }}"
+    data-device-id="{{ telemetry_device_id }}"
+    data-threshold-editable="{{ '1' if telemetry_can_edit_thresholds else '0' }}">
+    <div class="row mb-4 g-3 align-items-end">
+        <div class="col-md-3">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Health Status</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="fw-bold" style="font-size: 13px; color: var(--text-primary);"
+                    id="{{ telemetry_prefix }}-status">-</div>
+                <span class="badge rounded-pill border" style="font-size: 10px; padding: 3px 8px;"
+                    id="{{ telemetry_prefix }}-health-score">Score -</span>
+            </div>
+            <div class="small text-secondary mt-1" id="{{ telemetry_prefix }}-health-summary">Composite health pending</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Last Seen</div>
+            <div class="fw-bold font-monospace" style="font-size: 13px; color: var(--text-primary);"
+                id="{{ telemetry_prefix }}-last-seen">-</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Boot Time</div>
+            <div class="fw-bold font-monospace" style="font-size: 13px; color: var(--text-primary);"
+                id="{{ telemetry_prefix }}-boot-time">-</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Uptime</div>
+            <div class="fw-bold font-monospace" style="font-size: 13px; color: var(--text-primary);"
+                id="{{ telemetry_prefix }}-uptime">-</div>
+        </div>
+        <div class="col-md-3 text-end">
+            <div class="btn-group server-range-toggle d-flex" role="group" aria-label="Server time range">
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
+                    style="font-size: 10px; padding: 2px 0;" data-range="15m">15M</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
+                    style="font-size: 10px; padding: 2px 0;" data-range="1h">1H</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
+                    style="font-size: 10px; padding: 2px 0;" data-range="6h">6H</button>
+                <button type="button" class="btn btn-sm tactical-btn-primary rounded-pill flex-grow-1 active"
+                    style="font-size: 10px; padding: 2px 0;" data-range="24h">24H</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
+                    style="font-size: 10px; padding: 2px 0;" data-range="7d">7D</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Device Name</div>
+            <div style="font-size: 13px; color: var(--text-primary);" id="{{ telemetry_prefix }}-title">-</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                IP Address</div>
+            <div class="font-monospace" style="font-size: 13px; color: var(--text-primary);"
+                id="{{ telemetry_prefix }}-ip">-</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Hostname</div>
+            <div class="font-monospace" style="font-size: 13px; color: var(--text-primary);"
+                id="{{ telemetry_prefix }}-hostname">-</div>
+        </div>
+        <div class="col-md-2">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                OS</div>
+            <div style="font-size: 13px; color: var(--text-primary);" id="{{ telemetry_prefix }}-os">-</div>
+        </div>
+        <div class="col-md-5">
+            <div class="text-uppercase"
+                style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 2px;">
+                Hardware</div>
+            <div style="font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;"
+                id="{{ telemetry_prefix }}-hardware">-</div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="tactical-card h-100 border-0" style="background: var(--bg-card); border-radius: 8px;">
+                <div class="card-header pb-1 pt-3 px-3 border-0 d-flex justify-content-between align-items-start"
+                    style="background: transparent;">
+                    <div class="w-100">
+                        <div class="d-flex justify-content-between">
+                            <div class="text-uppercase fw-bold"
+                                style="font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em;">
+                                CPU Usage</div>
+                            <span class="badge rounded-pill border" style="font-size: 9px; padding: 2px 6px;"
+                                id="{{ telemetry_prefix }}-cpu-status">-</span>
+                        </div>
+                        <div class="font-monospace mt-1" style="font-size: 11px; color: var(--text-secondary);"
+                            id="{{ telemetry_prefix }}-cpu-summary">-</div>
+                    </div>
+                </div>
+                <div class="card-body p-2 pt-0">
+                    <div class="modal-chart-120"><canvas id="{{ telemetry_prefix }}-chart-cpu"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100 border-0" style="background: var(--bg-card); border-radius: 8px;">
+                <div class="card-header pb-1 pt-3 px-3 border-0 d-flex justify-content-between align-items-start"
+                    style="background: transparent;">
+                    <div class="w-100">
+                        <div class="d-flex justify-content-between">
+                            <div class="text-uppercase fw-bold"
+                                style="font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em;">
+                                Memory</div>
+                            <span class="badge rounded-pill border" style="font-size: 9px; padding: 2px 6px;"
+                                id="{{ telemetry_prefix }}-mem-status">-</span>
+                        </div>
+                        <div class="font-monospace mt-1" style="font-size: 11px; color: var(--text-secondary);"
+                            id="{{ telemetry_prefix }}-mem-summary">-</div>
+                    </div>
+                </div>
+                <div class="card-body p-2 pt-0">
+                    <div class="modal-chart-120"><canvas id="{{ telemetry_prefix }}-chart-mem"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100 border-0" style="background: var(--bg-card); border-radius: 8px;">
+                <div class="card-header pb-1 pt-3 px-3 border-0 d-flex justify-content-between align-items-start"
+                    style="background: transparent;">
+                    <div class="w-100">
+                        <div class="d-flex justify-content-between">
+                            <div class="text-uppercase fw-bold"
+                                style="font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em;">
+                                Disk</div>
+                            <span class="badge rounded-pill border" style="font-size: 9px; padding: 2px 6px;"
+                                id="{{ telemetry_prefix }}-disk-status">-</span>
+                        </div>
+                        <div class="font-monospace mt-1" style="font-size: 11px; color: var(--text-secondary);"
+                            id="{{ telemetry_prefix }}-disk-summary">-</div>
+                    </div>
+                </div>
+                <div class="card-body p-2 pt-0">
+                    <div class="modal-chart-120"><canvas id="{{ telemetry_prefix }}-chart-disk"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-md-12">
+            <div class="tactical-card h-100 border-0" style="background: var(--bg-card); border-radius: 8px;">
+                <div class="card-header pb-1 pt-3 px-3 border-0 d-flex justify-content-between align-items-center"
+                    style="background: transparent;">
+                    <div class="text-uppercase fw-bold"
+                        style="font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em;">NETWORK THROUGHPUT
+                        <span class="fw-normal" id="{{ telemetry_prefix }}-net-axis-unit"
+                            style="color: var(--text-secondary); text-transform: none; letter-spacing: normal;">(auto scale)</span>
+                    </div>
+                </div>
+                <div class="card-body p-2 pt-0">
+                    <div class="modal-chart-120"><canvas id="{{ telemetry_prefix }}-chart-net"></canvas></div>
+                    <div class="row g-2 mt-2 small">
+                        <div class="col-md-4"><span class="text-secondary">Current</span> <span class="font-monospace"
+                                id="{{ telemetry_prefix }}-net-current">-</span></div>
+                        <div class="col-md-4"><span class="text-secondary">Average</span> <span class="font-monospace"
+                                id="{{ telemetry_prefix }}-net-average">-</span></div>
+                        <div class="col-md-4"><span class="text-secondary">Peak</span> <span class="font-monospace"
+                                id="{{ telemetry_prefix }}-net-peak">-</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-md-6">
+            <div class="tactical-card h-100">
+                <div class="card-header small d-flex justify-content-between align-items-center">
+                    <span>Agent Connections (Top 20 IPs)</span>
+                    <span id="{{ telemetry_prefix }}-agent-unique-ips"
+                        class="tactical-badge tactical-badge-secondary">-</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="small text-secondary px-3 py-2" id="{{ telemetry_prefix }}-agent-updated">Snapshot: -
+                    </div>
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Remote IP</th>
+                                    <th>Active Connections</th>
+                                    <th>Type</th>
+                                    <th>Resolved Device</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-agent-connections-body">
+                                <tr>
+                                    <td colspan="4" class="text-center text-secondary p-3">No agent snapshot loaded.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="tactical-card h-100 border-0"
+                style="background: var(--bg-surface); border: 1px solid var(--tactical-border-accent) !important; border-radius: 8px; overflow: hidden;">
+                <div class="card-header border-bottom d-flex justify-content-between align-items-center"
+                    style="padding: 10px 16px; border-color: rgba(255,255,255,0.06) !important; background: transparent;">
+                    <span class="text-uppercase fw-bold"
+                        style="font-size: 10px; color: var(--text-primary); letter-spacing: 0.05em;">CONNECTION SNAPSHOT
+                        (AGENT)</span>
+                    <button type="button" class="btn btn-sm tactical-btn-ghost rounded border"
+                        style="font-size: 10px; padding: 2px 8px; color: var(--teal); border-color: var(--teal) !important;"
+                        id="{{ telemetry_prefix }}-refresh-snapshot">
+                        <i class="fas fa-sync-alt me-1"></i>REFRESH NOW
+                    </button>
+                </div>
+                <div class="card-body p-0 d-flex flex-column h-100">
+                    <div id="{{ telemetry_prefix }}-snapshot-status" class="py-4 text-center mt-3">
+                        <i class="fas fa-sync-alt"
+                            style="font-size: 24px; color: var(--text-muted); opacity: 0.3; margin-bottom: 8px;"></i>
+                        <div style="font-size: 12px; color: var(--text-muted);">No snapshot loaded</div>
+                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Click Refresh Snapshot to fetch
+                            live connection data</div>
+                    </div>
+                    <div class="table-responsive d-none flex-grow-1" id="{{ telemetry_prefix }}-snapshot-table-container">
+                        <table class="tactical-table table-hover mb-0" style="font-size: 11px;">
+                            <thead style="background: transparent;">
+                                <tr>
+                                    <th style="font-size: 10px; color: var(--text-muted); font-weight: 600;">REMOTE IP</th>
+                                    <th style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-align: center;">
+                                        CONNECTIONS</th>
+                                    <th style="font-size: 10px; color: var(--text-muted); font-weight: 600;">TYPE</th>
+                                    <th style="font-size: 10px; color: var(--text-muted); font-weight: 600;">RESOLVED DEVICE</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-snapshot-connections-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-3">
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small" id="{{ telemetry_prefix }}-load-panel-title">Load Average (1/5/15 min)</div>
+                <div class="card-body">
+                    <div class="small text-secondary mb-2" id="{{ telemetry_prefix }}-load-panel-note">Linux scheduler pressure</div>
+                    <div class="d-flex justify-content-around align-items-center load-avg-row">
+                        <div class="text-center">
+                            <div class="text-secondary small" id="{{ telemetry_prefix }}-load-slot-1-label">1min</div>
+                            <div class="fw-bold fs-5" id="{{ telemetry_prefix }}-load-avg-1min">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-secondary small" id="{{ telemetry_prefix }}-load-slot-2-label">5min</div>
+                            <div class="fw-bold fs-5" id="{{ telemetry_prefix }}-load-avg-5min">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-secondary small" id="{{ telemetry_prefix }}-load-slot-3-label">15min</div>
+                            <div class="fw-bold fs-5" id="{{ telemetry_prefix }}-load-avg-15min">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small" id="{{ telemetry_prefix }}-paging-panel-title">Swap Usage</div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between small text-secondary">
+                            <span id="{{ telemetry_prefix }}-swap-used-text">- MB</span><span
+                                id="{{ telemetry_prefix }}-swap-percent-text">-%</span>
+                        </div>
+                        <div class="progress swap-progress-shell">
+                            <div id="{{ telemetry_prefix }}-swap-progress-bar" class="progress-bar" role="progressbar"></div>
+                        </div>
+                    </div>
+                    <div class="small text-secondary">Total: <span id="{{ telemetry_prefix }}-swap-total-text">- MB</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small">System Telemetry</div>
+                <div class="card-body">
+                    <div class="row g-2 small">
+                        <div class="col-6">
+                            <div class="text-secondary">Total Processes</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-process-count">-</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-secondary">Zombie</div>
+                            <div class="fw-bold text-warning" id="{{ telemetry_prefix }}-zombie-count">-</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-secondary">Connections</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-connections-total">-</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-secondary">Established</div>
+                            <div class="fw-bold text-success" id="{{ telemetry_prefix }}-connections-established">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-md-12">
+            <div class="tactical-card h-100">
+                <div class="card-header small">Disk I/O Rates</div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3 small">
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Read MB/s</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-read-rate">-</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Write MB/s</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-write-rate">-</div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="text-secondary">IOPS</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-iops">-</div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="text-secondary">Busy %</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-busy-percent">-</div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="text-secondary">Queue</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-queue-length">-</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 small">
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Peak Read</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-peak-read-rate">-</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Peak Write</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-peak-write-rate">-</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Read Latency</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-read-latency">-</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-secondary">Write Latency</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-disk-write-latency">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-md-12">
+            <div class="tactical-card h-100">
+                <div class="card-header small d-flex justify-content-between align-items-center">
+                    <span>Top Processes</span>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Process sort mode">
+                        <button type="button" class="btn btn-sm tactical-btn-primary active"
+                            id="{{ telemetry_prefix }}-process-sort-memory">Sort: Memory</button>
+                        <button type="button" class="btn btn-sm tactical-btn-ghost"
+                            id="{{ telemetry_prefix }}-process-sort-cpu">Sort: CPU</button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Process Name</th>
+                                    <th>PID</th>
+                                    <th>CPU %</th>
+                                    <th>Memory %</th>
+                                    <th>Status</th>
+                                    <th>Executable</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-top-processes-body">
+                                <tr>
+                                    <td colspan="6" class="text-center text-secondary p-3">No process data available</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if telemetry_show_extended %}
+    <div class="row g-4 mt-1">
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small">CPU Internals</div>
+                <div class="card-body">
+                    <div class="row g-2 small">
+                        <div class="col-6">
+                            <div class="text-secondary">IO Wait</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-cpu-iowait">-</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-secondary">Steal</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-cpu-steal">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small">File Descriptor Usage</div>
+                <div class="card-body">
+                    <div class="row g-2 small">
+                        <div class="col-4">
+                            <div class="text-secondary">Open</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-fd-open">-</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-secondary">Limit</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-fd-limit">-</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-secondary">Usage</div>
+                            <div class="fw-bold" id="{{ telemetry_prefix }}-fd-percent">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="tactical-card h-100">
+                <div class="card-header small">Threshold Profile</div>
+                <div class="card-body">
+                    <div class="small text-secondary mb-1">Version <span
+                            id="{{ telemetry_prefix }}-threshold-version">-</span></div>
+                    <div class="small text-secondary mb-1">Updated <span
+                            id="{{ telemetry_prefix }}-threshold-updated">-</span></div>
+                    <div class="small text-secondary">Timezone <span
+                            id="{{ telemetry_prefix }}-threshold-timezone">Browser Local</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-md-6">
+            <div class="tactical-card h-100">
+                <div class="card-header small">Per-Interface Network Stats</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Interface</th>
+                                    <th>In MB/s</th>
+                                    <th>Out MB/s</th>
+                                    <th>RX Packets</th>
+                                    <th>TX Packets</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-net-interfaces-body">
+                                <tr>
+                                    <td colspan="5" class="text-center text-secondary p-3">No interface network stats available</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="tactical-card h-100">
+                <div class="card-header small">Top 5 CPU Processes</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Process</th>
+                                    <th>PID</th>
+                                    <th>CPU %</th>
+                                    <th>Memory %</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-top-cpu-processes-body">
+                                <tr>
+                                    <td colspan="5" class="text-center text-secondary p-3">No CPU process data available</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if telemetry_show_threshold_editor %}
+    <div class="row g-4 mt-1">
+        <div class="col-md-12">
+            <div class="tactical-card h-100">
+                <div class="card-header small d-flex justify-content-between align-items-center">
+                    <span>Global Threshold Profile</span>
+                    <span class="text-secondary" id="{{ telemetry_prefix }}-threshold-meta">Profile not loaded</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small text-secondary" for="{{ telemetry_prefix }}-threshold-reason">Change
+                                Reason</label>
+                            <input type="text" class="form-control form-control-sm" id="{{ telemetry_prefix }}-threshold-reason"
+                                {% if not telemetry_can_edit_thresholds %}disabled{% endif %}
+                                placeholder="Document why these thresholds changed">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end justify-content-md-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                id="{{ telemetry_prefix }}-threshold-reset" {% if not telemetry_can_edit_thresholds %}disabled{% endif %}>
+                                Reset to Defaults
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm"
+                                id="{{ telemetry_prefix }}-threshold-save" {% if not telemetry_can_edit_thresholds %}disabled{% endif %}>
+                                Save Thresholds
+                            </button>
+                        </div>
+                    </div>
+                    <div id="{{ telemetry_prefix }}-threshold-feedback" class="small mb-3 text-secondary">Threshold profile
+                        not loaded.</div>
+                    <div class="table-responsive">
+                        <table class="tactical-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Enabled</th>
+                                    <th>Warning</th>
+                                    <th>Critical</th>
+                                    <th>Unit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="{{ telemetry_prefix }}-thresholds-body">
+                                <tr>
+                                    <td colspan="5" class="text-center text-secondary p-3">Loading threshold profile...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div id="{{ telemetry_prefix }}-alerts-banner" class="alert alert-warning mt-4 alert-banner-warning">
+        <div class="d-flex align-items-start gap-3"><i class="fas fa-exclamation-triangle mt-1"></i>
+            <div class="flex-grow-1">
+                <div class="fw-bold mb-2">System Alerts</div>
+                <div id="{{ telemetry_prefix }}-alerts-list"></div>
+            </div>
+        </div>
+    </div>
+</div>

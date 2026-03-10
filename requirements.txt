@@ -30,6 +30,7 @@ redis>=5.0.0
 
 # Reporting / Export
 openpyxl>=3.1.0
+reportlab>=4.1.0
 
 # LDAP / Active Directory
 ldap3>=2.9

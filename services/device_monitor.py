@@ -96,7 +96,7 @@ class DeviceMonitor:
             device_id, device_ip, device_name, _ = device_info
             
             # 1. Try Standard Ping
-            status, latency, packet_loss = await self.scanner.ping_device(device_ip)
+            status, latency, packet_loss, jitter = await self.scanner.ping_device(device_ip)
             
             # 2. Try Tactical Agent Port (5002) if Ping fails or timeout
             if status == 'Offline':
@@ -115,7 +115,8 @@ class DeviceMonitor:
                 'name': device_name,
                 'status': status,
                 'latency': latency,
-                'packet_loss': packet_loss
+                'packet_loss': packet_loss,
+                'jitter': jitter
             }
 
         # Concurrently perform network I/O
@@ -138,6 +139,7 @@ class DeviceMonitor:
             status = res['status']
             latency = res['latency']
             packet_loss = res['packet_loss']
+            jitter = res['jitter']
 
             # We fetch a fresh object solely for AlertManager rules processing.
             live_device = db.session.get(Device, device_id)
@@ -152,10 +154,11 @@ class DeviceMonitor:
                 ping_time_ms=latency,
                 status=status,
                 scan_type='scheduled',
-                packet_loss=packet_loss
+                packet_loss=packet_loss,
+                jitter=jitter
             )
             
-            metrics = MetricNormalizer.normalize_ping(device_ip, status, latency, packet_loss=packet_loss)
+            metrics = MetricNormalizer.normalize_ping(device_ip, status, latency, packet_loss=packet_loss, jitter=jitter)
             self.collector.add_metrics(metrics)
             
             is_online = (status == 'Online')
@@ -173,7 +176,8 @@ class DeviceMonitor:
                         'ip': device_ip,
                         'status': status,
                         'latency': latency,
-                        'packet_loss': packet_loss
+                        'packet_loss': packet_loss,
+                        'jitter': jitter
                     })
                 except Exception as e:
                     print(f"Batch Accumulation Error: {e}")

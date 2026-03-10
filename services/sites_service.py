@@ -3,14 +3,34 @@ Sites Service for Multi-Site Device Organization.
 Handles CRUD operations for sites and site-related queries.
 """
 from typing import List, Dict, Optional
+
 from extensions import db
 from models.site import Site
 from models.device import Device
 from models.department import Department
+from services.dashboard_availability import build_device_availability_snapshot
 
 
 class SitesService:
     """Service for managing sites and site-related operations."""
+
+    def _site_devices_query(self, site_id: int):
+        site = Site.query.get(site_id)
+        if not site:
+            return Device.query.filter(False)
+
+        departments = site.departments.all() if hasattr(site, "departments") else []
+        dept_ids = [d.id for d in departments]
+
+        if dept_ids:
+            return Device.query.filter(
+                db.or_(
+                    Device.site_id == site_id,
+                    Device.department_id.in_(dept_ids),
+                )
+            )
+
+        return Device.query.filter_by(site_id=site_id)
 
     def create_site(self, name: str, address: str = None, 
                    timezone: str = 'UTC', contact_info: Dict = None) -> Site:
@@ -182,24 +202,14 @@ class SitesService:
         Returns:
             List of Device objects
         """
-        site = Site.query.get(site_id)
-        if not site:
-            return []
-            
-        departments = site.departments.all() if hasattr(site, 'departments') else []
-        dept_ids = [d.id for d in departments]
-        
-        if dept_ids:
-            return Device.query.filter(
-                db.or_(
-                    Device.site_id == site_id,
-                    Device.department_id.in_(dept_ids)
-                )
-            ).order_by(Device.device_name).all()
-            
-        return Device.query.filter_by(site_id=site_id).order_by(Device.device_name).all()
+        return self._site_devices_query(site_id).order_by(Device.device_name).all()
 
-    def get_site_stats(self, site_id: int) -> Dict:
+    def get_site_stats(
+        self,
+        site_id: int,
+        devices: Optional[List[Device]] = None,
+        availability_snapshot: Optional[Dict] = None,
+    ) -> Dict:
         """
         Get device statistics for a site.
         
@@ -209,63 +219,33 @@ class SitesService:
         Returns:
             Dict with device_count, online_count, offline_count, warning_count
         """
-        from models.server_health import ServerHealthLog
-        from datetime import datetime, timedelta
-        
-        # Get all devices for site
-        site = Site.query.get(site_id)
-        if not site:
-            devices = []
-        else:
-            departments = site.departments.all() if hasattr(site, 'departments') else []
-            dept_ids = [d.id for d in departments]
-            if dept_ids:
-                devices = Device.query.filter(
-                    db.or_(
-                        Device.site_id == site_id,
-                        Device.department_id.in_(dept_ids)
-                    )
-                ).all()
-            else:
-                devices = Device.query.filter_by(site_id=site_id).all()
-                
-        device_count = len(devices)
-        
+        site_devices = list(devices or self._site_devices_query(site_id).all())
+        device_count = len(site_devices)
+
         if device_count == 0:
             return {
-                'device_count': 0,
-                'online_count': 0,
-                'offline_count': 0,
-                'warning_count': 0
+                "device_count": 0,
+                "online_count": 0,
+                "offline_count": 0,
+                "warning_count": 0,
             }
-        
-        # Get device IDs
-        device_ids = [d.device_id for d in devices]
-        
-        # Check health status (devices with recent health logs are online)
-        cutoff = datetime.utcnow() - timedelta(minutes=10)
-        online_device_ids = db.session.query(ServerHealthLog.device_id).filter(
-            ServerHealthLog.device_id.in_(device_ids),
-            ServerHealthLog.timestamp >= cutoff
-        ).distinct().all()
-        online_device_ids = [d[0] for d in online_device_ids]
-        
-        online_count = len(online_device_ids)
-        offline_count = device_count - online_count
-        
-        # Count devices with warnings (high strikes)
-        warning_count = Device.query.filter(
-            Device.device_id.in_(device_ids),
-            db.or_(
-                Device.health_alert_strikes >= 2,
-                Device.latency_strikes >= 2,
-                Device.packet_loss_strikes >= 2
-            )
-        ).count()
-        
+
+        snapshot = availability_snapshot or build_device_availability_snapshot(site_devices)
+        counts = snapshot.get("counts") or {}
+        online_count = int(counts.get("online_total") or 0)
+        offline_count = max(device_count - online_count, 0)
+
+        warning_count = sum(
+            1
+            for device in site_devices
+            if (device.health_alert_strikes or 0) >= 2
+            or (device.latency_strikes or 0) >= 2
+            or (device.packet_loss_strikes or 0) >= 2
+        )
+
         return {
-            'device_count': device_count,
-            'online_count': online_count,
-            'offline_count': offline_count,
-            'warning_count': warning_count
+            "device_count": device_count,
+            "online_count": online_count,
+            "offline_count": offline_count,
+            "warning_count": warning_count,
         }

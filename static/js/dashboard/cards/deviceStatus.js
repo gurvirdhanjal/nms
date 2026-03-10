@@ -70,16 +70,34 @@ export function renderDeviceStatusCards(data, timestamp, trendsData = null) {
     if (!data || !data.devices) return;
 
     const devices = data.devices || {};
-    const total = devices.total ?? 0;
-    const online = devices.online ?? devices.up ?? 0;
-    const degraded = devices.degraded ?? 0;
-    const healthy = devices.healthy ?? Math.max(0, online - degraded);
-    const offline = devices.offline ?? devices.down ?? 0;
+    const toCount = (value, fallback = 0) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+    };
 
-    setValue('val-devices-healthy', healthy);
+    const total = toCount(devices.total);
+    const healthy = toCount(devices.healthy);
+    const degraded = toCount(devices.degraded);
+    const online = toCount(devices.online ?? devices.up, healthy + degraded);
+    const reachable = Math.max(online, healthy + degraded);
+    const offline = toCount(devices.offline ?? devices.down);
+
+    setValue('val-devices-healthy', reachable);
     // Degraded removed from UI
     setValue('val-devices-offline', offline);
-    setValue('val-devices-maintenance', devices.maintenance ?? 0);
+    setValue('val-devices-maintenance', toCount(devices.maintenance));
+
+    const healthyMetaEl = document.getElementById('sub-devices-healthy');
+    if (healthyMetaEl) {
+        if (reachable <= 0) {
+            healthyMetaEl.innerHTML = '<span class="text-secondary">No reachable devices</span>';
+        } else if (degraded > 0) {
+            healthyMetaEl.innerHTML = `<span class="text-secondary">${healthy} healthy, ${degraded} degraded</span>`;
+        } else {
+            healthyMetaEl.innerHTML = '<span class="text-secondary">All reachable devices are healthy</span>';
+        }
+    }
+
     renderOfflineTrendMeta(offline, total, trendsData);
 
     checkStale(timestamp, 'card-devices-healthy');

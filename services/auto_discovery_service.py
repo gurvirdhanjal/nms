@@ -233,7 +233,7 @@ class AutoDiscoveryService:
         async def _ping_one(ip):
             async with sem:
                 try:
-                    status, _, _ = await self.scanner.ping_device(ip, timeout=timeout, count=1)
+                    status, _, _, *_ = await self.scanner.ping_device(ip, timeout=timeout, count=1)
                     return ip, status == "Online"
                 except Exception:
                     return ip, False

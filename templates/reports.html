@@ -1452,6 +1452,110 @@
             existing.forEach((staleRow) => staleRow.remove());
         }
 
+        const reportResponseCache = new Map();
+        const reportInFlightRequests = new Map();
+
+        function cloneJsonPayload(value) {
+            if (value == null) return value;
+            return JSON.parse(JSON.stringify(value));
+        }
+
+        function getCacheTtlMs(payload) {
+            const ttlSeconds = Number(payload?.meta?.cache_ttl_seconds || 30);
+            return Math.max(ttlSeconds, 5) * 1000;
+        }
+
+        function parseReportDate(value) {
+            if (!value) return null;
+            if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+            const text = String(value);
+            const needsUtcSuffix = /^\d{4}-\d{2}-\d{2}T/.test(text) && !/(Z|[+-]\d{2}:\d{2})$/i.test(text);
+            const parsed = new Date(needsUtcSuffix ? `${text}Z` : text);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function formatReportDateTime(value, options = {}) {
+            const parsed = parseReportDate(value);
+            return parsed ? parsed.toLocaleString(undefined, options) : 'Unknown';
+        }
+
+        function formatReportDate(value, options = {}) {
+            const parsed = parseReportDate(value);
+            return parsed ? parsed.toLocaleDateString(undefined, options) : 'Unknown';
+        }
+
+        function formatReportTime(value, options = {}) {
+            const parsed = parseReportDate(value);
+            return parsed ? parsed.toLocaleTimeString(undefined, options) : '';
+        }
+
+        async function parseJsonResponse(response) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                return await response.json();
+            }
+
+            const text = await response.text();
+            if (!text) {
+                return {};
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (_) {
+                const normalized = text
+                    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                throw new Error(normalized || `Request failed (${response.status})`);
+            }
+        }
+
+        async function fetchJson(url, options = {}) {
+            const response = await fetch(url, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                ...options,
+                headers: {
+                    'Accept': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            const data = await parseJsonResponse(response);
+            if (!response.ok) {
+                throw new Error((data && data.error) || `Request failed (${response.status})`);
+            }
+            return data;
+        }
+
+        async function fetchReportJson(url, options = {}) {
+            const force = Boolean(options.force);
+            const cached = reportResponseCache.get(url);
+            if (!force && cached && cached.expiresAt > Date.now()) {
+                return cloneJsonPayload(cached.payload);
+            }
+            if (!force && reportInFlightRequests.has(url)) {
+                return reportInFlightRequests.get(url);
+            }
+
+            const requestPromise = fetchJson(url)
+                .then((data) => {
+                    reportResponseCache.set(url, {
+                        payload: cloneJsonPayload(data),
+                        expiresAt: Date.now() + getCacheTtlMs(data),
+                    });
+                    return data;
+                })
+                .finally(() => {
+                    reportInFlightRequests.delete(url);
+                });
+
+            reportInFlightRequests.set(url, requestPromise);
+            return requestPromise;
+        }
+
         // ==========================================
         // Operational Report Logic
         // ==========================================
@@ -1466,14 +1570,8 @@
             setTableStatusRow(auditTableBody, 3, 'Loading...');
             setTableStatusRow(newDevicesBody, 3, 'Loading...');
 
-            fetch(`/api/reports/operational?range=${range}`)
-                .then(res => res.json())
+            fetchReportJson(`/api/reports/operational?range=${encodeURIComponent(range)}`)
                 .then(data => {
-                    if (data.error) {
-                        heatmapDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                        return;
-                    }
-
                     // 1. Render Heatmap
                     renderHeatmap(data.heatmap, heatmapDiv, data.heatmap_granularity || 'raw');
 
@@ -1485,7 +1583,7 @@
                         emptyClassName: 'text-center text-muted py-4',
                         renderCells: (event) => `
                             <td class="nowrap-cell">
-                                <small class="text-muted">${new Date(event.timestamp).toLocaleString()}</small>
+                                <small class="text-muted">${formatReportDateTime(event.timestamp)}</small>
                             </td>
                             <td>
                                 <span class="badge bg-secondary">${event.event_type}</span>
@@ -1510,7 +1608,7 @@
                             </td>
                             <td><span class="badge bg-dark border border-secondary">${device.device_type}</span></td>
                             <td>
-                                <small class="text-muted">${device.created_at ? new Date(device.created_at).toLocaleDateString() : 'Unknown'}</small>
+                                <small class="text-muted">${formatReportDate(device.created_at)}</small>
                             </td>
                         `
                     });
@@ -1666,14 +1764,8 @@
             contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing Fleet Data...</p></div>';
             setTableStatusRow(tableBody, 3, 'Loading...');
 
-            fetch(`/api/reports/executive?range=${range}`)
-                .then(res => res.json())
+            fetchReportJson(`/api/reports/executive?range=${encodeURIComponent(range)}`)
                 .then(data => {
-                    if (data.error) {
-                        contentDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                        return;
-                    }
-
                     // Render Statistics
                     contentDiv.innerHTML = `
                         <div class="row text-center">
@@ -1695,6 +1787,9 @@
                                 </h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">MTTA (Avg)</p>
                             </div>
+                        </div>
+                        <div class="text-end mt-3">
+                            <small class="text-muted">Availability Source: ${data.availability_basis === 'device_scan_history' ? 'raw scan history fallback' : 'daily rollups'}</small>
                         </div>
                     `;
 
@@ -1921,7 +2016,7 @@
                         return;
                     }
 
-                    const labels = data.data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                    const labels = data.data.map(d => formatReportTime(d.timestamp));
                     const values = data.data.map(d => d.value);
 
                     latencyChart = new Chart(ctx, {
@@ -1969,7 +2064,7 @@
                         return;
                     }
 
-                    const labels = data.data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                    const labels = data.data.map(d => formatReportTime(d.timestamp));
                     // Convert 0/1 to Percentage (0/100)
                     const values = data.data.map(d => d.value * 100);
 
@@ -2134,11 +2229,8 @@
             summaryCards.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
             setTableStatusRow(tbody, 7, 'Loading...');
 
-            fetch(`/api/reports/device-health?range=${range}`)
-                .then(r => r.json())
+            fetchReportJson(`/api/reports/device-health?range=${encodeURIComponent(range)}`)
                 .then(data => {
-                    if (data.error) { summaryCards.innerHTML = `<div class="alert alert-danger">${data.error}</div>`; return; }
-
                     // Summary table
                     const s = data.summary || [];
                     patchTableRows(tbody, s, {
@@ -2178,7 +2270,12 @@
                         cpuDatasets.push({ label: dev.device_name, data: dev.points.map(p => p.cpu), borderColor: c, backgroundColor: c + '22', tension: 0.3, fill: false, pointRadius: 0 });
                         memDatasets.push({ label: dev.device_name, data: dev.points.map(p => p.mem), borderColor: c, backgroundColor: c + '22', tension: 0.3, fill: false, pointRadius: 0 });
                     });
-                    const labels = Object.values(ts)[0]?.points.map(p => { const d = new Date(p.ts); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }) || [];
+                    const labels = Object.values(ts)[0]?.points.map(p => {
+                        const d = parseReportDate(p.ts);
+                        return d
+                            ? `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : p.ts;
+                    }) || [];
 
                     if (dhCpuChart) dhCpuChart.destroy();
                     if (dhMemChart) dhMemChart.destroy();
@@ -2200,11 +2297,8 @@
             if (!rangeEl || !tbody) return;
             setTableStatusRow(tbody, 5, 'Loading...');
 
-            fetch(`/api/reports/productivity?range=${range}`)
-                .then(r => r.json())
+            fetchReportJson(`/api/reports/productivity?range=${encodeURIComponent(range)}`)
                 .then(data => {
-                    if (data.error) { setTableStatusRow(tbody, 5, `<div class="alert alert-danger">${data.error}</div>`, ''); return; }
-
                     // Category pie
                     const cats = data.category_totals || {};
                     const catColors = { 'Productivity': '#00ff88', 'Communication': '#3b82f6', 'Development': '#a855f7', 'Browser': '#ffaa00', 'Entertainment': '#ff3b5c', 'Other': '#6b7280' };
@@ -2249,11 +2343,8 @@
             kpi.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
             setTableStatusRow(tbody, 4, 'Loading...');
 
-            fetch(`/api/reports/network?range=${range}`)
-                .then(r => r.json())
+            fetchReportJson(`/api/reports/network?range=${encodeURIComponent(range)}`)
                 .then(data => {
-                    if (data.error) { kpi.innerHTML = `<div class="alert alert-danger">${data.error}</div>`; return; }
-
                     // KPI cards
                     const mttr = data.mttr || {};
                     const incidents = mttr.total_incidents || 0;
@@ -2261,6 +2352,7 @@
                         <div class="col-md-4"><div class="stat-card success"><h3>${mttr.human || '0:00:00'}</h3><p>Mean Time To Resolve</p></div></div>
                         <div class="col-md-4"><div class="stat-card primary"><h3>${incidents}</h3><p>Resolved Incidents</p></div></div>
                         <div class="col-md-4"><div class="stat-card warning"><h3>${Object.keys(data.bandwidth || {}).length}</h3><p>Active Interfaces</p></div></div>
+                        <div class="col-12 mt-2"><small class="text-muted">Uptime Source: ${data.uptime_basis === 'device_scan_history' ? 'raw scan history fallback' : 'daily rollups'}</small></div>
                     `;
 
                     // Uptime table
@@ -2292,13 +2384,10 @@
             kpi.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
 
             let url = `/api/reports/alerts?range=${range}`;
-            if (severity) url += `&severity=${severity}`;
+            if (severity) url += `&severity=${encodeURIComponent(severity)}`;
 
-            fetch(url)
-                .then(r => r.json())
+            fetchReportJson(url)
                 .then(data => {
-                    if (data.error) { kpi.innerHTML = `<div class="alert alert-danger">${data.error}</div>`; return; }
-
                     // KPIs
                     const totalAlerts = (data.alerts || []).length;
                     kpi.innerHTML = `
@@ -2348,7 +2437,7 @@
                         emptyClassName: 'text-center text-muted py-4',
                         renderCells: (alert) => {
                             const sc = { 'CRITICAL': 'bg-danger', 'WARNING': 'bg-warning text-dark', 'INFO': 'bg-info text-dark' };
-                            return `<td class="nowrap-cell"><small class="text-muted">${new Date(alert.timestamp).toLocaleString()}</small></td><td>${alert.device_name || ''}</td><td><span class="badge ${sc[alert.severity] || 'bg-secondary'}">${alert.severity}</span></td><td class="small">${alert.message || ''}</td>`;
+                            return `<td class="nowrap-cell"><small class="text-muted">${formatReportDateTime(alert.timestamp)}</small></td><td>${alert.device_name || ''}</td><td><span class="badge ${sc[alert.severity] || 'bg-secondary'}">${alert.severity}</span></td><td class="small">${alert.message || ''}</td>`;
                         }
                     });
                 })
@@ -2393,11 +2482,7 @@
         async function waitForExportJob(statusUrl, timeoutMs = 300000) {
             const startedAt = Date.now();
             while ((Date.now() - startedAt) < timeoutMs) {
-                const response = await fetch(statusUrl, { cache: 'no-store' });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to check export status.');
-                }
+                const data = await fetchJson(statusUrl);
                 if (data.status === 'completed') {
                     return data;
                 }
@@ -2432,17 +2517,14 @@
 
             try {
                 showExportStatus('Export queued. Preparing file...', 'info');
-                const response = await fetch(`/api/reports/${type}/export-jobs`, {
+                const data = await fetchJson(`/api/reports/${type}/export-jobs`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify(payload)
                 });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to create export job.');
-                }
 
                 showExportStatus('Export running. Download will start automatically.', 'info');
                 const statusData = await waitForExportJob(data.status_url);

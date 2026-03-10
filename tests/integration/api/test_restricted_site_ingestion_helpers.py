@@ -64,7 +64,7 @@ def test_maybe_uplift_confidence():
 def test_build_restricted_alert_message():
     msg1 = _build_restricted_alert_message("reddit.com", RESTRICTED_SOURCE_WINDOW, "HIGH", 5)
     assert "window title" in msg1
-    assert "hits: 5" in msg1
+    assert "hit_count=5" in msg1
     
     msg2 = _build_restricted_alert_message("reddit.com", RESTRICTED_SOURCE_DNS, "LOW", 1)
     assert "DNS" in msg2
@@ -104,6 +104,7 @@ def test_ingest_restricted_site_events_internal(mock_dependencies):
     
     assert summary["ingested_events"] == 1
     assert summary["alert_updates"] == 1
+    assert summary["queued_fanout_tasks"] == 2
     
     # Check DB records
     state = RestrictedSiteAlertState.query.filter_by(device_id=device.id, domain="reddit.com").first()
