@@ -148,7 +148,7 @@ class Config:
     SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
     
     # API Settings (Agent communication)
-    API_KEY = os.environ.get('TRACKING_API_KEY', '8f42v73054r1749f8g58848be5e6502c')
+    API_KEY = os.environ.get('TRACKING_API_KEY', '')
     AGENT_ALLOW_SHARED_TOKEN_BOOTSTRAP = (
         os.environ.get(
             'AGENT_ALLOW_SHARED_TOKEN_BOOTSTRAP',
@@ -186,7 +186,7 @@ class Config:
     MOBILE_API_KEY = os.environ.get('MOBILE_API_KEY')
 
     # Redis configuration
-    REDIS_URL = os.environ.get('REDIS_URL', 'redis://default:D94fZxj196v9oyHgamcpauqdRK8cjtA9@redis-12227.c321.us-east-1-2.ec2.cloud.redislabs.com:12227')
+    REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
     # Enforce Postgres-only ingestion for agent metrics
     REQUIRE_POSTGRES_ONLY = os.environ.get('REQUIRE_POSTGRES_ONLY', 'false').lower() == 'true'

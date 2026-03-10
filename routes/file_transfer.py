@@ -42,7 +42,7 @@ def test_client_connection(client_ip, client_port=5002):
 def get_client_api_key(client_ip):
     """Get client API key (simplified - should be stored securely)"""
     # In production, store in database
-    return "8f42v73054r1749f8g58848be5e6502c"
+    return current_app.config.get('API_KEY', '')
 
 @file_transfer_bp.route('/file_transfer')
 @login_required
