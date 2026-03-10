@@ -729,6 +729,37 @@ def _wav_header(sample_rate=16000, bits_per_sample=16, channels=1, data_size=0x7
         data_size.to_bytes(4, 'little')
     )
 
+def _ping_host(ip_address, timeout=2.0):
+    """
+    Perform a simple ICMP ping to check if a host is reachable.
+    Returns True if the host responds, False otherwise.
+    """
+    try:
+        if platform.system().lower() == "windows":
+            # -n 1: 1 packet
+            # -w timeout*1000: timeout in milliseconds
+            cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip_address]
+            creationflags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            # Use subprocess.run for cleaner handling in newer Python
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags
+            )
+            return result.returncode == 0
+        else:
+            # -c 1: 1 packet
+            # -W timeout: timeout in seconds
+            cmd = ["ping", "-c", "1", "-W", str(timeout), ip_address]
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            return result.returncode == 0
+    except Exception:
+        return False
 
 class NetworkScanner:
     def __init__(self):
@@ -866,11 +897,14 @@ class NetworkScanner:
     
     def check_tracking_service(self, ip, port=5002, profile='scan'):
         """Check if tracking service is running and classify availability."""
+        logger.debug("[TrackingProbe] START ip=%s profile=%s", ip, profile)
         probe_cfg = self._resolve_probe_profile(profile)
+        ip_obj = None
         try:
             ip_obj = ipaddress.ip_address(str(ip))
         except ValueError:
-            ip_obj = None
+            pass
+
         if self._is_link_local_ip(ip) and not self.include_link_local:
             if probe_cfg.get('return_offline'):
                 return self._build_probe_result(
@@ -901,6 +935,7 @@ class NetworkScanner:
 
         try:
             is_scan = (profile == 'scan')
+            agent_up = True
             # 1) Identity probe
             try:
                 identity_response = _agent_http_get(
@@ -915,6 +950,10 @@ class NetworkScanner:
                     probe_error_code = f"IDENTITY_HTTP_{identity_response.status_code}"
             except AgentHttpError as error:
                 probe_error_code = error.code
+                agent_up = False
+                # Short-circuit on connection refused/unreachable
+                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                    raise error
             except Exception as error:
                 logger.debug("[TrackingProbe] identity parse failure ip=%s err=%s", ip, error)
 
@@ -949,6 +988,10 @@ class NetworkScanner:
                     probe_error_code = f"STATS_HTTP_{stats_response.status_code}"
             except AgentHttpError as error:
                 probe_error_code = error.code
+                agent_up = False
+                # Short-circuit on connection refused/unreachable
+                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                    raise error
             except Exception as error:
                 logger.debug("[TrackingProbe] stats parse failure ip=%s err=%s", ip, error)
 
@@ -985,6 +1028,10 @@ class NetworkScanner:
                     probe_error_code = f"HEALTH_HTTP_{health_response.status_code}"
             except AgentHttpError as error:
                 probe_error_code = error.code
+                agent_up = False
+                # Short-circuit on connection refused/unreachable
+                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                    raise error
             except Exception as error:
                 logger.debug("[TrackingProbe] health parse failure ip=%s err=%s", ip, error)
 
@@ -1001,30 +1048,41 @@ class NetworkScanner:
                 )
 
             # 6) Fully unreachable
+            agent_up = False
+        except AgentHttpError as error:
+            # Caught from short-circuits above
+            probe_error_code = error.code
+            agent_up = False
+        except Exception as error:
+            logger.warning("[TrackingProbe] ip=%s unexpected_error=%s", ip, error)
+            probe_error_code = 'AGENT_REQUEST_FAILED'
+            agent_up = False
+
+        if not agent_up:
+            # Fallback: Is the host even alive?
+            host_alive = _ping_host(ip, timeout=1.0)
+            if host_alive:
+                availability_status = 'degraded'
+                tracking_status = 'agent_missing_on_host'
+                probe_error_code = probe_error_code or 'AGENT_UNREACHABLE'
+                logger.info("[TrackingProbe] Host %s is UP but Agent is DOWN/MISSING (code=%s)", ip, probe_error_code)
+            else:
+                availability_status = 'offline'
+                tracking_status = 'offline'
+                probe_error_code = probe_error_code or 'HOST_UNREACHABLE'
+
             offline_result = self._build_probe_result(
-                availability_status='offline',
-                tracking_status='offline',
+                availability_status=availability_status,
+                tracking_status=tracking_status,
                 data={},
                 metrics_available=False,
-                probe_error_code=probe_error_code or 'AGENT_UNREACHABLE',
+                probe_error_code=probe_error_code,
                 probe_method='none',
                 identity=identity_data,
             )
+            logger.debug("[TrackingProbe] END ip=%s agent_up=False return_offline=%s", ip, probe_cfg.get('return_offline'))
             if probe_cfg.get('return_offline'):
                 return offline_result
-            return None
-        except Exception as error:
-            logger.warning("[TrackingProbe] ip=%s unexpected_error=%s", ip, error)
-            if probe_cfg.get('return_offline'):
-                return self._build_probe_result(
-                    availability_status='offline',
-                    tracking_status='offline',
-                    data={},
-                    metrics_available=False,
-                    probe_error_code='AGENT_REQUEST_FAILED',
-                    probe_method='none',
-                    identity=identity_data,
-                )
             return None
     
     def scan_single_ip(self, ip):

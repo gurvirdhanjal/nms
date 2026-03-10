@@ -10,6 +10,7 @@ This index maps your standards into reusable skills under `docs/skills/`.
 - Database Performance: `docs/skills/backend-standards/references/database-performance.md`
 - Logging Standards: `docs/skills/backend-standards/references/logging-standards.md`
 - Scaling Guidelines: `docs/skills/backend-standards/references/scaling-guidelines.md`
+- Agent Reachability: `docs/skills/backend-standards/references/agent-reachability.md`
 
 ## Frontend Standards
 

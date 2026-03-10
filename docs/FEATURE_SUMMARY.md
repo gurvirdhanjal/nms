@@ -32,6 +32,7 @@ This document provides a high-level summary of the Device Monitoring Tactical pl
 - **Metrics**: CPU, RAM, disk, network, processes, connections, top processes
 - **Token Authentication**: Per-device secure tokens
 - **Auto-Registration**: Devices self-register on first metric submission
+- **Agent Reachability Fallback**: ICMP PING fallback for unreachable agents to distinguish between "Agent Down" and "Host Offline"
 
 ### 3. Device Management
 - **Discovery**: Automated subnet scanning with SNMP enumeration
@@ -161,7 +162,7 @@ This document provides a high-level summary of the Device Monitoring Tactical pl
 
 Device Monitoring Tactical is a feature-rich platform with excellent monitoring capabilities and a solid architectural foundation. However, **critical security gaps must be addressed before production deployment**. With 1-2 months of focused security hardening, the platform can achieve enterprise-grade security and be ready for production use.
 
-**Key Takeaway**: The monitoring engine is production-ready, but the authorization layer needs immediate attention.
+**Key Takeaway**: The monitoring engine is production-ready, but the authorization layer needs immediate attention. Recently added robust agent fallback and database query optimizations.
 
 ---
 
@@ -169,5 +170,5 @@ Device Monitoring Tactical is a feature-rich platform with excellent monitoring 
 **For authorization audit, see**: `../AUTHORIZATION_COVERAGE_MATRIX.md`  
 **For architecture details, see**: `CONVENTIONS.md`, `AGENTS.md`, `RBAC_PLAN.md`
 
-**Document Version**: 1.0  
-**Last Updated**: 2026-03-09
+**Document Version**: 1.1  
+**Last Updated**: 2026-03-10

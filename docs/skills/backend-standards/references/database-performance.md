@@ -25,6 +25,7 @@ Keep monitoring/reporting queries fast under growth and prevent write contention
 3. Add server-side pagination for unbounded lists.
 4. For historical metrics/reports, use rollup tables for longer windows.
 5. Avoid N+1 loops over relationships in API endpoints.
+6. For dashboard-level stats (e.g. vendor distribution), prefer in-memory counting of already-loaded object collections over redundant `COUNT` queries with large `IN` clauses.
 
 ## Write Path Rules
 

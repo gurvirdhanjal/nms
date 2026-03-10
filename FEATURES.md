@@ -260,11 +260,14 @@ middleware/            # Request/response middleware
 - Automatic device registration on first metric submission
 - Hardware specs stored in `device.hardware_specs` (JSON)
 
-**Data Ingestion**:
-- Endpoint: `POST /api/agent/metrics`
+- Ingestion Endpoint: `POST /api/agent/metrics`
 - Validation: Token must match `device.agent_token`
 - Storage: `server_health_logs` table with `source='agent'`
-- Fallback: SNMP polling disabled for servers with active agent (5-minute freshness check)
+- **Freshness Fallback**: SNMP polling disabled for servers with active agent (5-minute freshness check)
+- **Reachability Fallback**: 
+    - **Short-Circuit**: Stop probing `/api/secure/stats` and `/api/health` if basic identity fails.
+    - **Ping verification**: Performs ICMP PING if agent port (5002) is closed.
+    - **Classification**: Distinguishes `degraded` (Up host, Missing Agent) from `offline` (Host offline).
 
 ### WMI Monitoring (Configured, Not Actively Polled)
 
@@ -737,6 +740,7 @@ middleware/            # Request/response middleware
 - Batch SSE updates (accumulates troubled devices)
 - Async audit logging (non-blocking)
 - Bulk insert for audit logs
+- **Inventory aggregation optimization**: Replaced redundant JOIN/COUNT queries with in-memory counting for dashboard stats.
 
 **Resource Management**:
 - Thread pool for SNMP workers (20 concurrent polls)

@@ -163,8 +163,30 @@ def probe_single_device(device_id: int, ip_address: str, shared_api_key: str):
             except requests.exceptions.RequestException as exc:
                 if not probe_error_code:
                     probe_error_code = _map_probe_error(exc)
+                if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+                    raise exc
 
             return device_id, _build_offline_result(probe_error_code or 'AGENT_UNREACHABLE'), run_at
+    except requests.exceptions.RequestException as exc:
+        # Short-circuited from above
+        probe_error_code = _map_probe_error(exc)
+        
+        # Ping fallback
+        from routes.tracking import _ping_host
+        host_alive = _ping_host(ip_address, timeout=1.0)
+        if host_alive:
+            logger.info("[TrackingWorker] Host %s is UP but Agent is DOWN/MISSING (code=%s)", ip_address, probe_error_code)
+            return device_id, {
+                'status': 'degraded',
+                'availability_status': 'degraded',
+                'tracking_data': {'device_info': identity_data},
+                'metrics_available': False,
+                'probe_error_code': probe_error_code,
+                'probe_method': 'none',
+                'agent_missing_on_host': True # Mark for UI/Reports
+            }, run_at
+            
+        return device_id, _build_offline_result(probe_error_code), run_at
     except Exception as e:
         logger.error(f"Failed checking {ip_address} (ID {device_id}): {e}")
         return device_id, _build_offline_result('AGENT_REQUEST_FAILED'), run_at
