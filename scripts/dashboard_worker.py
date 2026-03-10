@@ -78,15 +78,9 @@ if __name__ == '__main__':
     # Run once immediately on startup
     compute_and_store_snapshot()
 
-    # Run daily stats worker
-    from workers.daily_device_stats_worker import DailyDeviceStatsWorker
-    stats_worker = DailyDeviceStatsWorker(app)
-    stats_worker.run_once()
-
     # Schedule to run every 25 seconds
     scheduler = BlockingScheduler()
     scheduler.add_job(compute_and_store_snapshot, 'interval', seconds=25, max_instances=1, coalesce=True)
-    scheduler.add_job(stats_worker.run_once, 'cron', hour=1, minute=0, max_instances=1, coalesce=True)
 
     try:
         scheduler.start()
