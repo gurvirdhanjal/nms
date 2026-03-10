@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Device console frontend test harness",
   "scripts": {
-    "test:js": "vitest run",
+    "test:js": "vitest run --environment jsdom",
     "test:js:coverage": "vitest run --coverage",
     "test:js:perf": "vitest run static/js/tracking/console/__tests__/stateMachine.perf.test.js"
   },
