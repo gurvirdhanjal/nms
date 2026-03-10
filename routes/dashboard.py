@@ -758,28 +758,13 @@ def get_top_problems():
                 ts = ts.replace(tzinfo=timezone.utc)
             return ts.isoformat()
 
-        # Pre-fetch recent ping stats for high_latency and high_loss devices to avoid N+1 queries
-        stats_ips = {s[0].device_ip for s in high_latency} | {s[0].device_ip for s in high_loss}
-        stats_history = {}
-        if stats_ips:
-            # Fetch all scans for these IPs in one query, then limit to top 10 per IP in memory
-            # Much faster than running up to 10 separate queries.
-            recent_scans = DeviceScanHistory.query.filter(
-                DeviceScanHistory.device_ip.in_(stats_ips)
-            ).order_by(DeviceScanHistory.scan_id.desc()).all()
-
-            for scan in recent_scans:
-                ip = scan.device_ip
-                if ip not in stats_history:
-                    stats_history[ip] = []
-                if len(stats_history[ip]) < 10:
-                    stats_history[ip].append(scan)
-
-        def build_ping_stats(device_ip):
-            scans = stats_history.get(device_ip, [])
-            latencies = [s.ping_time_ms for s in scans if getattr(s, 'ping_time_ms', None) is not None]
-            losses = [s.packet_loss for s in scans if getattr(s, 'packet_loss', None) is not None]
-            jitters = [s.jitter for s in scans if getattr(s, 'jitter', None) is not None]
+        def build_ping_stats(device_ip, limit=10):
+            scans = DeviceScanHistory.query.filter(
+                DeviceScanHistory.device_ip == device_ip
+            ).order_by(DeviceScanHistory.scan_id.desc()).limit(limit).all()
+            latencies = [s.ping_time_ms for s in scans if s.ping_time_ms is not None]
+            losses = [s.packet_loss for s in scans if s.packet_loss is not None]
+            jitters = [s.jitter for s in scans if s.jitter is not None]
             stats = {
                 'latency_avg': round(sum(latencies) / len(latencies), 2) if latencies else None,
                 'latency_min': round(min(latencies), 2) if latencies else None,
