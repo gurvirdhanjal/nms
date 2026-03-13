@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 
 from flask import has_request_context
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, bindparam, func, or_, text
 
 from extensions import db
 from middleware.rbac import build_scope_context, scoped_query
@@ -36,6 +36,7 @@ from models.tracked_device import (
     TrackingHourlyRollup,
     TrackingSample,
 )
+from services.timescaledb_service import TimescaleDBService
 from services.tracking_workstation import scoped_tracked_device_query
 
 REPORT_DEFINITIONS = {
@@ -97,8 +98,8 @@ REPORT_DEFINITIONS = {
 }
 
 
-def get_report_definition(report_type: str) -> dict:
-    return dict(
+def get_report_definition(report_type: str, granularity: str | None = None) -> dict:
+    definition = dict(
         REPORT_DEFINITIONS.get(
             report_type,
             {
@@ -108,6 +109,114 @@ def get_report_definition(report_type: str) -> dict:
             },
         )
     )
+    normalized_granularity = str(granularity or "").strip().lower() or None
+    if TimescaleDBService.is_timescaledb_enabled() and report_type == "operational":
+        source_name = "server_health_logs"
+        if normalized_granularity == "hourly":
+            source_name = "server_health_hourly_cagg"
+        elif normalized_granularity == "daily":
+            source_name = "server_health_daily_cagg"
+        definition["source_tables"] = [source_name, "dashboard_events", "device"]
+        definition["freshness_sources"] = [source_name, "dashboard_events"]
+        return definition
+    if TimescaleDBService.is_timescaledb_enabled() and report_type == "device-health":
+        source_name = "server_health_logs"
+        if normalized_granularity == "hourly":
+            source_name = "server_health_hourly_cagg"
+        elif normalized_granularity == "daily":
+            source_name = "server_health_daily_cagg"
+        definition["source_tables"] = [source_name, "device"]
+        definition["freshness_sources"] = [source_name]
+        return definition
+    if TimescaleDBService.is_timescaledb_enabled() and report_type == "productivity":
+        definition["source_tables"] = [
+            "tracking_samples",
+            "device_application_logs",
+            "device_activity_logs",
+        ]
+        definition["freshness_sources"] = [
+            "tracking_samples",
+            "device_application_logs",
+            "device_activity_logs",
+        ]
+        return definition
+    if TimescaleDBService.is_timescaledb_enabled() and report_type == "tracking-operations":
+        definition["source_tables"] = [
+            "tracked_devices",
+            "tracking_samples",
+            "device_activity_logs",
+            "device_application_logs",
+            "tracked_device_availability_events",
+            "tracking_history_integrity_audit",
+        ]
+        definition["freshness_sources"] = [
+            "tracking_samples",
+            "device_activity_logs",
+            "device_application_logs",
+            "tracked_device_availability_events",
+            "tracking_history_integrity_audit",
+        ]
+        return definition
+    if TimescaleDBService.is_timescaledb_enabled():
+        replacements = {
+            "server_health_hourly_rollups": "server_health_hourly_cagg",
+            "server_health_daily_rollups": "server_health_daily_cagg",
+        }
+        definition["source_tables"] = [
+            replacements.get(source_name, source_name)
+            for source_name in definition.get("source_tables", [])
+        ]
+        definition["freshness_sources"] = [
+            replacements.get(source_name, source_name)
+            for source_name in definition.get("freshness_sources", [])
+        ]
+    return definition
+
+
+def _timescaledb_view_stats(source_name: str, start_date: datetime, end_date: datetime) -> dict:
+    if source_name == "server_health_hourly_cagg":
+        view_name = "server_health_hourly_cagg"
+        time_column = "bucket_hour"
+    elif source_name == "server_health_daily_cagg":
+        view_name = "server_health_daily_cagg"
+        time_column = "bucket_day"
+    else:
+        return {"count": 0, "latest": None, "range_count": 0, "distinct_buckets": 0}
+
+    inventory_ids = [int(row.device_id) for row in db.session.query(_inventory_device_ids_subquery().c.device_id).all()]
+    if not inventory_ids:
+        return {"count": 0, "latest": None, "range_count": 0, "distinct_buckets": 0}
+
+    query = text(f"""
+        SELECT
+            COUNT(*) AS count,
+            MAX({time_column}) AS latest,
+            COUNT(*) FILTER (
+                WHERE {time_column} >= :start_date
+                  AND {time_column} <= :end_date
+            ) AS range_count,
+            COUNT(DISTINCT CASE
+                WHEN {time_column} >= :start_date
+                 AND {time_column} <= :end_date
+                THEN {time_column}
+            END) AS distinct_buckets
+        FROM {view_name}
+        WHERE device_id IN :device_ids
+    """).bindparams(bindparam("device_ids", expanding=True))
+    row = db.session.execute(
+        query,
+        {
+            "device_ids": inventory_ids,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).mappings().one()
+    return {
+        "count": int(row["count"] or 0),
+        "latest": _coerce_datetime(row["latest"]),
+        "range_count": int(row["range_count"] or 0),
+        "distinct_buckets": int(row["distinct_buckets"] or 0),
+    }
 
 
 def _coerce_datetime(value) -> datetime | None:
@@ -141,6 +250,8 @@ def _scope() -> dict:
 
 
 def _inventory_devices_query():
+    if not has_request_context():
+        return Device.query
     return scoped_query(Device)
 
 
@@ -153,6 +264,8 @@ def _inventory_device_ips_subquery():
 
 
 def _tracked_devices_query():
+    if not has_request_context():
+        return TrackedDevice.query
     return scoped_tracked_device_query()
 
 
@@ -284,9 +397,12 @@ def _range_bounds_for_source(source_name: str, start_date: datetime, end_date: d
     return start_date, end_date
 
 
-def _collect_source_stats(report_type: str, start_date: datetime, end_date: datetime) -> dict:
+def _collect_source_stats(report_type: str, start_date: datetime, end_date: datetime, granularity: str | None = None) -> dict:
     stats = {}
-    for source_name in get_report_definition(report_type).get("source_tables", []):
+    for source_name in get_report_definition(report_type, granularity).get("source_tables", []):
+        if source_name in {"server_health_hourly_cagg", "server_health_daily_cagg"}:
+            stats[source_name] = _timescaledb_view_stats(source_name, start_date, end_date)
+            continue
         query, freshness_column = _source_query(source_name)
         if query is None:
             stats[source_name] = {"count": 0, "latest": None, "range_count": 0, "distinct_buckets": 0}
@@ -338,6 +454,17 @@ def _coverage_warning(source_name: str, coverage: float) -> str:
 def _build_completeness_warnings(report_type: str, start_date: datetime, end_date: datetime, source_stats: dict) -> list[str]:
     span = end_date - start_date
     warnings: list[str] = []
+    timescaledb_enabled = TimescaleDBService.is_timescaledb_enabled()
+    server_health_hourly_source = (
+        "server_health_hourly_cagg"
+        if timescaledb_enabled
+        else "server_health_hourly_rollups"
+    )
+    server_health_daily_source = (
+        "server_health_daily_cagg"
+        if timescaledb_enabled
+        else "server_health_daily_rollups"
+    )
 
     def _count(source_name: str) -> int:
         return int((source_stats.get(source_name) or {}).get("count") or 0)
@@ -364,13 +491,17 @@ def _build_completeness_warnings(report_type: str, start_date: datetime, end_dat
         if _count("interface_traffic_history") == 0:
             warnings.append("interface_traffic_history is empty; bandwidth reporting is unavailable.")
 
-    if report_type in {"device-health", "operational"}:
-        if span > timedelta(hours=24) and _count("server_health_hourly_rollups") == 0:
-            warnings.append("server_health_hourly_rollups is empty for the requested range; hourly rollups need backfill.")
-        if span > timedelta(days=30) and _count("server_health_daily_rollups") == 0:
-            warnings.append("server_health_daily_rollups is empty for the requested range; daily rollups need backfill.")
+    if report_type in {"device-health", "operational"} and not timescaledb_enabled:
+        if span > timedelta(hours=24) and _count(server_health_hourly_source) == 0:
+            warnings.append(
+                f"{server_health_hourly_source} is empty for the requested range; hourly summaries need backfill."
+            )
+        if span > timedelta(days=30) and _count(server_health_daily_source) == 0:
+            warnings.append(
+                f"{server_health_daily_source} is empty for the requested range; daily summaries need backfill."
+            )
 
-    if report_type in {"productivity", "tracking-operations"}:
+    if report_type in {"productivity", "tracking-operations"} and not timescaledb_enabled:
         if span > timedelta(hours=24) and _count("tracking_hourly_rollups") == 0:
             warnings.append("tracking_hourly_rollups is empty for the requested range; long-range tracking summaries are incomplete.")
         if span > timedelta(days=30) and _count("tracking_daily_rollups") == 0:
@@ -405,12 +536,12 @@ def _build_completeness_warnings(report_type: str, start_date: datetime, end_dat
     if report_type in {"executive", "network", "maintenance-availability"}:
         _append_rollup_coverage("daily_device_stats", expected_day_buckets)
 
-    if report_type in {"device-health", "operational"} and span > timedelta(hours=24):
-        _append_rollup_coverage("server_health_hourly_rollups", expected_hour_buckets)
+    if report_type in {"device-health", "operational"} and span > timedelta(hours=24) and not timescaledb_enabled:
+        _append_rollup_coverage(server_health_hourly_source, expected_hour_buckets)
         if span > timedelta(days=30):
-            _append_rollup_coverage("server_health_daily_rollups", expected_day_buckets)
+            _append_rollup_coverage(server_health_daily_source, expected_day_buckets)
 
-    if report_type in {"productivity", "tracking-operations"} and span > timedelta(hours=24):
+    if report_type in {"productivity", "tracking-operations"} and span > timedelta(hours=24) and not timescaledb_enabled:
         _append_rollup_coverage("tracking_hourly_rollups", expected_hour_buckets)
         if span > timedelta(days=30):
             _append_rollup_coverage("tracking_daily_rollups", expected_day_buckets)
@@ -431,8 +562,14 @@ def build_report_meta(
 ) -> dict:
     generated_at = datetime.now(timezone.utc)
     scope = _scope()
-    report_definition = get_report_definition(report_type)
-    source_stats = _collect_source_stats(report_type, start_date, end_date)
+    selected_granularity = (
+        payload.get("granularity")
+        or payload.get("heatmap_granularity")
+        or payload.get("bucket_size")
+        or "range"
+    )
+    report_definition = get_report_definition(report_type, selected_granularity)
+    source_stats = _collect_source_stats(report_type, start_date, end_date, selected_granularity)
     warnings = _build_completeness_warnings(report_type, start_date, end_date, source_stats)
 
     freshness_sources = report_definition.get("freshness_sources") or report_definition.get("source_tables") or []
@@ -467,15 +604,11 @@ def build_report_meta(
         scope_id = scope.get("department_id")
 
     return {
+        "report_type": report_type,
         "generated_at": generated_at.isoformat(),
         "scope_type": scope.get("scope_type"),
         "scope_id": scope_id,
-        "granularity": (
-            payload.get("granularity")
-            or payload.get("heatmap_granularity")
-            or payload.get("bucket_size")
-            or "range"
-        ),
+        "granularity": selected_granularity,
         "source_tables": report_definition.get("source_tables", []),
         "data_as_of": data_as_of.isoformat() if data_as_of else None,
         "freshness_state": freshness_state,
@@ -486,4 +619,5 @@ def build_report_meta(
         "row_count": int(row_count or 0),
         "exportable_formats": report_definition.get("exportable_formats", ["csv", "xlsx", "pdf"]),
         "completeness_warnings": warnings,
+        "freshness_sources": list(freshness_sources),
     }

@@ -1,14 +1,30 @@
-import time
+import logging
 import threading
+from datetime import datetime
 from extensions import db
 from models.device import Device
 from sqlalchemy.exc import OperationalError
+
+log = logging.getLogger(__name__)
+
+# 32-bit counter wrap ceiling
+_COUNTER32_MAX = 2 ** 32
+
+
+def _counter32_delta(prev: int, curr: int) -> int:
+    """Return delta between two 32-bit SNMP counters, handling wrap-around."""
+    delta = curr - prev
+    if delta < 0:
+        delta += _COUNTER32_MAX
+    return delta
+
 
 class InterfacePoller:
     """
     Service to poll interface statistics from devices and store history.
     Simulation disabled: only real backend data should be stored.
     """
+
     def __init__(self):
         self._stop_event = threading.Event()
         self._thread = None
@@ -37,7 +53,6 @@ class InterfacePoller:
         try:
             thread.join(timeout=max(0.0, float(timeout)))
         except KeyboardInterrupt:
-            # Keep shutdown path clean even if Ctrl+C is pressed again.
             pass
 
         if thread.is_alive():
@@ -58,9 +73,6 @@ class InterfacePoller:
             except Exception as e:
                 print(f"Error in interface poller loop: {e}")
 
-            
-            # Sleep for 10 seconds (aggressive polling for real-time feel)
-            # In production, this should be configurable
             interval = 10
             if self._app:
                 interval = self._app.config.get('INTERFACE_POLL_INTERVAL', 10)
@@ -73,7 +85,7 @@ class InterfacePoller:
     def _poll_all_devices(self):
         """Polls all monitored devices (no simulation fallback)."""
         devices = Device.query.filter_by(is_monitored=True).all()
-        
+
         for device in devices:
             if self._stop_event.is_set():
                 break
@@ -81,44 +93,193 @@ class InterfacePoller:
                 if self._stop_event.is_set():
                     break
                 try:
-                    # TRY REAL SNMP POLL
-                    # In a real scenario, we'd check if SNMP is enabled for this device.
-                    # No simulation fallback is allowed.
-                    success = self._poll_device_real(device)
-
-                    # Commit per device to prevent long-running transactions (SQLite Lock Fix)
+                    self._poll_device_real(device)
                     db.session.commit()
-
-                    # Yield to let other threads write
                     self._stop_event.wait(0.05)
                     break
                 except OperationalError as e:
                     db.session.rollback()
                     if "database is locked" in str(e).lower() and attempt < 2:
-                        # Backoff and retry
                         self._stop_event.wait(0.2 * (attempt + 1))
                         continue
-                    print(f"Error polling device {device.device_id}: {e}")
+                    log.error(f"[InterfacePoller] DB error for device {device.device_id}: {e}")
                     break
                 except Exception as e:
                     db.session.rollback()
-                    print(f"Error polling device {device.device_id}: {e}")
+                    log.error(f"[InterfacePoller] Error polling device {device.device_id}: {e}")
                     break
-            # Ensure connections are returned to pool per device
             db.session.remove()
 
     def _poll_device_real(self, device) -> bool:
         """
-        Attempt to poll real SNMP data.
-        Returns True if successful, False if failed/no-response.
+        Poll SNMP interface data for a device and persist results.
+        Delegates to poll_device_interfaces; returns True on success.
         """
-        # Placeholder for real SNMP retrieval logic:
-        # 1. Get credentials (snmp_config)
-        # 2. snmp_service.get_interface_counters(...)
-        # 3. Update DB
-        
-        # To enable real polling, implement the credential lookup here.
-        return False
+        result = self.poll_device_interfaces(device.device_id)
+        return result.get('success', False)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public interface — also called by snmp_worker._execute_interface_poll()
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def poll_device_interfaces(self, device_id: int) -> dict:
+        """
+        Poll IF-MIB data for a single device and persist results.
+
+        Steps:
+          1. Load DeviceSnmpConfig (is_enabled=True required).
+          2. Walk ifDescr, ifOperStatus, ifSpeed, ifInOctets, ifOutOctets via
+             existing snmp_service helpers.
+          3. Upsert each interface into device_interfaces (key: device_id + if_index).
+          4. Compute byte-delta rates and write an InterfaceTrafficHistory row
+             for interfaces with a prior counter snapshot.
+
+        Returns:
+          {'success': True}                        on full or partial success
+          {'success': False, 'error': <str>}       on early-exit failures
+        """
+        try:
+            from models.snmp_config import DeviceSnmpConfig
+            from models.interfaces import DeviceInterface, InterfaceTrafficHistory
+            from services.snmp_service import snmp_service
+
+            # ── 1. Credential lookup ────────────────────────────────────────
+            config = DeviceSnmpConfig.query.filter_by(
+                device_id=device_id, is_enabled=True
+            ).first()
+            if not config:
+                log.warning(
+                    f"[InterfacePoller] device_id={device_id}: no enabled SNMP config — skipping"
+                )
+                return {'success': False, 'error': 'SNMP_NOT_CONFIGURED'}
+
+            device = Device.query.get(device_id)
+            if not device:
+                log.warning(f"[InterfacePoller] device_id={device_id}: device row not found")
+                return {'success': False, 'error': 'DEVICE_NOT_FOUND'}
+
+            host = device.device_ip
+            community = config.community_string or 'public'
+            version = config.snmp_version or '2c'
+            port = config.snmp_port or 161
+
+            log.debug(
+                f"[InterfacePoller] Polling {host} (device_id={device_id}) "
+                f"SNMP v{version} community='{community}'"
+            )
+
+            # ── 2. SNMP walks ───────────────────────────────────────────────
+            # get_interfaces: ifDescr, ifType, ifSpeed, ifPhysAddress,
+            #                 ifAdminStatus, ifOperStatus
+            # get_interface_counters: ifInOctets, ifOutOctets, ifInErrors,
+            #                         ifOutErrors
+            iface_list = snmp_service.get_interfaces(host, community, version, port)
+            counter_list = snmp_service.get_interface_counters(host, community, version, port)
+
+            if not iface_list and not counter_list:
+                err_msg = f"No SNMP data returned from {host}"
+                log.warning(f"[InterfacePoller] device_id={device_id}: {err_msg}")
+                config.last_poll_error = err_msg
+                db.session.commit()
+                return {'success': False, 'error': 'SNMP_NO_DATA'}
+
+            # Index counters by if_index for O(1) merge
+            counters_by_index: dict[int, dict] = {
+                c['if_index']: c for c in counter_list if 'if_index' in c
+            }
+
+            now = datetime.utcnow()
+            rows_written = 0
+
+            # ── 3 & 4. Upsert interfaces + write traffic history ────────────
+            for iface_data in iface_list:
+                if_index = iface_data.get('if_index')
+                if if_index is None:
+                    continue
+
+                # Fetch current counter snapshot for this interface
+                counters = counters_by_index.get(if_index, {})
+                curr_in = counters.get('in_octets')
+                curr_out = counters.get('out_octets')
+
+                # Upsert: find existing row or create new one
+                iface = DeviceInterface.query.filter_by(
+                    device_id=device_id, if_index=if_index
+                ).first()
+
+                is_new = iface is None
+                if is_new:
+                    iface = DeviceInterface(device_id=device_id, if_index=if_index)
+                    db.session.add(iface)
+
+                # Update descriptor fields unconditionally (they may change)
+                iface.name = iface_data.get('name', iface.name)
+                iface.if_type = iface_data.get('if_type', iface.if_type)
+                iface.speed_bps = iface_data.get('speed_bps', iface.speed_bps)
+                iface.mac_address = iface_data.get('mac_address', iface.mac_address)
+                iface.admin_status = iface_data.get('admin_status', iface.admin_status)
+                iface.oper_status = iface_data.get('oper_status', iface.oper_status)
+
+                # ── Traffic delta (only when we have a prior snapshot) ───────
+                if (
+                    not is_new
+                    and iface.last_poll_time is not None
+                    and iface.last_in_octets is not None
+                    and iface.last_out_octets is not None
+                    and curr_in is not None
+                    and curr_out is not None
+                ):
+                    elapsed = (now - iface.last_poll_time).total_seconds()
+                    if elapsed > 0:
+                        in_delta = _counter32_delta(iface.last_in_octets, curr_in)
+                        out_delta = _counter32_delta(iface.last_out_octets, curr_out)
+
+                        rx_bps = (in_delta * 8) / elapsed
+                        tx_bps = (out_delta * 8) / elapsed
+
+                        speed = iface.speed_bps or 0
+                        rx_util = round((rx_bps / speed) * 100, 2) if speed > 0 else None
+                        tx_util = round((tx_bps / speed) * 100, 2) if speed > 0 else None
+
+                        history = InterfaceTrafficHistory(
+                            interface_id=iface.interface_id,
+                            timestamp=now,
+                            rx_bps=round(rx_bps, 2),
+                            tx_bps=round(tx_bps, 2),
+                            rx_utilization_pct=rx_util,
+                            tx_utilization_pct=tx_util,
+                        )
+                        db.session.add(history)
+                        rows_written += 1
+
+                # Update snapshot for next poll cycle
+                if curr_in is not None:
+                    iface.last_in_octets = curr_in
+                if curr_out is not None:
+                    iface.last_out_octets = curr_out
+                iface.last_poll_time = now
+
+            # ── Update config tracking ──────────────────────────────────────
+            config.last_successful_poll = now
+            config.last_poll_error = None
+
+            db.session.flush()  # assign interface_id to new rows before history FK
+
+            log.info(
+                f"[InterfacePoller] device_id={device_id} ({host}): "
+                f"{len(iface_list)} interfaces upserted, "
+                f"{rows_written} traffic rows written"
+            )
+            return {'success': True}
+
+        except Exception as e:
+            log.error(f"[InterfacePoller] Unhandled error for device_id={device_id}: {e}")
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return {'success': False, 'error': str(e)[:500]}
+
 
 # Singleton
 interface_poller = InterfacePoller()

@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Dict
 from sqlalchemy import and_, func, text
 from extensions import db
+from services.timescaledb_service import TimescaleDBService
 
 
 class MaintenanceService:
@@ -69,6 +70,22 @@ class MaintenanceService:
             'backend': backend
         }
 
+    def _timescaledb_enabled(self) -> bool:
+        if self._backend_name() != 'postgresql':
+            return False
+        return bool(TimescaleDBService.is_timescaledb_enabled())
+
+    def _timescaledb_managed_result(self, task_name: str, detail: str) -> Dict:
+        return {
+            'success': True,
+            'skipped': True,
+            'policy_managed': True,
+            'task': task_name,
+            'backend': self._backend_name(),
+            'reason': 'Managed by TimescaleDB',
+            'detail': detail,
+        }
+
     def _get_or_create_rollup_state(self, name: str, default_rolled_until: datetime):
         from models.server_health_rollups import ServerHealthRollupState
 
@@ -86,6 +103,11 @@ class MaintenanceService:
         """
         if self._backend_name() != 'postgresql':
             return self._postgres_required_result('rollup_server_health_hourly')
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'rollup_server_health_hourly',
+                'Server health reports use TimescaleDB continuous aggregates instead of legacy hourly rollup tables.',
+            )
 
         now_utc = datetime.utcnow()
         window_end = self._floor_to_hour(now_utc)
@@ -221,6 +243,11 @@ class MaintenanceService:
         """
         if self._backend_name() != 'postgresql':
             return self._postgres_required_result('rollup_server_health_daily')
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'rollup_server_health_daily',
+                'Server health reports use TimescaleDB continuous aggregates instead of legacy daily rollup tables.',
+            )
 
         now_utc = datetime.utcnow()
         window_end = self._floor_to_day(now_utc)
@@ -389,6 +416,11 @@ class MaintenanceService:
         """Delete raw server health logs older than retention window."""
         days = days or self.server_health_raw_retention_days
         cutoff = datetime.utcnow() - timedelta(days=days)
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'cleanup_old_server_health_logs',
+                f"Retention is enforced by TimescaleDB policies for the server_health_logs hypertable (requested cutoff {cutoff.isoformat()}).",
+            )
 
         try:
             from models.server_health import ServerHealthLog
@@ -412,6 +444,11 @@ class MaintenanceService:
         """Delete hourly server health rollups older than retention window."""
         days = days or self.server_health_hourly_retention_days
         cutoff = datetime.utcnow() - timedelta(days=days)
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'cleanup_old_server_health_hourly_rollups',
+                f"Legacy server_health_hourly_rollups cleanup is disabled because TimescaleDB summaries are used instead (requested cutoff {cutoff.isoformat()}).",
+            )
 
         try:
             from models.server_health_rollups import ServerHealthHourlyRollup
@@ -439,6 +476,11 @@ class MaintenanceService:
         """Delete daily server health rollups older than retention window."""
         days = days or self.server_health_daily_retention_days
         cutoff = (datetime.utcnow() - timedelta(days=days)).date()
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'cleanup_old_server_health_daily_rollups',
+                f"Legacy server_health_daily_rollups cleanup is disabled because TimescaleDB summaries are used instead (requested cutoff {cutoff.isoformat()}).",
+            )
 
         try:
             from models.server_health_rollups import ServerHealthDailyRollup
@@ -483,6 +525,30 @@ class MaintenanceService:
                     'daily_cleanup': self._postgres_required_result('cleanup_old_server_health_daily_rollups'),
                 }
             }
+        if self._timescaledb_enabled():
+            tasks = {
+                'hourly_rollup': self._timescaledb_managed_result(
+                    'rollup_server_health_hourly',
+                    'Server health rollups are computed from TimescaleDB continuous aggregates.',
+                ),
+                'daily_rollup': self._timescaledb_managed_result(
+                    'rollup_server_health_daily',
+                    'Server health rollups are computed from TimescaleDB continuous aggregates.',
+                ),
+                'raw_cleanup': self._timescaledb_managed_result(
+                    'cleanup_old_server_health_logs',
+                    'Server health raw retention is enforced by TimescaleDB retention policies.',
+                ),
+                'hourly_cleanup': self._timescaledb_managed_result(
+                    'cleanup_old_server_health_hourly_rollups',
+                    'Legacy hourly rollup tables are not maintained when TimescaleDB is enabled.',
+                ),
+                'daily_cleanup': self._timescaledb_managed_result(
+                    'cleanup_old_server_health_daily_rollups',
+                    'Legacy daily rollup tables are not maintained when TimescaleDB is enabled.',
+                ),
+            }
+            return {'success': True, 'skipped': True, 'policy_managed': True, 'tasks': tasks}
 
         tasks = {}
         tasks['hourly_rollup'] = self.rollup_server_health_hourly(raw_days=raw_days)
@@ -507,6 +573,11 @@ class MaintenanceService:
         """
         if self._backend_name() != 'postgresql':
             return self._postgres_required_result('validate_and_repair_server_health_rollups')
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'validate_and_repair_server_health_rollups',
+                'Legacy server health rollup repair is disabled because TimescaleDB-backed reporting is active.',
+            )
 
         lookback_days = max(1, int(lookback_days or 45))
         now_utc = datetime.utcnow()
@@ -954,6 +1025,11 @@ class MaintenanceService:
 
     def rollup_tracking_hourly(self) -> Dict:
         """Roll up raw tracking samples/logs into hourly aggregates for closed hours."""
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'rollup_tracking_hourly',
+                'Tracking/productivity reporting reads TimescaleDB hypertables directly; legacy hourly tracking rollups are disabled.',
+            )
         now_utc = datetime.utcnow()
         window_end = self._floor_to_hour(now_utc)
 
@@ -1198,6 +1274,11 @@ class MaintenanceService:
 
     def rollup_tracking_daily(self) -> Dict:
         """Roll up hourly tracking aggregates into daily aggregates for closed days."""
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'rollup_tracking_daily',
+                'Tracking/productivity reporting reads TimescaleDB hypertables directly; legacy daily tracking rollups are disabled.',
+            )
         now_utc = datetime.utcnow()
         window_end = self._floor_to_day(now_utc)
 
@@ -1305,6 +1386,18 @@ class MaintenanceService:
 
     def run_tracking_rollups(self) -> Dict:
         """Run tracking rollups in safe order for reporting windows."""
+        if self._timescaledb_enabled():
+            tasks = {
+                'hourly_rollup': self._timescaledb_managed_result(
+                    'rollup_tracking_hourly',
+                    'Tracking/productivity reporting uses TimescaleDB hypertables directly.',
+                ),
+                'daily_rollup': self._timescaledb_managed_result(
+                    'rollup_tracking_daily',
+                    'Tracking/productivity reporting uses TimescaleDB hypertables directly.',
+                ),
+            }
+            return {'success': True, 'skipped': True, 'policy_managed': True, 'tasks': tasks}
         tasks = {
             'hourly_rollup': self.rollup_tracking_hourly(),
         }
@@ -1317,6 +1410,11 @@ class MaintenanceService:
 
     def backfill_tracking_rollups(self, lookback_days: int = 90) -> Dict:
         """Backfill tracking rollups across a historical lookback window."""
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'backfill_tracking_rollups',
+                'Tracking/productivity backfill no longer targets legacy rollup tables when TimescaleDB is enabled.',
+            )
         lookback_days = max(1, int(lookback_days or 90))
         now_utc = datetime.utcnow()
         hourly_start = self._floor_to_hour(now_utc - timedelta(days=lookback_days))
@@ -1367,6 +1465,11 @@ class MaintenanceService:
         daily_days: int = 1095,
     ) -> Dict:
         """Run tracking history retention for raw logs/samples and rollups."""
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'run_tracking_history_retention',
+                'Tracking raw hypertables are retention-managed by TimescaleDB and legacy tracking rollup tables are not maintained.',
+            )
         try:
             from services.tracking_history import run_tracking_retention
 
@@ -1381,6 +1484,11 @@ class MaintenanceService:
 
     def backfill_server_health_rollups(self, lookback_days: int = 90) -> Dict:
         """Backfill and repair server health rollups for a historical lookback window."""
+        if self._timescaledb_enabled():
+            return self._timescaledb_managed_result(
+                'backfill_server_health_rollups',
+                'Server health backfill no longer targets legacy rollup tables when TimescaleDB is enabled.',
+            )
         return self.validate_and_repair_server_health_rollups(lookback_days=lookback_days)
 
     def aggregate_daily_stats(self, target_date: date = None, rebuild_existing: bool = False) -> Dict:

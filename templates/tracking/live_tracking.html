@@ -2,202 +2,317 @@
 
 {% block title %}Fleet Monitoring{% endblock %}
 
-{% block content %}
-<div class="dashboard-enterprise live-fleet-page">
-    <div class="fleet-page-header d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-        <div>
-            <h1 class="enterprise-section-title mb-1"><i class="fas fa-satellite-dish"></i> Fleet Monitoring</h1>
-            <p class="enterprise-section-sub mb-0">Network radar for tracked workstations and live connectivity triage.</p>
-        </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-            {% if session.get('role') == 'admin' %}
-            <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}" class="tactical-btn tactical-btn-outline">
-                <i class="fas fa-shield-alt"></i> Restricted Sites
-            </a>
-            {% endif %}
-            <a href="{{ url_for('tracking_bp.device_tracking') }}" class="tactical-btn tactical-btn-outline">
-                <i class="fas fa-arrow-left"></i> Device Management
-            </a>
-        </div>
-    </div>
-
-    <div id="fleetErrorBanner" class="alert alert-danger d-none mb-3" role="alert"></div>
-
-    <div class="row g-2 mb-3">
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Total</div>
-                <div class="stat-value" id="kpiTotal">{{ saved_devices|length }}</div>
-                <span class="metric-sub">Managed devices</span>
-            </div>
-        </div>
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Online</div>
-                <div class="stat-value text-success" id="kpiOnline">0</div>
-                <span class="metric-sub">Reachable now</span>
-            </div>
-        </div>
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Degraded</div>
-                <div class="stat-value text-warning" id="kpiDegraded">0</div>
-                <span class="metric-sub">Partial telemetry</span>
-            </div>
-        </div>
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Offline</div>
-                <div class="stat-value text-danger" id="kpiOffline">0</div>
-                <span class="metric-sub">Unreachable</span>
-            </div>
-        </div>
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Active Check-in</div>
-                <div class="stat-value" id="kpiCheckins">0</div>
-                <span class="metric-sub">Inside sync window</span>
-            </div>
-        </div>
-        <div class="col-md-2 col-6">
-            <div class="enterprise-kpi fleet-kpi">
-                <div class="stat-label">Avg CPU</div>
-                <div class="stat-value" id="kpiCpu">0%</div>
-                <span class="metric-sub">Online + degraded</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="enterprise-panel fleet-table-card">
-        <div class="panel-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <h5 class="mb-0"><i class="fas fa-network-wired"></i> Fleet Connectivity</h5>
-            <div class="panel-meta d-flex align-items-center gap-2 flex-wrap">
-                <span class="tactical-badge tactical-badge-secondary" id="fleetLastUpdate">Never updated</span>
-                <button id="fleetRefreshBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline">
-                    <i class="fas fa-sync-alt"></i> Force Poll
-                </button>
-                <button id="fleetAutoToggleBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline" data-auto="true">
-                    <i class="fas fa-pause"></i> Pause
-                </button>
-            </div>
-        </div>
-        <div class="panel-body">
-            <div class="fleet-telemetry-strip mb-2">
-                <span class="status-dot healthy" id="fleetPollingDot" aria-hidden="true"></span>
-                <small class="text-muted" id="fleetPollMeta">Live polling active</small>
-            </div>
-            <div class="row g-2 mb-2">
-                <div class="col-lg-6">
-                    <div class="input-group">
-                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
-                        <input id="fleetSearchInput" type="text" class="form-control bg-dark border-secondary text-white" placeholder="Search by device, employee, hostname, IP">
-                    </div>
-                </div>
-                <div class="col-lg-6 d-flex justify-content-lg-end flex-wrap gap-2">
-                    <button type="button" class="fleet-filter-chip active" data-filter="all">All</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="needs_attention" id="fleetNeedsAttentionChip">Needs Attention (0)</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="online">Online</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="degraded">Degraded</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="offline">Offline</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="high_cpu">High CPU</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="high_risk">High Risk</button>
-                    <button type="button" class="fleet-filter-chip" data-filter="idle_20m">Idle > 20m</button>
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="tactical-table fleet-table">
-                    <thead>
-                        <tr>
-                            <th>Device</th>
-                            <th>Status</th>
-                            <th>Network</th>
-                            <th class="metric">Last Seen</th>
-                            <th class="metric">Risk</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="fleetDeviceTableBody">
-                        {% for device in saved_devices %}
-                        {% set initial_status = (device.availability_status or 'offline')|lower %}
-                        <tr id="fleet-device-{{ device.id }}" class="fleet-device-row"
-                            data-device-id="{{ device.id }}"
-                            data-mac="{{ device.mac_address }}"
-                            data-status="{{ initial_status }}"
-                            data-cpu="0"
-                            data-risk="unknown"
-                            data-active-violation-count="0"
-                            data-idle-seconds="0"
-                            data-search-index="{{ (device.device_name ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or ''))|lower }}">
-                            <td>
-                                <div class="fleet-device-primary">
-                                    <i class="fas fa-desktop fleet-device-icon" aria-hidden="true"></i>
-                                    <div>
-                                        <div class="fleet-device-name-line">
-                                            <div class="fleet-device-name">{{ device.device_name }}</div>
-                                            <span class="fleet-violation-icon d-none" title="Active policy violations">
-                                                <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
-                                            </span>
-                                        </div>
-                                        <div class="fleet-device-meta text-muted">{{ device.employee_name or 'Unassigned' }}</div>
-                                        <div class="fleet-policy-note text-muted small">No policy alerts</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="tactical-badge status-badge {% if initial_status == 'online' %}tactical-badge-success{% elif initial_status == 'degraded' %}tactical-badge-warning{% else %}tactical-badge-secondary{% endif %}">
-                                    {{ initial_status|upper }}
-                                </span>
-                                <div class="text-muted small fleet-status-reason">Awaiting telemetry</div>
-                            </td>
-                            <td>
-                                <div class="fleet-network-line"><span>IP</span><strong class="fleet-ip">{{ device.ip_address or 'N/A' }}</strong></div>
-                                <div class="fleet-network-line"><span>Host</span><strong class="fleet-host">{{ device.hostname or 'N/A' }}</strong></div>
-                                <div class="fleet-network-line"><span>MAC</span><strong class="fleet-mac">{{ device.mac_address or 'N/A' }}</strong></div>
-                            </td>
-                            <td class="metric">
-                                <div class="fleet-last-seen">{{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else 'Never' }}</div>
-                                <div class="text-muted small fleet-sync-age">Sync: n/a</div>
-                            </td>
-                            <td class="metric">
-                                <span class="tactical-badge tactical-badge-secondary fleet-risk-badge">UNKNOWN</span>
-                                <div class="text-muted small fleet-risk-context">CPU 0% - Idle 0m</div>
-                            </td>
-                            <td class="text-end">
-                                <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}" class="tactical-btn tactical-btn-sm tactical-btn-outline">
-                                        <i class="fas fa-expand"></i> Open Live View
-                                    </a>
-                                    <a href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}" class="tactical-btn tactical-btn-sm tactical-btn-outline" title="History">
-                                        <i class="fas fa-history"></i>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="fleetEmptyState" class="text-center py-4 d-none">
-                <i class="fas fa-laptop fa-2x text-muted mb-2"></i>
-                <h6>No devices match current filters.</h6>
-                <p class="text-muted mb-0">Clear filters or add tracked devices from Device Management.</p>
-            </div>
-        </div>
-    </div>
-</div>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/live_fleet.css') }}?v=3">
 {% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/live_fleet.css') }}">
+{% block content %}
+<div class="dashboard-enterprise live-fleet-page">
+
+  <!-- Header -->
+  <header class="fleet-header">
+    <div class="fleet-header-left">
+      <div class="fleet-header-icon"><i class="fas fa-satellite-dish"></i></div>
+      <div>
+        <h1 class="enterprise-section-title mb-0">Fleet Monitoring</h1>
+        <p class="enterprise-section-sub mb-0">Real-time connectivity triage · device health oversight · policy compliance</p>
+      </div>
+    </div>
+    <div class="fleet-header-right">
+      <div class="live-pill" id="fleetLivePill" data-active="true">
+        <span class="live-dot"></span>
+        <span class="live-label">Live</span>
+      </div>
+      <span class="meta-mono" id="fleetLastUpdate">Refreshed 0s ago</span>
+      <span class="clock-mono" id="utcClock">--:--:-- <small>UTC</small></span>
+      {% if session.get('role') == 'admin' %}
+      <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}" class="tactical-btn tactical-btn-outline">
+        <i class="fas fa-shield-alt" aria-hidden="true"></i> Restricted Sites
+      </a>
+      <a href="{{ url_for('tracking_bp.device_tracking', open_add_device=1) }}" class="tactical-btn tactical-btn-outline">
+        <i class="fas fa-plus" aria-hidden="true"></i> Add Device
+      </a>
+      {% endif %}
+      <a href="{{ url_for('tracking_bp.device_tracking') }}" class="tactical-btn tactical-btn-outline">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Device Mgmt
+      </a>
+    </div>
+  </header>
+
+  <!-- Error banner -->
+  <div id="fleetErrorBanner" class="fleet-error-banner d-none" role="alert" aria-live="polite"></div>
+
+  <!-- KPI Strip -->
+  <div class="kpi-grid-6">
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--e-text-muted)">
+      <div class="stat-label kpi-label">Total Devices</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value" id="kpiTotal">{{ saved_devices|length }}</span>
+      </div>
+      <span class="metric-sub kpi-sub">Managed endpoints</span>
+    </div>
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-healthy)">
+      <div class="stat-label kpi-label">Online</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value clr-ok" id="kpiOnline">0</span>
+        <span class="kpi-trend" id="kpiOnlineTrend"></span>
+      </div>
+      <span class="metric-sub kpi-sub">Reachable now</span>
+    </div>
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-warning)">
+      <div class="stat-label kpi-label">Degraded</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value clr-warn" id="kpiDegraded">0</span>
+      </div>
+      <span class="metric-sub kpi-sub">Partial telemetry</span>
+    </div>
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-critical)">
+      <div class="stat-label kpi-label">Offline</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value clr-crit" id="kpiOffline">0</span>
+      </div>
+      <span class="metric-sub kpi-sub">Unreachable agents</span>
+    </div>
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: rgba(59, 130, 246, 0.6)">
+      <div class="stat-label kpi-label">Active Check-in</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value" id="kpiCheckins">0</span>
+      </div>
+      <span class="metric-sub kpi-sub">Inside sync window</span>
+    </div>
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: rgba(59, 130, 246, 0.6)">
+      <div class="stat-label kpi-label">Avg CPU</div>
+      <div class="kpi-row">
+        <span class="stat-value kpi-value" id="kpiCpu">0%</span>
+      </div>
+      <span class="metric-sub kpi-sub">Online + degraded</span>
+    </div>
+  </div>
+
+  <!-- Fleet Table Panel -->
+  <div class="enterprise-panel fleet-table-card">
+
+    <!-- Panel header -->
+    <div class="panel-head">
+      <div class="panel-head-left">
+        <h2 class="panel-title">
+          <i class="fas fa-network-wired" aria-hidden="true"></i> Fleet Connectivity
+        </h2>
+        <span class="count-chip"><span id="fleetVisibleCount">{{ saved_devices|length }}</span> of {{ saved_devices|length }}</span>
+      </div>
+      <div class="panel-head-right">
+        <button id="fleetRefreshBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline" type="button" aria-label="Force refresh fleet data">
+          <i class="fas fa-sync-alt" aria-hidden="true"></i> Force Poll
+        </button>
+        <button id="fleetAutoToggleBtn" class="tactical-btn tactical-btn-sm tactical-btn-outline" type="button" data-auto="true" aria-label="Pause automatic polling">
+          <i class="fas fa-pause" aria-hidden="true"></i> Pause
+        </button>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="fleet-toolbar">
+      <div class="fleet-search-box">
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <input id="fleetSearchInput" type="text"
+               placeholder="Search device, employee, hostname, IP…"
+               aria-label="Search fleet devices">
+      </div>
+      <div class="filter-chips" role="group" aria-label="Status filters">
+        <button type="button" class="chip fleet-filter-chip active" data-filter="all">
+          All<span class="chip-count" id="chipCountAll">{{ saved_devices|length }}</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="online">
+          Online<span class="chip-count" id="chipCountOnline">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="degraded">
+          Degraded<span class="chip-count" id="chipCountDegraded">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="offline">
+          Offline<span class="chip-count" id="chipCountOffline">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="needs_attention" id="fleetNeedsAttentionChip">
+          Attention<span class="chip-count" id="chipCountAttention">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="high_cpu">
+          High CPU<span class="chip-count" id="chipCountHighCpu">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="high_risk">
+          High Risk<span class="chip-count" id="chipCountHighRisk">0</span>
+        </button>
+        <button type="button" class="chip fleet-filter-chip" data-filter="idle_20m">
+          Idle &gt; 20m<span class="chip-count" id="chipCountIdle">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Device table -->
+    <div class="table-responsive">
+      <table class="tactical-table fleet-table" id="fleetTable" aria-label="Fleet device status">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="name">Device <span class="sort-arrow">↕</span></th>
+            <th class="sortable" data-sort="status">Status <span class="sort-arrow">↕</span></th>
+            <th>Telemetry</th>
+            <th>Network</th>
+            <th class="sortable" data-sort="lastSeen">Last Seen <span class="sort-arrow">↕</span></th>
+            <th class="sortable" data-sort="risk">Risk <span class="sort-arrow">↕</span></th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="fleetDeviceTableBody">
+          {% for device in saved_devices %}
+          {% set status = (device.availability_status or 'offline')|lower %}
+          <tr id="fleet-device-{{ device.id }}"
+              class="fleet-device-row"
+              data-device-id="{{ device.id }}"
+              data-mac="{{ device.mac_address }}"
+              data-status="{{ status }}"
+              data-cpu="0"
+              data-risk="unknown"
+              data-active-violation-count="0"
+              data-idle-seconds="0"
+              data-search-index="{{ (device.device_name ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or ''))|lower }}">
+
+            <!-- Device -->
+            <td>
+              <div class="device-cell">
+                <div class="device-icon-wrap">
+                  <i class="fas fa-desktop" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <div class="device-name-line">
+                    <span class="device-name">{{ device.device_name }}</span>
+                    <span class="fleet-violation-icon d-none" title="Active policy violations">
+                      <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                    </span>
+                  </div>
+                  <div class="device-meta">{{ device.employee_name or 'Unassigned' }}</div>
+                  <div class="fleet-policy-note">No policy alerts</div>
+                </div>
+              </div>
+            </td>
+
+            <!-- Status -->
+            <td>
+              <div class="status-cell">
+                <span class="status-badge {{ status }}">
+                  <span class="status-dot"></span>
+                  {{ status|upper }}
+                </span>
+                <span class="fleet-status-reason">Awaiting telemetry</span>
+              </div>
+            </td>
+
+            <!-- Telemetry -->
+            <td>
+              <div class="metrics-cell">
+                <div class="metric-row">
+                  <span class="metric-label">CPU</span>
+                  <div class="metric-bar-track"><div class="metric-bar-fill fleet-cpu-bar" style="width:0%"></div></div>
+                  <span class="metric-val fleet-cpu-val">0%</span>
+                </div>
+                <div class="metric-row">
+                  <span class="metric-label">MEM</span>
+                  <div class="metric-bar-track"><div class="metric-bar-fill fleet-mem-bar" style="width:0%"></div></div>
+                  <span class="metric-val fleet-mem-val">0%</span>
+                </div>
+                <div class="metric-row">
+                  <span class="metric-label">DSK</span>
+                  <div class="metric-bar-track"><div class="metric-bar-fill fleet-disk-bar" style="width:0%"></div></div>
+                  <span class="metric-val fleet-disk-val">0%</span>
+                </div>
+              </div>
+            </td>
+
+            <!-- Network -->
+            <td>
+              <div class="network-cell">
+                <div class="net-line"><span class="net-label">IP</span><span class="fleet-ip">{{ device.ip_address or 'N/A' }}</span></div>
+                <div class="net-line"><span class="net-label">Host</span><span class="fleet-host">{{ device.hostname or 'N/A' }}</span></div>
+                <div class="net-line"><span class="net-label">MAC</span><span class="fleet-mac">{{ device.mac_address or 'N/A' }}</span></div>
+              </div>
+            </td>
+
+            <!-- Last seen -->
+            <td>
+              <div class="time-cell">
+                <div class="time-main fleet-last-seen">{{ device.last_seen.strftime('%H:%M:%S') if device.last_seen else 'Never' }}</div>
+                <div class="time-ago fleet-sync-age">{{ device.last_seen.strftime('%Y-%m-%d') if device.last_seen else '—' }}</div>
+              </div>
+            </td>
+
+            <!-- Risk -->
+            <td>
+              <span class="risk-badge unknown fleet-risk-badge">Unknown</span>
+              <div class="fleet-risk-context">CPU 0% · Idle 0m</div>
+            </td>
+
+            <!-- Actions -->
+            <td class="col-actions">
+              <div class="actions-cell">
+                <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}"
+                   class="action-btn primary" title="Open live view">
+                  <i class="fas fa-expand" aria-hidden="true"></i> Live
+                </a>
+                <a href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"
+                   class="action-btn" title="View history"
+                   aria-label="History for {{ device.device_name }}">
+                  <i class="fas fa-history" aria-hidden="true"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Expandable detail row -->
+          <tr class="expanded-detail" data-detail-for="{{ device.id }}">
+            <td colspan="7">
+              <div class="detail-inner">
+                <div class="detail-block">
+                  <h4>System</h4>
+                  <div class="detail-line"><span class="dl">Agent</span><span class="dv fleet-detail-agent">—</span></div>
+                  <div class="detail-line"><span class="dl">Idle</span><span class="dv fleet-detail-idle">0m</span></div>
+                  <div class="detail-line"><span class="dl">Violations</span><span class="dv fleet-detail-violations">0</span></div>
+                </div>
+                <div class="detail-block">
+                  <h4>Resources</h4>
+                  <div class="detail-line"><span class="dl">CPU</span><span class="dv fleet-detail-cpu">0%</span></div>
+                  <div class="detail-line"><span class="dl">Memory</span><span class="dv fleet-detail-mem">0%</span></div>
+                  <div class="detail-line"><span class="dl">Disk</span><span class="dv fleet-detail-disk">0%</span></div>
+                </div>
+                <div class="detail-block">
+                  <h4>Network</h4>
+                  <div class="detail-line"><span class="dl">IPv4</span><span class="dv">{{ device.ip_address or 'N/A' }}</span></div>
+                  <div class="detail-line"><span class="dl">Hostname</span><span class="dv">{{ device.hostname or 'N/A' }}</span></div>
+                  <div class="detail-line"><span class="dl">MAC</span><span class="dv">{{ device.mac_address or 'N/A' }}</span></div>
+                </div>
+                <div class="detail-block">
+                  <h4>Timeline</h4>
+                  <div class="detail-line"><span class="dl">Last Seen</span><span class="dv fleet-detail-lastseen">{{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else 'Never' }}</span></div>
+                  <div class="detail-line"><span class="dl">Risk</span><span class="dv fleet-detail-risk">Unknown</span></div>
+                  <div class="detail-line"><span class="dl">Status</span><span class="dv fleet-detail-status">{{ status|upper }}</span></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty state -->
+    <div id="fleetEmptyState" class="empty-state d-none">
+      <i class="fas fa-laptop fa-2x" aria-hidden="true"></i>
+      <h6>No devices match current filters.</h6>
+      <p>Clear filters or add tracked devices from Device Management.</p>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    window.TRACKING_LIVE_FLEET_CONFIG = {
-        refreshMs: 5000
-    };
+  window.TRACKING_LIVE_FLEET_CONFIG = { refreshMs: 5000 };
 </script>
-<script src="{{ url_for('static', filename='js/tracking/live_fleet.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/live_fleet.js') }}?v=3"></script>
 {% endblock %}

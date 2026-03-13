@@ -1,6 +1,6 @@
 # file name: routes/auth.py (updated)
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, current_app
-from extensions import db, bcrypt
+from extensions import db, bcrypt, limiter
 from datetime import datetime, timedelta
 import random
 import logging
@@ -19,6 +19,7 @@ def index():
     return redirect(url_for('auth_bp.login'))
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     # Clear any existing session on GET request
     if request.method == 'GET' and session.get('logged_in'):

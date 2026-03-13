@@ -22,7 +22,7 @@ from services.server_thresholds import (
     serialize_threshold_profile,
     summarize_health,
 )
-from utils.server_health import compute_server_health, is_server_device
+from utils.server_health import compute_server_health, is_server_device, query_latest_server_health_logs
 
 server_metrics_bp = Blueprint("server_metrics_bp", __name__)
 _REVERSE_DNS_CACHE: dict[str, dict[str, object]] = {}
@@ -239,13 +239,15 @@ def _compute_disk_io_rates(logs):
     }
 
 
-def _resolve_reverse_dns(ip_address):
+def _resolve_reverse_dns(ip_address, *, allow_lookup=True):
     if not ip_address:
         return None
     cached = _REVERSE_DNS_CACHE.get(ip_address)
     now = datetime.now(timezone.utc).timestamp()
     if cached and now < float(cached.get("expires_at", 0)):
         return cached.get("hostname")
+    if not allow_lookup:
+        return None
     try:
         hostname = socket.gethostbyaddr(ip_address)[0]
     except Exception:
@@ -257,7 +259,7 @@ def _resolve_reverse_dns(ip_address):
     return hostname
 
 
-def _build_connection_snapshot(last_log):
+def _build_connection_snapshot(last_log, *, allow_reverse_dns=False):
     raw_rows = last_log.network_top_remote_ips if last_log else []
     if not isinstance(raw_rows, list):
         raw_rows = []
@@ -308,11 +310,20 @@ def _build_connection_snapshot(last_log):
     for row in normalized_rows:
         device_match = known_map.get(row["remote_ip"])
         inventory_hostname = str(getattr(device_match, "hostname", "") or "").strip() or None
-        resolved_hostname = inventory_hostname or row.get("agent_hostname") or _resolve_reverse_dns(row["remote_ip"]) or row["remote_ip"]
+        resolved_hostname = (
+            inventory_hostname
+            or row.get("agent_hostname")
+            or _resolve_reverse_dns(row["remote_ip"], allow_lookup=allow_reverse_dns)
+            or row["remote_ip"]
+        )
         resolution_source = (
             "inventory"
             if device_match
-            else ("agent" if row.get("agent_hostname") else ("reverse_dns" if resolved_hostname and resolved_hostname != row["remote_ip"] else "ip"))
+            else (
+                "agent"
+                if row.get("agent_hostname")
+                else ("reverse_dns" if resolved_hostname and resolved_hostname != row["remote_ip"] else "ip")
+            )
         )
         resolved_rows.append(
             {
@@ -399,7 +410,7 @@ def _build_server_telemetry_payload(device, time_range):
     latest_metrics = extract_latest_metrics(last_log)
     health_summary = summarize_health(last_log, {"metrics": threshold_payload.get("metrics", {})}) if last_log else None
     health_state = compute_server_health(last_log)
-    connection_snapshot = _build_connection_snapshot(last_log)
+    connection_snapshot = _build_connection_snapshot(last_log, allow_reverse_dns=False)
     merged_processes = _merge_process_rows(
         last_log.top_processes if last_log and isinstance(last_log.top_processes, list) else [],
         last_log.top_processes_cpu if last_log and isinstance(last_log.top_processes_cpu, list) else [],
@@ -658,23 +669,11 @@ def get_fleet_metrics():
         thresholds = get_merged_thresholds()
 
         cutoff = _utcnow_naive() - timedelta(hours=24)
-        latest_subq = (
-            db.session.query(
-                ServerHealthLog.device_id,
-                func.max(ServerHealthLog.id).label("max_id"),
-            )
-            .filter(
-                ServerHealthLog.source == "agent",
-                ServerHealthLog.timestamp >= cutoff,
-                ServerHealthLog.device_id.in_(scoped_server_ids),
-            )
-            .group_by(ServerHealthLog.device_id)
-            .subquery()
+        latest_logs = query_latest_server_health_logs(
+            device_ids=scoped_server_ids,
+            source="agent",
+            cutoff=cutoff,
         )
-
-        latest_logs = db.session.query(ServerHealthLog).join(
-            latest_subq, ServerHealthLog.id == latest_subq.c.max_id
-        ).all()
 
         total_servers = len(latest_logs)
         if total_servers == 0:
@@ -803,22 +802,10 @@ def get_server_health_summary():
             }
             return jsonify(empty_response)
 
-        latest_subq = (
-            db.session.query(
-                ServerHealthLog.device_id,
-                func.max(ServerHealthLog.id).label("max_id"),
-            )
-            .filter(
-                ServerHealthLog.source == "agent",
-                ServerHealthLog.device_id.in_(scoped_server_ids),
-            )
-            .group_by(ServerHealthLog.device_id)
-            .subquery()
+        latest_logs = query_latest_server_health_logs(
+            device_ids=scoped_server_ids,
+            source="agent",
         )
-
-        latest_logs = db.session.query(ServerHealthLog).join(
-            latest_subq, ServerHealthLog.id == latest_subq.c.max_id
-        ).all()
 
         health_map = {log.device_id: log for log in latest_logs}
         agent_device_ids = list(health_map.keys())

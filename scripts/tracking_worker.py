@@ -16,6 +16,8 @@ from app import create_app
 from config import Config
 from extensions import db, redis_client
 from models.tracked_device import TrackedDevice
+from services.tracking_agent_ports import remember_tracking_agent_port, resolve_tracking_agent_ports
+from services.tracking_discovery_cache import remember_tracking_probe
 
 # Configure logging for the background worker
 logging.basicConfig(
@@ -73,7 +75,6 @@ def probe_single_device(device_id: int, ip_address: str, shared_api_key: str):
     if not ip_address:
         return device_id, _build_offline_result('DEVICE_NO_IP'), run_at
 
-    base_url = f"http://{ip_address}:5002"
     identity_data = {}
     probe_error_code = None
 
@@ -81,90 +82,101 @@ def probe_single_device(device_id: int, ip_address: str, shared_api_key: str):
         with requests.Session() as session:
             session.trust_env = False
 
-            # 1) Identity probe
-            try:
-                response = session.get(
-                    f"{base_url}/api/identity",
-                    timeout=NETWORK_TIMEOUT_SECONDS,
-                )
-                if response.status_code == 200:
-                    identity_data = _parse_json_payload(response)
-                else:
-                    probe_error_code = f'IDENTITY_HTTP_{response.status_code}'
-            except requests.exceptions.RequestException as exc:
-                probe_error_code = _map_probe_error(exc)
+            for agent_port in resolve_tracking_agent_ports(ip_address=ip_address):
+                base_url = f"http://{ip_address}:{agent_port}"
+                identity_data = {}
+                probe_error_code = None
 
-            # 2) Full stats probe
-            try:
-                headers = {'X-API-Key': shared_api_key} if shared_api_key else {}
-                response = session.get(
-                    f"{base_url}/api/secure/stats",
-                    timeout=NETWORK_TIMEOUT_SECONDS,
-                    headers=headers,
-                )
-                if response.status_code == 200:
-                    stats_data = _parse_json_payload(response)
-                    if identity_data:
-                        device_info = stats_data.get('device_info')
-                        if isinstance(device_info, dict):
-                            for key, value in identity_data.items():
-                                device_info.setdefault(key, value)
-                        else:
-                            stats_data['device_info'] = identity_data
-
-                    metrics_available = bool(
-                        stats_data.get('system_metrics') or
-                        stats_data.get('today_stats') or
-                        stats_data.get('current_activity')
+                try:
+                    response = session.get(
+                        f"{base_url}/api/identity",
+                        timeout=NETWORK_TIMEOUT_SECONDS,
                     )
-                    return device_id, {
-                        'status': 'online' if metrics_available else 'degraded',
-                        'availability_status': 'online' if metrics_available else 'degraded',
-                        'tracking_data': stats_data,
-                        'metrics_available': metrics_available,
-                        'probe_error_code': None if metrics_available else (probe_error_code or 'STATS_PAYLOAD_EMPTY'),
-                        'probe_method': 'stats',
-                    }, run_at
-
-                if not probe_error_code:
-                    probe_error_code = f'STATS_HTTP_{response.status_code}'
-            except requests.exceptions.RequestException as exc:
-                if not probe_error_code:
+                    if response.status_code == 200:
+                        identity_data = _parse_json_payload(response)
+                    else:
+                        probe_error_code = f'IDENTITY_HTTP_{response.status_code}'
+                except requests.exceptions.RequestException as exc:
                     probe_error_code = _map_probe_error(exc)
+                    if probe_error_code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        continue
 
-            # 3) Identity reachable fallback -> degraded
-            if identity_data:
-                return device_id, {
-                    'status': 'degraded',
-                    'availability_status': 'degraded',
-                    'tracking_data': {'device_info': identity_data},
-                    'metrics_available': False,
-                    'probe_error_code': probe_error_code,
-                    'probe_method': 'identity',
-                }, run_at
+                try:
+                    headers = {'X-API-Key': shared_api_key} if shared_api_key else {}
+                    response = session.get(
+                        f"{base_url}/api/secure/stats",
+                        timeout=NETWORK_TIMEOUT_SECONDS,
+                        headers=headers,
+                    )
+                    if response.status_code == 200:
+                        stats_data = _parse_json_payload(response)
+                        if identity_data:
+                            device_info = stats_data.get('device_info')
+                            if isinstance(device_info, dict):
+                                for key, value in identity_data.items():
+                                    device_info.setdefault(key, value)
+                            else:
+                                stats_data['device_info'] = identity_data
 
-            # 4) Health fallback -> degraded
-            try:
-                response = session.get(
-                    f"{base_url}/api/health",
-                    timeout=NETWORK_TIMEOUT_SECONDS,
-                )
-                if response.status_code == 200:
+                        metrics_available = bool(
+                            stats_data.get('system_metrics') or
+                            stats_data.get('today_stats') or
+                            stats_data.get('current_activity')
+                        )
+                        remember_tracking_agent_port(ip_address, agent_port)
+                        return device_id, {
+                            'status': 'online' if metrics_available else 'degraded',
+                            'availability_status': 'online' if metrics_available else 'degraded',
+                            'tracking_data': stats_data,
+                            'metrics_available': metrics_available,
+                            'probe_error_code': None if metrics_available else (probe_error_code or 'STATS_PAYLOAD_EMPTY'),
+                            'probe_method': 'stats',
+                            'agent_port': agent_port,
+                        }, run_at
+
+                    if not probe_error_code:
+                        probe_error_code = f'STATS_HTTP_{response.status_code}'
+                except requests.exceptions.RequestException as exc:
+                    if not probe_error_code:
+                        probe_error_code = _map_probe_error(exc)
+                    if probe_error_code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        continue
+
+                if identity_data:
+                    remember_tracking_agent_port(ip_address, agent_port)
                     return device_id, {
                         'status': 'degraded',
                         'availability_status': 'degraded',
-                        'tracking_data': {},
+                        'tracking_data': {'device_info': identity_data},
                         'metrics_available': False,
                         'probe_error_code': probe_error_code,
-                        'probe_method': 'health',
+                        'probe_method': 'identity',
+                        'agent_port': agent_port,
                     }, run_at
-                if not probe_error_code:
-                    probe_error_code = f'HEALTH_HTTP_{response.status_code}'
-            except requests.exceptions.RequestException as exc:
-                if not probe_error_code:
-                    probe_error_code = _map_probe_error(exc)
-                if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
-                    raise exc
+
+                try:
+                    response = session.get(
+                        f"{base_url}/api/health",
+                        timeout=NETWORK_TIMEOUT_SECONDS,
+                    )
+                    if response.status_code == 200:
+                        remember_tracking_agent_port(ip_address, agent_port)
+                        return device_id, {
+                            'status': 'degraded',
+                            'availability_status': 'degraded',
+                            'tracking_data': {},
+                            'metrics_available': False,
+                            'probe_error_code': probe_error_code,
+                            'probe_method': 'health',
+                            'agent_port': agent_port,
+                        }, run_at
+                    if not probe_error_code:
+                        probe_error_code = f'HEALTH_HTTP_{response.status_code}'
+                except requests.exceptions.RequestException as exc:
+                    if not probe_error_code:
+                        probe_error_code = _map_probe_error(exc)
+                    if probe_error_code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        continue
 
             return device_id, _build_offline_result(probe_error_code or 'AGENT_UNREACHABLE'), run_at
     except requests.exceptions.RequestException as exc:
@@ -196,18 +208,21 @@ def _normalize_probe_result(result: dict) -> dict:
     availability_status = str(result.get('availability_status') or result.get('status') or 'offline').lower()
     if availability_status not in ('online', 'degraded', 'offline'):
         availability_status = 'offline'
+    tracking_status = str(result.get('tracking_status') or result.get('status') or availability_status).lower()
 
     tracking_payload = result.get('tracking_data')
     if not isinstance(tracking_payload, dict):
         tracking_payload = {}
 
     return {
-        'status': availability_status,
+        'status': tracking_status,
+        'tracking_status': tracking_status,
         'availability_status': availability_status,
         'tracking_data': tracking_payload,
         'metrics_available': bool(result.get('metrics_available')),
         'probe_error_code': result.get('probe_error_code'),
         'probe_method': result.get('probe_method') or ('stats' if availability_status != 'offline' else 'none'),
+        'agent_port': result.get('agent_port'),
     }
 
 def tracking_sync_job():
@@ -267,6 +282,7 @@ def tracking_sync_job():
                 result, run_time = results_map[device.id]
 
                 availability_status = result.get('availability_status', 'offline')
+                tracking_status = result.get('tracking_status') or result.get('status') or availability_status
                 tracking_data = result.get('tracking_data') if isinstance(result.get('tracking_data'), dict) else {}
                 metrics_available = bool(result.get('metrics_available', False))
 
@@ -295,12 +311,25 @@ def tracking_sync_job():
                                 'metrics_available': metrics_available,
                                 'probe_error_code': result.get('probe_error_code'),
                                 'probe_method': result.get('probe_method'),
+                                'agent_port': result.get('agent_port'),
                                 'last_probe_at': run_time.isoformat(),
                                 'tracking_data': tracking_data,
                             }),
                         )
                     except Exception as e:
                         logger.debug(f"Failed to sync probe to Redis: {e}")
+
+                if device.ip_address:
+                    remember_tracking_probe(device.ip_address, {
+                        'status': tracking_status,
+                        'tracking_status': tracking_status,
+                        'availability_status': availability_status,
+                        'metrics_available': metrics_available,
+                        'probe_error_code': result.get('probe_error_code'),
+                        'probe_method': result.get('probe_method'),
+                        'agent_port': result.get('agent_port'),
+                        'data': tracking_data,
+                    })
 
                 updates += 1
 

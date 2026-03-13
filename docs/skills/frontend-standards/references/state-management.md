@@ -33,6 +33,9 @@ Keep UI state deterministic, especially for polling views and bulk-selection mod
 1. Avoid full-table replacement during frequent updates when possible.
 2. Prefer keyed patching for high-frequency tables.
 3. Preserve scroll/focus where feasible.
+4. Discard stale responses that complete after a newer request on migrated polling surfaces.
+5. If a modal is open during scheduled refresh, defer DOM mutation until the modal closes unless the surface is explicitly exempt.
+6. After first hydration, keep visible data mounted while background refresh runs.
 
 ## Existing Reference Surfaces
 

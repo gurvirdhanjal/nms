@@ -204,7 +204,8 @@
 
         async function loadMetrics() {
             try {
-                await view.load(deviceId, currentRange);
+                await view.load(deviceId, currentRange, { preferCache: true });
+                view.prefetch?.(deviceId, currentRange);
             } catch (error) {
                 console.error('Failed to load server metrics:', error);
             }

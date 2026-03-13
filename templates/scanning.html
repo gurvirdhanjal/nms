@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Network Scanner - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
 <style>
     .devices-page {
@@ -321,7 +322,7 @@
                     <div class="row mb-3">
                         <div class="col-md-12">
                             <div class="tactical-progress" style="display: none;" id="scanProgress">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                <div class="progress-bar progress-bar-striped bg-primary"
                                     role="progressbar" style="width: 0%">0%</div>
                             </div>
                         </div>
@@ -528,6 +529,13 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
+</script>
 <script src="{{ url_for('static', filename='js/scanning.js') }}?v={{ range(1, 10000) | random }}"></script>
 <script>
     // ============================================================================

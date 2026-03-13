@@ -672,7 +672,7 @@ def _ensure_tracking_history_columns_and_indexes(inspector=None):
 
 def _ensure_user_ldap_columns(inspector=None):
     """
-    Add LDAP-related columns to user table for existing deployments.
+    Add missing user columns for existing deployments.
     Safe to run repeatedly.
     """
     try:
@@ -685,13 +685,33 @@ def _ensure_user_ldap_columns(inspector=None):
         existing = {col['name'] for col in inspector.get_columns('user')}
         backend = db.engine.url.get_backend_name()
         statements = []
+        index_statements = []
+
+        def _add_user_column(definition: str) -> str:
+            if backend == 'postgresql':
+                return f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {definition}'
+            return f'ALTER TABLE "user" ADD COLUMN {definition}'
+
+        if 'last_login' not in existing:
+            statements.append(_add_user_column(f'last_login {_portable_datetime_type()}'))
+        if 'created_by' not in existing:
+            statements.append(_add_user_column('created_by VARCHAR(80)'))
 
         if 'auth_source' not in existing:
-            statements.append('ALTER TABLE "user" ADD COLUMN auth_source VARCHAR(20) DEFAULT \'local\'')
+            statements.append(_add_user_column('auth_source VARCHAR(20) DEFAULT \'local\''))
         if 'display_name' not in existing:
-            statements.append('ALTER TABLE "user" ADD COLUMN display_name VARCHAR(100)')
+            statements.append(_add_user_column('display_name VARCHAR(100)'))
         if 'external_id' not in existing:
-            statements.append('ALTER TABLE "user" ADD COLUMN external_id VARCHAR(100)')
+            statements.append(_add_user_column('external_id VARCHAR(100)'))
+        if 'site_id' not in existing:
+            statements.append(_add_user_column('site_id INTEGER'))
+        if 'department_id' not in existing:
+            statements.append(_add_user_column('department_id INTEGER'))
+
+        index_statements.extend([
+            'CREATE INDEX IF NOT EXISTS ix_user_site_id ON "user" (site_id)',
+            'CREATE INDEX IF NOT EXISTS ix_user_department_id ON "user" (department_id)',
+        ])
 
         for stmt in statements:
             db.session.execute(text(stmt))
@@ -699,6 +719,9 @@ def _ensure_user_ldap_columns(inspector=None):
         # Backfill existing rows
         if 'auth_source' not in existing:
             db.session.execute(text('UPDATE "user" SET auth_source = \'local\' WHERE auth_source IS NULL'))
+
+        for stmt in index_statements:
+            db.session.execute(text(stmt))
 
         # Commit column adds/backfill first so optional steps can't undo them.
         db.session.commit()
@@ -718,10 +741,51 @@ def _ensure_user_ldap_columns(inspector=None):
                 db.session.rollback()
                 print(f"[DB] Migration note (user.email nullable): {exc}")
         if statements:
-            print(f"[DB] Applied user LDAP migrations: {len(statements)} columns added.")
+            print(f"[DB] Applied user schema migrations: {len(statements)} columns added.")
     except Exception as exc:
         db.session.rollback()
-        print(f"[DB] Migration warning (user LDAP): {exc}")
+        print(f"[DB] Migration warning (user schema): {exc}")
+
+
+def _ensure_scope_metadata_columns(inspector=None):
+    """Backfill metadata columns for sites/departments on upgraded databases."""
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        backend = db.engine.url.get_backend_name()
+
+        def _add_scope_column(table_name: str, definition: str) -> str:
+            if backend == 'postgresql':
+                return f'ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {definition}'
+            return f'ALTER TABLE {table_name} ADD COLUMN {definition}'
+
+        table_column_map = {
+            'sites': [
+                ('created_by', _add_scope_column('sites', 'created_by VARCHAR(80)')),
+            ],
+            'departments': [
+                ('created_by', _add_scope_column('departments', 'created_by VARCHAR(80)')),
+            ],
+        }
+
+        total_added = 0
+        for table_name, definitions in table_column_map.items():
+            if table_name not in inspector.get_table_names():
+                continue
+            existing = {col['name'] for col in inspector.get_columns(table_name)}
+            statements = [statement for column_name, statement in definitions if column_name not in existing]
+            for stmt in statements:
+                db.session.execute(text(stmt))
+            if statements:
+                total_added += len(statements)
+
+        db.session.commit()
+        if total_added:
+            print(f"[DB] Applied scope metadata migrations: {total_added} columns added.")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (scope metadata): {exc}")
 
 
 def _ensure_restricted_site_tables():
@@ -846,6 +910,87 @@ def ensure_report_export_job_tables():
         print(f"[DB] Migration warning (report export jobs): {exc}")
 
 
+def _widen_snmp_community_column():
+    """
+    Widen device.snmp_community from VARCHAR(100) to VARCHAR(200) to accommodate
+    Fernet-encrypted tokens (enc: prefix + ~136 bytes of base64 token).
+    Safe to run multiple times — only executes when the column is still narrow.
+    """
+    try:
+        backend = db.engine.url.get_backend_name()
+        inspector = inspect(db.engine)
+        if 'device' not in inspector.get_table_names():
+            return
+        cols = {c['name']: c for c in inspector.get_columns('device')}
+        col = cols.get('snmp_community')
+        if col is None:
+            return
+        # Check current length; skip if already wide enough
+        current_length = getattr(col['type'], 'length', None)
+        if current_length is not None and current_length >= 200:
+            return
+        if backend == 'postgresql':
+            sql = "ALTER TABLE device ALTER COLUMN snmp_community TYPE VARCHAR(200)"
+        else:
+            # SQLite does not support ALTER COLUMN type — no-op (VARCHAR limit is unenforced)
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text(sql))
+        print("[DB] Widened device.snmp_community to VARCHAR(200) for Fernet encryption.")
+    except Exception as exc:
+        print(f"[DB] Migration warning (snmp_community widen): {exc}")
+
+
+def _ensure_compliance_profile_tables(inspector=None):
+    """
+    Create compliance_profiles table, then add compliance_profile_id FK to device.
+
+    Run order matters: compliance_profiles must exist before the FK column is added.
+    Safe to call on existing databases (checks before altering).
+    """
+    try:
+        from models.compliance_profile import ComplianceProfile
+
+        # Step 1 — create compliance_profiles if absent
+        ComplianceProfile.__table__.create(bind=db.engine, checkfirst=True)
+
+        # Step 2 — add compliance_profile_id column to device if absent
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        if 'device' in inspector.get_table_names():
+            existing = {col['name'] for col in inspector.get_columns('device')}
+            if 'compliance_profile_id' not in existing:
+                db.session.execute(text(
+                    "ALTER TABLE device ADD COLUMN compliance_profile_id INTEGER "
+                    "REFERENCES compliance_profiles(id) ON DELETE SET NULL"
+                ))
+                db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (compliance_profiles): {exc}")
+
+
+def _ensure_device_config_snapshot_table():
+    """Create device_config_snapshots table and its composite index if absent."""
+    try:
+        from models.config_snapshot import DeviceConfigSnapshot
+
+        DeviceConfigSnapshot.__table__.create(bind=db.engine, checkfirst=True)
+
+        # Composite index for history queries (device_id, captured_at DESC).
+        # Created separately so it can be added to existing tables that were
+        # created before this migration ran.
+        db.session.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_device_config_snapshots_device_captured "
+            "ON device_config_snapshots (device_id, captured_at DESC)"
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (device_config_snapshots): {exc}")
+
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -863,9 +1008,11 @@ def ensure_server_health_columns():
     _ensure_restricted_site_tables()
     _ensure_server_threshold_tables()
     ensure_report_export_job_tables()
-    # temporarily disabling this to allow Subnet migrations to run without triggering
-    # SQLAlchemy mapper InvalidRequestErrors for the missing site_id column
-    # _ensure_user_ldap_columns(inspector)
+    _ensure_scope_metadata_columns(inspector)
+    _ensure_user_ldap_columns(inspector)
+    _widen_snmp_community_column()
+    _ensure_compliance_profile_tables()
+    _ensure_device_config_snapshot_table()
 
 
 def ensure_tracking_stabilization_columns():

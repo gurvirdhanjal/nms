@@ -1,882 +1,1161 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_search_bar, ui_table_container, ui_slide_over, ui_badge, ui_empty_state, ui_table_loading %}
 
 {% block title %}Departments - Device Monitoring System{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
+<!-- Specific department styles not covered by global layout -->
 <style>
-    .entity-management-page {
-        padding-inline: var(--e-space-2);
+    .departments-page .page-container {
+        padding: 1.2rem 1rem;
+        max-width: 94rem;
     }
 
-    .entity-management-page .entity-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.56rem;
-        margin-bottom: var(--e-space-3);
+    @media (min-width: 640px) {
+        .departments-page .page-container {
+            padding: 1.45rem 1.4rem;
+        }
     }
 
-    .entity-management-page .entity-title {
-        margin: 0;
-        font-size: 1rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        font-family: var(--t-mono);
-        color: var(--e-text-primary);
+    .departments-page .page-body {
+        gap: 0.9rem;
     }
 
-    .entity-management-page .entity-subtitle {
-        margin: 0.14rem 0 0;
-        color: var(--e-text-muted);
-        font-size: 0.7rem;
+    .departments-header-shell {
+        margin-bottom: 1rem;
     }
 
-    .entity-management-page .entity-card {
-        border-radius: 6px;
-        overflow: hidden;
+    .departments-header {
+        margin-bottom: 0 !important;
+        gap: 0.8rem;
     }
 
-    .entity-management-page .entity-card .card-header {
-        padding: 0.5rem 0.72rem;
-        font-size: 0.66rem;
-        letter-spacing: 0.1em;
+    .departments-header h1 {
+        font-size: 1.7rem;
+        margin-bottom: 0.3rem !important;
     }
 
-    .entity-management-page .entity-table-wrap {
-        max-height: calc(100vh - 280px);
-        overflow: auto;
-    }
-
-    .entity-management-page .entity-table thead th {
-        padding: 0.38rem 0.56rem !important;
-    }
-
-    .entity-management-page .entity-table tbody td {
-        padding: 0.44rem 0.58rem !important;
-        font-size: 0.75rem;
-        vertical-align: middle;
-        line-height: 1.25;
-    }
-
-    .entity-management-page .entity-table tbody td.metric {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-        font-family: var(--t-mono);
-    }
-
-    .entity-management-page .entity-actions {
-        display: inline-flex;
-        gap: 0.28rem;
-        align-items: center;
-        justify-content: flex-end;
-    }
-
-    .entity-management-page .entity-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.34rem;
-        align-items: center;
-        margin-bottom: 0.52rem;
-    }
-
-    .entity-management-page .entity-toolbar .tactical-input,
-    .entity-management-page .entity-toolbar .tactical-select {
-        width: 280px;
-        max-width: 100%;
-        height: 30px;
-        padding: 0 0.58rem;
-        font-size: 0.74rem;
-    }
-
-    .entity-management-page .tactical-btn {
-        font-size: 0.68rem;
-        letter-spacing: 0.08em;
-        padding: 0.34rem 0.7rem;
-        line-height: 1.2;
-    }
-
-    .entity-management-page .tactical-btn-sm {
-        padding: 0.22rem 0.52rem;
-        font-size: 0.62rem;
-    }
-
-    .entity-management-page .entity-actions .tactical-btn {
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        min-width: 32px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-color: var(--e-border);
-    }
-
-    .entity-management-page .entity-actions .tactical-btn i {
-        font-size: 0.76rem;
-    }
-
-    .entity-management-page .entity-count-badge {
-        min-width: 30px;
-        justify-content: center;
-        font-family: var(--t-mono);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .entity-management-page .ip-pill {
-        display: inline-flex;
-        align-items: center;
-        border: 1px solid var(--e-border);
-        border-radius: 4px;
-        background: rgba(148, 163, 184, 0.08);
-        padding: 0.08rem 0.38rem;
-        font-family: var(--t-mono);
-        font-size: 0.69rem;
-        font-variant-numeric: tabular-nums;
-        color: var(--e-text-secondary);
-    }
-
-    .entity-management-page .selection-row {
-        cursor: pointer;
-    }
-
-    .entity-management-page .selection-row.is-selected {
-        background: rgba(23, 203, 181, 0.09) !important;
-        box-shadow: inset 2px 0 0 var(--tactical-accent-dim);
-    }
-
-    .entity-management-page .selection-row.is-locked {
-        opacity: 0.78;
-    }
-
-    .entity-management-page .form-check-input {
-        width: 16px;
-        height: 16px;
-        border-color: var(--e-border);
-        background-color: rgba(148, 163, 184, 0.06);
-    }
-
-    .entity-management-page .entity-empty {
-        text-align: center;
-        color: var(--e-text-muted);
-        padding: 0.96rem 0.56rem;
-        font-size: 0.74rem;
-    }
-
-    .entity-management-page .entity-error {
-        display: none;
-        margin-bottom: 0.58rem;
-        background: var(--s-critical-bg);
-        border: 1px solid var(--s-critical-bd);
-        border-left: 3px solid var(--s-critical);
-        border-radius: 4px;
-        padding: 0.46rem 0.62rem;
-        font-size: 0.72rem;
-        color: #f5a0a8;
-    }
-
-    .entity-management-page .entity-error.visible {
-        display: block;
-    }
-
-    .entity-management-page .form-label {
-        margin-bottom: 0.24rem;
-        font-size: 0.66rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--e-text-muted);
-    }
-
-    .entity-management-page .mb-3 {
-        margin-bottom: 0.56rem !important;
-    }
-
-    .entity-management-page textarea.tactical-input {
-        min-height: 74px;
-        height: auto;
-        padding-top: 0.4rem;
-        padding-bottom: 0.4rem;
+    .departments-header p {
+        font-size: 0.82rem;
         line-height: 1.35;
     }
 
-    .entity-management-page .modal .modal-header {
-        padding: 0.56rem 0.74rem;
+    .departments-toolbar {
+        gap: 0.55rem !important;
+        flex-wrap: wrap;
     }
 
-    .entity-management-page .modal .modal-body {
-        padding: 0.62rem 0.74rem;
+    .departments-secondary-btn,
+    .departments-primary-btn {
+        min-height: 38px;
+        padding: 0.58rem 0.88rem !important;
+        border-radius: 0.7rem !important;
+        font-size: 0.82rem !important;
     }
 
-    .entity-management-page .modal .modal-footer {
-        padding: 0.48rem 0.74rem;
-        gap: 0.34rem;
+    .departments-secondary-btn {
+        background: rgba(16, 19, 27, 0.92);
+        border-color: rgba(148, 163, 184, 0.16) !important;
+        color: #c3cfdb;
     }
 
-    .entity-management-page #assignDevicesModal .modal-dialog {
-        max-width: 1024px;
+    .departments-secondary-btn:hover {
+        background: rgba(30, 41, 59, 0.96) !important;
+        border-color: rgba(148, 163, 184, 0.3) !important;
+        color: #ffffff !important;
     }
 
-    .entity-management-page .assign-context {
+    /* KPI Summary Strip */
+    .enterprise-kpi-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.55rem;
+        margin-bottom: 0.95rem;
+    }
+
+    .enterprise-kpi {
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 5px;
+        padding: 0.66rem 0.82rem;
+    }
+
+    .enterprise-kpi .stat-label {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.35rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .enterprise-kpi .stat-label::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(148, 163, 184, 0.32);
+    }
+
+    .enterprise-kpi .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.08rem;
+        font-weight: 700;
+        color: #e6edf5;
+        line-height: 1.1;
+    }
+    
+    .enterprise-kpi .metric-sub {
+        font-size: 0.67rem;
+        color: #8a97a6;
+        margin-top: 0.24rem;
+        line-height: 1.25;
+    }
+
+    .departments-filter-shell {
+        margin-bottom: 0 !important;
+        gap: 0.65rem !important;
+        padding: 0.62rem 0.78rem;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 0.9rem;
+        background: rgba(16, 19, 27, 0.92);
+        backdrop-filter: blur(10px);
+    }
+
+    .departments-filter-shell input,
+    .departments-filter-shell select {
+        background: rgba(10, 14, 21, 0.88) !important;
+        padding-top: 0.65rem !important;
+        padding-bottom: 0.65rem !important;
+        font-size: 0.83rem !important;
+        border-radius: 0.7rem !important;
+    }
+
+    #departmentsTable thead th {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+        font-size: 0.64rem;
+        background: rgba(15, 18, 26, 0.96);
+    }
+
+    #departmentsTable tbody tr {
+        background: rgba(255, 255, 255, 0.012);
+    }
+
+    #departmentsTable tbody tr:nth-child(even) {
+        background: rgba(255, 255, 255, 0.022);
+    }
+
+    #departmentsTable tbody tr:hover {
+        background: rgba(148, 163, 184, 0.1) !important;
+    }
+
+    #departmentsTable tbody td {
+        padding-top: 0.56rem;
+        padding-bottom: 0.56rem;
+        font-size: 0.82rem;
+    }
+
+    .departments-page .table-action-btn {
+        padding: 0.24rem 0.42rem;
+    }
+
+    /* Assign context grid */
+    .assign-context {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.34rem;
-        margin-bottom: 0.46rem;
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
     }
 
-    .entity-management-page .assign-context-item {
-        border: 1px solid var(--e-border);
+    .assign-context-item {
+        border: 1px solid rgba(148, 163, 184, 0.16);
         border-radius: 4px;
         background: rgba(148, 163, 184, 0.07);
-        padding: 0.24rem 0.4rem;
-        font-size: 0.72rem;
-        color: var(--e-text-secondary);
+        padding: 0.36rem 0.54rem;
+        font-size: 0.76rem;
+        color: #c3cfdb;
     }
 
-    .entity-management-page .assign-context-item strong {
-        color: var(--e-text-muted);
+    .assign-context-item strong {
+        color: #8a97a6;
         text-transform: uppercase;
         letter-spacing: 0.07em;
-        font-size: 0.62rem;
-        margin-right: 0.3rem;
+        font-size: 0.7rem;
+        margin-right: 0.4rem;
     }
 
-    .entity-management-page .form-check-label {
-        font-size: 0.72rem;
-        color: var(--e-text-secondary);
+    .drawer-form .field-label {
+        display: block;
+        margin-bottom: 0.22rem;
+        font-size: 0.69rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #c3cfdb;
     }
 
-    @media (max-width: 768px) {
-        .entity-management-page .assign-context {
-            grid-template-columns: 1fr;
-        }
+    .drawer-form .field-help {
+        margin-top: 0.22rem;
+        font-size: 0.69rem;
+        color: #7c8aa0;
+    }
+
+    #departmentForm {
+        gap: 0.9rem !important;
+    }
+
+    #department-slide-over input,
+    #department-slide-over select,
+    #department-slide-over textarea,
+    #assign-devices-slide-over input {
+        padding-top: 0.58rem !important;
+        padding-bottom: 0.58rem !important;
+        font-size: 0.82rem !important;
+    }
+
+    #department-slide-over .sticky,
+    #assign-devices-slide-over .sticky {
+        padding-top: 0.85rem;
+    }
+
+    #inventoryDevicesTable thead th,
+    #inventoryDevicesTable tbody td {
+        padding-top: 0.46rem;
+        padding-bottom: 0.46rem;
+    }
+
+    #assignDevicesNoSiteAlert,
+    #subnetInfoAlert,
+    #subnetWarningAlert {
+        padding: 0.7rem !important;
+        margin-bottom: 0.75rem !important;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-3 dashboard-enterprise entity-management-page">
-    <div class="entity-header">
-        <div>
-            <h2 class="entity-title"><i class="fas fa-sitemap me-2"></i>Departments</h2>
-            <p class="entity-subtitle">Manage department ownership, site mapping, and device assignment scope.</p>
-        </div>
-        <button class="tactical-btn tactical-btn-primary" onclick="showCreateDepartmentModal()">
-            <i class="fas fa-plus me-2"></i>Create Department
-        </button>
-    </div>
-
-    <div id="page-error" class="entity-error" role="alert"></div>
-
-    <div class="tactical-card entity-card">
-        <div class="card-header">
-            <span><i class="fas fa-list me-2"></i>Departments Inventory</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive entity-table-wrap">
-                <table class="tactical-table table-hover entity-table mb-0" id="departmentsTable">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Description</th>
-                            <th>Site</th>
-                            <th class="text-end">Devices</th>
-                            <th class="text-end">Users</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="6" class="entity-empty">Loading department records...</td>
-                        </tr>
-                    </tbody>
-                </table>
+<div class="page-section departments-page">
+    <div class="page-container">
+        <div class="departments-header-shell">
+        <!-- Modernized Page Header -->
+        <div class="departments-header flex justify-between items-end mb-6">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white mb-2">Departments</h1>
+                <p class="text-sm text-slate-400">Manage departments and their site assignments.</p>
+            </div>
+            
+            <div class="departments-toolbar flex gap-3">
+                <button type="button" onclick="loadDepartments()" class="departments-secondary-btn rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i> Refresh
+                </button>
+                <button type="button" onclick="showCreateDepartmentModal()" class="departments-primary-btn rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">
+                    <i class="fas fa-plus mr-2"></i> Add Department
+                </button>
             </div>
         </div>
-    </div>
-</div>
+        </div>
 
-<!-- Create/Edit Department Modal -->
-<div class="modal fade tactical-modal" id="departmentModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content tactical-card">
-            <div class="modal-header">
-                <h5 class="modal-title" id="departmentModalTitle">Create Department</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <!-- KPI Summary Strip -->
+        <div class="enterprise-kpi-row ui-fade-up">
+            <div class="enterprise-kpi">
+                <div class="stat-label">Total Departments</div>
+                <div class="stat-value" id="kpi-total-depts">{{ departments|length }}</div>
+                <div class="metric-sub">Saved department records</div>
             </div>
-            <div class="modal-body">
-                <form id="departmentForm">
-                    <input type="hidden" id="departmentId">
-                    
-                    <div class="mb-3">
-                        <label for="departmentName" class="form-label">Department Name *</label>
-                        <input type="text" class="tactical-input w-100" id="departmentName" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="description" class="form-label">Description</label>
-                        <textarea class="form-control tactical-input w-100" id="description" rows="3"></textarea>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="siteId" class="form-label">Site (Optional)</label>
-                        <select class="tactical-select w-100" id="siteId">
-                            <option value="">-- No Site --</option>
-                        </select>
-                    </div>
-                </form>
+            <div class="enterprise-kpi">
+                <div class="stat-label">Linked to Site</div>
+                <div class="stat-value" id="kpi-mapped-sites">{{ departments_payload|selectattr('site_id')|list|length }}</div>
+                <div class="metric-sub">Departments with a site</div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="tactical-btn tactical-btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="tactical-btn tactical-btn-primary" onclick="saveDepartment()">Save</button>
+            <div class="enterprise-kpi">
+                <div class="stat-label">Total Devices</div>
+                <div class="stat-value" id="kpi-total-devices">{{ departments_payload|sum(attribute='device_count') }}</div>
+                <div class="metric-sub">Devices assigned to departments</div>
+            </div>
+            <div class="enterprise-kpi">
+                <div class="stat-label">Total Users</div>
+                <div class="stat-value" id="kpi-total-users">{{ departments_payload|sum(attribute='user_count') }}</div>
+                <div class="metric-sub">Users assigned to departments</div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Assign Devices Modal -->
-<div class="modal fade tactical-modal" id="assignDevicesModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content tactical-card">
-            <div class="modal-header">
-                <h5 class="modal-title">Assign Inventory Devices</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="assign-context">
-                    <div class="assign-context-item"><strong>Department</strong><span id="assignDeptName">-</span></div>
-                    <div class="assign-context-item"><strong>Site</strong><span id="assignDeptSite">-</span></div>
-                </div>
-                <div class="alert alert-warning d-none" id="assignDevicesNoSiteAlert">
-                    This department has no site assigned. Devices will not appear under any site until a site is selected.
-                </div>
-                <div class="alert alert-info d-none" id="subnetInfoAlert">
-                    <!-- Subnet filtering info will be displayed here -->
-                </div>
-                <div class="alert alert-warning d-none" id="subnetWarningAlert">
-                    <!-- Subnet warnings will be displayed here -->
-                </div>
-                <div class="entity-toolbar">
-                    <input type="text" class="tactical-input" id="deviceSearch" placeholder="Search devices..." oninput="renderInventoryDevices()">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="showAssignedDevices" onchange="renderInventoryDevices()">
-                        <label class="form-check-label" for="showAssignedDevices">
-                            Show devices assigned to other departments
-                        </label>
+        <div class="page-body">
+            <div class="departments-filter-shell flex flex-col sm:flex-row gap-4 mb-6">
+                <div class="relative flex-grow">
+                    <input type="text" id="deptSearch" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 transition-all duration-200 hover:bg-slate-800/50" placeholder="Search departments..." oninput="filterDepartmentsTable()">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-search text-slate-500"></i>
                     </div>
-                    <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="selectAllAvailableDevices()">Select all available</button>
-                    <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="clearSelectedDevices()">Clear selection</button>
-                    <span class="text-muted small" id="deviceSelectionSummary"></span>
                 </div>
-                <div id="inventoryLoading" class="text-muted small mb-2 d-none">Loading devices...</div>
-                <div class="table-responsive" style="max-height: 50vh; overflow: auto;">
-                    <table class="tactical-table table-hover align-middle mb-0" id="inventoryDevicesTable">
-                        <thead>
+
+                <div class="sm:w-64 shrink-0">
+                    <select id="siteFilter" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" onchange="filterDepartmentsTable()">
+                        <option value="">All Sites</option>
+                        {% for site in sites %}
+                        <option value="{{ site.id }}">{{ site.site_name|trim }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            {# Table Container Macro #}
+            {% call ui_table_container() %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50 {% if not departments %}hidden{% endif %}" id="departmentsTable">
+                        <thead class="bg-slate-900/50">
                             <tr>
-                                <th style="width: 40px;"></th>
-                                <th>Name</th>
-                                <th>IP</th>
-                                <th>Type</th>
-                                <th>Department</th>
-                                <th>Site</th>
-                                <th>Status</th>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider sm:pl-6">Name</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Description</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Site</th>
+                                <th scope="col" class="px-3 py-3.5 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Assets</th>
+                                <th scope="col" class="px-3 py-3.5 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Personnel</th>
+                                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">No devices loaded</td>
+                        {{ ui_table_loading(colspan=6, rows=3) }}
+                        <tbody class="divide-y divide-slate-700/50 bg-slate-800/20" id="departmentsTableBody">
+                            {% for department in departments %}
+                            {% set department_payload = departments_payload[loop.index0] %}
+                            <tr class="hover:bg-slate-700/30 transition-colors group">
+                                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">
+                                    <a href="/departments/{{ department.id }}" class="hover:text-blue-400 transition-colors">{{ department.name|trim }}</a>
+                                </td>
+                                <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+                                    {{ (department.description or '-')|trim }}
+                                </td>
+                                <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-slate-300">
+                                    {% if department.site %}
+                                    {{ department.site.site_name|trim }}
+                                    {% else %}
+                                    {{ ui_badge('UNMAPPED', 'warning') }}
+                                    {% endif %}
+                                </td>
+                                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
+                                    {{ department_payload.device_count }}
+                                </td>
+                                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
+                                    {{ department_payload.user_count }}
+                                </td>
+                                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                                    <div class="flex items-center justify-end gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                        <button onclick="window.location.href='/departments/{{ department.id }}'" class="table-action-btn" title="Open overview">
+                                            <i class="fas fa-chart-line"></i>
+                                        </button>
+                                        <button onclick="showAssignDevicesModal({{ department.id }})" class="table-action-btn" title="Assign devices">
+                                            <i class="fas fa-layer-group"></i>
+                                        </button>
+                                        <button onclick="editDepartment({{ department.id }})" class="table-action-btn" title="Edit department">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button onclick='deleteDepartment({{ department.id }}, {{ department.name|trim|tojson }})' class="table-action-btn text-red-400" title="Delete department">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
+                            {% endfor %}
                         </tbody>
                     </table>
+                    
+                    <div id="departmentsEmptyState" class="{% if departments %}hidden{% endif %}">
+                        {{ ui_empty_state('No Departments Found', 'No departments match the current filter. Add a department to get started.') }}
+                    </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="tactical-btn tactical-btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="tactical-btn tactical-btn-primary" onclick="assignSelectedDevicesToDepartment()">Assign Selected</button>
-            </div>
+            {% endcall %}
         </div>
     </div>
 </div>
 
+{# Create/Edit Department Slide Over #}
+{% call ui_slide_over('department-slide-over', 'Department details') %}
+    <form id="departmentForm" class="drawer-form flex min-h-full flex-col gap-4" onsubmit="saveDepartment(event)">
+        <input type="hidden" id="departmentId">
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
+            <div>
+                <label for="departmentName" class="field-label">Department Name *</label>
+                <input type="text" id="departmentName" required class="block w-full rounded-md border-0 bg-slate-900/50 py-2 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+            </div>
+
+            <div>
+                <label for="siteId" class="field-label">Site</label>
+                <select id="siteId" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                    <option value="">-- No Site --</option>
+                    {% for site in sites %}
+                    <option value="{{ site.id }}">{{ site.site_name|trim }}</option>
+                    {% endfor %}
+                </select>
+                <p class="field-help">Leave empty when the department is not tied to one site.</p>
+            </div>
+
+            <div class="sm:col-span-2">
+                <label for="description" class="field-label">Description</label>
+                <textarea id="description" rows="3" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6"></textarea>
+            </div>
+        </div>
+
+        <div class="sticky bottom-0 mt-auto -mx-6 border-t border-slate-700/50 bg-slate-800/95 px-6 pt-4 pb-1 backdrop-blur-sm sm:-mx-8 sm:px-8">
+            <div class="flex justify-end gap-x-3">
+                <button type="button" onclick="window.UI.SlideOver.close('department-slide-over')" class="rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">Cancel</button>
+                <button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">Save Department</button>
+            </div>
+        </div>
+    </form>
+{% endcall %}
+
+{# Assign Devices Slide Over #}
+{% call ui_slide_over('assign-devices-slide-over', 'Assign devices') %}
+    <div class="flex min-h-full flex-col gap-4">
+        <div class="assign-context mb-4">
+            <div class="assign-context-item">
+                <strong>Department</strong>
+                <span id="assignDeptName" class="text-blue-400 font-mono font-bold">-</span>
+            </div>
+            <div class="assign-context-item">
+                <strong>Site_Reference</strong>
+                <span id="assignDeptSite" class="text-slate-300 font-mono">-</span>
+            </div>
+        </div>
+        
+        <div id="assignDevicesNoSiteAlert" class="hidden rounded-md bg-amber-500/10 p-4 mb-4 ring-1 ring-amber-500/20">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-amber-400"></i>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-amber-400">No site selected</h3>
+                    <div class="mt-2 text-sm text-amber-200/80">
+                        <p>This department is not linked to a site yet. Devices can still be assigned, but site-based views will remain empty.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="subnetInfoAlert" class="hidden rounded-md bg-blue-500/10 p-4 mb-4 ring-1 ring-blue-500/20">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-info-circle text-blue-400"></i>
+                </div>
+                <div class="ml-3 text-sm text-blue-200/80 mt-0.5" id="subnetInfoAlertContent">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+        </div>
+
+        <div id="subnetWarningAlert" class="hidden rounded-md bg-amber-500/10 p-4 mb-4 ring-1 ring-amber-500/20">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-amber-400"></i>
+                </div>
+                <div class="ml-3 text-sm text-amber-200/80 mt-0.5" id="subnetWarningAlertContent">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="mb-4">
+            <div class="relative w-full">
+                <input type="text" id="deviceSearch" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" placeholder="Search devices..." oninput="renderInventoryDevices()">
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <i class="fas fa-search text-slate-500"></i>
+                </div>
+            </div>
+            
+            <div class="mt-3 flex items-center gap-4">
+                <div class="flex items-center">
+                    <input id="showAssignedDevices" type="checkbox" class="h-4 w-4 rounded border-slate-700 bg-slate-900/50 text-blue-500 focus:ring-blue-600 focus:ring-offset-slate-800" onchange="renderInventoryDevices()">
+                    <label for="showAssignedDevices" class="ml-2 block text-sm text-slate-300">Show devices already assigned elsewhere</label>
+                </div>
+            </div>
+            
+            <div class="mt-4 flex gap-2">
+                <button type="button" class="table-action-btn bg-slate-700 text-sm py-1.5" onclick="selectAllAvailableDevices()">Select Available</button>
+                <button type="button" class="table-action-btn bg-slate-700 text-sm py-1.5" onclick="clearSelectedDevices()">Clear</button>
+                <span class="ml-auto text-xs text-slate-400 self-center" id="deviceSelectionSummary"></span>
+            </div>
+        </div>
+        
+        <div class="flex-1 min-h-0 overflow-y-auto border border-slate-700/50 rounded-md bg-slate-900/30">
+            <table class="min-w-full divide-y divide-slate-700/50" id="inventoryDevicesTable">
+                <thead class="bg-slate-800/80 sticky top-0 z-10">
+                    <tr>
+                        <th scope="col" class="py-2 pl-4 pr-3 text-left w-10"></th>
+                        <th scope="col" class="py-2 px-3 text-left text-xs font-semibold text-slate-300">Identity / Subnet Details</th>
+                        <th scope="col" class="py-2 px-3 text-right text-xs font-semibold text-slate-300">Routing State</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 bg-transparent" id="inventoryDevicesBody">
+                    <tr>
+                        <td colspan="3" class="text-center text-slate-500 text-sm py-8 italic font-mono">Awaiting hardware inventory synchronization...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="sticky bottom-0 mt-1 -mx-6 border-t border-slate-700/50 bg-slate-800/95 px-6 pt-4 pb-1 backdrop-blur-sm sm:-mx-8 sm:px-8">
+            <div class="flex justify-end gap-x-3">
+                <button type="button" onclick="window.UI.SlideOver.close('assign-devices-slide-over')" class="rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">Cancel</button>
+                <button type="button" onclick="assignSelectedDevicesToDepartment()" class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">Save Assignments</button>
+            </div>
+        </div>
+    </div>
+{% endcall %}
+
+{% endblock %}
+
+{% block extra_js %}
 <script>
-let departmentsData = [];
-let sitesData = [];
-let inventoryDevices = [];
-let inventoryLoaded = false;
-let selectedDeviceIds = new Set();
-let currentAssignDeptId = null;
-let departmentModal;
-let assignDevicesModal;
+    let departmentsData = [];
+    let sitesData = [];
+    let inventoryDevices = [];
+    let inventoryLoaded = false;
+    let selectedDeviceIds = new Set();
+    let currentAssignDeptId = null;
 
-function setPageError(message) {
-    const el = document.getElementById('page-error');
-    if (!el) return;
-    if (!message) {
-        el.textContent = '';
-        el.classList.remove('visible');
-        return;
-    }
-    el.textContent = message;
-    el.classList.add('visible');
-}
-
-function normalizeHttpError(response, payload, fallbackMessage) {
-    const payloadMessage = payload && (
-        payload.message ||
-        payload.error ||
-        (payload.error && payload.error.message)
-    );
-    return payloadMessage || `${fallbackMessage} (${response.status})`;
-}
-
-async function requestJson(url, options = {}, fallbackMessage = 'Request failed') {
-    const config = Object.assign({ credentials: 'same-origin' }, options);
-    const response = await fetch(url, config);
-    const contentType = (response.headers.get('content-type') || '').toLowerCase();
-
-    let payload;
-    if (contentType.includes('application/json')) {
-        payload = await response.json();
-    } else {
-        const text = await response.text();
-        const snippet = (text || '').slice(0, 140).replace(/\s+/g, ' ').trim();
-        throw new Error(`${fallbackMessage}: ${snippet || `HTTP ${response.status}`}`);
+    function cleanText(value) {
+        return typeof value === 'string' ? value.trim() : value;
     }
 
-    if (!response.ok) {
-        const error = new Error(normalizeHttpError(response, payload, fallbackMessage));
-        error.status = response.status;
-        error.payload = payload;
-        throw error;
+    function normalizeSiteRecord(site) {
+        return {
+            ...site,
+            site_name: cleanText(site.site_name) || '',
+            site_code: cleanText(site.site_code) || null
+        };
     }
-    if (payload && typeof payload === 'object' && payload.status && !['ok', 'success'].includes(payload.status)) {
-        const error = new Error(payload.message || payload.error || fallbackMessage);
-        error.status = response.status;
-        error.payload = payload;
-        throw error;
+
+    function normalizeDepartmentRecord(department) {
+        return {
+            ...department,
+            name: cleanText(department.name) || '',
+            description: cleanText(department.description) || null
+        };
     }
-    return payload;
-}
 
-function typeToAlertClass(type) {
-    if (type === 'danger') return 'danger';
-    if (type === 'warning') return 'warning';
-    if (type === 'success') return 'success';
-    return 'info';
-}
+    // Toast Notification System
+    function showAlert(message, type = 'info') {
+        const bgColors = {
+            'success': 'bg-emerald-500',
+            'danger': 'bg-red-500',
+            'warning': 'bg-amber-500',
+            'info': 'bg-blue-500'
+        };
+        const bgColor = bgColors[type] || bgColors['info'];
+        
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.className = 'fixed top-4 right-4 z-[60] flex flex-col gap-2 pointer-events-none';
+            document.body.appendChild(container);
+        }
 
-document.addEventListener('DOMContentLoaded', function() {
-    departmentModal = new bootstrap.Modal(document.getElementById('departmentModal'));
-    assignDevicesModal = new bootstrap.Modal(document.getElementById('assignDevicesModal'));
-    loadSites();
-    loadDepartments();
-    const assignModalEl = document.getElementById('assignDevicesModal');
-    assignModalEl.addEventListener('hidden.bs.modal', () => {
+        const toast = document.createElement('div');
+        toast.className = `max-w-sm w-full shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 translate-y-[-100%] opacity-0 ${bgColor} text-white px-4 py-3 flex items-center justify-between`;
+        toast.innerHTML = `
+            <div class="text-sm font-medium truncate">${escapeHtml(message)}</div>
+            <button type="button" class="ml-4 flex-shrink-0 focus:outline-none" onclick="this.parentElement.remove()">
+                <i class="fas fa-times opacity-80 hover:opacity-100"></i>
+            </button>
+        `;
+        
+        container.prepend(toast);
+        
+        // Trigger animate in
+        requestAnimationFrame(() => {
+            toast.classList.remove('translate-y-[-100%]', 'opacity-0');
+        });
+
+        // Auto remove
+        setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 4500);
+    }
+
+    function normalizeHttpError(response, payload, fallbackMessage) {
+        const payloadMessage = payload && (
+            payload.message ||
+            payload.error ||
+            (payload.error && payload.error.message)
+        );
+        return payloadMessage || `${fallbackMessage} (${response.status})`;
+    }
+
+    async function requestJson(url, options = {}, fallbackMessage = 'Request failed') {
+        const config = Object.assign({ credentials: 'same-origin' }, options);
+        const response = await fetch(url, config);
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+        let payload;
+        if (contentType.includes('application/json')) {
+            payload = await response.json();
+        } else {
+            const text = await response.text();
+            const snippet = (text || '').slice(0, 140).replace(/\s+/g, ' ').trim();
+            throw new Error(`${fallbackMessage}: ${snippet || `HTTP ${response.status}`}`);
+        }
+
+        if (!response.ok) {
+            const error = new Error(normalizeHttpError(response, payload, fallbackMessage));
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+        if (payload && typeof payload === 'object' && payload.status && !['ok', 'success'].includes(payload.status)) {
+            const error = new Error(payload.message || payload.error || fallbackMessage);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+        return payload;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        sitesData = ({{ sites_payload|tojson }} || []).map(normalizeSiteRecord);
+        departmentsData = ({{ departments_payload|tojson }} || []).map(normalizeDepartmentRecord);
+        populateSiteDropdown();
+        renderDepartmentsTable();
+
+        loadSites();
+        loadDepartments();
+
+        const departmentNameInput = document.getElementById('departmentName');
+        if (departmentNameInput) {
+            departmentNameInput.addEventListener('input', () => departmentNameInput.setCustomValidity(''));
+        }
+        
+        // Setup Search Debouncer
+        let _debounceTimer;
+        const searchInput = document.getElementById('deptSearch');
+        if(searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(_debounceTimer);
+                _debounceTimer = setTimeout(filterDepartmentsTable, 300);
+            });
+        }
+    });
+
+    async function loadSites() {
+        try {
+            const result = await requestJson('/api/sites', {}, 'Failed to load sites');
+            sitesData = (result.data || []).map(normalizeSiteRecord);
+            populateSiteDropdown();
+            if (departmentsData.length) {
+                renderDepartmentsTable();
+            }
+        } catch (error) {
+            showAlert(`Error loading sites: ${error.message}`, 'danger');
+        }
+    }
+
+    function populateSiteDropdown() {
+        const select = document.getElementById('siteId');
+        const filterSelect = document.getElementById('siteFilter');
+
+        const defaultOption = '<option value="">-- No Site --</option>';
+        const filterDefault = '<option value="">All Sites</option>';
+
+        if(select) select.innerHTML = defaultOption;
+        if (filterSelect) filterSelect.innerHTML = filterDefault;
+
+        sitesData.forEach(site => {
+            const option = document.createElement('option');
+            option.value = site.id;
+            option.textContent = site.site_name;
+            if(select) select.appendChild(option);
+
+            if (filterSelect) {
+                const fOption = option.cloneNode(true);
+                filterSelect.appendChild(fOption);
+            }
+        });
+    }
+
+    async function loadDepartments() {
+        const table = document.getElementById('departmentsTable');
+        const skeleton = document.getElementById('table-skeleton');
+        const shouldShowSkeleton = !departmentsData.length;
+        
+        if (shouldShowSkeleton && table) table.classList.add('hidden');
+        if (shouldShowSkeleton && skeleton) skeleton.classList.remove('hidden');
+        
+        try {
+            const result = await requestJson('/api/departments', {}, 'Failed to load departments');
+            departmentsData = (result.data || []).map(normalizeDepartmentRecord);
+            updateDepartmentKpis();
+            renderDepartmentsTable();
+        } catch (error) {
+            showAlert(`Error loading departments: ${error.message}`, 'danger');
+            if (!departmentsData.length) {
+                departmentsData = [];
+                updateDepartmentKpis();
+                renderDepartmentsTable();
+            }
+        } finally {
+            if (skeleton) skeleton.classList.add('hidden');
+        }
+    }
+
+    function filterDepartmentsTable() {
+        const query = document.getElementById('deptSearch').value.toLowerCase();
+        const siteId = document.getElementById('siteFilter').value;
+
+        const filteredDepartments = departmentsData.filter(dept => {
+            const matchesSearch = dept.name.toLowerCase().includes(query) || (dept.description && dept.description.toLowerCase().includes(query));
+            const matchesSite = !siteId || String(dept.site_id) === siteId;
+            return matchesSearch && matchesSite;
+        });
+
+        renderDepartmentsTable(filteredDepartments);
+    }
+
+    // Common template string helper for badging logic matching macro
+    function createBadgeHTML(text, type='neutral') {
+        const styleMap = {
+            'success': 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
+            'danger': 'bg-red-500/10 text-red-400 ring-red-500/20',
+            'warning': 'bg-amber-500/10 text-amber-400 ring-amber-500/20',
+            'info': 'bg-blue-500/10 text-blue-400 ring-blue-500/20',
+            'neutral': 'bg-slate-500/10 text-slate-400 ring-slate-500/20'
+        };
+        const s = styleMap[type] || styleMap['neutral'];
+        return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${s}">${escapeHtml(text)}</span>`;
+    }
+
+    function renderDepartmentsTable(data = departmentsData) {
+        const tbody = document.getElementById('departmentsTableBody');
+        const table = document.getElementById('departmentsTable');
+        const emptyState = document.getElementById('departmentsEmptyState');
+        
+        if (!tbody || !table || !emptyState) return;
+        
+        tbody.innerHTML = '';
+        updateDepartmentKpis();
+
+        if (!data.length) {
+            table.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        table.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+
+        data.forEach(dept => {
+            const site = sitesData.find(s => s.id === dept.site_id);
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-slate-700/30 transition-colors group';
+            
+            row.innerHTML = `
+                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">
+                    <a href="/departments/${dept.id}" class="hover:text-blue-400 transition-colors">${escapeHtml(dept.name)}</a>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+                    ${escapeHtml(dept.description || '-')}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-slate-300">
+                    ${site ? escapeHtml(site.site_name) : createBadgeHTML('UNMAPPED', 'warning')}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
+                    ${dept.device_count || 0}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
+                    ${dept.user_count || 0}
+                </td>
+                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    <div class="flex items-center justify-end gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                        <button onclick="window.location.href='/departments/${dept.id}'" class="table-action-btn" title="Open overview">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <button onclick="showAssignDevicesModal(${dept.id})" class="table-action-btn" title="Assign devices">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                        <button onclick="editDepartment(${dept.id})" class="table-action-btn" title="Edit department">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick='deleteDepartment(${dept.id}, ${JSON.stringify(dept.name || "")})' class="table-action-btn text-red-400" title="Delete department">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+    }
+
+    function updateDepartmentKpis(data = departmentsData) {
+        const totalDepartments = data.length;
+        const mappedDepartments = data.filter(dept => dept.site_id).length;
+        const totalDevices = data.reduce((sum, dept) => sum + Number(dept.device_count || 0), 0);
+        const totalUsers = data.reduce((sum, dept) => sum + Number(dept.user_count || 0), 0);
+
+        const kTotal = document.getElementById('kpi-total-depts');
+        const kSites = document.getElementById('kpi-mapped-sites');
+        const kDevices = document.getElementById('kpi-total-devices');
+        const kUsers = document.getElementById('kpi-total-users');
+
+        if (kTotal) kTotal.textContent = totalDepartments;
+        if (kSites) kSites.textContent = mappedDepartments;
+        if (kDevices) kDevices.textContent = totalDevices;
+        if (kUsers) kUsers.textContent = totalUsers;
+    }
+
+    async function loadFilteredInventoryDevices(deptId) {
+        const tbody = document.getElementById('inventoryDevicesBody');
+        const subnetInfoAlert = document.getElementById('subnetInfoAlert');
+        const subnetWarningAlert = document.getElementById('subnetWarningAlert');
+
+        if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 text-sm py-4 animate-pulse">Scanning logical subnets...</td></tr>';
+        
+        // Hide alerts initially
+        if (subnetInfoAlert) subnetInfoAlert.classList.add('hidden');
+        if (subnetWarningAlert) subnetWarningAlert.classList.add('hidden');
+
+        try {
+            const result = await requestJson(`/api/departments/${deptId}/assignable-devices`, {}, 'Failed to load assignable devices');
+            inventoryDevices = result.data || [];
+            inventoryLoaded = true;
+
+            // Show subnet information
+            if (result.site_subnets && result.site_subnets.length > 0) {
+                if (subnetInfoAlert) {
+                    const subnetList = result.site_subnets.join(', ');
+                    document.getElementById('subnetInfoAlertContent').innerHTML = `Available within site scope: <strong class="text-blue-100">${escapeHtml(subnetList)}</strong><br>(${result.total_assignable} matching devices)`;
+                    subnetInfoAlert.classList.remove('hidden');
+                }
+            }
+
+            // Show warning if present
+            if (result.warning) {
+                if (subnetWarningAlert) {
+                    document.getElementById('subnetWarningAlertContent').innerHTML = escapeHtml(result.warning);
+                    subnetWarningAlert.classList.remove('hidden');
+                }
+            }
+        } catch (error) {
+            showAlert('Error mapping topology: ' + error.message, 'danger');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="text-center text-red-400 text-sm py-4">Subnet synchronization failed</td></tr>';
+        }
+    }
+
+    function getFilteredInventoryDevices() {
+        const search = (document.getElementById('deviceSearch').value || '').toLowerCase();
+        const showAssigned = document.getElementById('showAssignedDevices').checked;
+
+        return inventoryDevices.filter(device => {
+            const haystack = [
+                device.device_name || '',
+                device.device_ip || '',
+                device.hostname || '',
+                device.macaddress || '',
+                device.device_type || '',
+                device.manufacturer || ''
+            ].join(' ').toLowerCase();
+
+            if (search && !haystack.includes(search)) {
+                return false;
+            }
+
+            if (!showAssigned) {
+                return !device.department_id || device.department_id === currentAssignDeptId;
+            }
+
+            return true;
+        });
+    }
+
+    function renderInventoryDevices() {
+        const tbody = document.getElementById('inventoryDevicesBody');
+        if (!tbody) return;
+
+        if (!inventoryLoaded) {
+            return;
+        }
+
+        const deptMap = new Map(departmentsData.map(d => [d.id, d.name]));
+        const siteMap = new Map(sitesData.map(s => [s.id, s.site_name]));
+        const devices = getFilteredInventoryDevices();
+
+        tbody.innerHTML = '';
+
+        if (!devices.length) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 text-sm py-8"><i class="fas fa-ban mb-2 text-xl block opacity-50"></i>No compatible hardware identified in logical scope.</td></tr>';
+            updateSelectionSummary(0);
+            return;
+        }
+
+        devices.forEach(device => {
+            const assignedDeptId = device.department_id;
+            const assignedDeptName = assignedDeptId ? (deptMap.get(assignedDeptId) || `ID_REF_${assignedDeptId}`) : '-';
+            const assignedSiteName = device.site_id ? (siteMap.get(device.site_id) || `SITE_REF_${device.site_id}`) : '-';
+            const isCurrentDept = assignedDeptId === currentAssignDeptId;
+            const isOtherDept = assignedDeptId && assignedDeptId !== currentAssignDeptId;
+            const isSelectable = !assignedDeptId;
+            const isChecked = selectedDeviceIds.has(device.device_id);
+
+            let statusBadge;
+            if (isCurrentDept) {
+                statusBadge = createBadgeHTML('LOCKED: CURRENT ORG', 'success');
+            } else if (isOtherDept) {
+                statusBadge = createBadgeHTML(`EXT ORG: ${assignedDeptName}`, 'neutral');
+            } else {
+                statusBadge = createBadgeHTML('AVAILABLE', 'info');
+            }
+
+            const row = document.createElement('tr');
+            row.className = `group hover:bg-slate-700/30 transition-colors cursor-pointer ${isChecked ? 'bg-blue-500/10' : ''} ${!isSelectable ? 'opacity-60 cursor-not-allowed' : ''}`;
+            
+            if(isSelectable) {
+                row.onclick = function(e) {
+                    if (e.target.tagName === 'INPUT') return;
+                    const cb = this.querySelector('input[type="checkbox"]');
+                    cb.checked = !cb.checked;
+                    toggleDeviceSelection(device.device_id, cb.checked);
+                };
+            }
+
+            row.innerHTML = `
+                <td class="py-3 pl-4 pr-3 w-10">
+                    <input type="checkbox" class="h-4 w-4 rounded border-slate-700 bg-slate-900 ring-offset-slate-800 text-blue-500 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-50" 
+                        ${isSelectable ? '' : 'disabled'}
+                        ${isChecked ? 'checked' : ''}
+                        onchange="toggleDeviceSelection(${device.device_id}, this.checked)">
+                </td>
+                <td class="py-3 px-3">
+                    <div class="text-sm font-medium text-slate-200">${escapeHtml(device.device_name || 'UNNAMED_ASSET')}</div>
+                    <div class="flex gap-2 text-xs text-slate-500 mt-1 font-mono">
+                        <span>${escapeHtml(device.device_ip || '0.0.0.0')}</span>
+                        <span class="text-slate-600">&bull;</span>
+                        <span class="uppercase">${escapeHtml(device.device_type || '-')}</span>
+                        <span class="text-slate-600">&bull;</span>
+                        <span class="font-sans text-slate-400">EDGE_NODE: ${escapeHtml(assignedSiteName)}</span>
+                    </div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                    ${statusBadge}
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        updateSelectionSummary(devices.length);
+    }
+
+    function updateSelectionSummary(visibleCount) {
+        const summary = document.getElementById('deviceSelectionSummary');
+        if (summary) {
+            summary.textContent = `${selectedDeviceIds.size} mapped / ${visibleCount} scannable`;
+        }
+    }
+
+    function toggleDeviceSelection(deviceId, checked) {
+        if (checked) {
+            selectedDeviceIds.add(deviceId);
+        } else {
+            selectedDeviceIds.delete(deviceId);
+        }
+        
+        clearTimeout(window._renderTimeout);
+        window._renderTimeout = setTimeout(() => {
+            renderInventoryDevices();
+        }, 50);
+    }
+
+    function selectAllAvailableDevices() {
+        const devices = getFilteredInventoryDevices();
+        devices.forEach(device => {
+            if (!device.department_id) {
+                selectedDeviceIds.add(device.device_id);
+            }
+        });
+        renderInventoryDevices();
+    }
+
+    function clearSelectedDevices() {
         selectedDeviceIds.clear();
-        currentAssignDeptId = null;
-        inventoryLoaded = false; // Reset to reload filtered devices next time
+        renderInventoryDevices();
+    }
+
+    async function showAssignDevicesModal(deptId) {
+        const dept = departmentsData.find(d => d.id === deptId);
+        if (!dept) return;
+
+        currentAssignDeptId = deptId;
+        selectedDeviceIds.clear();
+        
+        document.getElementById('assignDeptName').textContent = dept.name;
+        const site = sitesData.find(s => s.id === dept.site_id);
+        document.getElementById('assignDeptSite').textContent = site ? site.site_name : 'No site assigned';
+
+        const noSiteAlert = document.getElementById('assignDevicesNoSiteAlert');
+        if (dept.site_id) {
+            noSiteAlert.classList.add('hidden');
+        } else {
+            noSiteAlert.classList.remove('hidden');
+        }
+
+        // Reset search states when opening 
         document.getElementById('deviceSearch').value = '';
         document.getElementById('showAssignedDevices').checked = false;
+        inventoryLoaded = false;
         renderInventoryDevices();
-    });
-});
 
-async function loadSites() {
-    try {
-        const result = await requestJson('/api/sites', {}, 'Failed to load sites');
-        sitesData = result.data || [];
-        populateSiteDropdown();
-    } catch (error) {
-        showAlert(`Error loading sites: ${error.message}`, 'danger');
-    }
-}
-
-function populateSiteDropdown() {
-    const select = document.getElementById('siteId');
-    select.innerHTML = '<option value="">-- No Site --</option>';
-    
-    sitesData.forEach(site => {
-        const option = document.createElement('option');
-        option.value = site.id;
-        option.textContent = site.site_name;
-        select.appendChild(option);
-    });
-}
-
-async function loadDepartments() {
-    try {
-        const result = await requestJson('/api/departments', {}, 'Failed to load departments');
-        departmentsData = result.data || [];
-        setPageError('');
-        renderDepartmentsTable();
-    } catch (error) {
-        setPageError(`Unable to load departments. ${error.message}`);
-        showAlert(`Error loading departments: ${error.message}`, 'danger');
-        departmentsData = [];
-        renderDepartmentsTable();
-    }
-}
-
-function renderDepartmentsTable() {
-    const tbody = document.querySelector('#departmentsTable tbody');
-    tbody.innerHTML = '';
-
-    if (!departmentsData.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="entity-empty">No departments available.</td></tr>';
-        return;
-    }
-    
-    departmentsData.forEach(dept => {
-        const site = sitesData.find(s => s.id === dept.site_id);
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><strong>${escapeHtml(dept.name)}</strong></td>
-            <td>${escapeHtml(dept.description || '-')}</td>
-            <td>${site ? escapeHtml(site.site_name) : '-'}</td>
-            <td class="metric"><span class="tactical-badge tactical-badge-info entity-count-badge">${dept.device_count || 0}</span></td>
-            <td class="metric"><span class="tactical-badge tactical-badge-secondary entity-count-badge">${dept.user_count || 0}</span></td>
-            <td class="text-end">
-                <div class="entity-actions">
-                <button class="tactical-btn tactical-btn-success tactical-btn-sm" onclick="showAssignDevicesModal(${dept.id})" title="Assign Devices">
-                    <i class="fas fa-layer-group"></i>
-                </button>
-                <button class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="editDepartment(${dept.id})" title="Edit department">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="tactical-btn tactical-btn-danger tactical-btn-sm" onclick="deleteDepartment(${dept.id}, '${escapeHtml(dept.name)}')" title="Delete department">
-                    <i class="fas fa-trash"></i>
-                </button>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-async function loadInventoryDevices() {
-    if (inventoryLoaded) return;
-    const loading = document.getElementById('inventoryLoading');
-    loading.classList.remove('d-none');
-    try {
-        const result = await requestJson('/api/devices', {}, 'Failed to load inventory devices');
-        inventoryDevices = Array.isArray(result) ? result : (result.devices || []);
-        inventoryLoaded = true;
-    } catch (error) {
-        showAlert('Error loading inventory devices: ' + error.message, 'danger');
-    } finally {
-        loading.classList.add('d-none');
-    }
-}
-
-async function loadFilteredInventoryDevices(deptId) {
-    const loading = document.getElementById('inventoryLoading');
-    const subnetInfoAlert = document.getElementById('subnetInfoAlert');
-    const subnetWarningAlert = document.getElementById('subnetWarningAlert');
-    
-    loading.classList.remove('d-none');
-    
-    // Hide alerts initially
-    if (subnetInfoAlert) subnetInfoAlert.classList.add('d-none');
-    if (subnetWarningAlert) subnetWarningAlert.classList.add('d-none');
-    
-    try {
-        const result = await requestJson(`/api/departments/${deptId}/assignable-devices`, {}, 'Failed to load assignable devices');
-        inventoryDevices = result.data || [];
-        inventoryLoaded = true;
+        window.UI.SlideOver.open('assign-devices-slide-over');
         
-        // Show subnet information
-        if (result.site_subnets && result.site_subnets.length > 0) {
-            if (subnetInfoAlert) {
-                const subnetList = result.site_subnets.join(', ');
-                subnetInfoAlert.innerHTML = `<i class="fas fa-info-circle me-2"></i>Showing devices from subnets: <strong>${escapeHtml(subnetList)}</strong> (${result.total_assignable} of ${result.total_filtered} devices match)`;
-                subnetInfoAlert.classList.remove('d-none');
-            }
-        }
-        
-        // Show warning if present
-        if (result.warning) {
-            if (subnetWarningAlert) {
-                subnetWarningAlert.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${escapeHtml(result.warning)}`;
-                subnetWarningAlert.classList.remove('d-none');
-            }
-        }
-    } catch (error) {
-        showAlert('Error loading filtered devices: ' + error.message, 'danger');
-    } finally {
-        loading.classList.add('d-none');
+        // Load filtered devices from new endpoint
+        await loadFilteredInventoryDevices(deptId);
+        renderInventoryDevices();
     }
-}
 
-function getFilteredInventoryDevices() {
-    const search = (document.getElementById('deviceSearch').value || '').toLowerCase();
-    const showAssigned = document.getElementById('showAssignedDevices').checked;
+    async function assignSelectedDevicesToDepartment() {
+        if (!currentAssignDeptId) return;
+        const deviceIds = Array.from(selectedDeviceIds);
+        if (!deviceIds.length) {
+            showAlert('Select at least one available device to assign.', 'warning');
+            return;
+        }
 
-    return inventoryDevices.filter(device => {
-        const haystack = [
-            device.device_name || '',
-            device.device_ip || '',
-            device.hostname || '',
-            device.macaddress || '',
-            device.device_type || '',
-            device.manufacturer || ''
-        ].join(' ').toLowerCase();
+        try {
+            const result = await requestJson(`/api/departments/${currentAssignDeptId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: deviceIds })
+            }, 'Failed to assign devices');
 
-        if (search && !haystack.includes(search)) {
+            showAlert(result.message || 'Devices assigned successfully.', 'success');
+            window.UI.SlideOver.close('assign-devices-slide-over');
+            
+            // Reload page data to reflect changes
+            loadDepartments();
+        } catch (error) {
+            showAlert('Error assigning devices: ' + error.message, 'danger');
+        }
+    }
+
+    function showCreateDepartmentModal() {
+        clearDepartmentFieldErrors();
+        document.querySelector('#department-slide-over h2').textContent = 'Add department';
+        document.getElementById('departmentForm').reset();
+        document.getElementById('departmentId').value = '';
+        window.UI.SlideOver.open('department-slide-over');
+    }
+
+    function editDepartment(deptId) {
+        const dept = departmentsData.find(d => d.id === deptId);
+        if (!dept) return;
+
+        clearDepartmentFieldErrors();
+        document.querySelector('#department-slide-over h2').textContent = 'Edit department';
+        document.getElementById('departmentId').value = dept.id;
+        document.getElementById('departmentName').value = dept.name;
+        document.getElementById('description').value = dept.description || '';
+        document.getElementById('siteId').value = dept.site_id || '';
+
+        window.UI.SlideOver.open('department-slide-over');
+    }
+
+    function clearDepartmentFieldErrors() {
+        const departmentName = document.getElementById('departmentName');
+        if (departmentName) {
+            departmentName.setCustomValidity('');
+        }
+    }
+
+    function normalizeDepartmentFormData() {
+        const departmentId = document.getElementById('departmentId').value;
+        const departmentNameEl = document.getElementById('departmentName');
+        const descriptionEl = document.getElementById('description');
+
+        departmentNameEl.value = departmentNameEl.value.trim();
+        descriptionEl.value = descriptionEl.value.trim();
+
+        return {
+            departmentId,
+            data: {
+                name: departmentNameEl.value,
+                description: descriptionEl.value || null,
+                site_id: document.getElementById('siteId').value || null
+            }
+        };
+    }
+
+    function validateDepartmentForm(departmentId, data) {
+        clearDepartmentFieldErrors();
+
+        const departmentName = document.getElementById('departmentName');
+        const currentId = String(departmentId || '');
+        const duplicateName = departmentsData.find((dept) => {
+            return String(dept.id) !== currentId && (dept.name || '').toLowerCase() === (data.name || '').toLowerCase();
+        });
+
+        if (duplicateName) {
+            departmentName.setCustomValidity('A department with this name already exists.');
+            departmentName.reportValidity();
             return false;
         }
 
-        if (!showAssigned) {
-            return !device.department_id || device.department_id === currentAssignDeptId;
-        }
-
-        return true;
-    });
-}
-
-function renderInventoryDevices() {
-    const tbody = document.querySelector('#inventoryDevicesTable tbody');
-    if (!tbody) return;
-
-    if (!inventoryLoaded) {
-        tbody.innerHTML = '<tr><td colspan="7" class="entity-empty">No devices loaded</td></tr>';
-        updateSelectionSummary(0);
-        return;
+        return document.getElementById('departmentForm').reportValidity();
     }
 
-    const deptMap = new Map(departmentsData.map(d => [d.id, d.name]));
-    const siteMap = new Map(sitesData.map(s => [s.id, s.site_name]));
-    const devices = getFilteredInventoryDevices();
+    async function saveDepartment(e) {
+        e.preventDefault();
 
-    tbody.innerHTML = '';
-
-    if (!devices.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="entity-empty">No devices found</td></tr>';
-        updateSelectionSummary(0);
-        return;
-    }
-
-    devices.forEach(device => {
-        const assignedDeptId = device.department_id;
-        const assignedDeptName = assignedDeptId ? (deptMap.get(assignedDeptId) || `Dept #${assignedDeptId}`) : '-';
-        const assignedSiteName = device.site_id ? (siteMap.get(device.site_id) || `Site #${device.site_id}`) : '-';
-        const isCurrentDept = assignedDeptId === currentAssignDeptId;
-        const isOtherDept = assignedDeptId && assignedDeptId !== currentAssignDeptId;
-        const isSelectable = !assignedDeptId;
-        const isChecked = selectedDeviceIds.has(device.device_id);
-        const statusBadge = isCurrentDept
-            ? '<span class="tactical-badge tactical-badge-success">In this dept</span>'
-            : (isOtherDept ? '<span class="tactical-badge tactical-badge-secondary">Assigned elsewhere</span>' : '<span class="tactical-badge tactical-badge-info">Available</span>');
-
-        const row = document.createElement('tr');
-        row.className = `selection-row${isChecked ? ' is-selected' : ''}${isSelectable ? '' : ' is-locked'}`;
-        row.innerHTML = `
-            <td>
-                <input type="checkbox" class="form-check-input" ${isSelectable ? '' : 'disabled'}
-                    ${isChecked ? 'checked' : ''}
-                    onchange="toggleDeviceSelection(${device.device_id}, this.checked, this)">
-            </td>
-            <td>${escapeHtml(device.device_name || 'Unnamed')}</td>
-            <td><span class="ip-pill">${escapeHtml(device.device_ip || '-')}</span></td>
-            <td>${escapeHtml(device.device_type || '-')}</td>
-            <td>${escapeHtml(assignedDeptName)}</td>
-            <td>${escapeHtml(assignedSiteName)}</td>
-            <td>${statusBadge}</td>
-        `;
-        row.addEventListener('click', (event) => {
-            if (event.target.closest('input, button, a, label')) return;
-            const cb = row.querySelector('input[type="checkbox"]');
-            if (!cb || cb.disabled) return;
-            cb.checked = !cb.checked;
-            cb.dispatchEvent(new Event('change', {bubbles: true}));
-        });
-        tbody.appendChild(row);
-    });
-
-    updateSelectionSummary(devices.length);
-}
-
-function updateSelectionSummary(visibleCount) {
-    const summary = document.getElementById('deviceSelectionSummary');
-    if (!summary) return;
-    const selectedCount = selectedDeviceIds.size;
-    summary.textContent = `${selectedCount} selected / ${visibleCount} visible`;
-}
-
-function toggleDeviceSelection(deviceId, checked, checkboxEl) {
-    const device = inventoryDevices.find(d => d.device_id === deviceId);
-    if (!device || device.department_id) {
-        return;
-    }
-    if (checked) {
-        selectedDeviceIds.add(deviceId);
-    } else {
-        selectedDeviceIds.delete(deviceId);
-    }
-    const row = checkboxEl && checkboxEl.closest ? checkboxEl.closest('tr') : null;
-    if (row) {
-        row.classList.toggle('is-selected', Boolean(checked));
-    }
-    updateSelectionSummary(getFilteredInventoryDevices().length);
-}
-
-function selectAllAvailableDevices() {
-    const devices = getFilteredInventoryDevices();
-    devices.forEach(device => {
-        if (!device.department_id) {
-            selectedDeviceIds.add(device.device_id);
-        }
-    });
-    renderInventoryDevices();
-}
-
-function clearSelectedDevices() {
-    selectedDeviceIds.clear();
-    renderInventoryDevices();
-}
-
-async function showAssignDevicesModal(deptId) {
-    const dept = departmentsData.find(d => d.id === deptId);
-    if (!dept) return;
-
-    currentAssignDeptId = deptId;
-    document.getElementById('assignDeptName').textContent = dept.name;
-    const site = sitesData.find(s => s.id === dept.site_id);
-    document.getElementById('assignDeptSite').textContent = site ? site.site_name : 'No site assigned';
-
-    const noSiteAlert = document.getElementById('assignDevicesNoSiteAlert');
-    if (dept.site_id) {
-        noSiteAlert.classList.add('d-none');
-    } else {
-        noSiteAlert.classList.remove('d-none');
-    }
-
-    // Load filtered devices from new endpoint
-    await loadFilteredInventoryDevices(deptId);
-    renderInventoryDevices();
-    assignDevicesModal.show();
-}
-
-async function assignSelectedDevicesToDepartment() {
-    if (!currentAssignDeptId) return;
-    const deviceIds = Array.from(selectedDeviceIds);
-    if (!deviceIds.length) {
-        showAlert('Select at least one available device to assign.', 'warning');
-        return;
-    }
-
-    try {
-        const result = await requestJson(`/api/departments/${currentAssignDeptId}/assign`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({device_ids: deviceIds})
-        }, 'Failed to assign devices');
-
-        showAlert(result.message, 'success');
-        const idSet = new Set(deviceIds);
-        inventoryDevices.forEach(device => {
-            if (idSet.has(device.device_id)) {
-                device.department_id = currentAssignDeptId;
-            }
-        });
-        selectedDeviceIds.clear();
-        assignDevicesModal.hide();
-        loadDepartments();
-    } catch (error) {
-        showAlert('Error assigning devices: ' + error.message, 'danger');
-    }
-}
-
-function showCreateDepartmentModal() {
-    document.getElementById('departmentModalTitle').textContent = 'Create Department';
-    document.getElementById('departmentForm').reset();
-    document.getElementById('departmentId').value = '';
-    departmentModal.show();
-}
-
-function editDepartment(deptId) {
-    const dept = departmentsData.find(d => d.id === deptId);
-    if (!dept) return;
-    
-    document.getElementById('departmentModalTitle').textContent = 'Edit Department';
-    document.getElementById('departmentId').value = dept.id;
-    document.getElementById('departmentName').value = dept.name;
-    document.getElementById('description').value = dept.description || '';
-    document.getElementById('siteId').value = dept.site_id || '';
-    
-    departmentModal.show();
-}
-
-async function saveDepartment() {
-    const deptId = document.getElementById('departmentId').value;
-    const data = {
-        name: document.getElementById('departmentName').value,
-        description: document.getElementById('description').value || null,
-        site_id: document.getElementById('siteId').value || null
-    };
-    
-    try {
-        const url = deptId ? `/api/departments/${deptId}` : '/api/departments';
-        const method = deptId ? 'PUT' : 'POST';
-        
-        await requestJson(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        }, `Failed to ${deptId ? 'update' : 'create'} department`);
-
-        showAlert(`Department ${deptId ? 'updated' : 'created'} successfully`, 'success');
-        departmentModal.hide();
-        loadDepartments();
-    } catch (error) {
-        showAlert('Error saving department: ' + error.message, 'danger');
-    }
-}
-
-async function deleteDepartment(deptId, deptName) {
-    if (!confirm(`Are you sure you want to delete department "${deptName}"?`)) {
-        return;
-    }
-    
-    try {
-        const result = await requestJson(`/api/departments/${deptId}`, {
-            method: 'DELETE'
-        }, 'Failed to delete department');
-        showAlert(result.message || 'Department deleted successfully', 'success');
-        loadDepartments();
-    } catch (error) {
-        if (Number(error.status) === 409) {
-            const baseMessage = error.message || 'Cannot delete department: devices or users are assigned to it';
-            showAlert(`${baseMessage}. Remove devices/users from this department first. Deleting the site is not required.`, 'warning');
+        const { departmentId, data } = normalizeDepartmentFormData();
+        if (!validateDepartmentForm(departmentId, data)) {
             return;
         }
-        showAlert('Error deleting department: ' + error.message, 'danger');
+
+        try {
+            const url = departmentId ? `/api/departments/${departmentId}` : '/api/departments';
+            const method = departmentId ? 'PUT' : 'POST';
+
+            await requestJson(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }, `Failed to ${departmentId ? 'update' : 'create'} department`);
+
+            showAlert(`Department ${departmentId ? 'updated' : 'created'} successfully.`, 'success');
+            window.UI.SlideOver.close('department-slide-over');
+            loadDepartments();
+        } catch (error) {
+            showAlert('Error saving department: ' + error.message, 'danger');
+        }
     }
-}
 
-function showAlert(message, type) {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'position-fixed top-0 end-0 p-3';
-        container.style.zIndex = '1080';
-        document.body.appendChild(container);
+    async function deleteDepartment(deptId, deptName) {
+        if (!confirm(`Delete "${deptName}"?`)) {
+            return;
+        }
+
+        try {
+            const result = await requestJson(`/api/departments/${deptId}`, {
+                method: 'DELETE'
+            }, 'Failed to delete department');
+            showAlert(result.message || 'Department deleted successfully.', 'success');
+            loadDepartments();
+        } catch (error) {
+            if (Number(error.status) === 409) {
+                const baseMessage = error.message || 'Delete blocked because this department still has linked users or devices.';
+                showAlert(baseMessage, 'warning');
+                return;
+            }
+            showAlert('Error deleting department: ' + error.message, 'danger');
+        }
     }
 
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${typeToAlertClass(type)} alert-dismissible fade show mb-2`;
-    toast.setAttribute('role', 'alert');
-    toast.innerHTML = `
-        ${escapeHtml(message)}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    container.prepend(toast);
-    setTimeout(() => toast.remove(), 4500);
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 </script>
 {% endblock %}

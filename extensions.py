@@ -1,4 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import redis
 import logging
 from config import Config
@@ -39,6 +41,7 @@ if _bcrypt_fallback_reason:  # pragma: no cover - environment fallback
 # Initialize extensions without app
 db = SQLAlchemy()
 bcrypt = Bcrypt()
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 # Global Event Manager
 from events.event_manager import EventManager
@@ -72,5 +75,5 @@ def is_redis_available():
         return False
     try:
         return redis_client.ping()
-    except redis.exceptions.ConnectionError:
+    except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, redis.exceptions.RedisError, OSError):
         return False

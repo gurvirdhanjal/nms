@@ -484,6 +484,13 @@
         box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
     }
 
+    /* Refresh overlay — applied during data refresh; keeps rows visible */
+    .table-refreshing {
+        opacity: 0.55;
+        pointer-events: none;
+        transition: opacity 0.2s;
+    }
+
     .reports-enterprise .card-header {
         padding: 0.42rem 0.62rem !important;
         border-bottom: 1px solid var(--e-border);
@@ -761,6 +768,106 @@
         font-size: 2.5rem;
         line-height: 1.2;
     }
+
+    /* ── APL TECHNO Enterprise Report Preview Panel ─────────── */
+    .rpt-preview-panel {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 1rem;
+        background: rgba(9, 13, 19, 0.82);
+    }
+
+    .rpt-brand-header {
+        background: #1B2A4A;
+        padding: 0.6rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .rpt-brand-name {
+        font-family: 'Orbitron', monospace;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #00ffc8;
+        letter-spacing: 2px;
+    }
+
+    .rpt-report-title {
+        font-size: 0.82rem;
+        color: #b8c6d5;
+        font-weight: 600;
+    }
+
+    .rpt-meta-text {
+        font-size: 0.7rem;
+        color: rgba(184, 198, 213, 0.6);
+        margin-left: auto;
+    }
+
+    .rpt-preview-table th {
+        font-size: 0.64rem !important;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #b8c6d5;
+        background: rgba(27, 42, 74, 0.85) !important;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
+        padding: 0.46rem 0.6rem !important;
+        white-space: nowrap;
+    }
+
+    .rpt-preview-table td {
+        font-size: 0.78rem !important;
+        padding: 0.4rem 0.6rem !important;
+        vertical-align: middle;
+        color: #c8d6e4;
+        border-top: 1px solid rgba(148, 163, 184, 0.12) !important;
+    }
+
+    .rpt-preview-table tbody tr:nth-child(even) td {
+        background: rgba(255, 255, 255, 0.025);
+    }
+
+    .rpt-preview-table tbody tr:hover td {
+        background: rgba(0, 212, 170, 0.06);
+    }
+
+    .rpt-status-ok   { color: #a6cfb7; font-weight: 700; }
+    .rpt-status-warn { color: #e0c98f; font-weight: 700; }
+    .rpt-status-crit { color: #dfa3ab; font-weight: 700; }
+
+    .rpt-preview-empty {
+        color: rgba(148, 163, 184, 0.5);
+        font-size: 0.8rem;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .btn-view-report {
+        font-size: 0.67rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(0, 212, 170, 0.1);
+        border: 1px solid rgba(0, 212, 170, 0.35);
+        color: #00d4aa;
+        padding: 0.28rem 0.6rem;
+        border-radius: 6px;
+    }
+
+    .btn-view-report:hover {
+        background: rgba(0, 212, 170, 0.2);
+        border-color: rgba(0, 212, 170, 0.55);
+        color: #00ffc8;
+    }
+
+    .btn-view-report:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
 </style>
 {% endblock %}
 
@@ -837,6 +944,9 @@
                         <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()">
                             <i class="fas fa-sync"></i>
                         </button>
+                        <button class="btn btn-sm btn-view-report" onclick="loadPreview('executive','execRange','execPreview')">
+                            <i class="fas fa-table me-1"></i>View Report
+                        </button>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','csv')">
                                 <i class="fas fa-file-csv"></i> CSV
@@ -856,41 +966,58 @@
                 </div>
             </div>
 
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            <h5><i class="fas fa-exclamation-triangle"></i> Top 10 Problematic Devices</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0" id="problematicTable">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>Device</th>
-                                            <th>Type</th>
-                                            <th class="text-end">Availability</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td colspan="3" class="text-center text-muted p-4">Loading...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Top 10 Problematic Devices</h5>
+                    <button class="btn btn-sm btn-outline-secondary" id="sortToggleBtn" onclick="toggleProblematicSort()">
+                        <i class="fas fa-sort-amount-up me-1"></i> Show Best 10
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="problematicTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Type</th>
+                                    <th class="text-end">Availability</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted p-4">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+            </div>
+
+            <div class="row justify-content-center">
                 <div class="col-md-6">
-                    <div class="card h-100">
+                    <div class="card">
                         <div class="card-header">
-                            <h5><i class="fas fa-chart-pie"></i> Health Distribution</h5>
+                            <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i> Health Distribution</h5>
                         </div>
                         <div class="card-body d-flex justify-content-center align-items-center chart-pane-300">
                             <canvas id="healthPieChart" class="chart-max-250"></canvas>
                         </div>
                     </div>
+                </div>
+            </div>
+            <!-- Executive Report Preview Panel -->
+            <div id="execPreview" class="rpt-preview-panel d-none">
+                <div class="rpt-brand-header">
+                    <span class="rpt-brand-name">APL TECHNO</span>
+                    <span class="rpt-report-title">Executive Fleet Health</span>
+                    <span id="execPreviewMeta" class="rpt-meta-text"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table rpt-preview-table mb-0" id="execPreviewTable">
+                        <thead></thead>
+                        <tbody><tr><td class="rpt-preview-empty">Click "View Report" to load data.</td></tr></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -907,6 +1034,9 @@
                         </select>
                         <button class="btn btn-sm btn-primary" onclick="loadOperationalReport()">
                             <i class="fas fa-sync"></i>
+                        </button>
+                        <button class="btn btn-sm btn-view-report" onclick="loadPreview('operational','opsRange','opsPreview')">
+                            <i class="fas fa-table me-1"></i>View Report
                         </button>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-secondary"
@@ -980,6 +1110,20 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+            <!-- Operational Report Preview Panel -->
+            <div id="opsPreview" class="rpt-preview-panel d-none">
+                <div class="rpt-brand-header">
+                    <span class="rpt-brand-name">APL TECHNO</span>
+                    <span class="rpt-report-title">Operational Activity</span>
+                    <span id="opsPreviewMeta" class="rpt-meta-text"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table rpt-preview-table mb-0" id="opsPreviewTable">
+                        <thead></thead>
+                        <tbody><tr><td class="rpt-preview-empty">Click "View Report" to load data.</td></tr></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1056,6 +1200,9 @@
                         <button class="btn btn-sm btn-primary" onclick="loadDeviceHealthReport()">
                             <i class="fas fa-sync"></i>
                         </button>
+                        <button class="btn btn-sm btn-view-report" onclick="loadPreview('device-health','dhRange','dhPreview')">
+                            <i class="fas fa-table me-1"></i>View Report
+                        </button>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-secondary"
                                 onclick="exportReport('device-health','csv')">
@@ -1128,6 +1275,20 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+            <!-- Device Health Report Preview Panel -->
+            <div id="dhPreview" class="rpt-preview-panel d-none">
+                <div class="rpt-brand-header">
+                    <span class="rpt-brand-name">APL TECHNO</span>
+                    <span class="rpt-report-title">Device Health</span>
+                    <span id="dhPreviewMeta" class="rpt-meta-text"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table rpt-preview-table mb-0" id="dhPreviewTable">
+                        <thead></thead>
+                        <tbody><tr><td class="rpt-preview-empty">Click "View Report" to load data.</td></tr></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1218,6 +1379,9 @@
                         <button class="btn btn-sm btn-primary" onclick="loadNetworkReport()">
                             <i class="fas fa-sync"></i>
                         </button>
+                        <button class="btn btn-sm btn-view-report" onclick="loadPreview('network','netRange','netPreview')">
+                            <i class="fas fa-table me-1"></i>View Report
+                        </button>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('network','csv')">
                                 <i class="fas fa-file-csv"></i> CSV
@@ -1265,6 +1429,20 @@
                     </div>
                 </div>
             </div>
+            <!-- Network Report Preview Panel -->
+            <div id="netPreview" class="rpt-preview-panel d-none">
+                <div class="rpt-brand-header">
+                    <span class="rpt-brand-name">APL TECHNO</span>
+                    <span class="rpt-report-title">Network Performance</span>
+                    <span id="netPreviewMeta" class="rpt-meta-text"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table rpt-preview-table mb-0" id="netPreviewTable">
+                        <thead></thead>
+                        <tbody><tr><td class="rpt-preview-empty">Click "View Report" to load data.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Tab 7: Alert History -->
@@ -1286,6 +1464,9 @@
                         </select>
                         <button class="btn btn-sm btn-primary" onclick="loadAlertReport()">
                             <i class="fas fa-sync"></i>
+                        </button>
+                        <button class="btn btn-sm btn-view-report" onclick="loadPreview('alerts','alertRange','alertPreview',{severity:document.getElementById('alertSeverity')?.value||''})">
+                            <i class="fas fa-table me-1"></i>View Report
                         </button>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','csv')">
@@ -1353,23 +1534,39 @@
                         </div>
                         <div class="col-md-7">
                             <div class="card h-100">
-                                <div class="card-header">
-                                    <h6><i class="fas fa-list"></i> Recent Alerts</h6>
+                                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-list me-1"></i> Recent Alerts
+                                        <span class="badge bg-secondary ms-1" id="alertListCount">—</span>
+                                    </h6>
+                                    <select class="form-select form-select-sm" id="alertListSeverityFilter"
+                                            onchange="applyAlertListFilters()" style="width:auto;min-width:130px;">
+                                        <option value="">All Severity</option>
+                                        <option value="CRITICAL">Critical only</option>
+                                        <option value="WARNING">Warning only</option>
+                                    </select>
                                 </div>
                                 <div class="card-body p-0">
                                     <div class="table-responsive table-scroll-350">
                                         <table class="table table-hover mb-0" id="alertListTable">
                                             <thead class="table-dark">
                                                 <tr>
-                                                    <th>Time</th>
-                                                    <th>Device</th>
-                                                    <th>Severity</th>
+                                                    <th class="user-select-none" style="cursor:pointer;white-space:nowrap;" onclick="sortAlertList('time')">
+                                                        Time <span id="sortIcon_time" class="text-muted">↕</span>
+                                                    </th>
+                                                    <th class="user-select-none" style="cursor:pointer;" onclick="sortAlertList('device')">
+                                                        Device <span id="sortIcon_device" class="text-muted">↕</span>
+                                                    </th>
+                                                    <th class="user-select-none" style="cursor:pointer;" onclick="sortAlertList('severity')">
+                                                        Severity <span id="sortIcon_severity" class="text-muted">↕</span>
+                                                    </th>
                                                     <th>Message</th>
+                                                    <th></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <tr>
-                                                    <td colspan="4" class="text-center text-muted p-4">Loading...</td>
+                                                    <td colspan="5" class="text-center text-muted p-4">Loading...</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1378,6 +1575,20 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+            <!-- Alerts Report Preview Panel -->
+            <div id="alertPreview" class="rpt-preview-panel d-none">
+                <div class="rpt-brand-header">
+                    <span class="rpt-brand-name">APL TECHNO</span>
+                    <span class="rpt-report-title">Alert History</span>
+                    <span id="alertPreviewMeta" class="rpt-meta-text"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table rpt-preview-table mb-0" id="alertPreviewTable">
+                        <thead></thead>
+                        <tbody><tr><td class="rpt-preview-empty">Click "View Report" to load data.</td></tr></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1393,6 +1604,13 @@
 
         function setTableStatusRow(tbody, colSpan, message, className = 'text-center text-muted p-4') {
             if (!tbody) return;
+            // If just showing 'Loading...' and the table already has keyed data rows,
+            // overlay instead of wiping — FRONTEND.md § 1.6: keep last-known-good data visible.
+            if (message === 'Loading...' && tbody.querySelector('tr[data-row-key]')) {
+                tbody.classList.add('table-refreshing');
+                return;
+            }
+            tbody.classList.remove('table-refreshing');
             const row = document.createElement('tr');
             const cell = document.createElement('td');
             cell.colSpan = colSpan;
@@ -1405,6 +1623,7 @@
 
         function patchTableRows(tbody, rows, options = {}) {
             if (!tbody) return;
+            tbody.classList.remove('table-refreshing');
             const data = Array.isArray(rows) ? rows : [];
             const {
                 getKey = (_, index) => index,
@@ -1755,6 +1974,51 @@
         // ==========================================
         // Executive Report Logic
         // ==========================================
+        let _problematicDevices = [];
+        let _problematicSortDesc = true; // true = worst first (lowest uptime first)
+
+        function toggleProblematicSort() {
+            _problematicSortDesc = !_problematicSortDesc;
+            const btn = document.getElementById('sortToggleBtn');
+            if (btn) {
+                btn.innerHTML = _problematicSortDesc
+                    ? '<i class="fas fa-sort-amount-up me-1"></i> Show Best 10'
+                    : '<i class="fas fa-sort-amount-down me-1"></i> Show Worst 10';
+            }
+            renderProblematicTable(_problematicDevices);
+        }
+
+        function renderProblematicTable(devices) {
+            const tableBody = document.querySelector('#problematicTable tbody');
+            const sorted = [...devices].sort((a, b) =>
+                _problematicSortDesc ? a.uptime - b.uptime : b.uptime - a.uptime
+            );
+            patchTableRows(tableBody, sorted, {
+                getKey: (device, index) => device.device_id || device.ip || `problematic-${index}`,
+                emptyColSpan: 4,
+                emptyMessage: '<i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.',
+                emptyClassName: 'text-center text-muted py-4',
+                renderCells: (device) => {
+                    const uptime = parseFloat(device.uptime);
+                    const badgeClass = uptime >= 99 ? 'bg-success' : uptime >= 95 ? 'bg-warning text-dark' : 'bg-danger';
+                    const viewLink = device.device_id
+                        ? `<a href="/devices/${device.device_id}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem;">View</a>`
+                        : '';
+                    return `
+                        <td>
+                            <div class="fw-bold text-white">${device.name}</div>
+                            <small class="text-muted monospace">${device.ip}</small>
+                        </td>
+                        <td><span class="badge bg-secondary opacity-75">${device.type}</span></td>
+                        <td class="text-end">
+                            <span class="badge ${badgeClass}">${device.uptime}%</span>
+                        </td>
+                        <td class="text-end">${viewLink}</td>
+                    `;
+                }
+            });
+        }
+
         function loadExecutiveReport() {
             const range = document.getElementById('execRange').value;
             const contentDiv = document.getElementById('execContent');
@@ -1762,7 +2026,7 @@
 
             // Show Loading
             contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing Fleet Data...</p></div>';
-            setTableStatusRow(tableBody, 3, 'Loading...');
+            setTableStatusRow(tableBody, 4, 'Loading...');
 
             fetchReportJson(`/api/reports/executive?range=${encodeURIComponent(range)}`)
                 .then(data => {
@@ -1796,23 +2060,12 @@
                     // Render Pie Chart
                     renderHealthChart(data.health_distribution);
 
-                    // Render Table
-                    patchTableRows(tableBody, data.top_problematic || [], {
-                        getKey: (device, index) => device.device_id || device.ip || `problematic-${index}`,
-                        emptyColSpan: 3,
-                        emptyMessage: '<i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.',
-                        emptyClassName: 'text-center text-muted py-4',
-                        renderCells: (device) => `
-                            <td>
-                                <div class="fw-bold text-white">${device.name}</div>
-                                <small class="text-muted monospace">${device.ip}</small>
-                            </td>
-                            <td><span class="badge bg-secondary opacity-75">${device.type}</span></td>
-                            <td class="text-end">
-                                <span class="text-danger fw-bold">${device.uptime}%</span>
-                            </td>
-                        `
-                    });
+                    // Render Table — reset sort to worst-first, then render
+                    _problematicDevices = data.top_problematic || [];
+                    _problematicSortDesc = true;
+                    const sortBtn = document.getElementById('sortToggleBtn');
+                    if (sortBtn) sortBtn.innerHTML = '<i class="fas fa-sort-amount-up me-1"></i> Show Best 10';
+                    renderProblematicTable(_problematicDevices);
                 })
                 .catch(e => {
                     console.error(e);
@@ -1887,6 +2140,71 @@
                     <div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error generating report: ${error.message}</div>
                 `;
                 });
+        }
+
+        function agentSection(agentData) {
+            if (!agentData || !agentData.available) {
+                return `<div class="alert mt-4" style="background:rgba(108,117,125,0.12);border-left:3px solid #6c757d;color:#adb5bd;padding:.75rem 1rem;">
+                    <i class="fas fa-robot me-2"></i> No agent data — this device is monitored by ICMP only
+                </div>`;
+            }
+            const l = agentData.latest;
+            function pctColor(v) {
+                if (v == null) return 'secondary';
+                return v >= 90 ? 'danger' : v >= 75 ? 'warning' : 'success';
+            }
+            function fmt(v, unit) { return v != null ? v.toFixed(1) + unit : 'N/A'; }
+            function bps(v) {
+                if (v == null) return 'N/A';
+                if (v >= 1e6) return (v / 1e6).toFixed(1) + ' Mbps';
+                if (v >= 1e3) return (v / 1e3).toFixed(1) + ' Kbps';
+                return v.toFixed(0) + ' bps';
+            }
+            const hasTs = agentData.time_series && agentData.time_series.length > 0;
+            return `
+            <hr class="my-4" style="border-color:rgba(255,255,255,0.08);">
+            <h5 class="section-title-primary mb-3"><i class="fas fa-desktop me-2"></i>Agent Telemetry</h5>
+            <div class="row mb-3">
+                <div class="col-md-3 mb-3">
+                    <div class="stat-card ${pctColor(l.cpu_percent)}">
+                        <i class="fas fa-microchip fa-2x mb-2 stat-icon-${pctColor(l.cpu_percent)}"></i>
+                        <h3>${fmt(l.cpu_percent, '%')}</h3>
+                        <p>CPU</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stat-card ${pctColor(l.memory_percent)}">
+                        <i class="fas fa-memory fa-2x mb-2 stat-icon-${pctColor(l.memory_percent)}"></i>
+                        <h3>${fmt(l.memory_percent, '%')}</h3>
+                        <p>Memory</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stat-card ${pctColor(l.disk_percent)}">
+                        <i class="fas fa-hdd fa-2x mb-2 stat-icon-${pctColor(l.disk_percent)}"></i>
+                        <h3>${fmt(l.disk_percent, '%')}</h3>
+                        <p>Disk</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stat-card primary">
+                        <i class="fas fa-network-wired fa-2x mb-2 stat-icon-primary"></i>
+                        <h3 style="font-size:1rem">${bps(l.network_in_bps)}</h3>
+                        <p>Net In</p>
+                    </div>
+                </div>
+            </div>
+            ${hasTs ? `
+            <div class="row mt-2">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header"><h6><i class="fas fa-chart-line me-1"></i>CPU &amp; Memory Over Time</h6></div>
+                        <div class="card-body chart-pane-250">
+                            <canvas id="agentCpuMemChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>` : ''}`;
         }
 
         function displayReport(stats, deviceIp, period) {
@@ -1987,6 +2305,7 @@
                 </div>
             </div>
             ` : ''}
+            ${agentSection(stats.agent_data)}
         `;
 
             document.getElementById('reportResults').innerHTML = html;
@@ -1995,11 +2314,64 @@
             if (stats.avg_latency) {
                 renderCharts(deviceIp, period);
             }
+            if (stats.agent_data && stats.agent_data.available && stats.agent_data.time_series) {
+                renderAgentChart(stats.agent_data.time_series);
+            }
         }
 
         // Chart instances storage
         let latencyChart = null;
         let availabilityChart = null;
+        let agentCpuMemChart = null;
+
+        function renderAgentChart(timeSeries) {
+            const canvas = document.getElementById('agentCpuMemChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (agentCpuMemChart) agentCpuMemChart.destroy();
+            const labels = timeSeries.map(d => formatReportTime(d.timestamp));
+            agentCpuMemChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'CPU %',
+                            data: timeSeries.map(d => d.cpu),
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.08)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: false,
+                            pointRadius: 0,
+                        },
+                        {
+                            label: 'Memory %',
+                            data: timeSeries.map(d => d.memory),
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59,130,246,0.08)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: false,
+                            pointRadius: 0,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, labels: { color: '#adb5bd' } } },
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#adb5bd', callback: v => v + '%' },
+                        },
+                        x: { grid: { display: false }, ticks: { color: '#adb5bd' } },
+                    },
+                },
+            });
+        }
 
         function renderCharts(deviceIp, period) {
             // Fetch Latency Data
@@ -2375,12 +2747,88 @@
         // Alert History Report
         // ==========================================
         let alertSevChart = null, alertTrendChart = null;
+
+        // Client-side state for Recent Alerts table
+        let _alertListAll = [];
+        let _alertListSort = { col: 'time', dir: 'desc' };
+
+        function sortAlertList(col) {
+            if (_alertListSort.col === col) {
+                _alertListSort.dir = _alertListSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                _alertListSort = { col, dir: col === 'time' ? 'desc' : 'asc' };
+            }
+            _updateAlertSortIcons();
+            applyAlertListFilters();
+        }
+
+        function _updateAlertSortIcons() {
+            ['time', 'device', 'severity'].forEach(col => {
+                const el = document.getElementById(`sortIcon_${col}`);
+                if (!el) return;
+                if (_alertListSort.col === col) {
+                    el.textContent = _alertListSort.dir === 'asc' ? '▲' : '▼';
+                } else {
+                    el.textContent = '↕';
+                }
+            });
+        }
+
+        function applyAlertListFilters() {
+            const sevFilter = (document.getElementById('alertListSeverityFilter')?.value || '').toUpperCase();
+            let filtered = sevFilter
+                ? _alertListAll.filter(a => (a.severity || '').toUpperCase() === sevFilter)
+                : _alertListAll;
+
+            // Sort
+            const { col, dir } = _alertListSort;
+            const sevOrder = { CRITICAL: 0, WARNING: 1, INFO: 2 };
+            filtered = [...filtered].sort((a, b) => {
+                let va, vb;
+                if (col === 'time') {
+                    va = a.timestamp || '';
+                    vb = b.timestamp || '';
+                } else if (col === 'device') {
+                    va = (a.device_name || '').toLowerCase();
+                    vb = (b.device_name || '').toLowerCase();
+                } else {
+                    va = sevOrder[(a.severity || '').toUpperCase()] ?? 99;
+                    vb = sevOrder[(b.severity || '').toUpperCase()] ?? 99;
+                }
+                if (va < vb) return dir === 'asc' ? -1 : 1;
+                if (va > vb) return dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            const countEl = document.getElementById('alertListCount');
+            if (countEl) countEl.textContent = filtered.length;
+
+            const listBody = document.querySelector('#alertListTable tbody');
+            const sc = { 'CRITICAL': 'bg-danger', 'WARNING': 'bg-warning text-dark', 'INFO': 'bg-info text-dark' };
+            patchTableRows(listBody, filtered, {
+                getKey: (alert, index) => alert.id || `${alert.timestamp || 'alert'}-${index}`,
+                emptyColSpan: 5,
+                emptyMessage: sevFilter ? `No ${sevFilter} alerts in this period.` : 'No alerts',
+                emptyClassName: 'text-center text-muted py-4',
+                renderCells: (alert) => `
+                    <td class="nowrap-cell"><small class="text-muted">${formatReportDateTime(alert.timestamp)}</small></td>
+                    <td>${alert.device_name || ''}</td>
+                    <td><span class="badge ${sc[alert.severity] || 'bg-secondary'}">${alert.severity}</span></td>
+                    <td class="small">${alert.message || ''}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem;" disabled
+                                title="Not yet available">Ack</button>
+                        <!-- TODO: Phase 5 — wire acknowledgement API -->
+                    </td>
+                `
+            });
+        }
+
         function loadAlertReport() {
             const range = document.getElementById('alertRange').value;
             const severity = document.getElementById('alertSeverity').value;
             const kpi = document.getElementById('alertKpiCards');
             const topBody = document.querySelector('#alertTopTable tbody');
-            const listBody = document.querySelector('#alertListTable tbody');
             kpi.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
 
             let url = `/api/reports/alerts?range=${range}`;
@@ -2428,18 +2876,13 @@
                         renderCells: (device) => `<td class="fw-bold text-white">${device.device_name}</td><td class="text-end text-danger fw-bold">${device.alert_count}</td>`
                     });
 
-                    // Alert list
-                    const alerts = (data.alerts || []).slice(0, 50);
-                    patchTableRows(listBody, alerts, {
-                        getKey: (alert, index) => alert.id || `${alert.timestamp || 'alert'}-${index}`,
-                        emptyColSpan: 4,
-                        emptyMessage: 'No alerts',
-                        emptyClassName: 'text-center text-muted py-4',
-                        renderCells: (alert) => {
-                            const sc = { 'CRITICAL': 'bg-danger', 'WARNING': 'bg-warning text-dark', 'INFO': 'bg-info text-dark' };
-                            return `<td class="nowrap-cell"><small class="text-muted">${formatReportDateTime(alert.timestamp)}</small></td><td>${alert.device_name || ''}</td><td><span class="badge ${sc[alert.severity] || 'bg-secondary'}">${alert.severity}</span></td><td class="small">${alert.message || ''}</td>`;
-                        }
-                    });
+                    // Alert list — store all rows, reset client-side state, then render
+                    _alertListAll = (data.alerts || []).slice(0, 200);
+                    _alertListSort = { col: 'time', dir: 'desc' };
+                    _updateAlertSortIcons();
+                    const sevFilterEl = document.getElementById('alertListSeverityFilter');
+                    if (sevFilterEl) sevFilterEl.value = '';
+                    applyAlertListFilters();
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -2511,7 +2954,10 @@
                 range: range
             };
             if (type === 'alerts') {
-                const sev = document.getElementById('alertSeverity')?.value || '';
+                // Prefer the client-side table filter; fall back to the server-side dropdown
+                const clientSev = document.getElementById('alertListSeverityFilter')?.value || '';
+                const serverSev = document.getElementById('alertSeverity')?.value || '';
+                const sev = clientSev || serverSev;
                 if (sev) payload.severity = sev;
             }
 
@@ -2541,6 +2987,96 @@
         }
 
         // ==========================================
+        // Enterprise Report Preview Panel
+        // ==========================================
+
+        function _statusClass(value, fieldName) {
+            if (!fieldName) return '';
+            const f = String(fieldName).toLowerCase();
+            const v = String(value || '').toUpperCase();
+            if (f.includes('status') || f.includes('severity') || f.includes('freshness') || f.includes('resolved')) {
+                if (v === 'CRITICAL' || v === 'OFFLINE' || v === 'NO' || v === 'STALE' || v === 'EMPTY') return 'rpt-status-crit';
+                if (v === 'WARN' || v === 'WARNING' || v === 'DELAYED' || v === 'DEGRADED') return 'rpt-status-warn';
+                if (v === 'OK' || v === 'ONLINE' || v === 'YES' || v === 'FRESH') return 'rpt-status-ok';
+            }
+            if (f.includes('uptime') && typeof value === 'number') {
+                if (value < 90) return 'rpt-status-crit';
+                if (value < 99) return 'rpt-status-warn';
+                return 'rpt-status-ok';
+            }
+            return '';
+        }
+
+        function renderPreviewTable(tableId, metaId, columns, rows, meta) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+
+            thead.innerHTML = '<tr>' + columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${columns.length}" class="rpt-preview-empty">No data for selected period.</td></tr>`;
+            } else {
+                tbody.innerHTML = rows.slice(0, 500).map(row => {
+                    const cells = columns.map(col => {
+                        const val = row[col];
+                        const cls = _statusClass(val, col);
+                        const display = (val === null || val === undefined) ? '' : String(val);
+                        return `<td class="${cls}">${display}</td>`;
+                    }).join('');
+                    return `<tr>${cells}</tr>`;
+                }).join('');
+            }
+
+            if (metaId && meta) {
+                const metaEl = document.getElementById(metaId);
+                if (metaEl) {
+                    const period = meta.period_start && meta.period_end
+                        ? `${formatReportDate(meta.period_start)} – ${formatReportDate(meta.period_end)}`
+                        : '';
+                    const freshness = meta.freshness_state ? ` | Freshness: ${meta.freshness_state}` : '';
+                    const rowLabel = rows ? ` | ${rows.length} row${rows.length !== 1 ? 's' : ''}` : '';
+                    metaEl.textContent = [period, freshness, rowLabel].filter(Boolean).join('');
+                }
+            }
+        }
+
+        async function loadPreview(reportType, rangeSelectId, previewContainerId, extraParams = {}) {
+            const panel = document.getElementById(previewContainerId);
+            if (!panel) return;
+
+            const rangeEl = document.getElementById(rangeSelectId);
+            const range = rangeEl ? rangeEl.value : '24h';
+
+            const params = new URLSearchParams({ range });
+            if (extraParams.severity) params.set('severity', extraParams.severity);
+
+            panel.classList.remove('d-none');
+
+            // Show loading state
+            const tableId = previewContainerId.replace('Preview', 'PreviewTable');
+            const tbl = document.getElementById(tableId);
+            if (tbl) {
+                const cols = tbl.querySelectorAll('thead th').length || 1;
+                tbl.querySelector('tbody').innerHTML = `<tr><td colspan="${Math.max(cols, 1)}" class="rpt-preview-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading report…</td></tr>`;
+            }
+
+            try {
+                const data = await fetchJson(`/api/reports/${reportType}/preview?${params}`);
+                const metaId = previewContainerId.replace('Preview', 'PreviewMeta');
+                renderPreviewTable(tableId, metaId, data.columns || [], data.rows || [], data.meta || {});
+            } catch (err) {
+                if (tbl) {
+                    tbl.querySelector('tbody').innerHTML = `<tr><td class="rpt-preview-empty rpt-status-crit">${err.message || 'Failed to load report.'}</td></tr>`;
+                }
+            }
+        }
+
+        window.loadPreview = loadPreview;
+
+        // ==========================================
         // Tab lazy-loading
         // ==========================================
         const tabLoaded = {};
@@ -2567,6 +3103,11 @@
         window.loadNetworkReport = loadNetworkReport;
         window.loadAlertReport = loadAlertReport;
         window.exportReport = exportReport;
+        // Executive sort toggle (called from onclick attribute)
+        window.toggleProblematicSort = toggleProblematicSort;
+        // Alert table sort + filter (called from onclick/onchange attributes)
+        window.sortAlertList = sortAlertList;
+        window.applyAlertListFilters = applyAlertListFilters;
 
         const generateBtn = document.getElementById('generateReport');
         if (generateBtn) generateBtn.addEventListener('click', generateReport);

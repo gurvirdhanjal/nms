@@ -1,957 +1,491 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_card, ui_badge %}
 
-{% block title %}Device Details - {{ device.device_name }}{% endblock %}
+{% block title %}Device Profile - {{ device.device_name }}{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
+<!-- Only specific overrides that can't use utility classes -->
 <style>
-    .device-detail-page {
-        --dd-border: rgba(148, 163, 184, 0.2);
-        --dd-border-soft: rgba(148, 163, 184, 0.12);
-        --dd-bg: rgba(16, 19, 27, 0.86);
-        --dd-muted: #8a97a6;
-    }
-
-    .device-detail-page .lucide {
-        width: 15px;
-        height: 15px;
-        stroke-width: 1.9;
-        vertical-align: text-bottom;
-    }
-
-    .device-detail-page .page-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.8rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.9rem;
-    }
-
-    .device-detail-page .page-title {
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.58rem;
-        font-size: 1.02rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    .device-detail-page .subtitle {
-        margin-top: 0.36rem;
-        color: var(--dd-muted);
-        font-size: 0.74rem;
-        letter-spacing: 0.04em;
-    }
-
-    .device-detail-page .subtitle code {
-        color: #c3cfdb;
-        background: rgba(255, 255, 255, 0.04);
-    }
-
-    .device-detail-page .page-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.38rem;
-        flex-wrap: wrap;
-    }
-
-    .device-detail-page .card {
-        background: var(--dd-bg);
-        border-color: var(--dd-border);
-    }
-
-    .device-detail-page .card-header {
-        border-bottom-color: var(--dd-border-soft);
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: #c3cfdb;
-        display: flex;
-        align-items: center;
-        gap: 0.38rem;
-    }
-
-    .device-detail-page .kv {
-        display: grid;
-        grid-template-columns: 130px 1fr;
-        gap: 0.45rem 0.62rem;
-        font-size: 0.78rem;
-        margin: 0;
-    }
-
-    .device-detail-page .kv dt {
-        color: var(--dd-muted);
-        font-weight: 500;
-        margin: 0;
-    }
-
-    .device-detail-page .kv dd {
-        margin: 0;
-        color: #e6edf5;
-        font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .device-detail-page .metric-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.6rem;
-    }
-
-    .device-detail-page .metric-box {
-        border: 1px solid var(--dd-border-soft);
-        border-radius: 6px;
-        padding: 0.62rem;
-        background: rgba(255, 255, 255, 0.02);
-    }
-
-    .device-detail-page .metric-label {
-        color: var(--dd-muted);
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-
-    .device-detail-page .metric-value {
-        margin-top: 0.2rem;
-        font-size: 0.95rem;
-        font-family: 'IBM Plex Mono', monospace;
-        color: #e6edf5;
-    }
-
-    .device-detail-page .table th {
-        font-size: 0.62rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #b8c6d5;
-    }
-
-    .device-detail-page .table td {
-        font-size: 0.76rem;
-        font-family: 'IBM Plex Mono', monospace;
-        vertical-align: middle;
-    }
-
-    @media (max-width: 768px) {
-        .device-detail-page .metric-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .device-detail-page .kv {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    .icon-spin {
-        animation: api-spin 2s linear infinite;
-    }
-
-    @keyframes api-spin {
-        100% {
-            transform: rotate(360deg);
-        }
-    }
-
-    .server-telemetry-surface .modal-chart-200 {
-        height: 200px;
-    }
-
-    .server-telemetry-surface .modal-chart-220 {
-        height: 220px;
-    }
-
-    .server-telemetry-surface .load-avg-row {
-        height: 80px;
-    }
-
-    .server-telemetry-surface .swap-progress-shell {
-        height: 12px;
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    .server-telemetry-surface .progress-bar {
-        width: 0%;
-    }
-
-    .server-telemetry-surface .alert-banner-warning {
-        display: none;
-        background: rgba(255, 193, 7, 0.15);
-        border: 1px solid rgba(255, 193, 7, 0.3);
-        border-left: 4px solid #ffc107;
-        border-radius: 8px;
-    }
-
-    .val-na {
-        color: #556070;
-        font-style: italic;
-    }
+    /* Add any custom overrides here if needed */
 </style>
 {% endblock %}
 
-{% block content %}
-<div class="device-detail-page">
-    <div class="page-head">
-        <div>
-            <h1 class="page-title">
-                <i data-lucide="server-cog"></i>{{ device.device_name }}
-            </h1>
-            <div class="subtitle">
-                <code>{{ device.device_ip }}</code> - {{ (device.device_type or 'unknown')|replace('_', ' ')|title }}
-            </div>
-        </div>
+{% macro dt(value, fallback='Not available') -%}
+    {% if value is not none and value != '' -%}
+        {{ value }}
+    {%- else -%}
+        <span class="text-slate-500 italic">{{ fallback }}</span>
+    {%- endif %}
+{%- endmacro %}
 
-        <div class="page-actions">
-            <a href="{{ url_for('devices_bp.device_management') }}" class="btn btn-outline-secondary btn-sm"
-                style="border-color: rgba(255,255,255,0.1);">
-                <i data-lucide="arrow-left"></i> Back to Devices
-            </a>
-            <button type="button" class="btn btn-success btn-sm"
-                style="background: var(--teal); border: none; color: #0a0c0f; font-weight: 600;" id="btnPollSnmp" {% if
-                not snmp_enabled %}disabled{% endif %}>
-                <i data-lucide="radar"></i> Poll SNMP
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" style="border-color: rgba(255,255,255,0.1);"
-                id="btnRefreshInterfaces" {% if not snmp_enabled %}disabled{% endif %}>
-                <i data-lucide="refresh-cw"></i> Refresh Interfaces
-            </button>
-            {% if (device.device_type or '')|lower == 'server' %}
-            <button type="button" class="btn btn-outline-secondary btn-sm" style="border-color: rgba(255,255,255,0.1);"
-                id="btnOpenServerDetailModal" data-device-id="{{ device.device_id }}">
-                <i data-lucide="chart-line"></i> Open Server Modal
-            </button>
+{% macro metric_box(label, value, suffix='') -%}
+    <div class="bg-slate-900/50 border border-slate-700/50 rounded-lg p-3 flex flex-col items-center justify-center text-center h-full">
+        <div class="text-[0.65rem] font-semibold text-slate-400 uppercase tracking-wider mb-2">{{ label }}</div>
+        <div class="text-lg font-mono text-white">
+            {% if value is not none %}
+                {% if value is number %}
+                    {{ '%.1f'|format(value) }}{{ suffix }}
+                {% else %}
+                    {{ value }}{{ suffix }}
+                {% endif %}
+            {% else %}
+                <span class="text-slate-500">N/A</span>
             {% endif %}
         </div>
     </div>
+{%- endmacro %}
 
-    <div id="detailAlert" class="mb-3"></div>
+{% macro prop_row(label, value) -%}
+    <div class="py-2.5 grid grid-cols-3 gap-4 border-b border-slate-800/50 last:border-0">
+        <dt class="text-sm font-medium text-slate-400">{{ label }}</dt>
+        <dd class="text-sm text-slate-200 mt-0 col-span-2 font-mono break-all">{{ value }}</dd>
+    </div>
+{%- endmacro %}
 
-    <div class="row g-3">
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header"><i data-lucide="badge-info"></i> Identity</div>
-                <div class="card-body">
-                    <dl class="kv">
-                        <dt>Device ID</dt>
-                        <dd>{{ device.device_id }}</dd>
-                        <dt>Hostname</dt>
-                        <dd>{{ device.hostname or '<span class="val-na">N/A</span>'|safe }}</dd>
-                        <dt>MAC</dt>
-                        <dd>{{ device.macaddress or '<span class="val-na">Not detected</span>'|safe }}</dd>
-                        <dt>Manufacturer</dt>
-                        <dd>
-                            {% if not device.manufacturer or device.manufacturer == 'Unknown' %}
-                            <span class="val-na">Unresolved</span>
-                            {% else %}
-                            {{ device.manufacturer }}
-                            {% endif %}
-                        </dd>
-                        <dt>Subnet</dt>
-                        <dd>{{ device.subnet_cidr or '<span class="val-na">Unassigned</span>'|safe }}</dd>
-                        <dt>Location</dt>
-                        <dd>{{ device.location or '<span class="val-na">Not set</span>'|safe }}</dd>
-                    </dl>
+
+{% block content %}
+<div class="page-section">
+    <div class="page-container">
+        
+        <!-- Header Section -->
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+            <div>
+                <div class="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">Inventory Profile</div>
+                <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
+                    <i data-lucide="server-cog" class="w-6 h-6 text-slate-400"></i>
+                    {{ device.device_name }}
+                </h1>
+                <div class="text-sm text-slate-400 mt-2 flex items-center gap-2">
+                    <code class="bg-slate-800 text-blue-300 px-1.5 py-0.5 rounded text-xs">{{ device.device_ip }}</code>
+                    <span class="text-slate-600">|</span> 
+                    <span>{{ (device.device_type or 'unknown')|replace('_', ' ')|title }}</span>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <a href="{{ url_for('devices_bp.device_management') }}" class="inline-flex items-center justify-center rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-300 shadow-sm ring-1 ring-inset ring-slate-700 hover:bg-slate-700 transition-colors">
+                    <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Devices
+                </a>
+                {% if (device.device_type or '')|lower == 'server' %}
+                <a href="{{ url_for('devices_bp.server_monitoring_page', device_id=device.device_id) }}" class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
+                    <i data-lucide="activity" class="w-4 h-4 mr-2"></i> Open Server Monitoring
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Status Badges -->
+        <div class="flex flex-wrap gap-2 mb-6">
+            {{ ui_badge(availability_summary.label, type=availability_summary.tone|replace('success', 'emerald')|replace('danger', 'red')|replace('warning', 'amber')|replace('muted', 'slate')) }}
+            
+            {% if device.is_monitored %}
+                {{ ui_badge('Monitored', type='emerald') }}
+            {% else %}
+                {{ ui_badge('Not Monitored', type='slate') }}
+            {% endif %}
+            
+            {% if device.maintenance_mode %}
+                {{ ui_badge('Maintenance Enabled', type='amber') }}
+            {% else %}
+                {{ ui_badge('Maintenance Off', type='slate') }}
+            {% endif %}
+            
+            {{ ui_badge('Mode: ' ~ (device.monitoring_mode or 'ping')|upper, type='slate') }}
+            {{ ui_badge('Transport: ' ~ (device.transport_type or 'unknown')|upper, type='slate') }}
+        </div>
+
+        <!-- Hero Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <!-- Availability Hero -->
+            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Availability</div>
+                <div>
+                    {% set avail_color = 'text-emerald-400' if availability_summary.tone == 'success' else ('text-amber-400' if availability_summary.tone == 'warning' else 'text-red-400') %}
+                    <div class="text-xl font-bold {{ avail_color }} mb-1">{{ availability_summary.label }}</div>
+                    <div class="text-xs text-slate-400 leading-tight mb-2">{{ availability_summary.detail }}</div>
+                    <div class="text-[0.65rem] text-slate-500">
+                        {% if latest_scan and latest_scan.scan_timestamp %}
+                            Last check {{ latest_scan.scan_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                        {% else %}
+                            No scan timestamp available
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Telemetry Hero -->
+            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Latest Telemetry</div>
+                <div>
+                    <div class="text-xl font-bold text-white mb-1">
+                        {% if latest_health_log %}
+                            {{ telemetry_source_label }}
+                        {% else %}
+                            <span class="text-slate-500">No telemetry</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-xs text-slate-400 leading-tight mb-2">
+                        {% if latest_health_log and latest_health_log.timestamp %}
+                            Captured {{ latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                        {% else %}
+                            No telemetry has been ingested
+                        {% endif %}
+                    </div>
+                    <div class="text-[0.65rem] text-slate-500">
+                        {% if latest_health_log and latest_health_log.os_name %}
+                            {{ latest_health_log.os_name }}
+                        {% elif device.agent_os_type %}
+                            {{ device.agent_os_type|upper }}
+                        {% else %}
+                            Source-agnostic profile view
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assignment Hero -->
+            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Assignment</div>
+                <div>
+                    <div class="text-xl font-bold text-white mb-1 whitespace-nowrap overflow-hidden text-ellipsis" title="{{ device.site.site_name if device.site else 'Unassigned Site' }}">
+                        {{ device.site.site_name if device.site else 'Unassigned Site' }}
+                    </div>
+                    <div class="text-xs text-slate-400 leading-tight mb-2">
+                        Department: {{ device.department.name if device.department else 'Unassigned' }}
+                    </div>
+                    <div class="text-[0.65rem] text-slate-500 font-mono">
+                        Subnet: {{ device.subnet_cidr or 'Unassigned' }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Posture Hero -->
+            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Monitoring Posture</div>
+                <div>
+                    <div class="text-xl font-bold text-white mb-1">{{ (device.monitoring_mode or 'ping')|upper }}</div>
+                    <div class="text-xs text-slate-400 leading-tight mb-2">CoS: {{ device.cos_tier or 'Standard' }}</div>
+                    <div class="text-[0.65rem] text-slate-500">
+                        Class: {{ device.classification_confidence or 'Unknown' }}{% if device.confidence_score is not none %} ({{ device.confidence_score }}){% endif %}
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header"><i data-lucide="settings-2"></i> Monitoring</div>
-                <div class="card-body">
-                    <dl class="kv">
-                        <dt>Mode</dt>
-                        <dd>
-                            {% if (device.monitoring_mode or '')|lower == 'agent' %}
-                            <span class="badge bg-primary"
-                                style="background: rgba(0,229,160,0.1) !important; color: #00e5a0; border: 1px solid rgba(0,229,160,0.25);">AGENT</span>
-                            {% else %}
-                            {{ (device.monitoring_mode or 'ping')|upper }}
-                            {% endif %}
-                        </dd>
-                        <dt>Monitored</dt>
-                        <dd>
-                            {% if device.is_monitored %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); margin-right: 4px;"></span>Active
-                            {% else %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--red); margin-right: 4px;"></span>Inactive
-                            {% endif %}
-                        </dd>
-                        <dt>Maintenance</dt>
-                        <dd>
-                            {% if device.maintenance_mode %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-right: 4px;"></span>Enabled
-                            {% else %}
-                            <span class="val-na"><span
-                                    style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); margin-right: 4px;"></span>Disabled</span>
-                            {% endif %}
-                        </dd>
-                        <dt>SNMP Enabled</dt>
-                        <dd>
-                            {% if snmp_enabled %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-right: 4px;"></span>Enabled
-                            {% else %}
-                            <span class="val-na"><span
-                                    style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); margin-right: 4px;"></span>Disabled</span>
-                            {% endif %}
-                        </dd>
-                        <dt>Last Updated</dt>
-                        <dd title="{{ device.updated_at }}">
-                            {% if device.updated_at %}
-                            {{ device.updated_at.strftime('%Y-%m-%d %H:%M') }}
-                            {% else %}
-                            <span class="val-na">N/A</span>
-                            {% endif %}
-                        </dd>
-                        <dt>Description</dt>
-                        <dd>{{ device.description or '<span class="val-na">&mdash;</span>'|safe }}</dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
+        <!-- Main Content -->
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Identity And Assignment -->
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="badge-info" class="w-4 h-4 mr-2 text-blue-400"></i> Identity And Assignment</div>') %}
+                <dl class="divide-y divide-slate-800/50">
+                    {{ prop_row('Device ID', device.device_id) }}
+                    {{ prop_row('Hostname', dt(device.hostname)) }}
+                    {{ prop_row('MAC', dt(device.macaddress, 'Not detected')) }}
+                    {{ prop_row('Manufacturer', dt(device.manufacturer, 'Unresolved')) }}
+                    {{ prop_row('Location', dt(device.location, 'Not set')) }}
+                    {{ prop_row('Site', dt(device.site.site_name if device.site else none, 'Unassigned')) }}
+                    {{ prop_row('Department', dt(device.department.name if device.department else none, 'Unassigned')) }}
+                    {{ prop_row('Description', dt(device.description)) }}
+                </dl>
+            {% endcall %}
 
-        <div class="col-lg-6">
-            <div class="card h-100" style="border-left: 3px solid #4d9fff; background: rgba(24,30,42,0.92);">
-                <div class="card-header"><i data-lucide="network"></i> SNMP Configuration</div>
-                <div class="card-body">
-                    {% if snmp_config %}
-                    <dl class="kv">
-                        <dt>Version</dt>
-                        <dd>v{{ snmp_config.snmp_version or '2c' }}</dd>
-                        <dt>Port</dt>
-                        <dd>{{ snmp_config.snmp_port or 161 }}</dd>
-                        <dt>Poll Interval</dt>
-                        <dd>{{ (snmp_config.poll_interval_seconds / 60)|int }} min ({{ snmp_config.poll_interval_seconds
-                            or 300 }}s)</dd>
-                        <dt>Security Name</dt>
-                        <dd>{{ snmp_config.security_name or '<span class="val-na">N/A</span>'|safe }}</dd>
-                        <dt>Auth/Priv</dt>
-                        <dd>
-                            {% if snmp_config.auth_protocol and snmp_config.priv_protocol and snmp_config.auth_protocol
-                            != 'None' %}
-                            {{ snmp_config.auth_protocol }} / {{ snmp_config.priv_protocol }}
-                            {% else %}
-                            <span class="val-na">Not configured</span>
-                            {% endif %}
-                        </dd>
-                        <dt>Last Success</dt>
-                        <dd>
-                            {% if snmp_config.last_successful_poll %}
-                            {{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') }}
-                            {% else %}
-                            <span class="val-na"><span
-                                    style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--red); margin-right: 4px;"></span>Never
-                                succeeded</span>
-                            {% endif %}
-                        </dd>
-                        <dt>Last Error</dt>
-                        <dd>
-                            {% if snmp_config.last_poll_error and snmp_config.last_poll_error != 'None' %}
-                            <span class="text-danger">{{ snmp_config.last_poll_error }}</span>
-                            {% else %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); margin-right: 4px;"></span>No
-                            errors
-                            {% endif %}
-                        </dd>
+            <!-- Monitoring And Topology -->
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="settings-2" class="w-4 h-4 mr-2 text-slate-400"></i> Monitoring And Topology</div>') %}
+                <dl class="divide-y divide-slate-800/50">
+                    {{ prop_row('Monitoring Mode', (device.monitoring_mode or 'ping')|upper) }}
+                    {{ prop_row('Transport', (device.transport_type or 'unknown')|upper) }}
+                    {{ prop_row('CoS Tier', dt(device.cos_tier, 'Standard')) }}
+                    {{ prop_row('Classified As', (device.device_type or 'unknown')|replace('_', ' ')|title) }}
+                    {{ prop_row('Confidence', dt(device.classification_confidence) ~ (' (' ~ device.confidence_score ~ ')' if device.confidence_score is not none else '')) }}
+                    {{ prop_row('Parent Switch', dt(device.parent_switch.device_name if device.parent_switch else none, 'None linked')) }}
+                    {{ prop_row('Parent Port', dt(device.parent_port.canonical_name if device.parent_port and device.parent_port.canonical_name else (device.parent_port.name if device.parent_port else none), 'None linked')) }}
+                    {{ prop_row('Discovery Method', dt(device.last_discovery_method)) }}
+                    {{ prop_row('Created', device.created_at.strftime('%Y-%m-%d %H:%M:%S') if device.created_at else 'Unknown') }}
+                    {{ prop_row('Updated', device.updated_at.strftime('%Y-%m-%d %H:%M:%S') if device.updated_at else 'Unknown') }}
+                </dl>
+            {% endcall %}
+
+            <!-- Telemetry Snapshot -->
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex justify-between items-center">
+                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                        <i data-lucide="pulse" class="w-4 h-4 mr-2 text-emerald-400"></i> Latest Telemetry Snapshot
+                    </h3>
+                    <span class="text-[0.65rem] text-slate-500 hidden sm:block">Uses newest source available</span>
+                </div>
+                <div class="p-5 flex-1">
+                    {% if latest_health_log %}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                        {{ metric_box('CPU', latest_health_log.cpu_usage, '%') }}
+                        {{ metric_box('Memory', latest_health_log.memory_usage, '%') }}
+                        {{ metric_box('Disk', latest_health_log.disk_usage, '%') }}
+                        {{ metric_box('Packet Loss', latest_health_log.packet_loss_pct, '%') }}
+                    </div>
+                    <dl class="divide-y divide-slate-800/50">
+                        {{ prop_row('Source', telemetry_source_label) }}
+                        {{ prop_row('Captured At', latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_health_log.timestamp else 'Unknown') }}
+                        {{ prop_row('OS', dt(latest_health_log.os_name)) }}
+                        {{ prop_row('Uptime', dt(latest_health_log.uptime)) }}
+                        {{ prop_row('Latency', '%.1f'|format(latest_health_log.ping_latency_ms) ~ ' ms' if latest_health_log.ping_latency_ms is not none else 'N/A') }}
+                        {{ prop_row('Net In', '%.1f'|format(latest_health_log.network_in_bps) ~ ' bps' if latest_health_log.network_in_bps is not none else 'N/A') }}
+                        {{ prop_row('Net Out', '%.1f'|format(latest_health_log.network_out_bps) ~ ' bps' if latest_health_log.network_out_bps is not none else 'N/A') }}
                     </dl>
                     {% else %}
-                    <div class="text-muted small"><i data-lucide="info"
-                            style="width: 14px; height: 14px; margin-right: 4px; vertical-align: text-bottom;"></i>No
-                        SNMP config found for this device.</div>
+                    <div class="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-lg bg-slate-800/20 text-center">
+                        <i data-lucide="bar-chart-2" class="w-8 h-8 text-slate-600 mb-3"></i>
+                        <p class="text-sm text-slate-400 max-w-sm">No telemetry has been collected yet from agent, SNMP, or reachability sources.</p>
+                    </div>
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Monitoring Sources -->
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex justify-between items-center">
+                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                        <i data-lucide="database-zap" class="w-4 h-4 mr-2 text-amber-400"></i> Monitoring Data Sources
+                    </h3>
+                </div>
+                <div class="p-5 flex-1">
+                    <div class="space-y-3">
+                        {% for source in monitoring_sources %}
+                        <div class="border border-slate-700/60 rounded-md p-3.5 bg-slate-800/30">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium text-slate-200">{{ source.name }}</span>
+                                {% set src_status_lower = source.status|lower %}
+                                {% set _badge_color = 'emerald' if src_status_lower in ['online', 'reporting', 'available'] else ('amber' if src_status_lower == 'maintenance' else ('red' if src_status_lower in ['offline', 'not reporting'] else 'slate')) %}
+                                {{ ui_badge(source.status, type=_badge_color) }}
+                            </div>
+                            <div class="text-xs text-slate-400 leading-relaxed mb-1">{{ source.detail }}</div>
+                            <div class="text-[0.65rem] text-slate-500 font-mono">
+                                {% if source.timestamp %}
+                                    <i class="far fa-clock mr-1"></i> {{ source.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                    No sample timestamp
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Identity Mapping -->
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="fingerprint" class="w-4 h-4 mr-2 text-indigo-400"></i> Identity Mapping</div>') %}
+                {% if active_identity_link %}
+                <dl class="divide-y divide-slate-800/50 mb-6">
+                    {{ prop_row('Tracked Device', '#' ~ active_identity_link.tracked_device_id) }}
+                    {{ prop_row('Normalized MAC', active_identity_link.normalized_mac) }}
+                    {{ prop_row('Link Source', active_identity_link.link_source) }}
+                    {{ prop_row('Confidence', active_identity_link.confidence) }}
+                    {{ prop_row('Updated', active_identity_link.updated_at.strftime('%Y-%m-%d %H:%M:%S') if active_identity_link.updated_at else 'Unknown') }}
+                </dl>
+                {% else %}
+                <div class="p-4 border border-dashed border-slate-700/80 rounded-md mb-6 bg-slate-800/10 text-center">
+                    <p class="text-sm text-slate-500">No active tracked-device identity link is attached.</p>
+                </div>
+                {% endif %}
+
+                {% if pending_identity_candidates %}
+                <div class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-widest mb-3">Pending Candidates</div>
+                <ul class="space-y-2">
+                    {% for candidate in pending_identity_candidates %}
+                    <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20">
+                        <div class="text-sm text-slate-200 mb-1">Tracked Device #{{ candidate.tracked_device_id }} | Score: {{ candidate.candidate_score }}</div>
+                        <div class="text-xs text-slate-400">{{ candidate.candidate_source }} candidate on {{ candidate.detected_at.strftime('%Y-%m-%d %H:%M:%S') if candidate.detected_at else 'Unknown' }}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            {% endcall %}
+
+            <!-- Classification Evidence -->
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="scan-search" class="w-4 h-4 mr-2 text-purple-400"></i> Classification Evidence</div>') %}
+                {% if classification_details %}
+                <dl class="divide-y divide-slate-800/50 mb-6">
+                    {{ prop_row('Reasoning', dt(classification_details.get('reasoning'))) }}
+                    {{ prop_row('Reported Type', dt(classification_details.get('device_type'))) }}
+                    {{ prop_row('Confidence', dt(classification_details.get('confidence'))) }}
+                    {{ prop_row('Score', dt(classification_details.get('score'))) }}
+                </dl>
+
+                {% set signals = classification_details.get('signals_used') or [] %}
+                {% if signals %}
+                <ul class="space-y-2">
+                    {% for signal in signals[:5] %}
+                    <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20 flex flex-col">
+                        <span class="text-sm text-slate-200 mb-1 font-medium">{{ signal.get('reason') or signal.get('source') or 'Signal' }}</span>
+                        <span class="text-xs text-slate-400">
+                            {{ signal.get('type') or signal.get('source') or 'evidence' }}
+                            {% if signal.get('score') is not none %} | Score: {{ signal.get('score') }}{% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% else %}
+                <div class="p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
+                    <p class="text-sm text-slate-500">No classification evidence stored for this device.</p>
+                </div>
+                {% endif %}
+            {% endcall %}
         </div>
 
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header"><i data-lucide="activity"></i> Latest Health Metrics</div>
-                <div class="card-body">
-                    <div class="metric-grid mb-3" id="snmpMetricGrid">
-                        {% macro metric_box(label, value_id, value, suffix='%') %}
-                        <div class="metric-box" {% if value is none
-                            %}style="border-style: dashed; opacity: 0.7; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 1rem 0.5rem;"
-                            {% endif %}>
-                            {% if value is none %}
-                            <i data-lucide="clock"
-                                style="width: 18px; height: 18px; color: var(--text-muted); margin-bottom: 6px;"></i>
-                            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Awaiting
-                                first poll</div>
+        <!-- Server Telemetry Preview (if applicable) -->
+        {% if (device.device_type or '')|lower == 'server' and enable_server_fullpage_telemetry %}
+        <div class="mb-6">
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center">
+                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                        <i data-lucide="activity" class="w-4 h-4 mr-2 text-emerald-400"></i> Server Telemetry Preview
+                    </h3>
+                    <span class="text-[0.65rem] text-slate-500 mt-1 sm:mt-0">Operational view backed by shared pipeline</span>
+                </div>
+                <div class="p-5">
+                    {% set telemetry_prefix = 'server-page' %}
+                    {% set telemetry_show_threshold_editor = true %}
+                    {% set telemetry_can_edit_thresholds = can_edit_server_thresholds %}
+                    {% set telemetry_show_extended = true %}
+                    {% include 'partials/server_metrics_panel.html' %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Supplementary SNMP Data (if applicable) -->
+        {% if snmp_config or latest_snmp_log or interfaces %}
+        <div class="mb-6">
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center">
+                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                        <i data-lucide="network" class="w-4 h-4 mr-2 text-blue-400"></i> Supplementary SNMP Data
+                    </h3>
+                    <span class="text-[0.65rem] text-slate-500 mt-1 sm:mt-0">Shown only when SNMP exists</span>
+                </div>
+                <div class="p-5">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <div class="lg:col-span-4">
+                            <dl class="divide-y divide-slate-800/50">
+                                {{ prop_row('SNMP Enabled', 'Yes' if snmp_enabled else 'No') }}
+                                {{ prop_row('Version', dt('v' ~ snmp_config.snmp_version if snmp_config and snmp_config.snmp_version else none, 'Not configured')) }}
+                                {{ prop_row('Port', dt(snmp_config.snmp_port if snmp_config else none, 'Not configured')) }}
+                                {{ prop_row('Last Success', snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') if snmp_config and snmp_config.last_successful_poll else 'None recorded') }}
+                                {{ prop_row('Last Error', dt(snmp_config.last_poll_error if snmp_config else none, 'None recorded')) }}
+                                {{ prop_row('Last Metric', latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_snmp_log and latest_snmp_log.timestamp else 'None recorded') }}
+                                {{ prop_row('Interfaces', interfaces|length|string) }}
+                            </dl>
+                        </div>
+                        <div class="lg:col-span-8">
+                            {% if interfaces %}
+                            <div class="overflow-x-auto rounded-md border border-slate-700/60 bg-slate-800/30">
+                                <table class="min-w-full divide-y divide-slate-700/50">
+                                    <thead class="bg-slate-800/80">
+                                        <tr>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">ifIndex</th>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Name</th>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Alias</th>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Oper</th>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Speed</th>
+                                            <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Last Poll</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-700/50">
+                                        {% for iface in interfaces[:12] %}
+                                        <tr class="hover:bg-slate-700/20 transition-colors">
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-300">{{ iface.if_index }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs font-mono text-blue-400">{{ iface.canonical_name or iface.name or 'N/A' }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-400">{{ iface.alias or 'N/A' }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-300">{{ (iface.oper_status or 'unknown')|upper }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs font-mono text-slate-300">{% if iface.speed_bps %}{{ '%.2f'|format(iface.speed_bps / 1000000.0) }} Mbps{% else %}N/A{% endif %}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-500">{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else 'N/A' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if interfaces|length > 12 %}
+                                        <tr>
+                                            <td colspan="6" class="px-3 py-2 text-center text-xs text-slate-500 italic">Showing first 12 of {{ interfaces|length }} interfaces</td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
                             {% else %}
-                            <div class="metric-label">{{ label }}</div>
-                            <div class="metric-value" id="{{ value_id }}">
-                                {{ '%.1f'|format(value) }}{{ suffix }}
+                            <div class="h-full flex flex-col justify-center p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
+                                <p class="text-sm text-slate-500">No SNMP-derived interface inventory cached.</p>
                             </div>
                             {% endif %}
                         </div>
-                        {% endmacro %}
-
-                        {{ metric_box('SNMP CPU', 'snmpCpuVal', latest_snmp_log.cpu_usage if latest_snmp_log else none)
-                        }}
-                        {{ metric_box('SNMP Memory', 'snmpMemVal', latest_snmp_log.memory_usage if latest_snmp_log else
-                        none) }}
-                        {{ metric_box('SNMP Disk', 'snmpDiskVal', latest_snmp_log.disk_usage if latest_snmp_log else
-                        none) }}
-                    </div>
-
-                    <dl class="kv mb-0">
-                        <dt>SNMP Metric Timestamp</dt>
-                        <dd id="snmpMetricTs">{{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if
-                            latest_snmp_log and latest_snmp_log.timestamp else '<span class="val-na">N/A</span>'|safe }}
-                        </dd>
-                        <dt>Agent Metric Timestamp</dt>
-                        <dd>{{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_agent_log and
-                            latest_agent_log.timestamp else '<span class="val-na">N/A</span>'|safe }}</dd>
-                        <dt>Metrics Availability</dt>
-                        <dd>
-                            {% if has_snmp_metrics %}
-                            <span
-                                style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); margin-right: 4px;"></span>Available
-                            {% else %}
-                            <div
-                                style="font-size: 11px; margin-top: 4px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); display: inline-block;">
-                                <i data-lucide="info"
-                                    style="width: 12px; height: 12px; margin-right: 4px; color: var(--text-muted); vertical-align: text-bottom;"></i>
-                                SNMP has not been polled yet. <a href="#"
-                                    onclick="document.getElementById('btnPollSnmp').click(); return false;"
-                                    class="text-info text-decoration-none ms-1">Poll SNMP &rarr;</a>
-                            </div>
-                            {% endif %}
-                        </dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {% if (device.device_type or '')|lower == 'server' and enable_server_fullpage_telemetry %}
-    <div class="card mt-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i data-lucide="activity"></i> Server Telemetry</span>
-            <span class="small text-secondary">Refreshes every 30s</span>
-        </div>
-        <div class="card-body">
-            {% set telemetry_prefix = 'server-page' %}
-            {% set telemetry_show_threshold_editor = true %}
-            {% set telemetry_can_edit_thresholds = can_edit_server_thresholds %}
-            {% set telemetry_show_extended = true %}
-            {% include 'partials/server_metrics_panel.html' %}
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="card mt-3">
-        <div class="card-header"><i data-lucide="list-tree"></i> Interface Inventory ({{ interfaces|length }})</div>
-        <div class="card-body p-0">
-            {% if interfaces %}
-            <div class="table-responsive">
-                <table class="tactical-table table-hover mb-0" style="font-size: 12px;">
-                    <thead>
-                        <tr>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">IFINDEX</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">NAME</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">ALIAS</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">ADMIN</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">OPER</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">SPEED</th>
-                            <th style="font-size: 11px; color: var(--text-muted); font-weight: 600;">LAST POLL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for iface in interfaces %}
-                        <tr>
-                            <td>{{ iface.if_index }}</td>
-                            <td>{{ iface.name or '<span class="val-na">N/A</span>'|safe }}</td>
-                            <td>{{ iface.alias or '<span class="val-na">N/A</span>'|safe }}</td>
-                            <td>
-                                {% if iface.admin_status == 'up' %}
-                                <span style="color: var(--teal);"><i data-lucide="check-circle"
-                                        style="width:14px;height:14px;margin-right:2px;"></i>UP</span>
-                                {% else %}
-                                <span style="color: var(--text-muted);">{{ iface.admin_status or '<span
-                                        class="val-na">N/A</span>'|safe }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if iface.oper_status == 'up' %}
-                                <span style="color: var(--teal);"><i data-lucide="check-circle"
-                                        style="width:14px;height:14px;margin-right:2px;"></i>UP</span>
-                                {% else %}
-                                <span style="color: var(--red);"><i data-lucide="x-circle"
-                                        style="width:14px;height:14px;margin-right:2px;"></i>{{ iface.oper_status|upper
-                                    or '<span class="val-na">N/A</span>'|safe }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if iface.speed_bps %}
-                                {{ '%.2f'|format((iface.speed_bps / 1000000.0)) }} Mbps
-                                {% else %}
-                                <span class="val-na">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else
-                                '<span class="val-na">N/A</span>'|safe }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="py-5 text-center mt-2">
-                <i data-lucide="network"
-                    style="width: 32px; height: 32px; color: var(--text-muted); opacity: 0.3; margin-bottom: 12px;"></i>
-                <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 4px;">No Interfaces Found</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Interfaces will appear here
-                    after the first SNMP poll completes successfully.</div>
-                <button type="button" class="btn btn-sm"
-                    style="border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); color: var(--text-primary);"
-                    onclick="document.getElementById('btnRefreshInterfaces').click();">
-                    <i data-lucide="refresh-cw"
-                        style="width: 14px; height: 14px; margin-right: 4px; vertical-align: text-bottom;"></i> Refresh
-                    Interfaces
-                </button>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% if device.device_type == 'server' and not enable_server_fullpage_telemetry %}
-    <div class="row g-3 mt-1">
-        <!-- Agent Reported Connections Card -->
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>
-                        <i data-lucide="plug-zap"></i> Agent Connections (Top 20 IPs)
-                        <span class="badge bg-secondary ms-2" title="Total Unique Connected Client IPs"
-                            id="agentUniqueIpsBadge">
-                            {% if latest_agent_log and latest_agent_log.network_connections_unique_ips != none %}
-                            {{ latest_agent_log.network_connections_unique_ips }} Total Unique IPs
-                            {% else %}
-                            Unique IPs: -
-                            {% endif %}
-                        </span>
-                    </span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-dark table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Remote IP</th>
-                                    <th>Active Connections</th>
-                                    <th>Resolved Device</th>
-                                </tr>
-                            </thead>
-                            <tbody id="agentConnectionsBody">
-                                {% if latest_agent_log and latest_agent_log.network_top_remote_ips %}
-                                {% for conn in latest_agent_log.network_top_remote_ips %}
-                                <tr>
-                                    <td class="font-monospace"
-                                        style="color: var(--text-primary); border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">
-                                        {{ conn.ip }}</td>
-                                    <td
-                                        style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px; text-align: center;">
-                                        <span
-                                            class="badge rounded border bg-transparent {% if conn.count > 5 %}text-danger border-danger{% elif conn.count >= 3 %}text-warning border-warning{% else %}text-muted border-secondary{% endif %}"
-                                            style="opacity:0.8;">{{ conn.count }}</span>
-                                    </td>
-                                    <td style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">
-                                        <div style="line-height:1.2;">
-                                            <div style="font-size: 10px; color: var(--text-muted); font-style: italic;">
-                                                ▪ Unresolved</div>
-                                            <div class="font-monospace"
-                                                style="font-size: 10px; color: var(--text-primary); opacity: 0.7;">{{
-                                                conn.ip }}</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                                {% else %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted p-3">No agent connection data
-                                        available yet. Please wait for the next check-in.</td>
-                                </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
                     </div>
                 </div>
             </div>
         </div>
+        {% endif %}
 
-        <!-- Agent Snapshot Connections Card -->
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i data-lucide="terminal"></i> Server Connections (Agent Snapshot)</span>
-                    <button type="button" class="btn btn-outline-info btn-sm" id="btnRefreshConnections">
-                        <i data-lucide="refresh-cw"></i> Refresh Snapshot
-                    </button>
+        <!-- Recent Audit -->
+        <div class="mb-6">
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="history" class="w-4 h-4 mr-2 text-slate-400"></i> Recent Device Audit</div>') %}
+                {% if recent_audit_entries %}
+                <ul class="space-y-3">
+                    {% for entry in recent_audit_entries %}
+                    <li class="border border-slate-700/50 rounded-md p-3.5 bg-slate-800/20">
+                        <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between mb-1 gap-1">
+                            <span class="text-sm text-white font-medium">{{ entry.action|upper }}</span>
+                            <span class="text-xs text-slate-500 font-mono"><i class="far fa-user mr-1"></i> {{ entry.username }}</span>
+                        </div>
+                        <div class="text-sm text-slate-300 leading-relaxed">{{ entry.description or 'No description provided' }}</div>
+                        <div class="text-[0.65rem] text-slate-500 mt-2">
+                            <i class="far fa-clock mr-1"></i> {{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else 'Unknown time' }}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
+                    <p class="text-sm text-slate-500">No device audit entries found.</p>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-dark table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Remote IP</th>
-                                    <th>Hostname</th>
-                                    <th>Connections</th>
-                                    <th>Resolved Device</th>
-                                </tr>
-                            </thead>
-                            <tbody id="connectionsBody">
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted p-3">Click 'Refresh Snapshot' to
-                                        load latest agent connection data.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                {% endif %}
+            {% endcall %}
         </div>
+
     </div>
-    {% endif %}
 </div>
-{% endblock %}
-
-{% block modals %}
-{{ super() }}
-{% if (device.device_type or '')|lower == 'server' %}
-{% include 'partials/server_details_modal.html' %}
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    (function () {
-        const deviceId = Number('{{ device.device_id }}');
-        const pollBtn = document.getElementById('btnPollSnmp');
-        const refreshBtn = document.getElementById('btnRefreshInterfaces');
-        const refreshConnBtn = document.getElementById('btnRefreshConnections');
-        const alertBox = document.getElementById('detailAlert');
-        const snapshotConnectionsBody = document.getElementById('connectionsBody');
-        const agentConnectionsBody = document.getElementById('agentConnectionsBody');
-        const agentUniqueIpsBadge = document.getElementById('agentUniqueIpsBadge');
-
-        function redrawIcons() {
-            if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
-            }
-        }
-
-        function showAlert(type, message) {
-            alertBox.innerHTML = `<div class="alert alert-${type} py-2 mb-0">${message}</div>`;
-            redrawIcons();
-        }
-
-        function setMetricValue(id, value) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.textContent = value;
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        async function parseApiResponse(response) {
-            const contentType = (response.headers.get('content-type') || '').toLowerCase();
-            if (contentType.includes('application/json')) {
-                return await response.json();
-            }
-
-            const text = await response.text();
-            try {
-                return JSON.parse(text);
-            } catch (_error) {
-                const statusText = `${response.status} ${response.statusText}`.trim();
-                const snippet = text ? text.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
-                throw new Error(
-                    `Expected JSON response but received non-JSON (${statusText})${snippet ? `: ${snippet}` : ''}`
-                );
-            }
-        }
-
-        function extractErrorMessage(payload, fallback) {
-            if (!payload) return fallback;
-            if (typeof payload === 'string') return payload;
-            if (payload.error && typeof payload.error === 'string') return payload.error;
-            if (payload.error && typeof payload.error.message === 'string') return payload.error.message;
-            if (typeof payload.message === 'string') return payload.message;
-            if (payload.success === false && typeof payload.error === 'string') return payload.error;
-            return fallback;
-        }
-
-        function resolvedDeviceHtml(entry, ipValue) {
-            const remoteDeviceId = entry.remote_device_id;
-            if (remoteDeviceId) {
-                const name = escapeHtml(entry.remote_device_name || `Device ${remoteDeviceId}`);
-                return `<a href="/devices/${remoteDeviceId}/details" class="text-info text-decoration-none fw-bold" target="_blank" rel="noopener noreferrer" style="font-size: 11px;"><i data-lucide="server-cog" style="width:14px;height:14px;margin-right:4px;"></i>${name}</a>`;
-            }
-            const fallbackIp = escapeHtml(ipValue || 'Unknown');
-            return `<div style="line-height:1.2;">
-                        <div style="font-size: 10px; color: var(--text-muted); font-style: italic;">▪ Unresolved</div>
-                        <div class="font-monospace" style="font-size: 10px; color: var(--text-primary); opacity: 0.7;">${fallbackIp}</div>
-                    </div>`;
-        }
-
-        function renderAgentSnapshot(snapshot) {
-            if (!agentConnectionsBody) return;
-            const topIps = Array.isArray(snapshot?.top_remote_ips) ? snapshot.top_remote_ips : [];
-            const uniqueCount = snapshot?.unique_remote_ips_count;
-            if (agentUniqueIpsBadge) {
-                agentUniqueIpsBadge.textContent = uniqueCount != null
-                    ? `${uniqueCount} Total Unique IPs`
-                    : 'Unique IPs: -';
-            }
-
-            if (topIps.length === 0) {
-                agentConnectionsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted p-3">No agent connection snapshot available.</td></tr>';
-                redrawIcons();
-                return;
-            }
-
-            let html = '';
-            topIps.forEach((entry) => {
-                const ip = escapeHtml(entry.ip || '-');
-                const count = Number.isFinite(Number(entry.count)) ? Number(entry.count) : 0;
-                let badgeClass = 'text-muted border-secondary';
-                if (count > 5) badgeClass = 'text-danger border-danger';
-                else if (count >= 3) badgeClass = 'text-warning border-warning';
-
-                html += `<tr>
-                    <td class="font-monospace" style="color: var(--text-primary); border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">${ip}</td>
-                    <td style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px; text-align: center;">
-                        <span class="badge rounded border bg-transparent ${badgeClass}" style="opacity:0.8;">${count}</span>
-                    </td>
-                    <td style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">${resolvedDeviceHtml(entry, entry.ip)}</td>
-                </tr>`;
-            });
-            agentConnectionsBody.innerHTML = html;
-            redrawIcons();
-        }
-
-        function renderConnectionSnapshotRows(connections) {
-            if (!snapshotConnectionsBody) return;
-            const rows = Array.isArray(connections) ? connections : [];
-            if (rows.length === 0) {
-                snapshotConnectionsBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3">No active ESTABLISHED connections found.</td></tr>';
-                redrawIcons();
-                return;
-            }
-
-            let html = '';
-            rows.forEach((entry) => {
-                const ip = escapeHtml(entry.remote_ip || '-');
-                const hostname = escapeHtml(entry.remote_hostname || '-');
-                const connectionCount = Number.isFinite(Number(entry.connection_count)) ? Number(entry.connection_count) : 0;
-                let badgeClass = 'text-muted border-secondary';
-                if (connectionCount > 5) badgeClass = 'text-danger border-danger';
-                else if (connectionCount >= 3) badgeClass = 'text-warning border-warning';
-
-                html += `<tr>
-                    <td class="font-monospace" style="color: var(--text-primary); border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">${ip}</td>
-                    <td style="color: var(--text-secondary); border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">${hostname}</td>
-                    <td style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px; text-align: center;">
-                        <span class="badge rounded border bg-transparent ${badgeClass}" style="opacity:0.8;">${connectionCount}</span>
-                    </td>
-                    <td style="border-top-color: rgba(255,255,255,0.06); padding: 8px 16px;">${resolvedDeviceHtml(entry, entry.remote_ip)}</td>
-                </tr>`;
-            });
-            snapshotConnectionsBody.innerHTML = html;
-            redrawIcons();
-        }
-
-        function renderConnectionSnapshotError(message) {
-            if (!snapshotConnectionsBody) return;
-            snapshotConnectionsBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger p-3"><i data-lucide="alert-triangle"></i> ${escapeHtml(message)}</td></tr>`;
-            redrawIcons();
-        }
-
-        if (pollBtn) {
-            pollBtn.addEventListener('click', async () => {
-                pollBtn.disabled = true;
-                pollBtn.innerHTML = '<i data-lucide="loader"></i> Polling...';
-                redrawIcons();
-
-                try {
-                    const res = await fetch(`/api/snmp/poll/{{ device.device_id }}`, {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                    });
-                    const data = await parseApiResponse(res);
-                    if (!res.ok || data.error) {
-                        throw new Error(extractErrorMessage(data, 'SNMP poll failed'));
-                    }
-
-                    const health = data.health || (data.system && data.system.health) || {};
-                    setMetricValue('snmpCpuVal', health.cpu_usage != null ? `${Number(health.cpu_usage).toFixed(1)}%` : 'N/A');
-                    setMetricValue('snmpMemVal', health.memory_usage != null ? `${Number(health.memory_usage).toFixed(1)}%` : 'N/A');
-                    setMetricValue('snmpDiskVal', health.disk_usage != null ? `${Number(health.disk_usage).toFixed(1)}%` : 'N/A');
-                    setMetricValue('snmpMetricTs', new Date().toLocaleString());
-                    showAlert('success', `SNMP poll completed. Interfaces returned: ${Array.isArray(data.interfaces) ? data.interfaces.length : 0}.`);
-                } catch (err) {
-                    showAlert('danger', `SNMP poll error: ${err.message}`);
-                } finally {
-                    pollBtn.disabled = false;
-                    pollBtn.innerHTML = '<i data-lucide="radar"></i> Poll SNMP';
-                    redrawIcons();
-                }
-            });
-        }
-
-
-        if (refreshConnBtn) {
-            refreshConnBtn.addEventListener('click', async () => {
-                refreshConnBtn.disabled = true;
-                const originalHtml = refreshConnBtn.innerHTML;
-                refreshConnBtn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Loading...';
-                redrawIcons();
-
-                const tbody = document.getElementById('connectionsBody');
-                if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3"><i data-lucide="loader" class="icon-spin"></i> Loading latest agent snapshot...</td></tr>';
-                redrawIcons();
-
-                try {
-                    const res = await fetch(`/api/devices/${deviceId}/connections`, {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                    });
-                    const data = await parseApiResponse(res);
-
-                    if (!res.ok || data.error) {
-                        throw new Error(extractErrorMessage(data, 'Failed to fetch connections'));
-                    }
-
-                    renderAgentSnapshot(data.agent_snapshot || {});
-                    renderConnectionSnapshotRows(data.connections || []);
-                    const rowCount = Array.isArray(data.connections) ? data.connections.length : 0;
-                    const meta = data.meta || {};
-                    const snapshotAge = Number.isFinite(Number(meta.snapshot_age_seconds))
-                        ? `, snapshot age ${Number(meta.snapshot_age_seconds)}s`
-                        : '';
-                    const totalConnections = Number.isFinite(Number(meta.total_connections))
-                        ? Number(meta.total_connections)
-                        : (data.connections || []).reduce((sum, row) => sum + (Number(row.connection_count) || 0), 0);
-                    const totalIps = Number.isFinite(Number(meta.total_unique_remote_ips))
-                        ? Number(meta.total_unique_remote_ips)
-                        : rowCount;
-                    showAlert('success', `Connection snapshot refreshed${snapshotAge}. Showing ${rowCount} of ${totalIps} IPs (${totalConnections} total connections).`);
-
-                } catch (err) {
-                    showAlert('danger', `Connection Snapshot Error: ${err.message}`);
-                    renderConnectionSnapshotError(err.message);
-                } finally {
-                    refreshConnBtn.disabled = false;
-                    refreshConnBtn.innerHTML = originalHtml;
-                    redrawIcons();
-                }
-            });
-        }
-
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                refreshBtn.disabled = true;
-                refreshBtn.innerHTML = '<i data-lucide="loader"></i> Refreshing...';
-                redrawIcons();
-                try {
-                    const res = await fetch(`/api/snmp/interfaces/{{ device.device_id }}?refresh=true`, {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                    });
-                    const data = await parseApiResponse(res);
-                    if (!res.ok || data.error) {
-                        throw new Error(extractErrorMessage(data, 'Interface refresh failed'));
-                    }
-                    showAlert('success', `Interface inventory refreshed (${data.count || 0} interfaces). Reloading view...`);
-                    setTimeout(() => window.location.reload(), 650);
-                } catch (err) {
-                    showAlert('danger', `Interface refresh error: ${err.message}`);
-                    refreshBtn.disabled = false;
-                    refreshBtn.innerHTML = '<i data-lucide="refresh-cw"></i> Refresh Interfaces';
-                    redrawIcons();
-                }
-            });
-        }
-
-        redrawIcons();
-    })();
-</script>
-{% if (device.device_type or '')|lower == 'server' %}
-<script type="module">
-    import { initServerModal, openServerModal } from "{{ url_for('static', filename='js/dashboard/modals/serverDetailModal.js') }}?v=2.12";
-    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.12";
-
-    const openServerModalBtn = document.getElementById('btnOpenServerDetailModal');
-    const pageRoot = document.getElementById('server-page-surface');
-    const serverDeviceId = Number(openServerModalBtn?.dataset.deviceId || pageRoot?.dataset.deviceId || 0);
-
-    if (openServerModalBtn) {
-        initServerModal();
-        openServerModalBtn.addEventListener('click', () => {
-            if (serverDeviceId > 0) {
-                openServerModal(serverDeviceId);
-            }
-        });
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
     }
+</script>
+{% if (device.device_type or '')|lower == 'server' and enable_server_fullpage_telemetry %}
+<script type="module">
+    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
 
-    if (pageRoot && serverDeviceId > 0) {
-        const pageView = createServerMetricsView({ root: pageRoot, prefix: 'server-page' });
-        const rangeButtons = Array.from(pageRoot.querySelectorAll('.server-range-toggle [data-range]'));
-        const snapshotButton = document.getElementById('server-page-refresh-snapshot');
-        let activeRange = '24h';
-        let refreshTimer = null;
+    const pageRoot = document.getElementById('server-page-surface');
+    const deviceId = Number(pageRoot?.dataset.deviceId || 0);
 
-        const setRange = (nextRange) => {
-            activeRange = nextRange || '24h';
-            rangeButtons.forEach((button) => {
-                const active = button.dataset.range === activeRange;
-                button.classList.toggle('active', active);
-                button.classList.toggle('tactical-btn-primary', active);
-                button.classList.toggle('tactical-btn-ghost', !active);
-            });
-        };
-
-        const loadPageMetrics = async () => {
-            try {
-                await pageView.load(serverDeviceId, activeRange);
-            } catch (error) {
-                const statusEl = document.getElementById('server-page-status');
-                if (statusEl) {
-                    statusEl.textContent = error.message || 'Error loading data';
-                    statusEl.className = 'fw-bold text-danger';
-                }
-            }
-        };
-
-        rangeButtons.forEach((button) => {
-            button.addEventListener('click', () => {
-                setRange(button.dataset.range || '24h');
-                loadPageMetrics();
-            });
+    if (pageRoot && deviceId > 0) {
+        const view = createServerMetricsView({
+            root: pageRoot,
+            prefix: 'server-page'
         });
-        if (snapshotButton) {
-            snapshotButton.addEventListener('click', async () => {
-                await pageView.fetchConnectionSnapshot(serverDeviceId, { showLoadingState: true });
-            });
+
+        let currentRange = '24h';
+
+        async function loadMetrics() {
+            try {
+                await view.load(deviceId, currentRange, { preferCache: true });
+                view.prefetch?.(deviceId, currentRange);
+            } catch (error) {
+                console.error('Failed to load server telemetry preview:', error);
+            }
         }
 
-        setRange(activeRange);
-        loadPageMetrics();
-        refreshTimer = window.setInterval(loadPageMetrics, 30000);
+        loadMetrics();
+        const refreshInterval = window.setInterval(loadMetrics, 30000);
         window.addEventListener('beforeunload', () => {
-            if (refreshTimer) window.clearInterval(refreshTimer);
-            pageView.destroy();
+            window.clearInterval(refreshInterval);
+            view.destroy();
         }, { once: true });
     }
 </script>

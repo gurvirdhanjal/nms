@@ -1,9 +1,12 @@
 // ============================================================================
-// UTILITY: Toast Notification System (replaces alert())
+// UTILITY: Shared UI compatibility layer
 // ============================================================================
 const MAX_TOASTS = 4;
+const scanningFlags = window.__UI_SURFACE_FLAGS__ || {};
+const sharedToastApi = scanningFlags.sharedToast !== false && window.UI?.Toast?.show ? window.UI.Toast : null;
+const sharedLoadingApi = scanningFlags.sharedLoading !== false && window.UI?.Loading ? window.UI.Loading : null;
 
-function showToast(message, type = 'info', timeout = 3000) {
+function legacyShowToast(message, type = 'info', timeout = 3000) {
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -45,6 +48,46 @@ function showToast(message, type = 'info', timeout = 3000) {
             }, 150);
         }, timeout);
     }
+}
+
+function showToast(message, type = 'info', timeout = 3000) {
+    if (sharedToastApi) {
+        return sharedToastApi.show(String(message || ''), type, {
+            durationMs: timeout,
+            allowHtml: true,
+        });
+    }
+    return legacyShowToast(message, type, timeout);
+}
+
+function setButtonBusy(button, isBusy, config = {}) {
+    if (!button) return;
+    if (sharedLoadingApi) {
+        sharedLoadingApi.setButtonBusy(button, {
+            busy: isBusy,
+            labelBusy: config.labelBusy || 'Working...',
+            labelIdle: config.labelIdle || button.dataset.uiIdleLabel || button.innerHTML,
+        });
+        return;
+    }
+
+    if (!button.dataset.uiIdleLabel) {
+        button.dataset.uiIdleLabel = config.labelIdle || button.innerHTML;
+    }
+
+    button.disabled = Boolean(isBusy);
+    button.innerHTML = isBusy
+        ? (config.labelBusy || 'Working...')
+        : (config.labelIdle || button.dataset.uiIdleLabel || button.innerHTML);
+}
+
+function setRegionState(container, config = {}) {
+    if (!container) return;
+    if (sharedLoadingApi) {
+        sharedLoadingApi.setRegionState(container, config);
+        return;
+    }
+    container.innerHTML = `<div class="alert alert-secondary mb-0">${config.title || 'Loading...'}</div>`;
 }
 
 // ============================================================================
@@ -208,7 +251,7 @@ document.addEventListener('DOMContentLoaded', function () {
         scanProgress.style.display = 'block';
         progressBar.style.width = '0%';
         progressBar.textContent = 'Starting scan...';
-        progressBar.classList.add('progress-bar-animated');
+        progressBar.classList.remove('progress-bar-animated');
 
         if (isAutoAdd && scanAndAddBtn) {
             scanAndAddBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Scan & Add';
@@ -224,16 +267,13 @@ document.addEventListener('DOMContentLoaded', function () {
         isScanning = true;
 
         scanResults.innerHTML = `
-            <div class="text-center">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2">Initializing network scan...</p>
+            <div class="ui-region-state">
+                <div class="ui-region-state-title">Initializing network scan</div>
+                <div class="ui-region-state-detail">Preparing address sweep and device enrichment.</div>
                 <div class="progress mt-2" style="height: 10px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         id="detailedProgress" style="width: 0%"></div>
+                    <div class="progress-bar bg-primary" id="detailedProgress" style="width: 0%"></div>
                 </div>
-                <small class="text-muted" id="progressText">Preparing to scan...</small>
+                <div class="ui-refresh-meta" id="progressText">Preparing to scan...</div>
             </div>
         `;
 
@@ -778,8 +818,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (devicesToAdd.length === 0) return;
 
-        bulkAddBtn.disabled = true;
-        bulkAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+        setButtonBusy(bulkAddBtn, true, {
+            labelBusy: 'Adding...',
+            labelIdle: '<i class="fas fa-plus-circle"></i> Add Selected to Inventory'
+        });
 
         fetch('/api/devices/bulk_add', {
             method: 'POST',
@@ -839,7 +881,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         modalTitle.textContent = `Port Scan: ${ipAddress}`;
-        modalBody.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Scanning ports...</p></div>';
+        setRegionState(modalBody, {
+            state: 'loading',
+            title: 'Scanning ports',
+            detail: `Inspecting exposed services on ${ipAddress}.`,
+            preserveHeight: 120
+        });
 
         // Dispose existing modal instance
         if (currentModalInstance) {
@@ -1065,8 +1112,10 @@ kdcproxyname:s:`;
         }
 
         const originalHTML = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        button.disabled = true;
+        setButtonBusy(button, true, {
+            labelBusy: 'Pinging...',
+            labelIdle: originalHTML
+        });
         activePings.add(ip);
 
         fetch('/api/ping_device', {
@@ -1094,8 +1143,9 @@ kdcproxyname:s:`;
                 showToast(`Error pinging ${ip}: ${error.message}`, 'danger', 3000);
             })
             .finally(() => {
-                button.innerHTML = originalHTML;
-                button.disabled = false;
+                setButtonBusy(button, false, {
+                    labelIdle: originalHTML
+                });
                 activePings.delete(ip);
             });
     };

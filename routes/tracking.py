@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
+from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response, stream_with_context
 from middleware.rbac import require_login, require_permission, require_role, create_audit_log
 from extensions import db
 from models.tracked_device import (
@@ -8,8 +8,17 @@ from models.tracked_device import (
     DeviceActivityLog,
     DeviceResourceLog,
     DeviceApplicationLog,
+    TrackingSample,
+    TrackingHistoryIntegrityAudit,
+    TrackedDeviceAvailabilityEvent,
+    TrackingHourlyRollup,
+    TrackingDailyRollup,
 )
 from models.dashboard import DashboardEvent
+from models.device import Device
+from models.device_effective_policy_cache import DeviceEffectivePolicyCache
+from models.device_identity_link import DeviceIdentityLink
+from models.device_identity_link_candidate import DeviceIdentityLinkCandidate
 from models.restricted_site_policy import (
     RestrictedSiteAlertState,
     RestrictedSiteDomainMeta,
@@ -20,7 +29,10 @@ from models.restricted_site_policy import (
     normalize_domain,
 )
 from models.alert_fanout_task import AlertFanoutTask
+from models.policy_rebuild_task import PolicyRebuildTask
+from models.tracking_sync_envelope import TrackingSyncEnvelope
 from models.user import User
+from models.scan_history import DeviceScanHistory
 from services.operational_error_handling import summarize_exception
 from datetime import datetime, timedelta, timezone
 import requests
@@ -75,6 +87,15 @@ from services.tracking_workstation import (
     scoped_tracked_device_query,
 )
 from services.tracked_device_ip_change import apply_tracked_device_ip_change, TrackedDeviceIpSyncError
+from services.tracking_agent_ports import (
+    preferred_tracking_agent_port,
+    remember_tracking_agent_port,
+    resolve_tracking_agent_ports,
+)
+from services.tracking_discovery_cache import (
+    get_cached_tracking_probe,
+    remember_tracking_probe,
+)
 from services.tracking_freshness import (
     build_controls_contract,
     build_live_freshness,
@@ -102,7 +123,11 @@ from services.restricted_site_ingest_service import (
     parse_observed_datetime as service_parse_observed_datetime,
     plan_restricted_site_ingest,
 )
-from services.tracking_sync_core_service import plan_sync_core_mutations
+from services.tracking_sync_core_service import (
+    extract_current_stats_payload,
+    normalize_current_stats_payload,
+    plan_sync_core_mutations,
+)
 from services.tracking_sync_intake_service import (
     build_sync_policy_payload,
     current_sync_mode,
@@ -140,6 +165,48 @@ def _inventory_sync_error_message(reason_code):
     if reason == 'LINK_CONFLICT':
         return 'Linked inventory sync blocked because more than one active identity link exists for this tracked device.'
     return 'Linked inventory sync failed.'
+
+
+def _purge_tracked_device(device):
+    """Delete a tracked device and its dependent rows in FK-safe order."""
+    device_id = int(device.id)
+    normalized_mac = normalize_mac(device.mac_address)
+
+    delete_specs = (
+        (AlertFanoutTask, AlertFanoutTask.tracked_device_id),
+        (PolicyRebuildTask, PolicyRebuildTask.tracked_device_id),
+        (DeviceEffectivePolicyCache, DeviceEffectivePolicyCache.tracked_device_id),
+        (DeviceIdentityLinkCandidate, DeviceIdentityLinkCandidate.tracked_device_id),
+        (DeviceIdentityLink, DeviceIdentityLink.tracked_device_id),
+        (TrackingAgentKeyBinding, TrackingAgentKeyBinding.tracked_device_id),
+        (RestrictedSiteAlertState, RestrictedSiteAlertState.device_id),
+        (RestrictedSiteDomainMeta, RestrictedSiteDomainMeta.device_id),
+        (RestrictedSiteEvent, RestrictedSiteEvent.device_id),
+        (TrackedDeviceAvailabilityEvent, TrackedDeviceAvailabilityEvent.device_id),
+        (TrackingHistoryIntegrityAudit, TrackingHistoryIntegrityAudit.device_id),
+        (TrackingHourlyRollup, TrackingHourlyRollup.device_id),
+        (TrackingDailyRollup, TrackingDailyRollup.device_id),
+        (DeviceActivityLog, DeviceActivityLog.device_id),
+        (DeviceResourceLog, DeviceResourceLog.device_id),
+        (DeviceApplicationLog, DeviceApplicationLog.device_id),
+        (TrackedDeviceIpHistory, TrackedDeviceIpHistory.device_id),
+    )
+
+    for model, column in delete_specs:
+        model.query.filter(column == device_id).delete(synchronize_session=False)
+
+    TrackingSample.query.filter(TrackingSample.device_id == device_id).delete(synchronize_session=False)
+    TrackingSyncEnvelope.query.filter(TrackingSyncEnvelope.tracked_device_id == device_id).update(
+        {TrackingSyncEnvelope.tracked_device_id: None},
+        synchronize_session=False,
+    )
+
+    if normalized_mac:
+        RemoteDeviceScanHistory.query.filter(
+            db.func.replace(db.func.upper(RemoteDeviceScanHistory.mac_address), '-', ':') == normalized_mac
+        ).delete(synchronize_session=False)
+
+    db.session.delete(device)
 
 
 def _coerce_bool(value, default=False):
@@ -252,17 +319,40 @@ def _map_agent_request_error(exc):
     return "AGENT_REQUEST_FAILED", "Agent request failed"
 
 
-def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False, silent=False):
+def _agent_http_request(
+    method,
+    url,
+    timeout=2.0,
+    headers=None,
+    stream=False,
+    silent=False,
+    params=None,
+    json_data=None,
+    data=None,
+    files=None,
+):
     parsed = urlparse(url)
     started = time.monotonic()
     session = _get_agent_http_session()
     try:
+        request_kwargs = {
+            'method': method,
+            'url': url,
+            'timeout': timeout,
+            'headers': headers,
+            'stream': stream,
+        }
+        if params is not None:
+            request_kwargs['params'] = params
+        if json_data is not None:
+            request_kwargs['json'] = json_data
+        if data is not None:
+            request_kwargs['data'] = data
+        if files is not None:
+            request_kwargs['files'] = files
+
         response = session.request(
-            method=method,
-            url=url,
-            timeout=timeout,
-            headers=headers,
-            stream=stream,
+            **request_kwargs,
         )
         latency_ms = int((time.monotonic() - started) * 1000)
         if not silent:
@@ -291,46 +381,30 @@ def _agent_http_request(method, url, timeout=2.0, headers=None, stream=False, si
         raise AgentHttpError(code, message, original=exc) from exc
 
 
-def _agent_http_get(url, timeout=2.0, headers=None, stream=False, silent=False):
-    return _agent_http_request("GET", url, timeout=timeout, headers=headers, stream=stream, silent=silent)
+def _agent_http_get(url, timeout=2.0, headers=None, stream=False, silent=False, params=None):
+    return _agent_http_request(
+        "GET",
+        url,
+        timeout=timeout,
+        headers=headers,
+        stream=stream,
+        silent=silent,
+        params=params,
+    )
 
 
-def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=False, silent=False):
-    parsed = urlparse(url)
-    started = time.monotonic()
-    session = _get_agent_http_session()
-    try:
-        response = session.request(
-            method="POST",
-            url=url,
-            timeout=timeout,
-            headers=headers,
-            json=json_data,
-            stream=stream,
-        )
-        latency_ms = int((time.monotonic() - started) * 1000)
-        if not silent:
-            logger.info(
-                "[AgentHTTP] method=POST host=%s path=%s result=ok status=%s latency_ms=%s",
-                parsed.hostname,
-                parsed.path,
-                response.status_code,
-                latency_ms,
-            )
-        return response
-    except requests.exceptions.RequestException as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        code, message = _map_agent_request_error(exc)
-        if not silent:
-            logger.warning(
-                "[AgentHTTP] method=POST host=%s path=%s result=%s latency_ms=%s error=%s",
-                parsed.hostname,
-                parsed.path,
-                code.lower(),
-                latency_ms,
-                exc,
-            )
-        raise AgentHttpError(code, message, original=exc) from exc
+def _agent_http_post(url, timeout=2.0, headers=None, json_data=None, stream=False, silent=False, data=None, files=None):
+    return _agent_http_request(
+        "POST",
+        url,
+        timeout=timeout,
+        headers=headers,
+        stream=stream,
+        silent=silent,
+        json_data=json_data,
+        data=data,
+        files=files,
+    )
 
 
 def _agent_error_response(error, status=503):
@@ -355,6 +429,135 @@ def _json_exception(error_code, message, exc=None, status=500):
     else:
         logger.error("[TrackingAPI] %s (%s)", message, error_code)
     return _json_error(error_code, message, status)
+
+
+def _normalize_tracking_snapshot_dict(raw_payload):
+    if not isinstance(raw_payload, dict):
+        return {}
+
+    candidate = raw_payload.get('tracking_data')
+    if isinstance(candidate, dict):
+        normalized_candidate = normalize_current_stats_payload(
+            candidate,
+            hostname=str(raw_payload.get('hostname') or '').strip() or None,
+        )
+        if isinstance(normalized_candidate, dict):
+            return normalized_candidate
+
+    normalized_payload = extract_current_stats_payload(raw_payload)
+    return normalized_payload if isinstance(normalized_payload, dict) else {}
+
+
+def _loads_tracking_snapshot(raw_text):
+    try:
+        decoded = json.loads(raw_text)
+    except Exception:
+        return {}
+    return _normalize_tracking_snapshot_dict(decoded)
+
+
+def _resolve_tracked_agent_ip(device):
+    sync_ip = str(getattr(device, 'last_agent_sync_ip', None) or '').strip()
+    primary_ip = str(getattr(device, 'ip_address', None) or '').strip()
+
+    for candidate in (sync_ip, primary_ip):
+        if candidate and not candidate.startswith('127.'):
+            return candidate
+    return sync_ip or primary_ip or None
+
+
+def _tracked_agent_headers():
+    api_key = str(SHARED_API_KEY or '').strip()
+    if not api_key:
+        raise ValueError('TRACKING_API_KEY is not configured for tracked agent file transfer.')
+    return {'X-API-Key': api_key}
+
+
+def _tracked_agent_base_url(device):
+    agent_ip = _resolve_tracked_agent_ip(device)
+    if not agent_ip:
+        raise ValueError('Tracked device does not have a reachable agent address.')
+    agent_port = preferred_tracking_agent_port(agent_ip)
+    return f"http://{agent_ip}:{agent_port}"
+
+
+def _tracked_agent_request(
+    device,
+    method,
+    path,
+    *,
+    timeout=2.0,
+    headers=None,
+    stream=False,
+    silent=False,
+    params=None,
+    json_data=None,
+    data=None,
+    files=None,
+):
+    agent_ip = _resolve_tracked_agent_ip(device)
+    if not agent_ip:
+        raise ValueError('Tracked device does not have a reachable agent address.')
+
+    last_error = None
+    for agent_port in resolve_tracking_agent_ports(agent_ip):
+        url = f"http://{agent_ip}:{agent_port}{path}"
+        try:
+            response = _agent_http_request(
+                method,
+                url,
+                timeout=timeout,
+                headers=headers,
+                stream=stream,
+                silent=silent,
+                params=params,
+                json_data=json_data,
+                data=data,
+                files=files,
+            )
+            remember_tracking_agent_port(agent_ip, agent_port)
+            return response
+        except AgentHttpError as exc:
+            last_error = exc
+            if exc.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    raise AgentHttpError('AGENT_UNREACHABLE', 'Could not connect to agent endpoint')
+
+
+def _file_proxy_error_status(response):
+    if response.status_code in {400, 403, 404, 409}:
+        return response.status_code
+    return 502
+
+
+def _file_proxy_error(error_code, fallback_message, response):
+    message = fallback_message
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            message = str(payload.get('error') or payload.get('message') or fallback_message)
+    except Exception:
+        pass
+    return _json_error(error_code, message, _file_proxy_error_status(response))
+
+
+def _agent_response_content_type(response):
+    headers = getattr(response, 'headers', {}) or {}
+    return str(headers.get('content-type') or headers.get('Content-Type') or '').lower()
+
+
+def _agent_response_json(response):
+    if not _agent_response_content_type(response).startswith('application/json'):
+        return {}
+    try:
+        payload = response.json()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _extract_tracking_api_key():
@@ -834,6 +1037,7 @@ class NetworkScanner:
         probe_error_code=None,
         probe_method=None,
         identity=None,
+        agent_port=None,
     ):
         payload = data if isinstance(data, dict) else {}
         identity_payload = identity if isinstance(identity, dict) else None
@@ -846,6 +1050,7 @@ class NetworkScanner:
             'probe_method': probe_method,
             'data': payload,
             'identity': identity_payload,
+            'agent_port': agent_port,
             'last_probe_at': datetime.utcnow().isoformat(),
         }
     
@@ -884,30 +1089,51 @@ class NetworkScanner:
             pass
         return "N/A"
     
-    def check_port_open(self, ip, port=5002):
+    def check_port_open(self, ip, port=None):
         """Check if port is open"""
         try:
+            target_port = int(port or preferred_tracking_agent_port(ip))
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(self.timeout)
-            result = sock.connect_ex((ip, port))
+            result = sock.connect_ex((ip, target_port))
             sock.close()
             return result == 0
         except:
             return False
     
-    def check_tracking_service(self, ip, port=5002, profile='scan'):
+    def check_tracking_service(self, ip, port=None, profile='scan'):
         """Check if tracking service is running and classify availability."""
         logger.debug("[TrackingProbe] START ip=%s profile=%s", ip, profile)
         probe_cfg = self._resolve_probe_profile(profile)
+        use_discovery_cache = profile == 'scan'
         ip_obj = None
         try:
             ip_obj = ipaddress.ip_address(str(ip))
         except ValueError:
             pass
 
+        if use_discovery_cache:
+            cached_probe = get_cached_tracking_probe(ip)
+            if isinstance(cached_probe, dict):
+                cached_port = cached_probe.get('agent_port')
+                if cached_port:
+                    remember_tracking_agent_port(ip, cached_port)
+                logger.debug("[TrackingProbe] cache_hit ip=%s port=%s", ip, cached_port)
+                return cached_probe
+
+        def finalize_probe(result):
+            if not isinstance(result, dict):
+                return result
+            agent_port = result.get('agent_port')
+            if agent_port:
+                remember_tracking_agent_port(ip, agent_port)
+            if use_discovery_cache:
+                remember_tracking_probe(ip, result)
+            return result
+
         if self._is_link_local_ip(ip) and not self.include_link_local:
             if probe_cfg.get('return_offline'):
-                return self._build_probe_result(
+                return finalize_probe(self._build_probe_result(
                     availability_status='offline',
                     tracking_status='offline',
                     data={},
@@ -915,11 +1141,11 @@ class NetworkScanner:
                     probe_error_code='AGENT_LINK_LOCAL_SKIPPED',
                     probe_method='none',
                     identity=None,
-                )
+                ))
             return None
         if ip_obj is not None and self.require_private_agent_probes and not ip_obj.is_private:
             if probe_cfg.get('return_offline'):
-                return self._build_probe_result(
+                return finalize_probe(self._build_probe_result(
                     availability_status='offline',
                     tracking_status='offline',
                     data={},
@@ -927,163 +1153,167 @@ class NetworkScanner:
                     probe_error_code='AGENT_PUBLIC_IP_SKIPPED',
                     probe_method='none',
                     identity=None,
-                )
+                ))
             return None
-        base_url = f"http://{ip}:{port}"
-        identity_data = {}
-        probe_error_code = None
 
-        try:
-            is_scan = (profile == 'scan')
+        candidate_ports = resolve_tracking_agent_ports(ip_address=ip, explicit_port=port)
+        last_probe_error_code = None
+        last_identity_data = {}
+
+        for candidate_port in candidate_ports:
+            base_url = f"http://{ip}:{candidate_port}"
+            identity_data = {}
+            probe_error_code = None
             agent_up = True
-            # 1) Identity probe
-            try:
-                identity_response = _agent_http_get(
-                    f"{base_url}/api/identity",
-                    timeout=probe_cfg['identity_timeout'],
-                    silent=is_scan
-                )
-                if identity_response.status_code == 200:
-                    identity_payload = identity_response.json()
-                    identity_data = identity_payload if isinstance(identity_payload, dict) else {}
-                else:
-                    probe_error_code = f"IDENTITY_HTTP_{identity_response.status_code}"
-            except AgentHttpError as error:
-                probe_error_code = error.code
-                agent_up = False
-                # Short-circuit on connection refused/unreachable
-                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
-                    raise error
-            except Exception as error:
-                logger.debug("[TrackingProbe] identity parse failure ip=%s err=%s", ip, error)
 
-            # 2) Full stats probe
             try:
-                stats_response = _agent_http_get(
-                    f"{base_url}/api/secure/stats",
-                    timeout=probe_cfg['stats_timeout'],
-                    headers={'X-API-Key': SHARED_API_KEY},
-                    silent=is_scan
-                )
-                if stats_response.status_code == 200:
-                    stats_payload = stats_response.json()
-                    stats_data = stats_payload if isinstance(stats_payload, dict) else {}
-                    if identity_data:
-                        device_info = stats_data.get('device_info')
-                        if isinstance(device_info, dict):
-                            for key, value in identity_data.items():
-                                device_info.setdefault(key, value)
-                        else:
-                            stats_data['device_info'] = identity_data
-                    return self._build_probe_result(
-                        availability_status='online',
-                        tracking_status='tracking_active',
-                        data=stats_data,
-                        metrics_available=True,
-                        probe_error_code=None,
-                        probe_method='stats',
-                        identity=identity_data,
+                is_scan = (profile == 'scan')
+
+                try:
+                    identity_response = _agent_http_get(
+                        f"{base_url}/api/identity",
+                        timeout=probe_cfg['identity_timeout'],
+                        silent=is_scan
                     )
-                if not probe_error_code:
-                    probe_error_code = f"STATS_HTTP_{stats_response.status_code}"
-            except AgentHttpError as error:
-                probe_error_code = error.code
-                agent_up = False
-                # Short-circuit on connection refused/unreachable
-                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
-                    raise error
-            except Exception as error:
-                logger.debug("[TrackingProbe] stats parse failure ip=%s err=%s", ip, error)
+                    if identity_response.status_code == 200:
+                        identity_payload = identity_response.json()
+                        identity_data = identity_payload if isinstance(identity_payload, dict) else {}
+                    else:
+                        probe_error_code = f"IDENTITY_HTTP_{identity_response.status_code}"
+                except AgentHttpError as error:
+                    probe_error_code = error.code
+                    agent_up = False
+                    if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        raise error
+                except Exception as error:
+                    logger.debug("[TrackingProbe] identity parse failure ip=%s port=%s err=%s", ip, candidate_port, error)
 
-            # 3) Identity reachable but metrics unavailable -> degraded
-            if identity_data:
-                return self._build_probe_result(
-                    availability_status='degraded',
-                    tracking_status='tracking_active',
-                    data={'device_info': identity_data},
-                    metrics_available=False,
-                    probe_error_code=probe_error_code,
-                    probe_method='identity',
-                    identity=identity_data,
-                )
+                try:
+                    stats_response = _agent_http_get(
+                        f"{base_url}/api/secure/stats",
+                        timeout=probe_cfg['stats_timeout'],
+                        headers={'X-API-Key': SHARED_API_KEY},
+                        silent=is_scan
+                    )
+                    if stats_response.status_code == 200:
+                        stats_payload = stats_response.json()
+                        stats_data = stats_payload if isinstance(stats_payload, dict) else {}
+                        if identity_data:
+                            device_info = stats_data.get('device_info')
+                            if isinstance(device_info, dict):
+                                for key, value in identity_data.items():
+                                    device_info.setdefault(key, value)
+                            else:
+                                stats_data['device_info'] = identity_data
+                        return finalize_probe(self._build_probe_result(
+                            availability_status='online',
+                            tracking_status='tracking_active',
+                            data=stats_data,
+                            metrics_available=True,
+                            probe_error_code=None,
+                            probe_method='stats',
+                            identity=identity_data,
+                            agent_port=candidate_port,
+                        ))
+                    if not probe_error_code:
+                        probe_error_code = f"STATS_HTTP_{stats_response.status_code}"
+                except AgentHttpError as error:
+                    probe_error_code = error.code
+                    agent_up = False
+                    if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        raise error
+                except Exception as error:
+                    logger.debug("[TrackingProbe] stats parse failure ip=%s port=%s err=%s", ip, candidate_port, error)
 
-            # 4) Health fallback -> degraded
-            try:
-                health_response = _agent_http_get(
-                    f"{base_url}/api/health",
-                    timeout=probe_cfg['health_timeout'],
-                    silent=is_scan
-                )
-                if health_response.status_code == 200:
-                    return self._build_probe_result(
+                if identity_data:
+                    return finalize_probe(self._build_probe_result(
                         availability_status='degraded',
                         tracking_status='tracking_active',
-                        data={'device_info': identity_data} if identity_data else {},
+                        data={'device_info': identity_data},
                         metrics_available=False,
                         probe_error_code=probe_error_code,
-                        probe_method='health',
+                        probe_method='identity',
                         identity=identity_data,
+                        agent_port=candidate_port,
+                    ))
+
+                try:
+                    health_response = _agent_http_get(
+                        f"{base_url}/api/health",
+                        timeout=probe_cfg['health_timeout'],
+                        silent=is_scan
                     )
-                if not probe_error_code:
-                    probe_error_code = f"HEALTH_HTTP_{health_response.status_code}"
+                    if health_response.status_code == 200:
+                        return finalize_probe(self._build_probe_result(
+                            availability_status='degraded',
+                            tracking_status='tracking_active',
+                            data={'device_info': identity_data} if identity_data else {},
+                            metrics_available=False,
+                            probe_error_code=probe_error_code,
+                            probe_method='health',
+                            identity=identity_data,
+                            agent_port=candidate_port,
+                        ))
+                    if not probe_error_code:
+                        probe_error_code = f"HEALTH_HTTP_{health_response.status_code}"
+                except AgentHttpError as error:
+                    probe_error_code = error.code
+                    agent_up = False
+                    if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
+                        raise error
+                except Exception as error:
+                    logger.debug("[TrackingProbe] health parse failure ip=%s port=%s err=%s", ip, candidate_port, error)
+
+                if self.check_port_open(ip, candidate_port):
+                    return finalize_probe(self._build_probe_result(
+                        availability_status='degraded',
+                        tracking_status='port_open_no_service',
+                        data={},
+                        metrics_available=False,
+                        probe_error_code=probe_error_code or 'AGENT_SERVICE_NOT_IDENTIFIED',
+                        probe_method='port',
+                        identity=identity_data,
+                        agent_port=candidate_port,
+                    ))
+
+                agent_up = False
             except AgentHttpError as error:
                 probe_error_code = error.code
                 agent_up = False
-                # Short-circuit on connection refused/unreachable
-                if error.code in ('AGENT_UNREACHABLE', 'AGENT_TIMEOUT'):
-                    raise error
             except Exception as error:
-                logger.debug("[TrackingProbe] health parse failure ip=%s err=%s", ip, error)
+                logger.warning("[TrackingProbe] ip=%s port=%s unexpected_error=%s", ip, candidate_port, error)
+                probe_error_code = 'AGENT_REQUEST_FAILED'
+                agent_up = False
 
-            # 5) Port open but service signature missing -> degraded
-            if self.check_port_open(ip, port):
-                return self._build_probe_result(
-                    availability_status='degraded',
-                    tracking_status='port_open_no_service',
-                    data={},
-                    metrics_available=False,
-                    probe_error_code=probe_error_code or 'AGENT_SERVICE_NOT_IDENTIFIED',
-                    probe_method='port',
-                    identity=identity_data,
-                )
+            last_probe_error_code = probe_error_code or last_probe_error_code
+            last_identity_data = identity_data or last_identity_data
+            if agent_up:
+                break
 
-            # 6) Fully unreachable
-            agent_up = False
-        except AgentHttpError as error:
-            # Caught from short-circuits above
-            probe_error_code = error.code
-            agent_up = False
-        except Exception as error:
-            logger.warning("[TrackingProbe] ip=%s unexpected_error=%s", ip, error)
-            probe_error_code = 'AGENT_REQUEST_FAILED'
-            agent_up = False
+        host_alive = _ping_host(ip, timeout=1.0)
+        if host_alive:
+            availability_status = 'degraded'
+            tracking_status = 'agent_missing_on_host'
+            probe_error_code = last_probe_error_code or 'AGENT_UNREACHABLE'
+            logger.info("[TrackingProbe] Host %s is UP but Agent is DOWN/MISSING (code=%s)", ip, probe_error_code)
+        else:
+            availability_status = 'offline'
+            tracking_status = 'offline'
+            probe_error_code = last_probe_error_code or 'HOST_UNREACHABLE'
 
-        if not agent_up:
-            # Fallback: Is the host even alive?
-            host_alive = _ping_host(ip, timeout=1.0)
-            if host_alive:
-                availability_status = 'degraded'
-                tracking_status = 'agent_missing_on_host'
-                probe_error_code = probe_error_code or 'AGENT_UNREACHABLE'
-                logger.info("[TrackingProbe] Host %s is UP but Agent is DOWN/MISSING (code=%s)", ip, probe_error_code)
-            else:
-                availability_status = 'offline'
-                tracking_status = 'offline'
-                probe_error_code = probe_error_code or 'HOST_UNREACHABLE'
-
-            offline_result = self._build_probe_result(
-                availability_status=availability_status,
-                tracking_status=tracking_status,
-                data={},
-                metrics_available=False,
-                probe_error_code=probe_error_code,
-                probe_method='none',
-                identity=identity_data,
-            )
-            logger.debug("[TrackingProbe] END ip=%s agent_up=False return_offline=%s", ip, probe_cfg.get('return_offline'))
-            if probe_cfg.get('return_offline'):
-                return offline_result
-            return None
+        offline_result = finalize_probe(self._build_probe_result(
+            availability_status=availability_status,
+            tracking_status=tracking_status,
+            data={},
+            metrics_available=False,
+            probe_error_code=probe_error_code,
+            probe_method='none',
+            identity=last_identity_data,
+        ))
+        logger.debug("[TrackingProbe] END ip=%s agent_up=False return_offline=%s", ip, probe_cfg.get('return_offline'))
+        if probe_cfg.get('return_offline'):
+            return offline_result
+        return None
     
     def scan_single_ip(self, ip):
         """Scan a single IP"""
@@ -1105,7 +1335,7 @@ class NetworkScanner:
 
             device_info = {
                 'ip': ip,
-                'port': 5002,
+                'port': service_info.get('agent_port') or preferred_tracking_agent_port(ip),
                 'status': tracking_status,
                 'availability_status': availability_status,
                 'mac_address': mac,
@@ -1133,7 +1363,7 @@ class NetworkScanner:
             
             return device_info
         except Exception as e:
-            print(f"Error scanning IP {ip}: {e}")
+            logger.error("Error scanning IP %s: %s", ip, e)
             return None
     
     def get_local_network_ranges(self):
@@ -1316,6 +1546,44 @@ class NetworkScanner:
         logger.info("[TrackingScan] Completed scan found=%s", len(devices_found))
         return devices_found
 
+    def scan_candidate_ips(self, candidate_ips):
+        """Probe a known set of IPs for the tracking agent without sweeping the subnet."""
+        normalized_candidates = []
+        seen = set()
+
+        for raw_ip in candidate_ips or []:
+            ip_text = str(raw_ip or '').strip()
+            if not ip_text or ip_text in seen:
+                continue
+            if not self._is_scan_candidate_ip(ip_text):
+                continue
+            seen.add(ip_text)
+            normalized_candidates.append(ip_text)
+
+        if len(normalized_candidates) > self.max_scan_hosts:
+            logger.info(
+                "[TrackingScan] limiting known-host probe from %s to %s",
+                len(normalized_candidates),
+                self.max_scan_hosts,
+            )
+            normalized_candidates = normalized_candidates[:self.max_scan_hosts]
+
+        logger.info(
+            "[TrackingScan] Probing known hosts=%s first5=%s",
+            len(normalized_candidates),
+            normalized_candidates[:5],
+        )
+
+        if not normalized_candidates:
+            return []
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            results = list(executor.map(self.scan_single_ip, normalized_candidates))
+
+        devices_found = [result for result in results if result]
+        logger.info("[TrackingScan] Known-host probe found=%s", len(devices_found))
+        return devices_found
+
 # Real-time tracking storage
 real_time_data = {}
 metrics_refresh_state = {'last_run': 0}
@@ -1357,6 +1625,60 @@ def device_to_dict(device):
         'last_agent_sync_at': device.last_agent_sync_at.isoformat() if getattr(device, 'last_agent_sync_at', None) else None,
         'last_agent_sync_ip': getattr(device, 'last_agent_sync_ip', None),
         'status': check_device_status(device)
+    }
+
+
+def _build_tracking_scan_candidates():
+    """Return tracking scan candidates from known online inventory and tracked endpoints."""
+    latest_scan_subq = (
+        db.session.query(
+            DeviceScanHistory.device_ip.label('device_ip'),
+            db.func.max(DeviceScanHistory.scan_id).label('max_scan_id'),
+        )
+        .group_by(DeviceScanHistory.device_ip)
+        .subquery()
+    )
+
+    inventory_rows = (
+        db.session.query(Device.device_ip)
+        .join(latest_scan_subq, Device.device_ip == latest_scan_subq.c.device_ip)
+        .join(DeviceScanHistory, DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
+        .filter(
+            Device.is_active.is_(True),
+            Device.device_ip.isnot(None),
+            Device.device_ip != '',
+            db.func.lower(DeviceScanHistory.status) == 'online',
+        )
+        .all()
+    )
+
+    inventory_ips = {
+        str(row.device_ip).strip()
+        for row in inventory_rows
+        if getattr(row, 'device_ip', None)
+    }
+
+    tracked_rows = (
+        scoped_tracked_device_query(
+            include_archived=False,
+            include_unscoped_for_admin=True,
+        )
+        .with_entities(TrackedDevice.ip_address)
+        .filter(TrackedDevice.ip_address.isnot(None), TrackedDevice.ip_address != '')
+        .all()
+    )
+    tracked_ips = {
+        str(row.ip_address).strip()
+        for row in tracked_rows
+        if getattr(row, 'ip_address', None)
+    }
+
+    candidates = sorted(inventory_ips | tracked_ips)
+    return {
+        'candidate_ips': candidates,
+        'inventory_hosts': len(inventory_ips),
+        'tracked_hosts': len(tracked_ips),
+        'candidate_hosts': len(candidates),
     }
 
 
@@ -1769,7 +2091,7 @@ def log_device_data(device_id, tracking_data):
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Error logging device data: {e}")
+        logger.error("Error logging device data: %s", e)
 
 def refresh_tracking_snapshot(force=False, min_interval_seconds=15, force_log=False):
     """Refresh device snapshots from agents to keep metrics accurate."""
@@ -1851,7 +2173,7 @@ def refresh_tracking_snapshot(force=False, min_interval_seconds=15, force_log=Fa
 
     except Exception as exc:
         db.session.rollback()
-        print(f"[Metrics Refresh] Warning: {exc}")
+        logger.warning("Metrics refresh: %s", exc)
 
     return refreshed
 
@@ -1891,7 +2213,7 @@ def get_device_statistics(device_id):
         return stats
         
     except Exception as e:
-        print(f"Error getting device statistics: {e}")
+        logger.error("Error getting device statistics: %s", e)
         return {}
 
 # ============================================================
@@ -1908,6 +2230,7 @@ def utility_processor():
 # ============================================================
 
 @tracking_bp.route('/tracking')
+@require_login
 def device_tracking():
     """Main device tracking page"""
     # Template values are best-effort; JS refresh from /api/tracking/live-summary is source-of-truth.
@@ -2070,7 +2393,86 @@ def _build_realtime_response_payload(
         payload['error'] = error_message or 'Device not responding'
     return payload
 
+
+def _build_cached_realtime_snapshot_response(
+    *,
+    device,
+    mac_address,
+    now_utc,
+    device_violation_summary,
+    prefer_bootstrap_label=False,
+):
+    fallback_data = {}
+    if device.tracking_data:
+        fallback_data = _loads_tracking_snapshot(device.tracking_data)
+
+    cached_entry = real_time_data.get(mac_address, {})
+    cached_data = _normalize_tracking_snapshot_dict(cached_entry.get('data'))
+    if not fallback_data and cached_data:
+        fallback_data = cached_data
+
+    if not fallback_data:
+        return None
+
+    metrics_available = bool(
+        device.metrics_available or
+        fallback_data.get('system_metrics') or
+        fallback_data.get('today_stats') or
+        fallback_data.get('current_activity')
+    )
+
+    checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+    sync_recent = bool(
+        device.last_agent_sync_at and
+        (now_utc - device.last_agent_sync_at).total_seconds() <= checkin_window_seconds
+    )
+
+    fallback_status = str(device.availability_status or '').strip().lower()
+    if fallback_status not in ('online', 'degraded', 'offline'):
+        fallback_status = 'degraded' if metrics_available else 'offline'
+
+    data_source = 'bootstrap_cache' if (prefer_bootstrap_label and sync_recent) else 'db_snapshot'
+    metrics_stale = not metrics_available or not sync_recent
+    probe_method = device.probe_method or ('bootstrap-cache' if sync_recent else 'db-snapshot')
+    probe_error_code = device.probe_error_code
+    device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
+    device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=now_utc)
+    response_payload = _build_realtime_response_payload(
+        device=device,
+        now_utc=now_utc,
+        tracking_data=fallback_data,
+        device_info=device_info_payload,
+        availability_status=fallback_status,
+        metrics_available=metrics_available,
+        metrics_stale=metrics_stale,
+        probe_method=probe_method,
+        probe_error_code=probe_error_code,
+        data_source=data_source,
+        probe_failed=False,
+        persisted_fallback_eligible=bool(fallback_data),
+        metrics_missing=not metrics_available,
+        cached=True,
+        bootstrap_cache=bool(prefer_bootstrap_label and sync_recent),
+        sync_recent_fallback=bool(not sync_recent and fallback_data and fallback_status == 'offline'),
+    )
+
+    real_time_data[mac_address] = {
+        'data': fallback_data,
+        'status': fallback_status,
+        'availability_status': fallback_status,
+        'device_info': device_info_payload,
+        'timestamp': time.time(),
+        'probe_error_code': probe_error_code,
+        'probe_method': probe_method,
+        'metrics_available': metrics_available,
+        'metrics_stale': metrics_stale,
+        'response_body': response_payload,
+        'response_status': 200,
+    }
+    return response_payload
+
 @tracking_bp.route('/api/tracking/real-time/<mac_address>')
+@require_login
 def api_real_time_tracking(mac_address):
     """Real-time tracking data for device"""
     try:
@@ -2093,69 +2495,14 @@ def api_real_time_tracking(mac_address):
 
         if prefer_cache and not force_refresh:
             bootstrap_now_utc = datetime.utcnow()
-            checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
-            sync_recent = bool(
-                device.last_agent_sync_at and
-                (bootstrap_now_utc - device.last_agent_sync_at).total_seconds() <= checkin_window_seconds
+            response_payload = _build_cached_realtime_snapshot_response(
+                device=device,
+                mac_address=mac_address,
+                now_utc=bootstrap_now_utc,
+                device_violation_summary=device_violation_summary,
+                prefer_bootstrap_label=True,
             )
-            if sync_recent:
-                fallback_data = {}
-                if device.tracking_data:
-                    try:
-                        candidate_payload = json.loads(device.tracking_data)
-                        if isinstance(candidate_payload, dict):
-                            fallback_data = candidate_payload
-                    except Exception:
-                        fallback_data = {}
-
-                cached_entry = real_time_data.get(mac_address, {})
-                cached_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
-                if not fallback_data and cached_data:
-                    fallback_data = cached_data
-
-                fallback_status = str(device.availability_status or 'degraded').strip().lower()
-                if fallback_status not in ('online', 'degraded'):
-                    fallback_status = 'degraded'
-                metrics_available = bool(
-                    device.metrics_available or
-                    fallback_data.get('system_metrics') or
-                    fallback_data.get('today_stats') or
-                    fallback_data.get('current_activity')
-                )
-                device_info_payload = _apply_violation_summary(device_to_dict(device), device_violation_summary)
-                device_info_payload = _attach_daily_uptime_payload(device_info_payload, device.id, now_utc=bootstrap_now_utc)
-                response_payload = _build_realtime_response_payload(
-                    device=device,
-                    now_utc=bootstrap_now_utc,
-                    tracking_data=fallback_data,
-                    device_info=device_info_payload,
-                    availability_status=fallback_status,
-                    metrics_available=metrics_available,
-                    metrics_stale=True,
-                    probe_method=device.probe_method or 'bootstrap-cache',
-                    probe_error_code=device.probe_error_code,
-                    data_source='bootstrap_cache',
-                    probe_failed=False,
-                    persisted_fallback_eligible=True,
-                    metrics_missing=True,
-                    cached=True,
-                    bootstrap_cache=True,
-                )
-
-                real_time_data[mac_address] = {
-                    'data': fallback_data,
-                    'status': fallback_status,
-                    'availability_status': fallback_status,
-                    'device_info': device_info_payload,
-                    'timestamp': time.time(),
-                    'probe_error_code': device.probe_error_code,
-                    'probe_method': device.probe_method or 'bootstrap-cache',
-                    'metrics_available': metrics_available,
-                    'metrics_stale': True,
-                    'response_body': response_payload,
-                    'response_status': 200,
-                }
-
+            if response_payload is not None:
                 return jsonify(response_payload)
 
         # Get live data from device using interactive probe profile.
@@ -2167,7 +2514,7 @@ def api_real_time_tracking(mac_address):
         availability_status = service_info.get('availability_status', 'offline') if isinstance(service_info, dict) else 'offline'
 
         if service_info and availability_status in ('online', 'degraded'):
-            raw_tracking_data = service_info.get('data') or {}
+            raw_tracking_data = _normalize_tracking_snapshot_dict(service_info.get('data') or {})
             has_metrics = bool(
                 raw_tracking_data.get('system_metrics') or
                 raw_tracking_data.get('today_stats') or
@@ -2178,14 +2525,9 @@ def api_real_time_tracking(mac_address):
             last_log_time = cached_entry.get('last_log_time', 0)
             fallback_data = {}
             if device.tracking_data:
-                try:
-                    candidate_payload = json.loads(device.tracking_data)
-                    if isinstance(candidate_payload, dict):
-                        fallback_data = candidate_payload
-                except Exception:
-                    fallback_data = {}
+                fallback_data = _loads_tracking_snapshot(device.tracking_data)
             if not fallback_data:
-                cached_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
+                cached_data = _normalize_tracking_snapshot_dict(cached_entry.get('data'))
                 if cached_data:
                     fallback_data = cached_data
             tracking_data = raw_tracking_data
@@ -2255,14 +2597,9 @@ def api_real_time_tracking(mac_address):
         if sync_recent:
             fallback_data = {}
             if device.tracking_data:
-                try:
-                    candidate_payload = json.loads(device.tracking_data)
-                    if isinstance(candidate_payload, dict):
-                        fallback_data = candidate_payload
-                except Exception:
-                    fallback_data = {}
+                fallback_data = _loads_tracking_snapshot(device.tracking_data)
             cached_entry = real_time_data.get(mac_address, {})
-            cached_data = cached_entry.get('data') if isinstance(cached_entry.get('data'), dict) else {}
+            cached_data = _normalize_tracking_snapshot_dict(cached_entry.get('data'))
             if not fallback_data and cached_data:
                 fallback_data = cached_data
 
@@ -2809,6 +3146,7 @@ def api_application_history(device_id):
 
 
 @tracking_bp.route('/api/tracking/stream/screenshot/<mac_address>')
+@require_login
 def api_stream_screenshot(mac_address):
     """Stream real-time screenshots"""
     # Auth handled by middleware
@@ -2830,8 +3168,10 @@ def api_stream_screenshot(mac_address):
     if single_frame:
         response = None
         try:
-            response = _agent_http_get(
-                f"http://{device.ip_address}:5002/stream",
+            response = _tracked_agent_request(
+                device,
+                'GET',
+                '/stream',
                 timeout=5,
                 headers={'X-API-Key': SHARED_API_KEY},
                 stream=True,
@@ -2859,7 +3199,7 @@ def api_stream_screenshot(mac_address):
                 headers={'Cache-Control': 'no-store, max-age=0', 'Pragma': 'no-cache'},
             )
         except Exception as e:
-            print(f"Screenshot single-frame error for {device.ip_address}: {e}")
+            logger.error("Screenshot single-frame error for %s: %s", device.ip_address, e)
             return Response(
                 generate_placeholder_jpeg_bytes("Stream Error"),
                 mimetype='image/jpeg',
@@ -2879,8 +3219,10 @@ def api_stream_screenshot(mac_address):
         while consecutive_errors < max_errors:
             try:
                 # Make request with stream=True to get chunks
-                response = _agent_http_get(
-                    f"http://{device.ip_address}:5002/stream",
+                response = _tracked_agent_request(
+                    device,
+                    'GET',
+                    '/stream',
                     timeout=5,
                     headers={'X-API-Key': SHARED_API_KEY},
                     stream=True,
@@ -2895,18 +3237,18 @@ def api_stream_screenshot(mac_address):
                             yield chunk
                 else:
                     consecutive_errors += 1
-                    print(f"Screenshot stream HTTP error {response.status_code} for {device.ip_address}")
+                    logger.error("Screenshot stream HTTP error %s for %s", response.status_code, device.ip_address)
                     yield generate_placeholder_image(f"Error {response.status_code}")
                     time.sleep(2)
             except AgentHttpError as e:
                 consecutive_errors += 1
-                print(f"Screenshot stream agent error for {device.ip_address}: {e.code}")
+                logger.error("Screenshot stream agent error for %s: %s", device.ip_address, e.code)
                 yield generate_placeholder_image(e.code)
                 time.sleep(2)
                 
             except Exception as e:
                 consecutive_errors += 1
-                print(f"Screenshot stream error for {device.ip_address}: {e}")
+                logger.error("Screenshot stream error for %s: %s", device.ip_address, e)
                 yield generate_placeholder_image("Stream Error")
                 time.sleep(2)
         
@@ -2920,6 +3262,7 @@ def api_stream_screenshot(mac_address):
 
 
 @tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
+@require_login
 def api_stream_camera(mac_address):
     """Stream real-time camera feed"""
     # Auth handled by middleware
@@ -2940,8 +3283,10 @@ def api_stream_camera(mac_address):
             try:
                 # Use start_camera endpoint which returns a stream
                 # Use context manager to ensure connection is closed
-                with _agent_http_get(
-                    f"http://{device.ip_address}:5002/start_camera",
+                with _tracked_agent_request(
+                    device,
+                    'GET',
+                    '/start_camera',
                     timeout=5,
                     headers={'X-API-Key': SHARED_API_KEY},
                     stream=True,
@@ -2956,18 +3301,18 @@ def api_stream_camera(mac_address):
                                 yield chunk
                     else:
                         consecutive_errors += 1
-                        print(f"Camera stream HTTP error {response.status_code} for {device.ip_address}")
+                        logger.error("Camera stream HTTP error %s for %s", response.status_code, device.ip_address)
                         yield generate_placeholder_image(f"Camera Error {response.status_code}")
                         time.sleep(2)
             except AgentHttpError as e:
                 consecutive_errors += 1
-                print(f"Camera stream agent error for {device.ip_address}: {e.code}")
+                logger.error("Camera stream agent error for %s: %s", device.ip_address, e.code)
                 yield generate_placeholder_image(e.code)
                 time.sleep(2)
                 
             except Exception as e:
                 consecutive_errors += 1
-                print(f"Camera stream error for {device.ip_address}: {e}")
+                logger.error("Camera stream error for %s: %s", device.ip_address, e)
                 yield generate_placeholder_image("Camera Error")
                 time.sleep(2)
                 
@@ -2981,6 +3326,7 @@ def api_stream_camera(mac_address):
 
 
 @tracking_bp.route('/api/tracking/stream/audio/<mac_address>')
+@require_login
 def api_stream_audio(mac_address):
     """Stream real-time audio"""
     # Auth handled by middleware
@@ -2993,8 +3339,10 @@ def api_stream_audio(mac_address):
         try:
             # Connect to the device's audio stream
             # stream=True is crucial here
-            with _agent_http_get(
-                f"http://{device.ip_address}:5002/audio_stream.wav",
+            with _tracked_agent_request(
+                device,
+                'GET',
+                '/audio_stream.wav',
                 timeout=5,
                 headers={'X-API-Key': SHARED_API_KEY},
                 stream=True,
@@ -3031,10 +3379,10 @@ def api_stream_audio(mac_address):
                 else:
                     return
         except AgentHttpError as e:
-            print(f"Audio stream agent error for {device.ip_address}: {e.code}")
+            logger.error("Audio stream agent error for %s: %s", device.ip_address, e.code)
             return
         except Exception as e:
-            print(f"Audio stream error for {device.ip_address}: {e}")
+            logger.error("Audio stream error for %s: %s", device.ip_address, e)
             return
 
     # Return audio stream (WAV container for browser compatibility)
@@ -3042,6 +3390,7 @@ def api_stream_audio(mac_address):
 
 
 @tracking_bp.route('/api/tracking/toggle-mic/<mac_address>', methods=['POST'])
+@require_role('admin')
 def api_toggle_mic(mac_address):
     """Toggle microphone state"""
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
@@ -3049,8 +3398,10 @@ def api_toggle_mic(mac_address):
         return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
 
     try:
-        status_resp = _agent_http_get(
-            f"http://{device.ip_address}:5002/mic_status",
+        status_resp = _tracked_agent_request(
+            device,
+            'GET',
+            '/mic_status',
             timeout=2,
             headers={'X-API-Key': SHARED_API_KEY},
         )
@@ -3060,8 +3411,10 @@ def api_toggle_mic(mac_address):
 
         is_active = bool(status_resp.json().get('active', False))
         if is_active:
-            action_resp = _agent_http_get(
-                f"http://{device.ip_address}:5002/stop_mic",
+            action_resp = _tracked_agent_request(
+                device,
+                'GET',
+                '/stop_mic',
                 timeout=2,
                 headers={'X-API-Key': SHARED_API_KEY},
             )
@@ -3084,6 +3437,7 @@ def api_toggle_mic(mac_address):
 
 
 @tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
+@require_login
 def proxy_camera_stream(mac_address):
     """Proxy camera stream from device"""
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
@@ -3094,11 +3448,13 @@ def proxy_camera_stream(mac_address):
         try:
             # Connect to the service's /start_camera stream
             # Note: stream=True is crucial for MJPEG
-            resp = _agent_http_get(
-                f"http://{device.ip_address}:5002/start_camera",
-                stream=True,
+            resp = _tracked_agent_request(
+                device,
+                'GET',
+                '/start_camera',
                 timeout=5, # Connection timeout
                 headers={'X-API-Key': SHARED_API_KEY},
+                stream=True,
             )
             
             if resp.status_code != 200:
@@ -3112,13 +3468,13 @@ def proxy_camera_stream(mac_address):
             for chunk in resp.iter_content(chunk_size=4096):
                 yield chunk
         except AgentHttpError as e:
-            print(f"Camera proxy agent error for {mac_address}: {e.code}")
+            logger.error("Camera proxy agent error for %s: %s", mac_address, e.code)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + 
                    generate_placeholder_image(e.code) + 
                    b'\r\n')
         except Exception as e:
-            print(f"Camera proxy error for {mac_address}: {e}")
+            logger.error("Camera proxy error for %s: %s", mac_address, e)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + 
                    generate_placeholder_image("Connection Lost") + 
@@ -3128,6 +3484,7 @@ def proxy_camera_stream(mac_address):
 
 
 @tracking_bp.route('/api/tracking/toggle-camera/<mac_address>', methods=['POST'])
+@require_role('admin')
 def api_toggle_camera(mac_address):
     """Toggle camera state"""
     # Auth handled by middleware
@@ -3137,8 +3494,10 @@ def api_toggle_camera(mac_address):
         return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
     
     try:
-        response = _agent_http_post(
-            f"http://{device.ip_address}:5002/toggle_camera",
+        response = _tracked_agent_request(
+            device,
+            'POST',
+            '/toggle_camera',
             timeout=5,
             headers={'X-API-Key': SHARED_API_KEY},
         )
@@ -3158,6 +3517,7 @@ def api_toggle_camera(mac_address):
 
 
 @tracking_bp.route('/api/tracking/stop-camera/<mac_address>', methods=['POST'])
+@require_role('admin')
 def api_stop_camera(mac_address):
     """Stop camera stream on device"""
     
@@ -3166,8 +3526,10 @@ def api_stop_camera(mac_address):
         return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
     
     try:
-        response = _agent_http_get(
-            f"http://{device.ip_address}:5002/stop_camera",
+        response = _tracked_agent_request(
+            device,
+            'GET',
+            '/stop_camera',
             timeout=3,
             headers={'X-API-Key': SHARED_API_KEY},
         )
@@ -3179,7 +3541,7 @@ def api_stop_camera(mac_address):
     except AgentHttpError as e:
         return _agent_error_response(e, status=503)
     except Exception as e:
-        print(f"Error stopping camera: {e}")
+        logger.error("Error stopping camera: %s", e)
         return _json_exception(
             'STOP_CAMERA_FAILED',
             'Failed to stop camera stream.',
@@ -3194,6 +3556,7 @@ def api_stop_camera(mac_address):
 # ============================================================
 
 @tracking_bp.route('/api/tracking/scan', methods=['POST'])
+@require_role('admin')
 def api_scan_devices():
     """Scan network for devices"""
     if is_reconciliation_locked():
@@ -3205,19 +3568,17 @@ def api_scan_devices():
     
     try:
         scanner = NetworkScanner()
-        devices_found = scanner.scan_for_trackable_devices()
+        candidate_plan = _build_tracking_scan_candidates()
+        devices_found = scanner.scan_candidate_ips(candidate_plan['candidate_ips'])
 
         saved_devices = scoped_tracked_device_query(
             include_archived=True,
             include_unscoped_for_admin=True,
         ).all()
         saved_macs = {str(device.mac_address).upper(): device for device in saved_devices if device.mac_address}
-        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         enhanced_devices = []
         updated_ips = []
-        auto_saved_devices = []
-        scope_defaults = _scope_defaults_for_new_tracked_device()
 
         for device in devices_found:
             mac = normalize_mac(device.get('mac_address'))
@@ -3228,31 +3589,6 @@ def api_scan_devices():
             existing_by_identity = _find_tracked_device(mac_address=mac, unique_client_id=unique_client_id)
             if existing_by_identity and mac and mac not in saved_macs:
                 saved_macs[mac] = existing_by_identity
-
-            if status == 'tracking_active' and mac and mac not in saved_macs:
-                try:
-                    new_device = TrackedDevice(
-                        mac_address=mac,
-                        unique_client_id=unique_client_id,
-                        device_name=scanned_hostname or f"Device_{mac[-5:].replace(':', '')}",
-                        employee_name="Auto-Discovered",
-                        hostname=scanned_hostname,
-                        ip_address=device.get('ip'),
-                        department="Unassigned",
-                        notes="Auto-discovered by scanner",
-                        **scope_defaults,
-                    )
-                    db.session.add(new_device)
-                    db.session.flush()
-                    saved_macs[mac] = new_device
-                    auto_saved_devices.append({
-                        'device_name': new_device.device_name,
-                        'mac_address': mac,
-                        'ip_address': new_device.ip_address,
-                    })
-                    print(f"[AUTO-SAVE] Added new device: {mac} ({device.get('ip')})")
-                except Exception as e:
-                    print(f"[AUTO-SAVE] Error saving {mac}: {e}")
 
             saved_device = saved_macs.get(mac) if mac else None
             if saved_device:
@@ -3299,7 +3635,7 @@ def api_scan_devices():
 
             device_dict = {
                 'ip': device.get('ip'),
-                'port': device.get('port', 5002),
+                'port': device.get('port') or preferred_tracking_agent_port(device.get('ip')),
                 'status': status,
                 'availability_status': device.get('availability_status', 'offline'),
                 'mac_address': mac or 'N/A',
@@ -3322,6 +3658,10 @@ def api_scan_devices():
 
         tracking_active = [d for d in enhanced_devices if d['status'] == 'tracking_active']
         port_only = [d for d in enhanced_devices if d['status'] == 'port_open_no_service']
+        ready_to_add = [
+            d for d in enhanced_devices
+            if d['status'] == 'tracking_active' and not d['is_saved']
+        ]
 
         return jsonify({
             'success': True,
@@ -3329,9 +3669,12 @@ def api_scan_devices():
             'total_found': len(enhanced_devices),
             'tracking_active': len(tracking_active),
             'port_only': len(port_only),
-            'new_devices': len(auto_saved_devices),
-            'auto_saved_devices': auto_saved_devices,
+            'new_devices': len(ready_to_add),
+            'auto_saved_devices': [],
             'updated_ips': updated_ips,
+            'candidate_hosts': candidate_plan['candidate_hosts'],
+            'inventory_hosts': candidate_plan['inventory_hosts'],
+            'tracked_hosts': candidate_plan['tracked_hosts'],
         })
     except Exception as e:
         db.session.rollback()
@@ -3342,6 +3685,7 @@ def api_scan_devices():
         )
 
 @tracking_bp.route('/api/tracking/save-device', methods=['POST'])
+@require_role('admin')
 def api_save_device():
     """Save/update device"""
     
@@ -3380,7 +3724,7 @@ def api_save_device():
         if not mac_address:
             return _json_error(
                 'IDENTITY_RESOLUTION_FAILED',
-                'Could not resolve MAC from service. Ensure service.py is running on the target IP:5002.',
+                'Could not resolve MAC from service. Ensure service.py is running on the target IP and one of the configured tracking agent ports.',
                 400,
             )
 
@@ -3510,9 +3854,10 @@ def api_save_device():
 @tracking_bp.route('/api/tracking/delete-device', methods=['POST'])
 @require_permission('tracking.device.archive')
 def api_delete_device():
-    """Archive-first deletion endpoint (hard delete requires purge privileges)."""
+    """Delete endpoint with archive-by-default behavior and purge support."""
     try:
         payload = request.get_json(silent=True) or {}
+        purge_requested = _coerce_bool(payload.get('purge'), False)
         device = None
         device_query = scoped_tracked_device_query(include_archived=True, include_unscoped_for_admin=True)
         device_id_provided = False
@@ -3528,6 +3873,13 @@ def api_delete_device():
                 return _json_error('INVALID_DEVICE_ID', 'Device ID must be greater than zero.', 400)
             device = device_query.filter(TrackedDevice.id == parsed_device_id).first()
             if not device:
+                if purge_requested:
+                    return jsonify({
+                        'success': True,
+                        'message': 'Device was already deleted.',
+                        'purged': True,
+                        'already_deleted': True,
+                    })
                 return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
 
         if device is None:
@@ -3538,7 +3890,7 @@ def api_delete_device():
                     return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
                 return _json_error(
                     'DEVICE_IDENTITY_REQUIRED',
-                    'Provide device_id or mac_address to archive a tracked device.',
+                    'Provide device_id or mac_address to delete a tracked device.',
                     400,
                 )
 
@@ -3552,11 +3904,17 @@ def api_delete_device():
             ).first()
 
         if not device:
+            if purge_requested:
+                return jsonify({
+                    'success': True,
+                    'message': 'Device was already deleted.',
+                    'purged': True,
+                    'already_deleted': True,
+                })
             return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
 
-        purge_requested = _coerce_bool(payload.get('purge'), False)
         if purge_requested:
-            db.session.delete(device)
+            _purge_tracked_device(device)
             db.session.commit()
             return jsonify({
                 'success': True,
@@ -3582,7 +3940,7 @@ def api_delete_device():
         })
     except Exception as e:
         db.session.rollback()
-        return _json_exception('DELETE_DEVICE_FAILED', 'Failed to archive tracked device.', e)
+        return _json_exception('DELETE_DEVICE_FAILED', 'Failed to delete tracked device.', e)
 
 
 @tracking_bp.route('/api/tracking/device/archive', methods=['POST'])
@@ -3667,7 +4025,7 @@ def api_tracking_history_purge_confirm():
 
     purged_devices = 0
     for device in devices:
-        db.session.delete(device)
+        _purge_tracked_device(device)
         purged_devices += 1
 
     db.session.commit()
@@ -3678,6 +4036,7 @@ def api_tracking_history_purge_confirm():
     })
 
 @tracking_bp.route('/api/tracking/sync-ips', methods=['POST'])
+@require_role('admin')
 def api_sync_ips():
     """Sync IP addresses for all devices"""
     if is_reconciliation_locked():
@@ -3796,6 +4155,7 @@ def api_sync_ips():
 
 
 @tracking_bp.route('/api/tracking/reconcile', methods=['POST'])
+@require_role('admin')
 def api_tracking_reconcile():
     """Run tracking reconciliation on demand."""
     payload = request.get_json(silent=True) or {}
@@ -3854,6 +4214,7 @@ def restricted_sites_policy_page():
 
 
 @tracking_bp.route('/api/tracking/restricted-sites/policy', methods=['GET'])
+@require_login
 def api_restricted_sites_policy():
     current_version = str(request.args.get('current_version') or '').strip()
     policy = RestrictedSitePolicy.get_singleton()
@@ -4053,7 +4414,11 @@ def api_ingest_restricted_site_events():
 @tracking_bp.route('/api/tracking/register', methods=['GET'])
 def api_tracking_register():
     """Compatibility registration endpoint for service auto-discovery."""
-    auth_error = _require_tracking_api_key()
+    _auth_ctx, auth_error = _authorize_agent_request(
+        expected_device_id=None,
+        require_bound=False,
+        allow_bootstrap=True,
+    )
     if auth_error:
         return auth_error
 
@@ -4181,15 +4546,7 @@ def api_tracking_sync():
         if current_resolved_ip:
             device.last_agent_sync_ip = current_resolved_ip
 
-        current_stats = payload.get('current_stats')
-        if current_stats is None and any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
-            current_stats = {
-                'current_activity': payload.get('current_activity'),
-                'today_stats': payload.get('today_stats'),
-                'system_metrics': payload.get('system_metrics'),
-                'device_info': payload.get('device_info'),
-                'meta': payload.get('meta'),
-            }
+        current_stats = extract_current_stats_payload(payload)
         current_stats_valid = isinstance(current_stats, dict)
         integrity_error_code = None
         ingest_result = None
@@ -4202,6 +4559,11 @@ def api_tracking_sync():
             device.probe_error_code = integrity_error_code
             device.last_probe_at = now_utc
         elif current_stats_valid:
+            has_metrics = bool(
+                current_stats.get('system_metrics') or
+                current_stats.get('today_stats') or
+                current_stats.get('current_activity')
+            )
             try:
                 ingest_result = ingest_tracking_sample(
                     device_id=device.id,
@@ -4209,16 +4571,13 @@ def api_tracking_sync():
                     source='sync',
                     received_at=now_utc,
                 )
-                has_metrics = bool(
-                    current_stats.get('system_metrics') or
-                    current_stats.get('today_stats') or
-                    current_stats.get('current_activity')
-                )
                 device.availability_status = 'online' if has_metrics else 'degraded'
                 device.metrics_available = bool(has_metrics)
                 device.probe_method = 'sync'
                 device.probe_error_code = None
                 device.last_probe_at = now_utc
+                if has_metrics:
+                    device.tracking_data = json.dumps(current_stats, ensure_ascii=True)
             except Exception as ingest_exc:
                 integrity_error_code = 'INTEGRITY_INGEST_FAILED'
                 logger.warning("[TrackingSync] ingest failed mac=%s err=%s", mac_address, ingest_exc)
@@ -4330,8 +4689,9 @@ def api_tracking_sync():
 # ============================================================
 
 @tracking_bp.route('/tracking/live')
+@require_login
 def live_tracking():
-    """Fleet command center page."""
+    """Compatibility redirect for legacy fleet links and tracked-device deep links."""
     selected_device_id = request.args.get('device_id', type=int)
     selected_mac = normalize_mac(request.args.get('mac'))
 
@@ -4344,12 +4704,23 @@ def live_tracking():
         ).filter(TrackedDevice.mac_address == selected_mac).first()
         if target:
             return redirect(url_for('tracking_bp.tracked_device_live', device_id=target.id))
+    return redirect(url_for('tracking_bp.device_tracking', go_live=1))
 
-    saved_devices = scoped_tracked_device_query(
-        include_archived=False,
-        include_unscoped_for_admin=True,
-    ).order_by(TrackedDevice.device_name).all()
-    return render_template('tracking/live_tracking.html', saved_devices=saved_devices)
+
+@tracking_bp.route('/api/tracking/live-sync', methods=['POST'])
+@require_permission('tracking.view')
+def api_live_sync():
+    """Force an immediate tracked-device snapshot refresh."""
+    try:
+        refreshed_devices = refresh_tracking_snapshot(force=True, min_interval_seconds=10, force_log=True)
+        return jsonify({
+            'success': True,
+            'refreshed_devices': int(refreshed_devices or 0),
+            'message': 'Live sync completed.',
+        })
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('TRACKING_LIVE_SYNC_FAILED', 'Failed to run live sync.', e)
 
 
 @tracking_bp.route('/tracking/devices/<int:device_id>')
@@ -4358,6 +4729,7 @@ def live_tracking():
 def tracked_device_live(device_id):
     """Canonical full-page live telemetry view for a tracked workstation."""
     device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    file_transfer_enabled = str(session.get('role') or '').strip().lower() == 'admin'
     identity_text = f"{device.device_name or ''} {device.hostname or ''}".strip().lower()
     if 'server' in identity_text:
         device_type_label = 'Server'
@@ -4406,9 +4778,306 @@ def tracked_device_live(device_id):
         policy_domain=policy_domain,
         initial_daily_uptime=initial_daily_uptime,
         initial_last_seen_utc=initial_last_seen_utc,
+        file_transfer_enabled=file_transfer_enabled,
     )
 
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/system-info')
+@require_role('admin')
+def api_tracked_device_file_system_info(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+
+    try:
+        response = _agent_http_get(
+            f"{_tracked_agent_base_url(device)}/api/files/system_info",
+            timeout=10,
+            headers=_tracked_agent_headers(),
+        )
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_SYSTEM_INFO_FAILED',
+            'Failed to load workstation file system info.',
+            exc,
+        )
+
+    if response.status_code != 200:
+        return _file_proxy_error(
+            'TRACKED_DEVICE_FILE_SYSTEM_INFO_FAILED',
+            'Workstation file system info is unavailable.',
+            response,
+        )
+
+    payload = _agent_response_json(response)
+    payload.setdefault('success', True)
+    payload['device'] = {
+        'id': device.id,
+        'name': device.device_name,
+        'hostname': device.hostname,
+        'agent_ip': _resolve_tracked_agent_ip(device),
+    }
+    return jsonify(payload)
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/list', methods=['POST'])
+@require_role('admin')
+def api_tracked_device_file_list(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    payload = request.get_json(silent=True) or {}
+    requested_path = str(payload.get('path') or '').strip()
+
+    try:
+        response = _agent_http_get(
+            f"{_tracked_agent_base_url(device)}/api/files/list",
+            timeout=15,
+            headers=_tracked_agent_headers(),
+            params={'path': requested_path} if requested_path else None,
+        )
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_LIST_FAILED',
+            'Failed to load workstation files.',
+            exc,
+        )
+
+    if response.status_code != 200:
+        return _file_proxy_error(
+            'TRACKED_DEVICE_FILE_LIST_FAILED',
+            'Failed to load workstation files.',
+            response,
+        )
+
+    body = _agent_response_json(response)
+    body.setdefault('success', True)
+    body['agent_ip'] = _resolve_tracked_agent_ip(device)
+    body['device_id'] = device.id
+    return jsonify(body)
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/create-folder', methods=['POST'])
+@require_role('admin')
+def api_tracked_device_file_create_folder(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        response = _agent_http_post(
+            f"{_tracked_agent_base_url(device)}/api/files/create_folder",
+            timeout=15,
+            headers=_tracked_agent_headers(),
+            json_data=payload,
+        )
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_CREATE_FOLDER_FAILED',
+            'Failed to create workstation folder.',
+            exc,
+        )
+
+    if response.status_code != 200:
+        return _file_proxy_error(
+            'TRACKED_DEVICE_FILE_CREATE_FOLDER_FAILED',
+            'Failed to create workstation folder.',
+            response,
+        )
+
+    body = _agent_response_json(response)
+    body.setdefault('success', True)
+    return jsonify(body)
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/delete', methods=['POST'])
+@require_role('admin')
+def api_tracked_device_file_delete(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    payload = request.get_json(silent=True) or {}
+    raw_paths = payload.get('paths')
+    if isinstance(raw_paths, list):
+        paths = [str(item or '').strip() for item in raw_paths if str(item or '').strip()]
+    else:
+        single_path = str(payload.get('path') or '').strip()
+        paths = [single_path] if single_path else []
+
+    if not paths:
+        return _json_error('PATH_REQUIRED', 'A file or folder path is required.', 400)
+
+    deleted = []
+    failed = []
+    try:
+        headers = _tracked_agent_headers()
+        base_url = _tracked_agent_base_url(device)
+        for target_path in paths:
+            response = _agent_http_post(
+                f"{base_url}/api/files/delete",
+                timeout=15,
+                headers=headers,
+                json_data={'path': target_path},
+            )
+            if response.status_code == 200:
+                deleted.append(target_path)
+                continue
+
+            error_message = 'Failed to delete workstation file.'
+            try:
+                response_payload = response.json()
+                if isinstance(response_payload, dict):
+                    error_message = str(response_payload.get('error') or response_payload.get('message') or error_message)
+            except Exception:
+                pass
+            failed.append({'path': target_path, 'error': error_message, 'status': response.status_code})
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_DELETE_FAILED',
+            'Failed to delete workstation file.',
+            exc,
+        )
+
+    status = 200 if not failed else 207
+    return jsonify({
+        'success': not failed,
+        'deleted': deleted,
+        'deleted_count': len(deleted),
+        'failed': failed,
+        'failed_count': len(failed),
+    }), status
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/upload', methods=['POST'])
+@require_role('admin')
+def api_tracked_device_file_upload(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    incoming_files = [file for file in request.files.getlist('file') if getattr(file, 'filename', '')]
+    if not incoming_files:
+        return _json_error('FILE_REQUIRED', 'At least one upload file is required.', 400)
+
+    target_path = str(request.form.get('path') or '').strip()
+    proxied_files = []
+    for file_storage in incoming_files:
+        try:
+            file_storage.stream.seek(0)
+        except Exception:
+            pass
+        proxied_files.append((
+            'file',
+            (
+                file_storage.filename,
+                file_storage.stream,
+                file_storage.mimetype or 'application/octet-stream',
+            ),
+        ))
+
+    try:
+        response = _agent_http_post(
+            f"{_tracked_agent_base_url(device)}/api/files/upload",
+            timeout=60,
+            headers=_tracked_agent_headers(),
+            data={'path': target_path},
+            files=proxied_files,
+        )
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_UPLOAD_FAILED',
+            'Failed to upload file to workstation.',
+            exc,
+        )
+
+    if response.status_code != 200:
+        return _file_proxy_error(
+            'TRACKED_DEVICE_FILE_UPLOAD_FAILED',
+            'Failed to upload file to workstation.',
+            response,
+        )
+
+    body = _agent_response_json(response)
+    body.setdefault('success', True)
+    body['device_id'] = device.id
+    return jsonify(body)
+
+
+@tracking_bp.route('/api/tracking/devices/<int:device_id>/files/download', methods=['POST'])
+@require_role('admin')
+def api_tracked_device_file_download(device_id):
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    payload = request.get_json(silent=True) or {}
+    target_path = str(payload.get('path') or '').strip()
+    if not target_path:
+        return _json_error('PATH_REQUIRED', 'A file or folder path is required.', 400)
+
+    try:
+        response = _agent_http_get(
+            f"{_tracked_agent_base_url(device)}/api/files/download",
+            timeout=60,
+            headers=_tracked_agent_headers(),
+            stream=True,
+            params={'path': target_path},
+        )
+    except ValueError as exc:
+        return _json_error('TRACKING_FILE_TRANSFER_UNAVAILABLE', str(exc), 503)
+    except AgentHttpError as exc:
+        return _agent_error_response(exc, status=503)
+    except Exception as exc:
+        return _json_exception(
+            'TRACKED_DEVICE_FILE_DOWNLOAD_FAILED',
+            'Failed to download workstation file.',
+            exc,
+        )
+
+    if response.status_code != 200:
+        return _file_proxy_error(
+            'TRACKED_DEVICE_FILE_DOWNLOAD_FAILED',
+            'Failed to download workstation file.',
+            response,
+        )
+
+    fallback_name = str(payload.get('name') or '').strip() or os.path.basename(target_path.rstrip('/\\')) or 'workstation-file'
+    if payload.get('is_dir'):
+        fallback_name = fallback_name if fallback_name.lower().endswith('.zip') else f"{fallback_name}.zip"
+
+    def generate():
+        try:
+            for chunk in response.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+    proxy_response = Response(
+        stream_with_context(generate()),
+        mimetype=response.headers.get('Content-Type', 'application/octet-stream'),
+    )
+    proxy_response.headers['Cache-Control'] = 'no-store, max-age=0'
+    if response.headers.get('Content-Length'):
+        proxy_response.headers['Content-Length'] = response.headers['Content-Length']
+    if response.headers.get('Content-Disposition'):
+        proxy_response.headers['Content-Disposition'] = response.headers['Content-Disposition']
+    else:
+        proxy_response.headers['Content-Disposition'] = f'attachment; filename="{fallback_name}"'
+    return proxy_response
+
 @tracking_bp.route('/api/tracking/live-summary')
+@require_login
 def api_live_summary():
     """Get live summary data for all devices pulling from the background-synced DB cache"""
     
@@ -4458,10 +5127,10 @@ def api_live_summary():
                     if isinstance(payload, dict):
                         candidate_tracking = payload.get('tracking_data')
                         if isinstance(candidate_tracking, dict):
-                            tracking_info = candidate_tracking
-                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
+                            tracking_info = _normalize_tracking_snapshot_dict(candidate_tracking)
+                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics', 'activity', 'system', 'network')):
                             # Backward-compatible support for older payload shape
-                            tracking_info = payload
+                            tracking_info = _normalize_tracking_snapshot_dict(payload)
 
                         status_from_cache = str(
                             payload.get('availability_status') or payload.get('status') or ''
@@ -4487,10 +5156,7 @@ def api_live_summary():
             # DB Fallback (Durable State)
             if not is_from_redis:
                 if device.tracking_data:
-                    try:
-                        tracking_info = json.loads(device.tracking_data)
-                    except Exception:
-                        pass
+                    tracking_info = _loads_tracking_snapshot(device.tracking_data)
                 availability_status = str(device.availability_status or 'offline').strip().lower()
                 if availability_status not in ('online', 'degraded', 'offline'):
                     availability_status = 'offline'
@@ -4673,6 +5339,7 @@ def api_device_restricted_alerts(device_id):
         )
 
 @tracking_bp.route('/api/tracking/live-status/<mac_address>')
+@require_login
 def api_live_status(mac_address):
     """Get simplified live status for a device directly from DB cache"""
     
@@ -4700,10 +5367,10 @@ def api_live_status(mac_address):
                     if isinstance(payload, dict):
                         candidate_tracking = payload.get('tracking_data')
                         if isinstance(candidate_tracking, dict):
-                            tracking_info = candidate_tracking
-                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics')):
+                            tracking_info = _normalize_tracking_snapshot_dict(candidate_tracking)
+                        elif any(key in payload for key in ('current_activity', 'today_stats', 'system_metrics', 'activity', 'system', 'network')):
                             # Backward-compatible support for older payload shape
-                            tracking_info = payload
+                            tracking_info = _normalize_tracking_snapshot_dict(payload)
 
                         status_from_cache = str(
                             payload.get('availability_status') or payload.get('status') or ''
@@ -4729,10 +5396,7 @@ def api_live_status(mac_address):
         # DB Fallback
         if not is_from_redis:
             if device.tracking_data:
-                try:
-                    tracking_info = json.loads(device.tracking_data)
-                except Exception:
-                    pass
+                tracking_info = _loads_tracking_snapshot(device.tracking_data)
             availability_status = str(device.availability_status or 'offline').strip().lower()
             if availability_status not in ('online', 'degraded', 'offline'):
                 availability_status = 'offline'
@@ -4806,6 +5470,7 @@ def check_live_alerts(tracking_data, device_info):
     return alerts
 
 @tracking_bp.route('/api/tracking/live-alerts')
+@require_login
 def api_live_alerts():
     """Get live alerts for all devices"""
     
@@ -4848,6 +5513,7 @@ def api_live_alerts():
         )
 
 @tracking_bp.route('/api/tracking/maintenance/<mac_address>', methods=['POST'])
+@require_role('admin')
 def api_toggle_device_maintenance(mac_address):
     """Toggle maintenance mode for a tracked device."""
 
@@ -4888,6 +5554,7 @@ def api_toggle_device_maintenance(mac_address):
 # ============================================================
 
 @tracking_bp.route('/api/tracking/metrics/productivity')
+@require_login
 def api_productivity_metrics():
     """Get productivity metrics and work session blocks."""
         
@@ -4934,6 +5601,7 @@ def api_productivity_metrics():
         )
 
 @tracking_bp.route('/api/tracking/metrics/security')
+@require_login
 def api_security_metrics():
     """Get security risk metrics and unusual activity alerts."""
 
@@ -5054,6 +5722,7 @@ def api_security_metrics():
         )
 
 @tracking_bp.route('/api/tracking/metrics/performance')
+@require_login
 def api_performance_metrics():
     """Get performance metrics (CPU heatmap data)."""
 
@@ -5095,6 +5764,7 @@ def api_performance_metrics():
         )
 
 @tracking_bp.route('/api/tracking/metrics/details/<metric_type>')
+@require_login
 def api_metric_details(metric_type):
     """Get detailed breakdown for a specific metric"""
         

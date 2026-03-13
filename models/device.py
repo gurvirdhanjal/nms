@@ -1,5 +1,6 @@
 from extensions import db
 from datetime import datetime
+from utils.encryption import encrypt, decrypt
 
 class Device(db.Model):
     device_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -54,7 +55,10 @@ class Device(db.Model):
 
     # Department Isolation (Phase 1 RBAC)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True, index=True)
-    
+
+    # Compliance Profile (Phase 3) — optional per-device threshold overrides
+    compliance_profile_id = db.Column(db.Integer, db.ForeignKey('compliance_profiles.id', ondelete='SET NULL'), nullable=True)
+
     # Monitoring Configuration
     monitoring_mode = db.Column(db.String(20), default='ping') # ping, snmp, agent, wmi
     
@@ -63,7 +67,16 @@ class Device(db.Model):
     snmp_port = db.Column(db.Integer, default=161)
     snmp_timeout = db.Column(db.Integer, default=2)
     snmp_retries = db.Column(db.Integer, default=1)
-    snmp_community = db.Column(db.String(100), nullable=True) # v2c
+    _snmp_community = db.Column('snmp_community', db.String(200), nullable=True)
+
+    @property
+    def snmp_community(self) -> str | None:
+        return decrypt(self._snmp_community)
+
+    @snmp_community.setter
+    def snmp_community(self, value: str | None):
+        self._snmp_community = encrypt(value)
+
     snmp_username = db.Column(db.String(100), nullable=True) # v3
     snmp_auth_proto = db.Column(db.String(10), nullable=True) # SHA, MD5
     snmp_auth_password = db.Column(db.String(100), nullable=True)

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Device Management - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
 <style>
     .devices-page {
@@ -417,6 +418,7 @@
                             <input type="hidden" name="per_page" value="{{ per_page|default(100) }}">
 
                             <button type="button" class="btn btn-dark btn-sm border-secondary"
+                                id="devicesRefreshBtn"
                                 onclick="refreshAllVisibleStatuses()" title="Refresh Status">
                                 <i data-lucide="refresh-cw"></i> Refresh
                             </button>
@@ -530,7 +532,7 @@
                             Inventory {{ global_device_count|default(total_devices|default(devices|length)) }} |
                             Page {{ page|default(1) }} of {{ total_pages|default(1) }}
                         </div>
-                        <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell">
+                        <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell" id="devicesTableShell">
 
                             <table class="table table-hover devices-table">
                                 <thead class="table-dark">
@@ -948,6 +950,13 @@
     </div>
 
     <script>
+        const devicesSurfaceFlags = window.__UI_SURFACE_FLAGS__ || {};
+        const devicesToastApi = devicesSurfaceFlags.sharedToast !== false && window.UI?.Toast?.show
+            ? window.UI.Toast
+            : null;
+        const devicesLoadingApi = devicesSurfaceFlags.sharedLoading !== false && window.UI?.Loading
+            ? window.UI.Loading
+            : null;
 
         // Keyed DOM patch helper
         window.patchKeyedTableRows = function (tbody, items, options) {
@@ -1139,12 +1148,18 @@
 
                                 const isWorkstation = (d.device_type || '').toLowerCase() === 'workstation';
                                 const isPrinter = (d.device_type || '').toLowerCase() === 'printer';
+                                const isServer = (d.device_type || '').toLowerCase() === 'server';
                                 const hasMac = d.macaddress && d.macaddress !== 'N/A';
                                 const deviceHref = (isWorkstation && hasMac)
                                     ? '/tracking/live?mac=' + encodeURIComponent(d.macaddress)
                                     : isPrinter
                                         ? '/printer/' + d.device_id
                                         : '/devices/' + d.device_id + '/details';
+                                const serverMonitorActionHtml = isServer
+                                    ? `<a class="btn btn-outline-info" href="/devices/${d.device_id}/server-monitoring" title="Open Server Monitoring">
+                                            <i data-lucide="activity"></i>
+                                       </a>`
+                                    : '';
 
                                 return `
                                  <td>
@@ -1170,6 +1185,7 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm device-actions">
+                                        ${serverMonitorActionHtml}
                                         <button type="button" class="btn btn-outline-warning" onclick="editDevice(${d.device_id})" title="Edit Device">
                                             <i data-lucide="pencil"></i>
                                         </button>
@@ -1256,6 +1272,13 @@
         }
 
         function showDevicesNotification(message, type = 'info', timeoutMs = 4200) {
+            if (devicesToastApi) {
+                devicesToastApi.show(String(message || ''), type, {
+                    durationMs: timeoutMs
+                });
+                return;
+            }
+
             const host = document.getElementById('devicesNotificationHost');
             if (!host) return;
 
@@ -2143,6 +2166,19 @@
                 return;
             }
 
+            const refreshButton = document.getElementById('devicesRefreshBtn');
+            const tableShell = document.getElementById('devicesTableShell');
+            if (devicesLoadingApi && refreshButton) {
+                devicesLoadingApi.setButtonBusy(refreshButton, {
+                    busy: true,
+                    labelBusy: 'Refreshing...',
+                    labelIdle: '<i data-lucide="refresh-cw"></i> Refresh'
+                });
+            }
+            if (tableShell) {
+                tableShell.classList.add('ui-refreshing');
+            }
+
             stopStatusPolling();
 
             try {
@@ -2152,6 +2188,16 @@
                     await fetchAllStatuses({ force: true, deviceIds: batch });
                 }
             } finally {
+                if (devicesLoadingApi && refreshButton) {
+                    devicesLoadingApi.setButtonBusy(refreshButton, {
+                        busy: false,
+                        labelIdle: '<i data-lucide="refresh-cw"></i> Refresh'
+                    });
+                }
+                if (tableShell) {
+                    tableShell.classList.remove('ui-refreshing');
+                }
+                hydrateLucideIcons();
                 startStatusPolling();
             }
         }

@@ -1,7 +1,11 @@
+import logging
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 class NotificationService:
     """
@@ -87,28 +91,40 @@ class NotificationService:
 
     @classmethod
     def _send_email(cls, subject, body):
-        """Internal method to send plain text email."""
-        # For this tactical deployment, we might not have a real SMTP server.
-        # We will simulate success and print to console to prove logic flows.
-        
-        # Real implementation would be:
-        # try:
-        #     msg = MIMEMultipart()
-        #     msg['From'] = cls.SMTP_USER
-        #     msg['To'] = ", ".join(cls.RECIPIENTS)
-        #     msg['Subject'] = subject
-        #     msg.attach(MIMEText(body, 'plain'))
-        #     
-        #     server = smtplib.SMTP(cls.SMTP_SERVER, cls.SMTP_PORT)
-        #     server.starttls()
-        #     server.login(cls.SMTP_USER, cls.SMTP_PASS)
-        #     server.send_message(msg)
-        #     server.quit()
-        #     return True
-        # except Exception as e:
-        #     print(f"SMTP Error: {e}")
-        #     return False
-        
-        # Simulation
-        print(f"--- [MOCK EMAIL] ---\nTo: {cls.RECIPIENTS}\nSubject: {subject}\n{body}\n--------------------")
-        return True
+        """Send plain-text email via smtplib. Returns True on success, False on failure."""
+        smtp_server = os.environ.get('SMTP_SERVER', '').strip()
+        if not smtp_server:
+            logger.warning('[email] SMTP_SERVER not set — skipping email send')
+            logger.debug('[email] MOCK: %s', subject)
+            return True
+
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER', '').strip()
+        smtp_password = os.environ.get('SMTP_PASSWORD', '').strip()
+        smtp_from = os.environ.get('SMTP_FROM', '').strip() or smtp_user
+        recipients_raw = os.environ.get('SMTP_RECIPIENTS', '').strip()
+        recipients = [r.strip() for r in recipients_raw.split(',') if r.strip()]
+        use_tls = os.environ.get('SMTP_USE_TLS', 'true').lower() != 'false'
+
+        if not recipients:
+            logger.warning('[email] SMTP_RECIPIENTS not set — skipping email send')
+            return True
+
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = smtp_from
+            msg['To'] = ', '.join(recipients)
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls()
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+            server.quit()
+            return True
+        except Exception as exc:
+            logger.error('[email] Failed to send "%s": %s', subject, exc)
+            return False

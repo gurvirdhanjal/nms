@@ -2,12 +2,15 @@
 Dashboard API endpoints for Network Monitoring System.
 Provides aggregated health, trends, and problem detection.
 """
+import logging
 from flask import Blueprint, current_app, jsonify, request, session
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case, or_
 import time
+
+logger = logging.getLogger(__name__)
 from services.dashboard_availability import build_device_availability_snapshot
-from utils.server_health import compute_server_health, is_server_device
+from utils.server_health import compute_server_health, is_server_device, query_latest_server_health_logs
 from extensions import db
 from middleware.rbac import (
     current_scope_cache_fragment,
@@ -441,10 +444,7 @@ def get_summary():
         inventory_count = len(scoped_devices)
         maintenance_count = sum(1 for device in scoped_devices if bool(getattr(device, 'maintenance_mode', False)))
         
-        # DEBUG LOGGING
-        db_path = db.engine.url.database
-        import os
-        print(f"[LIVE DEBUG] DB Path: {os.path.abspath(db_path)} | Count: {inventory_count}")
+        logger.debug("Dashboard inventory count: %d", inventory_count)
         
         # Monitored Devices (The denominator for availability)
         # USER REQUEST: Removed is_monitored filter to show ALL devices
@@ -580,9 +580,9 @@ def get_summary():
         set_cached(scope_cache_key, result, ttl_seconds=30)
         return jsonify(result)
         
-    except Exception as e:
-        print(f"Dashboard summary error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Dashboard summary error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -849,9 +849,9 @@ def get_top_problems():
         set_cached(scoped_cache_key, result, ttl_seconds=10)
         return jsonify(result)
         
-    except Exception as e:
-        print(f"Top problems error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Top problems error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -1134,9 +1134,9 @@ def get_trends():
         set_cached(cache_key, result, ttl_seconds=300)
         return jsonify(result)
         
-    except Exception as e:
-        print(f"Trends error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Trends error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -1315,9 +1315,9 @@ def get_availability_details():
         set_cached(scoped_cache_key, result, ttl_seconds=60)
         return jsonify(result)
 
-    except Exception as e:
-        print(f"Availability details error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Availability details error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -1378,18 +1378,7 @@ def get_inventory_stats():
         # calculate server health for each device (agent metrics only)
         from models.server_health import ServerHealthLog
         
-        # Get latest agent health log for each device
-        latest_health_subq = db.session.query(
-            ServerHealthLog.device_id,
-            func.max(ServerHealthLog.id).label('max_id')
-        ).filter(
-            ServerHealthLog.source == 'agent'
-        ).group_by(ServerHealthLog.device_id).subquery()
-        
-        latest_health_logs = db.session.query(ServerHealthLog).join(
-            latest_health_subq,
-            (ServerHealthLog.id == latest_health_subq.c.max_id)
-        ).all()
+        latest_health_logs = query_latest_server_health_logs(source='agent')
         
         health_map = {log.device_id: log for log in latest_health_logs}
         
@@ -1493,9 +1482,9 @@ def get_top_interfaces():
             
         return jsonify(result)
 
-    except Exception as e:
-        print(f"Top Interfaces Error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Top interfaces error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 # ============================================================
 # GET /api/dashboard/realtime/network-io
@@ -1545,6 +1534,6 @@ def get_network_io_trend():
             'outbound': out_data
         })
 
-    except Exception as e:
-        print(f"Network I/O Error: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Network I/O error")
+        return jsonify({'error': 'Internal server error'}), 500

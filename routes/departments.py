@@ -2,10 +2,18 @@ from flask import Blueprint, request, jsonify, render_template
 from extensions import db
 from models.department import Department
 from models.device import Device
+from models.site import Site
 from models.user import User
-from middleware.rbac import require_role, require_permission
+from middleware.rbac import require_login, require_role, require_permission
 
 departments_bp = Blueprint('departments', __name__)
+
+
+def _clean_text(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
 
 
 # ============================================================================
@@ -13,9 +21,27 @@ departments_bp = Blueprint('departments', __name__)
 # ============================================================================
 
 @departments_bp.route('/departments')
+@require_login
 def departments_list_page():
     """Render the departments management page."""
-    return render_template('departments/list.html')
+    from middleware.rbac import scoped_query
+
+    departments = scoped_query(Department).order_by(Department.name).all()
+    sites = scoped_query(Site).order_by(Site.site_name).all()
+    return render_template(
+        'departments/list.html',
+        departments=departments,
+        departments_payload=[department.to_dict() for department in departments],
+        sites=sites,
+        sites_payload=[site.to_dict() for site in sites],
+    )
+
+@departments_bp.route('/departments/<int:dept_id>')
+@require_login
+def department_profile(dept_id):
+    """View detailed department profile."""
+    department = Department.query.get_or_404(dept_id)  # FIXME: SCOPING — bypasses scoped_query; any user can access any department
+    return render_template('departments/profile.html', department=department)
 
 
 # ============================================================================
@@ -23,6 +49,7 @@ def departments_list_page():
 # ============================================================================
 
 @departments_bp.route('/api/departments', methods=['GET'])
+@require_login
 def list_departments():
     """List all departments with device and user counts."""
     from middleware.rbac import scoped_query
@@ -34,6 +61,7 @@ def list_departments():
 
 
 @departments_bp.route('/api/departments/<int:dept_id>', methods=['GET'])
+@require_login
 def get_department(dept_id):
     """Get a single department by ID."""
     from middleware.rbac import scoped_query
@@ -45,18 +73,21 @@ def get_department(dept_id):
 @require_role('admin', 'manager')
 def create_department():
     """Create a new department."""
-    data = request.get_json()
-    if not data or not data.get('name'):
+    data = request.get_json() or {}
+    name = _clean_text(data.get('name'))
+
+    if not name:
         return jsonify({'status': 'error', 'message': 'name is required'}), 400
 
-    # Check for duplicates
-    existing = Department.query.filter_by(name=data['name']).first()
+    existing = Department.query.filter(
+        db.func.lower(db.func.trim(Department.name)) == name.lower()
+    ).first()
     if existing:
         return jsonify({'status': 'error', 'message': 'A department with that name already exists'}), 409
 
     department = Department(
-        name=data['name'],
-        description=data.get('description'),
+        name=name,
+        description=_clean_text(data.get('description')),
         site_id=data.get('site_id')
     )
     db.session.add(department)
@@ -89,14 +120,20 @@ def update_department(dept_id):
     site_changed = False
 
     if 'name' in data:
-        # Check uniqueness for new name
-        dup = Department.query.filter(Department.name == data['name'], Department.id != dept_id).first()
+        name = _clean_text(data.get('name'))
+        if not name:
+            return jsonify({'status': 'error', 'message': 'name is required'}), 400
+
+        dup = Department.query.filter(
+            db.func.lower(db.func.trim(Department.name)) == name.lower(),
+            Department.id != dept_id
+        ).first()
         if dup:
             return jsonify({'status': 'error', 'message': 'A department with that name already exists'}), 409
-        department.name = data['name']
+        department.name = name
 
     if 'description' in data:
-        department.description = data['description']
+        department.description = _clean_text(data.get('description'))
     
     if 'site_id' in data:
         raw_site_id = data.get('site_id')

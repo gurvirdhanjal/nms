@@ -24,7 +24,8 @@ function setActiveRange(range) {
 async function loadCurrentMetrics() {
     if (!view || !currentDeviceId) return;
     try {
-        await view.load(currentDeviceId, getActiveRange());
+        await view.load(currentDeviceId, getActiveRange(), { preferCache: true });
+        view.prefetch?.(currentDeviceId, getActiveRange());
         
         // Update modal header with device info after metrics load
         const deviceNameEl = modalElement?.querySelector('#server-modal-device-name');
@@ -53,6 +54,9 @@ async function loadCurrentMetrics() {
             }
         }
     } catch (error) {
+        if (error?.name === 'AbortError') {
+            return;
+        }
         const statusEl = modalElement?.querySelector('#server-modal-status');
         if (statusEl) {
             statusEl.textContent = error.message || 'Error loading data';
@@ -118,6 +122,7 @@ export function openServerModal(deviceId) {
     
     modalInstance.show();
     loadCurrentMetrics();
+    view.prefetch?.(currentDeviceId, getActiveRange());
 
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {

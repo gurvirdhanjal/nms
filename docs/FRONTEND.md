@@ -43,6 +43,10 @@ If a design change increases clarity at zero aesthetic cost — **it is preferre
 - Use a **hybrid pattern**:
   - Dashboard server rows open the shared **Server Details modal** for rapid triage.
   - `/devices/<id>/details` remains the canonical full details page.
+- `/devices/<id>/details` must be an **inventory-first device profile**:
+  - identity, assignment, topology, monitoring posture, latest telemetry from any source
+  - SNMP is optional supplemental data only and must never be the primary dependency for the page
+  - server telemetry operations belong on `/devices/<id>/server-monitoring`, not in the core profile contract
 - The modal markup is a shared partial (`templates/partials/server_details_modal.html`) and is reused by both dashboard and device details surfaces.
 - Connection data shown in modal/page must stay uniform:
   - Agent snapshot (`top_remote_ips`, `unique_remote_ips_count`)
@@ -101,6 +105,25 @@ The Global Status Strip must always expose:
 - Sync timestamp (UTC)
 
 If any of these values are missing or stale, the strip must indicate a **degraded** monitoring state.
+
+### 1.5 Shared Primitive Rollout Rule
+
+During migration windows:
+
+- new shared UI primitives must be additive and route-scoped
+- untouched operational surfaces stay on the legacy system until their migration step is merged and verified
+- migrated surfaces keep a compatibility fallback so shared helper failure does not break the page
+- shared helper scripts must not throw during script evaluation
+
+### 1.6 Migrated Ops Feedback Rule
+
+On migrated operational surfaces:
+
+- do not use `spinner-border`
+- do not use `fa-spin` for passive refresh states
+- do not use `progress-bar-animated`
+- do not wipe hydrated tables back to a generic `Loading...` state
+- keep last-known-good data visible while refresh is in flight
 
 ---
 

@@ -322,7 +322,7 @@ def device_management():
             d.snmp_enabled = bool(cfg.is_enabled) if cfg else False
             d.snmp_last_poll = cfg.last_successful_poll if cfg else None
             d.snmp_last_error = cfg.last_poll_error if cfg else None
-        print(f"DEBUG: Found {len(devices)} devices in database")  # Debug line
+        logger.debug("Found %d devices in database", len(devices))
         
         device = None
         
@@ -336,14 +336,14 @@ def device_management():
 
         if 'edit_id' in request.args:
             device = scoped_query(Device).get(request.args.get('edit_id'))
-            print(f"DEBUG: Editing device {device}")  # Debug line
+            logger.debug("Editing device %s", device)
 
         if 'delete_id' in request.args:
             device = scoped_query(Device).get(request.args.get('delete_id'))
             if device:
                 _delete_device_with_dependencies(device)
                 db.session.commit()
-                print(f"DEBUG: Deleted device {device.device_id}")  # Debug line
+                logger.debug("Deleted device %s", device.device_id)
             redirect_params = {
                 'page': page,
                 'per_page': per_page,
@@ -868,10 +868,69 @@ def api_device_detail(device_id):
     else:
         return jsonify({'success': False, 'error': 'Device not found'}), 404
 
+
+def _parse_device_classification_details(raw_value):
+    if not raw_value:
+        return {}
+    if isinstance(raw_value, dict):
+        return raw_value
+    try:
+        parsed = json.loads(str(raw_value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _device_availability_summary(device, latest_scan):
+    if getattr(device, 'maintenance_mode', False):
+        return {
+            'label': 'Maintenance',
+            'tone': 'warning',
+            'detail': 'Alerts suppressed while maintenance mode is enabled.',
+        }
+
+    if latest_scan is None:
+        return {
+            'label': 'Unknown',
+            'tone': 'muted',
+            'detail': 'No recent reachability sample is available.',
+        }
+
+    normalized = _normalize_device_status(getattr(latest_scan, 'status', None))
+    if normalized == 'Online':
+        latency = getattr(latest_scan, 'ping_time_ms', None)
+        latency_text = f"Latency {float(latency):.1f} ms" if latency is not None else 'Reachable'
+        return {
+            'label': 'Online',
+            'tone': 'success',
+            'detail': latency_text,
+        }
+    return {
+        'label': 'Offline',
+        'tone': 'danger',
+        'detail': 'Latest reachability check marked the device offline.',
+    }
+
+
+def _telemetry_source_label(raw_source):
+    source = str(raw_source or '').strip().lower()
+    if source == 'agent':
+        return 'Agent'
+    if source == 'snmp':
+        return 'SNMP'
+    if source == 'icmp':
+        return 'Reachability'
+    return source.upper() if source else 'Unknown'
+
+
 @devices_bp.route('/devices/<int:device_id>/details')
 def device_details_page(device_id):
     from models.device import Device
+    from models.audit_log import AuditLog
+    from models.device_identity_link import DeviceIdentityLink
+    from models.device_identity_link_candidate import DeviceIdentityLinkCandidate
     from models.interfaces import DeviceInterface
+    from models.scan_history import DeviceScanHistory
     from models.server_health import ServerHealthLog
     from models.snmp_config import DeviceSnmpConfig
     from middleware.rbac import scoped_query
@@ -898,24 +957,90 @@ def device_details_page(device_id):
         .first()
     )
 
+    latest_health_log = (
+        ServerHealthLog.query.filter(ServerHealthLog.device_id == device_id)
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    latest_scan = (
+        DeviceScanHistory.query.filter(DeviceScanHistory.device_ip == device.device_ip)
+        .order_by(DeviceScanHistory.scan_timestamp.desc(), DeviceScanHistory.scan_id.desc())
+        .first()
+    )
+
     interfaces = (
         DeviceInterface.query.filter_by(device_id=device_id)
         .order_by(DeviceInterface.if_index.asc())
         .all()
     )
 
+    active_identity_link = (
+        DeviceIdentityLink.query.filter_by(device_id=device_id, is_active=True)
+        .order_by(DeviceIdentityLink.updated_at.desc(), DeviceIdentityLink.id.desc())
+        .first()
+    )
+
+    pending_identity_candidates = (
+        DeviceIdentityLinkCandidate.query.filter_by(device_id=device_id, status='pending')
+        .order_by(DeviceIdentityLinkCandidate.detected_at.desc(), DeviceIdentityLinkCandidate.id.desc())
+        .limit(3)
+        .all()
+    )
+
+    recent_audit_entries = (
+        AuditLog.query.filter(
+            AuditLog.entity_type == 'device',
+            AuditLog.entity_id == device_id,
+        )
+        .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        .limit(6)
+        .all()
+    )
+
     snmp_enabled = bool(snmp_config and snmp_config.is_enabled)
     has_snmp_metrics = bool(latest_snmp_log or interfaces)
+    classification_details = _parse_device_classification_details(device.classification_details)
+    availability_summary = _device_availability_summary(device, latest_scan)
+    monitoring_sources = [
+        {
+            'name': 'Reachability',
+            'status': availability_summary['label'],
+            'timestamp': latest_scan.scan_timestamp if latest_scan else None,
+            'detail': availability_summary['detail'],
+        },
+        {
+            'name': 'Agent',
+            'status': 'Reporting' if latest_agent_log else 'Not reporting',
+            'timestamp': latest_agent_log.timestamp if latest_agent_log else None,
+            'detail': 'Primary server/workstation telemetry' if latest_agent_log else 'No recent agent sample',
+        },
+        {
+            'name': 'SNMP',
+            'status': 'Available' if latest_snmp_log else ('Configured' if snmp_enabled else 'Optional'),
+            'timestamp': latest_snmp_log.timestamp if latest_snmp_log else (snmp_config.last_successful_poll if snmp_config else None),
+            'detail': 'Supplementary polling data' if snmp_config else 'Not required for this page',
+        },
+    ]
 
     return render_template(
         'device_details.html',
         device=device,
+        latest_health_log=latest_health_log,
+        latest_scan=latest_scan,
         snmp_config=snmp_config,
         latest_snmp_log=latest_snmp_log,
         latest_agent_log=latest_agent_log,
         interfaces=interfaces,
         snmp_enabled=snmp_enabled,
         has_snmp_metrics=has_snmp_metrics,
+        classification_details=classification_details,
+        availability_summary=availability_summary,
+        monitoring_sources=monitoring_sources,
+        active_identity_link=active_identity_link,
+        pending_identity_candidates=pending_identity_candidates,
+        recent_audit_entries=recent_audit_entries,
+        telemetry_source_label=_telemetry_source_label(getattr(latest_health_log, 'source', None)),
         enable_server_fullpage_telemetry=bool(
             current_app.config.get('ENABLE_SERVER_FULLPAGE_TELEMETRY', Config.ENABLE_SERVER_FULLPAGE_TELEMETRY)
         ),
@@ -1396,13 +1521,6 @@ def reclassify_all():
     from flask import current_app
     import os
 
-    # DEBUG: Print DB Path
-    print(f"DEBUG DB URI: {current_app.config.get('SQLALCHEMY_DATABASE_URI')}")
-    try:
-        print(f"DEBUG Instance Path: {current_app.instance_path}")
-    except:
-        pass
-    
     classifier = DeviceClassifier()
     devices = Device.query.all()
     updated_count = 0
@@ -1413,7 +1531,7 @@ def reclassify_all():
     # Get shared scanner instance
     scanner = get_discovery_service().scanner
 
-    print(f"[Reclassify] start devices={len(devices)} force={force} auto={auto_mode}")
+    logger.info("[Reclassify] start devices=%d force=%s auto=%s", len(devices), force, auto_mode)
     
     for device in devices:
         try:
@@ -1484,7 +1602,7 @@ def reclassify_all():
                 "confidence_score": device.confidence_score
             })
         except Exception as e:
-            print(f"[Reclassify] Failed for {device.device_ip}: {e}")
+            logger.error("[Reclassify] Failed for %s: %s", device.device_ip, e)
             
     db.session.commit()
     

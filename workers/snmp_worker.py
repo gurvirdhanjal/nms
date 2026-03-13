@@ -185,6 +185,8 @@ def execute_task(app, task_id, dry_run=False):
                 return _execute_interface_poll(task_id, device)
             elif task.task_type == 'discovery':
                 return _execute_discovery(task_id, device)
+            elif task.task_type == 'config_backup':
+                return _execute_config_backup(task_id, device)
             else:
                 return (task_id, False, 'UNKNOWN_TASK_TYPE', f'Unknown type: {task.task_type}')
 
@@ -278,6 +280,32 @@ def _execute_interface_poll(task_id, device):
         return (task_id, True, None, None)
     else:
         return (task_id, False, 'INTERFACE_POLL_FAILED', result.get('error', 'Unknown'))
+
+
+def _execute_config_backup(task_id, device):
+    """Execute SSH config capture and persist as DeviceConfigSnapshot."""
+    from services.config_backup_service import capture_config
+
+    result = capture_config(
+        device_id=device.device_id,
+        source='scheduled',
+        user_id=None,
+    )
+
+    if result.get('success'):
+        log.info(
+            "[WORKER] config_backup: device_id=%d (%s) snapshot_id=%d changed=%s",
+            device.device_id, device.device_ip,
+            result['snapshot_id'], result['changed'],
+        )
+        return (task_id, True, None, None)
+    else:
+        error = result.get('error', 'unknown')
+        log.warning(
+            "[WORKER] config_backup: device_id=%d (%s) failed — %s",
+            device.device_id, device.device_ip, error,
+        )
+        return (task_id, False, 'CONFIG_BACKUP_FAILED', error)
 
 
 def _execute_discovery(task_id, device):

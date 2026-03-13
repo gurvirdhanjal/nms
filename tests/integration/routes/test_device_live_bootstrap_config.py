@@ -26,6 +26,7 @@ def test_device_live_page_renders_valid_bootstrap_config(admin_client):
     assert 'macAddress: "AA:BB:CC:DD:EE:70"' in html
     assert 'initialDisplayIp: "10.20.30.40"' in html
     assert 'initialStatus: "online"' in html
+    assert 'fileTransferEnabled: true' in html
     assert '{ {' not in html
     assert 'id="policyRestrictedSitesList"' in html
     assert 'id="policyViewFullLogsBtn"' in html
@@ -34,6 +35,10 @@ def test_device_live_page_renders_valid_bootstrap_config(admin_client):
     assert 'id="policyRemoveSiteList"' in html
     assert 'class="modal fade remote-view-modal"' in html
     assert 'id="remoteViewStatus"' in html
+    assert 'data-tab="files"' in html
+    assert 'data-panel="files"' in html
+    assert 'id="filesUploadInput"' in html
+    assert 'id="filesList"' in html
     assert 'multiple size="8"' in html
     assert 'Stored Device Restrictions' in html
     assert 'Effective Policy Scope' in html

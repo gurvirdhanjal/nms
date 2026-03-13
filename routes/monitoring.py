@@ -173,11 +173,11 @@ def get_monitoring_status():
             try:
                 db.session.add_all(history_entries)
                 db.session.commit()
-                print(f"DEBUG: Saved {len(history_entries)} scan records to history")
+                logger.debug("Saved %d scan records to history", len(history_entries))
                 break
             except OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
-                    print(f"DEBUG: DB locked, retrying ({attempt+1}/{max_retries})...")
+                    logger.debug("DB locked, retrying (%d/%d)...", attempt + 1, max_retries)
                     time.sleep(0.1 * (attempt + 1))
                     continue
                 raise e
@@ -305,7 +305,7 @@ def get_monitoring_status():
             try:
                 save_scan_history(history_entries)
             except Exception as db_e:
-                print(f"DEBUG: Error saving fallback history: {db_e}")
+                logger.error("Error saving fallback history: %s", db_e)
                 db.session.rollback()
             if fallback_errors:
                 logger.warning(
@@ -326,8 +326,8 @@ def get_monitoring_status():
     #     ...
     # except Exception as e: ...
     
-    print(f"DEBUG: Status endpoint - Found {len(devices)} devices in local network") 
-    
+    logger.debug("Status endpoint - Found %d devices in local network", len(devices))
+
     devices_list = []
 
     async def fetch_device_status(device):
@@ -362,11 +362,11 @@ def get_monitoring_status():
                         status = 'Online'
                         if latency is None:
                             latency = 1.0 
-                        print(f"DEBUG: Status check - {device.device_name} ({device.device_ip}) IS ONLINE via Agent")
+                        logger.debug("Status check - %s (%s) IS ONLINE via Agent", device.device_name, device.device_ip)
                 except:
                     pass
 
-            print(f"DEBUG: Status check - {device.device_name} ({device.device_ip}): {status}")
+            logger.debug("Status check - %s (%s): %s", device.device_name, device.device_ip, status)
             return {
                 "device_id": device.device_id,
                 "device_name": device.device_name,
@@ -383,7 +383,7 @@ def get_monitoring_status():
                 "packet_loss": _packet_loss if '_packet_loss' in locals() else 0,
             }
         except Exception as e:
-            print(f"DEBUG: Error checking {device.device_ip}: {e}")
+            logger.debug("Error checking %s: %s", device.device_ip, e)
             return {
                 "device_id": device.device_id,
                 "device_name": device.device_name,
@@ -430,7 +430,7 @@ def get_monitoring_status():
 
             save_scan_history(history_entries)
         except Exception as db_e:
-            print(f"DEBUG: Error saving history in monitoring endpoint: {db_e}")
+            logger.error("Error saving history in monitoring endpoint: %s", db_e)
             db.session.rollback()
 
         # Apply status filter if provided
@@ -439,14 +439,14 @@ def get_monitoring_status():
             devices_data = [device for device in devices_data if normalize_status(device.get('status')) == target]
         
         online_count = len([d for d in devices_data if d['status'] == 'Online'])
-        print(f"DEBUG: Status endpoint - Returning {len(devices_data)} devices, {online_count} online")
+        logger.debug("Status endpoint - Returning %d devices, %d online", len(devices_data), online_count)
         
         return jsonify({"devices": devices_data})
     
     except Exception as e:
-        print(f"DEBUG: Error in status endpoint: {e}")
-        return jsonify({"error": str(e)}), 500
-    
+        logger.exception("Error in status endpoint")
+        return jsonify({"error": "Internal server error"}), 500
+
 @monitoring_bp.route('/api/monitoring/statistics')
 def get_monitoring_statistics():
     # Auth handled by middleware
@@ -467,7 +467,7 @@ def get_monitoring_statistics():
         
         # except Exception as e: ...
         
-        print(f"DEBUG: Filtered stats: {total_devices} total devices, {monitored_devices} monitored")
+        logger.debug("Filtered stats: %d total devices, %d monitored", total_devices, monitored_devices)
         
         # Get REAL-TIME online status (not historical data)
         online_count = 0
@@ -498,9 +498,9 @@ def get_monitoring_statistics():
             try:
                 online_results = asyncio.run(check_all_devices())
                 online_count = sum(online_results)
-                print(f"DEBUG: Real-time check: {online_count}/{len(devices_to_scan)} devices online")
+                logger.debug("Real-time check: %d/%d devices online", online_count, len(devices_to_scan))
             except Exception as e:
-                print(f"DEBUG: Error in real-time check: {e}")
+                logger.error("Error in real-time check: %s", e)
                 online_count = 0
         else:
             online_count = 0
@@ -516,8 +516,8 @@ def get_monitoring_statistics():
         return jsonify(stats)
     
     except Exception as e:
-        print(f"DEBUG: Error in statistics endpoint: {e}") 
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error in statistics endpoint")
+        return jsonify({"error": "Internal server error"}), 500
 
 @monitoring_bp.route('/api/monitoring/events')
 def get_recent_events():
@@ -537,8 +537,8 @@ def get_recent_events():
         return jsonify({"events": events_data})
         
     except Exception as e:
-        print(f"Error in events endpoint: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error in events endpoint")
+        return jsonify({"error": "Internal server error"}), 500
 
 @monitoring_bp.route('/api/monitoring/metrics')
 def get_metrics():
@@ -583,5 +583,5 @@ def get_metrics():
         return jsonify(result)
         
     except Exception as e:
-        print(f"Error in metrics endpoint: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error in metrics endpoint")
+        return jsonify({"error": "Internal server error"}), 500

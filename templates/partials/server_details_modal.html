@@ -1,35 +1,97 @@
+<style>
+    #serverDetailsModal .modal-content {
+        background: var(--bg-primary);
+        border: none;
+    }
+    #serverDetailsModal .modal-header {
+        height: 56px;
+        padding: 0 2rem;
+        background: rgba(16, 19, 27, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    }
+    #serverDetailsModal .server-icon-badge {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        background: rgba(0, 229, 160, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #serverDetailsModal .server-icon-badge i {
+        color: var(--teal);
+        font-size: 14px;
+    }
+    #serverDetailsModal .server-modal-title {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: 0.02em;
+        margin: 0;
+    }
+    #serverDetailsModal .server-modal-subtitle {
+        font-size: 10px;
+        color: var(--text-muted);
+        font-family: 'IBM Plex Mono', monospace;
+        margin-top: 1px;
+    }
+    #serverDetailsModal .server-modal-action-link {
+        font-size: 11px;
+        padding: 6px 12px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+    #serverDetailsModal .server-modal-close {
+        opacity: 0.4;
+        filter: none;
+        padding: 0.5rem;
+        margin: 0;
+        transition: opacity 0.2s;
+    }
+    #serverDetailsModal .server-modal-close:hover {
+        opacity: 0.8;
+    }
+    #serverDetailsModal .modal-body {
+        padding: 1.5rem 2rem;
+        overflow-y: auto;
+        background: var(--bg-primary);
+    }
+</style>
+
 <div class="modal fade" id="serverDetailsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-fullscreen">
-        <div class="modal-content" style="background: var(--bg-primary); border: none;">
-            <div class="modal-header border-0 d-flex align-items-center"
-                style="height: 56px; padding: 0 2rem; background: rgba(16, 19, 27, 0.95); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(148, 163, 184, 0.08);">
+        <div class="modal-content">
+            <div class="modal-header border-0 d-flex align-items-center">
                 <div class="d-flex align-items-center gap-3 flex-grow-1">
                     <div class="d-flex align-items-center gap-2">
-                        <div style="width: 32px; height: 32px; border-radius: 6px; background: rgba(0, 229, 160, 0.08); display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-server" style="color: var(--teal); font-size: 14px;"></i>
+                        <div class="server-icon-badge">
+                            <i class="fas fa-server"></i>
                         </div>
                         <div>
-                            <h5 class="m-0" style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #fff; letter-spacing: 0.02em;">
+                            <h5 class="server-modal-title">
                                 <span id="server-modal-device-name">Server Overview</span>
                             </h5>
-                            <div style="font-size: 10px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; margin-top: 1px;">
+                            <div class="server-modal-subtitle">
                                 <span id="server-modal-device-ip">-</span> • <span id="server-modal-device-status">Loading...</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <a id="server-modal-open-page" class="btn btn-sm" href="#"
-                        target="_blank" rel="noopener noreferrer" 
-                        style="font-size: 11px; padding: 6px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); border-radius: 6px; transition: all 0.2s;">
-                        <i class="fas fa-external-link-alt me-1" style="font-size: 10px;"></i>Full Page
+                    <a id="server-modal-open-page" class="btn btn-sm server-modal-action-link" href="#"
+                        target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-external-link-alt me-1"></i>Full Page
                     </a>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"
-                        style="opacity: 0.4; filter: none; padding: 0.5rem; margin: 0; transition: opacity 0.2s;"
-                        onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='0.4'"></button>
+                    <button type="button" class="btn-close btn-close-white server-modal-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
             </div>
-            <div class="modal-body" style="padding: 1.5rem 2rem; overflow-y: auto; background: var(--bg-primary);">
+            <div class="modal-body">
                 {% set telemetry_prefix = 'server-modal' %}
                 {% set telemetry_show_threshold_editor = false %}
                 {% set telemetry_can_edit_thresholds = false %}

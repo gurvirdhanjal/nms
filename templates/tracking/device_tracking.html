@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Live Tracking - Admin{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block content %}
 <div id="tracking-device-page" class="dashboard-enterprise">
@@ -18,20 +19,19 @@
                 </div>
 
                 <div class="ops-action-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
-                    <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2 tracking-action-group">
                         <button class="ops-btn ops-btn-primary" type="button" id="trackingScanBtn">
                             <i data-lucide="search" class="tracking-icon-sm"></i> Scan Network
                         </button>
-                        <button class="ops-btn ops-btn-ghost" type="button">
+                        <button class="ops-btn ops-btn-ghost open-add-device" type="button">
                             <i data-lucide="plus" class="tracking-icon-sm"></i> Add Device
                         </button>
                         <button class="ops-btn ops-btn-ghost" type="button" id="syncBtn">
                             <i data-lucide="refresh-cw" class="tracking-icon-sm"></i> Sync IPs
                         </button>
-                        <a href="{{ url_for('tracking_bp.live_tracking') }}"
-                            class="ops-btn ops-btn-ghost text-decoration-none">
+                        <button class="ops-btn ops-btn-ghost" type="button" id="goLiveSyncBtn" title="Run live sync now">
                             <i data-lucide="activity" class="tracking-icon-sm"></i> Go Live
-                        </a>
+                        </button>
                         {% if session.get('role') == 'admin' %}
                         <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}"
                             class="ops-btn ops-btn-ghost text-decoration-none">
@@ -39,7 +39,7 @@
                         </a>
                         {% endif %}
                     </div>
-                    <div class="ops-refresh-info d-flex align-items-center gap-2">
+                    <div class="ops-refresh-info d-flex align-items-center gap-2 tracking-refresh-group">
                         <span class="ops-last-refresh" id="trackingLastRefreshedText">Last refreshed n/a</span>
                         <span class="status-dot ops-dot-breathing tracking-indicator-dot healthy"></span>
                         <span id="trackingRefreshStatus" class="d-none">Live polling active</span>
@@ -101,9 +101,22 @@
                     <span class="ops-section-title">STORED EMPLOYEE DEVICES</span>
                 </div>
             </div>
+            <div id="trackingDeviceActionBanner" class="tracking-action-banner d-none" role="status" aria-live="polite">
+                <div class="tracking-action-banner-icon" aria-hidden="true">
+                    <i data-lucide="check-circle-2"></i>
+                </div>
+                <div class="tracking-action-banner-copy">
+                    <div class="tracking-action-banner-title" id="trackingDeviceActionBannerTitle">Device deleted</div>
+                    <div class="tracking-action-banner-message" id="trackingDeviceActionBannerMessage"></div>
+                    <div class="tracking-action-banner-detail" id="trackingDeviceActionBannerDetail"></div>
+                </div>
+                <button type="button" class="tracking-action-banner-close" id="trackingDeviceActionBannerClose" aria-label="Dismiss notification">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
             <div class="card-body p-0">
                 <div class="row g-2 align-items-center px-4 py-3 border-bottom mb-0 tracking-filter-row">
-                    <div class="col-lg-5 col-md-5">
+                    <div class="col-lg-5 col-md-5 tracking-filter-search">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text bg-transparent border-0 pe-1 pl-0 text-muted">
                                 <i data-lucide="search" class="tracking-icon-sm"></i>
@@ -112,7 +125,7 @@
                                 placeholder="Search devices...">
                         </div>
                     </div>
-                    <div class="col-lg-5 col-md-4">
+                    <div class="col-lg-5 col-md-4 tracking-filter-tabs-col">
                         <div class="d-flex gap-2 ops-filter-tabs" id="quickDeviceFilters">
                             <button type="button" class="ops-tab active" data-chip-filter="all">All <span
                                     class="ops-tab-count" id="tabCountAll">{{ saved_devices|length }}</span></button>
@@ -126,7 +139,7 @@
                                     class="ops-tab-count">0</span></button>
                         </div>
                     </div>
-                    <div class="col-lg-2 col-md-3 d-flex justify-content-end align-items-center gap-3">
+                    <div class="col-lg-2 col-md-3 d-flex justify-content-end align-items-center gap-3 tracking-filter-status-col">
                         <select class="form-select ops-select shadow-none" id="deviceStatusFilter">
                             <option value="all">All Status</option>
                             <option value="online">Online</option>
@@ -156,17 +169,20 @@
                                 data-unassigned="{{ 1 if not (device.employee_name or '')|trim else 0 }}"
                                 data-needs-sync="{{ 1 if (not device.ip_address) or device_status == 'offline' else 0 }}"
                                 data-search-index="{{ ((device.device_name or '') ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or '') ~ ' ' ~ (device.site_id or '') ~ ' ' ~ (device.department_id or ''))|lower }}">
-                                <td class="ps-4">
-                                    <div class="ops-hostname">{{ device.device_name or device.hostname }}</div>
-                                    <div class="ops-assignee">{{ device.employee_name or 'Unassigned' }}</div>
+                                <td class="ps-4 device-name-cell">
+                                    <strong class="ops-hostname">{{ device.device_name or device.hostname }}</strong>
+                                    <div class="ops-assignee device-mac">{{ device.employee_name or 'Unassigned' }}</div>
                                 </td>
-                                <td>
-                                    <span class="ops-status-badge {{ device_status }}">{{ device_status|upper }}</span>
+                                <td class="tracking-status-cell">
+                                    <span class="ops-status-badge status-badge {{ device_status }}">{{ device_status|upper }}</span>
+                                    <div class="tracking-status-meta text-muted small"></div>
                                 </td>
-                                <td>
-                                    <div class="ops-network-line">IP <strong>{{ device.ip_address or 'N/A' }}</strong>
+                                <td class="tracking-network-cell">
+                                    <div class="ops-network-line">IP <strong class="tracking-ip-value">{{ device.ip_address or 'N/A' }}</strong></div>
+                                    <div class="ops-network-line">MAC <strong class="tracking-mac-value">{{ device.mac_address }}</strong></div>
+                                    <div class="ops-network-line tracking-scope-meta text-muted" style="font-size: 11px;">
+                                        {% if device.hostname %}<span class="tracking-host-value">{{ device.hostname }}</span>{% endif %}
                                     </div>
-                                    <div class="ops-network-line">MAC <strong>{{ device.mac_address }}</strong></div>
                                 </td>
                                 <td>
                                     <div class="ops-time-main">
@@ -219,7 +235,7 @@
                 </div>
 
                 {% if saved_devices %}
-                <div class="p-3 border-top border-secondary">
+                <div class="p-3 border-top border-secondary tracking-table-footer">
                     <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
                         <div class="d-flex gap-2">
                             <button class="tactical-btn-outline text-secondary border-secondary" id="exportDevicesBtn"
@@ -250,7 +266,7 @@
 
     <div class="row mt-4 tracking-section-discovery">
         <div class="col-md-12">
-            <div class="ops-stored-card mt-4">
+        <div class="ops-stored-card mt-4">
                 <div
                     class="card-header panel-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 border-bottom-0 pb-0">
                     <div class="d-flex align-items-center gap-2">
@@ -285,60 +301,102 @@
                         </div>
                     </div>
 
-                    <div class="d-flex flex-wrap gap-3 mb-4">
+                    <div class="d-flex flex-wrap gap-3 mb-4 tracking-discovery-stats">
                         <div class="ops-discovery-stat">
                             <div class="stat-main">
                                 <i data-lucide="activity" class="stat-icon text-teal"></i>
-                                <span class="stat-num text-teal">24</span>
+                                <span class="stat-num text-teal" id="scanTrackingActiveCount">0</span>
                             </div>
                             <div class="stat-sub">Tracking Active</div>
-                            <div class="stat-meta text-muted">last 60s</div>
+                            <div class="stat-meta text-muted" id="scanTrackingActiveMeta">Awaiting scan</div>
                         </div>
                         <div class="ops-discovery-stat">
                             <div class="stat-main">
                                 <i data-lucide="unlock" class="stat-icon text-blue"></i>
-                                <span class="stat-num text-blue">5</span>
+                                <span class="stat-num text-blue" id="scanPortOnlyCount">0</span>
                             </div>
                             <div class="stat-sub">Port Open</div>
-                            <div class="stat-meta text-muted">last 60s</div>
+                            <div class="stat-meta text-muted" id="scanPortOnlyMeta">Awaiting scan</div>
                         </div>
                         <div class="ops-discovery-stat">
                             <div class="stat-main">
                                 <i data-lucide="plus-circle" class="stat-icon text-amber"></i>
-                                <span class="stat-num text-amber">2</span>
+                                <span class="stat-num text-amber" id="scanNewDevicesCount">0</span>
                             </div>
-                            <div class="stat-sub">New Devices</div>
-                            <div class="stat-meta text-muted">last 60s</div>
+                            <div class="stat-sub">Ready To Add</div>
+                            <div class="stat-meta text-muted" id="scanNewDevicesMeta">Awaiting scan</div>
                         </div>
                     </div>
 
-                    <div id="scanResultsBanner" class="alert alert-info d-none mb-3" role="status"></div>
-
-                    <div id="scanResultsEmptyState" class="text-center text-muted py-4 d-none">
-                        <i data-lucide="search" class="mb-3 discovery-empty-icon tracking-icon-lg"></i>
-                        <p class="mb-1">No tracking-active agents discovered yet.</p>
-                        <small class="text-muted">Run Scan Network to detect active endpoints.</small>
-                    </div>
-
-                    <div class="table-responsive tracking-table-wrap" id="scanResultsTableWrap" hidden>
-                        <table class="table ops-table w-100 mb-0 border-0">
-                            <thead>
-                                <tr>
-                                    <th class="ps-4">DEVICE</th>
-                                    <th>STATUS</th>
-                                    <th>NETWORK INFO</th>
-                                    <th>TRACKING</th>
-                                    <th class="text-end pe-4">ACTION</th>
-                                </tr>
-                            </thead>
-                            <tbody id="scanResultsBody"></tbody>
-                        </table>
+                    <div class="tracking-scan-inline-note">
+                        <div class="tracking-scan-inline-icon" aria-hidden="true">
+                            <i data-lucide="search"></i>
+                        </div>
+                        <div class="tracking-scan-inline-copy">
+                            <div class="tracking-scan-inline-title">Scan results open in a review modal.</div>
+                            <div class="tracking-scan-inline-detail">This probe now checks only known online inventory and already-tracked endpoints, then surfaces the ones where your tracking agent is actually responding.</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="scanResultsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable tracking-scan-modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title d-flex align-items-center gap-2">
+                        <i data-lucide="search" class="tracking-icon-sm"></i>
+                        Agent Discovery
+                    </h5>
+                    <p class="tracking-scan-modal-subtitle mb-0">Check known online inventory for endpoints where `service.py` is responding, then add them into monitored tracking inventory.</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body tracking-scan-modal-body">
+                <div class="tracking-scan-modal-summary">
+                    <div class="tracking-scan-modal-banner" id="scanResultsBanner" role="status" aria-live="polite">
+                        Run Scan Network to detect active agent endpoints.
+                    </div>
+                    <div class="tracking-scan-modal-meta" id="scanResultsMeta">
+                        Only agent-active endpoints appear here. Hosts that merely expose a configured tracking agent port stay out of the add list until the agent responds with identity data.
+                    </div>
+                </div>
+
+                <div id="scanResultsEmptyState" class="tracking-scan-empty-state d-none">
+                    <i data-lucide="search" class="tracking-icon-lg"></i>
+                    <p class="mb-1" id="scanResultsEmptyTitle">No tracking-active agents discovered yet.</p>
+                    <small class="text-muted" id="scanResultsEmptyDetail">Run Scan Network to detect active endpoints.</small>
+                </div>
+
+                <div class="table-responsive tracking-table-wrap tracking-scan-modal-table" id="scanResultsTableWrap" hidden>
+                    <table class="table ops-table w-100 mb-0 border-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-4">DEVICE</th>
+                                <th>AGENT STATE</th>
+                                <th>NETWORK INFO</th>
+                                <th>TRACKING</th>
+                                <th class="text-end pe-4">ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scanResultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="tactical-btn-outline" id="scanResultsRescanBtn">
+                    <i data-lucide="refresh-cw" class="tracking-icon-sm"></i> Rescan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -415,19 +473,18 @@
 <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i data-lucide="archive"></i> Confirm Archive</h5>
+            <div class="modal-header tracking-delete-header">
+                <h5 class="modal-title"><i data-lucide="trash-2"></i> Confirm Delete</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to archive device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
-                <p class="text-muted mb-0"><small>Archive keeps history for audits. Super-admin purge is required for
-                        permanent deletion.</small></p>
+                <p>Are you sure you want to delete device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
+                <p class="text-muted mb-0"><small>Delete permanently removes the tracked device and its saved tracking history.</small></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="tactical-btn-outline text-danger border-danger"
-                    id="confirmDeleteBtn">Archive Device</button>
+                    id="confirmDeleteBtn">Delete Device</button>
             </div>
         </div>
     </div>
@@ -435,9 +492,16 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=17">
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}"></script>
+<script>
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
+</script>
+<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v=10"></script>
 {% endblock %}

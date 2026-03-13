@@ -33,7 +33,16 @@
         dom.kpiCheckins = document.getElementById('kpiCheckins');
         dom.kpiCpu = document.getElementById('kpiCpu');
         dom.needsAttentionChip = document.getElementById('fleetNeedsAttentionChip');
-        dom.filterChips = Array.from(document.querySelectorAll('.fleet-filter-chip'));
+        dom.visibleCount = document.getElementById('fleetVisibleCount');
+        dom.chipCountAll = document.getElementById('chipCountAll');
+        dom.chipCountOnline = document.getElementById('chipCountOnline');
+        dom.chipCountDegraded = document.getElementById('chipCountDegraded');
+        dom.chipCountOffline = document.getElementById('chipCountOffline');
+        dom.chipCountAttention = document.getElementById('chipCountAttention');
+        dom.chipCountHighCpu = document.getElementById('chipCountHighCpu');
+        dom.chipCountHighRisk = document.getElementById('chipCountHighRisk');
+        dom.chipCountIdle = document.getElementById('chipCountIdle');
+        dom.filterChips = Array.from(document.querySelectorAll('.fleet-filter-chip, .filter-chips [data-filter]'));
 
         bindEvents();
         refreshFleet(true);
@@ -118,6 +127,8 @@
             let row = existingRows.get(id);
             if (!row) {
                 row = createRowSkeleton(id);
+                row.classList.add('row-entering');
+                row.addEventListener('animationend', () => row.classList.remove('row-entering'), { once: true });
                 dom.tableBody?.appendChild(row);
             }
             updateRow(row, device);
@@ -134,46 +145,80 @@
         row.id = `fleet-device-${deviceId}`;
         row.className = 'fleet-device-row';
         row.dataset.deviceId = String(deviceId);
+        row.dataset.cpu = '0';
+        row.dataset.risk = 'unknown';
+        row.dataset.activeViolationCount = '0';
+        row.dataset.idleSeconds = '0';
         row.innerHTML = `
             <td>
-                <div class="fleet-device-primary">
-                    <i class="fas fa-desktop fleet-device-icon" aria-hidden="true"></i>
+                <div class="device-cell">
+                    <div class="device-icon-wrap">
+                        <i class="fas fa-desktop" aria-hidden="true"></i>
+                    </div>
                     <div>
-                        <div class="fleet-device-name-line">
-                            <div class="fleet-device-name">Unknown</div>
+                        <div class="device-name-line">
+                            <span class="device-name fleet-device-name">Unknown</span>
                             <span class="fleet-violation-icon d-none" title="Active policy violations">
                                 <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
                             </span>
                         </div>
-                        <div class="fleet-device-meta text-muted">Unassigned</div>
-                        <div class="fleet-policy-note text-muted small">No policy alerts</div>
+                        <div class="device-meta fleet-device-meta">Unassigned</div>
+                        <div class="fleet-policy-note">No policy alerts</div>
                     </div>
                 </div>
             </td>
             <td>
-                <span class="tactical-badge tactical-badge-secondary status-badge">OFFLINE</span>
-                <div class="text-muted small fleet-status-reason">Awaiting telemetry</div>
+                <div class="status-cell">
+                    <span class="status-badge offline">
+                        <span class="status-dot"></span>
+                        OFFLINE
+                    </span>
+                    <span class="fleet-status-reason">Awaiting telemetry</span>
+                </div>
             </td>
             <td>
-                <div class="fleet-network-line"><span>IP</span><strong class="fleet-ip">N/A</strong></div>
-                <div class="fleet-network-line"><span>Host</span><strong class="fleet-host">N/A</strong></div>
-                <div class="fleet-network-line"><span>MAC</span><strong class="fleet-mac">N/A</strong></div>
+                <div class="metrics-cell">
+                    <div class="metric-row">
+                        <span class="metric-label">CPU</span>
+                        <div class="metric-bar-track"><div class="metric-bar-fill fleet-cpu-bar" style="width:0%"></div></div>
+                        <span class="metric-val fleet-cpu-val">0%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">MEM</span>
+                        <div class="metric-bar-track"><div class="metric-bar-fill fleet-mem-bar" style="width:0%"></div></div>
+                        <span class="metric-val fleet-mem-val">0%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">DSK</span>
+                        <div class="metric-bar-track"><div class="metric-bar-fill fleet-disk-bar" style="width:0%"></div></div>
+                        <span class="metric-val fleet-disk-val">0%</span>
+                    </div>
+                </div>
             </td>
-            <td class="metric">
-                <div class="fleet-last-seen">Never</div>
-                <div class="text-muted small fleet-sync-age">Sync: n/a</div>
+            <td>
+                <div class="network-cell">
+                    <div class="net-line"><span class="net-label">IP</span><span class="fleet-ip">N/A</span></div>
+                    <div class="net-line"><span class="net-label">Host</span><span class="fleet-host">N/A</span></div>
+                    <div class="net-line"><span class="net-label">MAC</span><span class="fleet-mac">N/A</span></div>
+                </div>
             </td>
-            <td class="metric">
-                <span class="tactical-badge tactical-badge-secondary fleet-risk-badge">UNKNOWN</span>
-                <div class="text-muted small fleet-risk-context">CPU 0% - Idle 0m</div>
+            <td>
+                <div class="time-cell">
+                    <div class="time-main fleet-last-seen">Never</div>
+                    <div class="time-ago fleet-sync-age">Sync: n/a</div>
+                </div>
             </td>
-            <td class="text-end">
-                <div class="btn-group btn-group-sm">
-                    <a href="/tracking/devices/${deviceId}" class="tactical-btn tactical-btn-sm tactical-btn-outline">
-                        <i class="fas fa-expand"></i> Open Live View
+            <td>
+                <span class="risk-badge unknown fleet-risk-badge">Unknown</span>
+                <div class="fleet-risk-context">CPU 0% · Idle 0m</div>
+            </td>
+            <td class="col-actions">
+                <div class="actions-cell">
+                    <a href="/tracking/devices/${deviceId}" class="action-btn primary" title="Open live view">
+                        <i class="fas fa-expand" aria-hidden="true"></i> Live
                     </a>
-                    <a href="/tracking/history/${deviceId}" class="tactical-btn tactical-btn-sm tactical-btn-outline" title="History">
-                        <i class="fas fa-history"></i>
+                    <a href="/tracking/history/${deviceId}" class="action-btn" title="View history">
+                        <i class="fas fa-history" aria-hidden="true"></i>
                     </a>
                 </div>
             </td>
@@ -187,6 +232,8 @@
         const systemMetrics = ensureObject(tracking.system_metrics);
         const currentActivity = ensureObject(tracking.current_activity);
         const cpu = toNumber(systemMetrics.cpu_percent ?? systemMetrics.cpu_usage, 0);
+        const memory = toNumber(systemMetrics.memory_percent ?? systemMetrics.memory_usage, 0);
+        const disk = toNumber(systemMetrics.disk_percent ?? systemMetrics.disk_usage, 0);
         const idleSeconds = toNumber(currentActivity.idle_seconds, 0);
         const activeViolationCount = Math.max(0, Math.floor(toNumber(device.active_violation_count, 0)));
         const highestViolationSeverity = normalizeSeverity(device.highest_violation_severity);
@@ -228,6 +275,15 @@
         const syncNode = row.querySelector('.fleet-sync-age');
         const riskBadgeNode = row.querySelector('.fleet-risk-badge');
         const riskContextNode = row.querySelector('.fleet-risk-context');
+        const detailAgentNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-agent`);
+        const detailIdleNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-idle`);
+        const detailViolationsNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-violations`);
+        const detailCpuNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-cpu`);
+        const detailMemNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-mem`);
+        const detailDiskNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-disk`);
+        const detailLastSeenNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-lastseen`);
+        const detailRiskNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-risk`);
+        const detailStatusNode = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"] .fleet-detail-status`);
 
         if (nameNode) nameNode.textContent = device.device_name || 'Unnamed Device';
         if (employeeNode) employeeNode.textContent = device.employee_name || 'Unassigned';
@@ -244,12 +300,13 @@
         }
         if (badgeNode) {
             badgeNode.textContent = status.toUpperCase();
-            badgeNode.className = `tactical-badge status-badge ${statusBadgeClass(status)}`;
+            badgeNode.className = `status-badge ${status}`;
         }
         if (reasonNode) reasonNode.textContent = buildStatusReason(device);
         if (ipNode) ipNode.textContent = device.ip_address || 'N/A';
         if (hostNode) hostNode.textContent = device.hostname || 'N/A';
         if (macNode) macNode.textContent = device.mac_address || 'N/A';
+        updateDeviceTelemetry(row.dataset.deviceId, cpu, memory, disk);
         if (lastSeenNode) {
             lastSeenNode.textContent = formatTimestamp(device.last_seen || device.last_probe_at || device.last_agent_sync_at);
         }
@@ -265,6 +322,15 @@
                 ? `Policy alerts ${activeViolationCount} | CPU ${Math.round(cpu)}% | Idle ${Math.floor(idleSeconds / 60)}m`
                 : `CPU ${Math.round(cpu)}% | Idle ${Math.floor(idleSeconds / 60)}m`;
         }
+        if (detailAgentNode) detailAgentNode.textContent = device.agent_sync_recent ? 'Active' : 'Idle';
+        if (detailIdleNode) detailIdleNode.textContent = `${Math.floor(idleSeconds / 60)}m`;
+        if (detailViolationsNode) detailViolationsNode.textContent = String(activeViolationCount);
+        if (detailCpuNode) detailCpuNode.textContent = formatTelemetryPercent(cpu);
+        if (detailMemNode) detailMemNode.textContent = formatTelemetryPercent(memory);
+        if (detailDiskNode) detailDiskNode.textContent = formatTelemetryPercent(disk);
+        if (detailLastSeenNode) detailLastSeenNode.textContent = formatTimestamp(device.last_seen || device.last_probe_at || device.last_agent_sync_at);
+        if (detailRiskNode) detailRiskNode.textContent = risk.label;
+        if (detailStatusNode) detailStatusNode.textContent = status.toUpperCase();
     }
 
     function renderKpis(payload, devices) {
@@ -292,17 +358,41 @@
         setText(dom.kpiOffline, String(offline));
         setText(dom.kpiCheckins, String(checkins));
         setText(dom.kpiCpu, `${Math.round(avgCpu)}%`);
-        if (dom.needsAttentionChip) {
-            dom.needsAttentionChip.textContent = `Needs Attention (${needsAttention})`;
-        }
+        setText(dom.chipCountAttention, String(needsAttention));
     }
 
     function applyFilters() {
         const rows = Array.from(dom.tableBody?.querySelectorAll('tr.fleet-device-row') || []);
+        const counts = {
+            all: rows.length,
+            online: 0,
+            degraded: 0,
+            offline: 0,
+            needs_attention: 0,
+            high_cpu: 0,
+            high_risk: 0,
+            idle_20m: 0,
+        };
         let visibleCount = 0;
         rows.forEach((row) => {
+            const status = String(row.dataset.status || 'offline');
+            const cpu = toNumber(row.dataset.cpu, 0);
+            const idleSeconds = toNumber(row.dataset.idleSeconds, 0);
+            const risk = String(row.dataset.risk || 'unknown');
+            const activeViolationCount = toNumber(row.dataset.activeViolationCount, 0);
+            if (status === 'online') counts.online += 1;
+            if (status === 'degraded') counts.degraded += 1;
+            if (status === 'offline') counts.offline += 1;
+            if (activeViolationCount > 0) counts.needs_attention += 1;
+            if (cpu >= 85) counts.high_cpu += 1;
+            if (risk === 'high') counts.high_risk += 1;
+            if (idleSeconds >= 1200) counts.idle_20m += 1;
             const matches = matchesSearch(row) && matchesChipFilter(row);
             row.classList.toggle('d-none', !matches);
+            const detailRow = document.querySelector(`tr[data-detail-for="${row.dataset.deviceId}"]`);
+            if (detailRow) {
+                detailRow.classList.toggle('d-none', !matches);
+            }
             if (matches) {
                 visibleCount += 1;
             }
@@ -310,6 +400,15 @@
         if (dom.emptyState) {
             dom.emptyState.classList.toggle('d-none', visibleCount > 0);
         }
+        setText(dom.visibleCount, String(visibleCount));
+        setText(dom.chipCountAll, String(counts.all));
+        setText(dom.chipCountOnline, String(counts.online));
+        setText(dom.chipCountDegraded, String(counts.degraded));
+        setText(dom.chipCountOffline, String(counts.offline));
+        setText(dom.chipCountAttention, String(counts.needs_attention));
+        setText(dom.chipCountHighCpu, String(counts.high_cpu));
+        setText(dom.chipCountHighRisk, String(counts.high_risk));
+        setText(dom.chipCountIdle, String(counts.idle_20m));
     }
 
     function matchesSearch(row) {
@@ -402,6 +501,52 @@
         if (status === 'online') return 'tactical-badge-success';
         if (status === 'degraded') return 'tactical-badge-warning';
         return 'tactical-badge-secondary';
+    }
+
+    function updateDeviceTelemetry(deviceId, cpu, mem, disk) {
+        const row = document.getElementById(`fleet-device-${deviceId}`);
+        if (!row) {
+            return;
+        }
+
+        const metrics = [
+            { bar: '.fleet-cpu-bar', value: '.fleet-cpu-val', percent: cpu },
+            { bar: '.fleet-mem-bar', value: '.fleet-mem-val', percent: mem },
+            { bar: '.fleet-disk-bar', value: '.fleet-disk-val', percent: disk },
+        ];
+
+        metrics.forEach(({ bar, value, percent }) => {
+            const clamped = clampPercent(percent);
+            const tone = getTelemetryTone(clamped);
+            const barNode = row.querySelector(bar);
+            const valueNode = row.querySelector(value);
+
+            if (barNode) {
+                barNode.style.width = `${clamped}%`;
+                barNode.style.background = tone;
+            }
+            if (valueNode) {
+                valueNode.textContent = formatTelemetryPercent(clamped);
+                valueNode.style.color = tone;
+            }
+        });
+
+        row.dataset.cpu = String(clampPercent(cpu));
+    }
+
+    function getTelemetryTone(percent) {
+        if (percent >= 80) return 'var(--s-critical)';
+        if (percent >= 60) return 'var(--s-warning)';
+        return 'var(--s-healthy)';
+    }
+
+    function clampPercent(value) {
+        const percent = toNumber(value, 0);
+        return Math.max(0, Math.min(100, percent));
+    }
+
+    function formatTelemetryPercent(value) {
+        return `${Math.round(clampPercent(value))}%`;
     }
 
     function showError(message) {
@@ -546,7 +691,12 @@
 
     function setText(node, value) {
         if (node) {
-            node.textContent = value;
+            if (node.textContent !== value) {
+                node.textContent = value;
+                node.classList.remove('kpi-updated');
+                void node.offsetWidth; // force reflow to restart animation
+                node.classList.add('kpi-updated');
+            }
         }
     }
 

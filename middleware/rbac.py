@@ -109,6 +109,7 @@ ENDPOINT_PERMISSIONS = {
     # User Management endpoints (admin only)
     "user_management_bp.save_user": "admin",
     "user_management_bp.toggle_user_status": "admin",
+    "user_management_bp.bulk_delete_users": "admin",
     
     # Tracking endpoints
     "tracking_bp.api_toggle_mic": "tracking.view",

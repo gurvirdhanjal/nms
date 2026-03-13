@@ -1,6 +1,7 @@
 # enhanced_tracker_client.py
 import os
 import sys
+import getpass
 import psutil
 import platform
 import time
@@ -36,6 +37,7 @@ import ipaddress
 import re
 import subprocess
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 
 
 
@@ -54,6 +56,36 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
+
+
+def _load_agent_environment():
+    """Load agent env vars from the working directory or the bundled agent directory."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    runtime_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else script_dir
+    seen = set()
+    loaded_paths = []
+    for candidate in (
+        os.path.join(os.getcwd(), '.env'),
+        os.path.join(runtime_dir, '.env'),
+        os.path.join(script_dir, '.env'),
+    ):
+        normalized = os.path.normcase(os.path.abspath(candidate))
+        if normalized in seen or not os.path.exists(candidate):
+            continue
+        seen.add(normalized)
+        if load_dotenv(candidate, override=False):
+            loaded_paths.append(candidate)
+    if loaded_paths:
+        logging.info("Loaded agent environment from: %s", ", ".join(loaded_paths))
+
+
+_load_agent_environment()
+
+try:
+    AGENT_PORT = int(os.getenv('TRACKING_AGENT_PORT', os.getenv('PORT', '5002')) or '5002')
+except (TypeError, ValueError):
+    AGENT_PORT = 5002
+AGENT_PORT = max(1, min(65535, AGENT_PORT))
 
 # ============================================================
 # VERSION VERIFICATION
@@ -105,13 +137,35 @@ DEFAULT_RESTRICTED_POLICY = {
     'policy_version': '',
 }
 HOSTNAME_RE = re.compile(r'(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b', re.IGNORECASE)
+
+
+def _configured_shared_api_keys():
+    keys = set()
+    for candidate in (
+        os.getenv('TRACKING_API_KEY'),
+        os.getenv('ADMIN_SERVER_API_KEY'),
+    ):
+        value = str(candidate or '').strip()
+        if value:
+            keys.add(value)
+    return keys
+
+
+def _is_authorized_api_key(api_key):
+    candidate = str(api_key or '').strip()
+    if not candidate:
+        return False
+    valid_keys = {str(API_KEY or '').strip()}
+    valid_keys.update(_configured_shared_api_keys())
+    return candidate in {key for key in valid_keys if key}
+
+
 def require_api_key(f):
     """API key authentication decorator"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         api_key = request.headers.get('X-API-Key')
-        # Check against generated key
-        if api_key and api_key == API_KEY:
+        if _is_authorized_api_key(api_key):
             return f(*args, **kwargs)
         return jsonify({"error": "Invalid API key"}), 401
     return decorated_function
@@ -419,32 +473,113 @@ def verify_admin_key(admin_key):
     expected_key = hashlib.sha256(f"admin_{get_mac_address()}".encode()).hexdigest()
     return admin_key == expected_key
 
-def build_live_stats_payload():
-    """Build live statistics payload for sync/background usage."""
+def _collect_app_usage_seconds():
+    app_usage_seconds = {}
+    for app_name, duration_seconds in (system_monitor.app_usage or {}).items():
+        try:
+            parsed_duration = max(0, int(float(duration_seconds)))
+        except (TypeError, ValueError):
+            continue
+        app_usage_seconds[str(app_name)] = parsed_duration
+    return app_usage_seconds
+
+
+def _build_monitoring_stats_payload(*, include_security=False, include_legacy_aliases=True):
     current_time = time.time()
     activity_snapshot = get_activity_snapshot(current_time)
-    
-    with current_stats_lock:
-        core_stats = current_secure_stats.get('core', {})
-        cpu = core_stats.get('cpu_percent', 0.0) if core_stats else 0.0
-        memory = core_stats.get('memory_percent', 0.0) if core_stats else 0.0
-        net_stats = current_secure_stats.get('network', {})
+    typed_characters_count = get_typed_text_length()
+    sampled_at_utc = datetime.utcnow()
+    sample_uuid = str(uuid.uuid4())
 
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "activity": {
+    with current_stats_lock:
+        current_stats = current_secure_stats.copy()
+
+    core_stats = current_stats.get('core', {}) or {}
+    cpu_percent = core_stats.get('cpu_percent', 0)
+    memory_percent = core_stats.get('memory_percent', 0)
+    used_gb = core_stats.get('used_gb', 0)
+    total_gb = core_stats.get('total_gb', 0)
+    disk_usage = core_stats.get('disk_usage', 0)
+    network_stats = dict(current_stats.get('network') or {}) if ENABLE_NET_MONITOR else {}
+    active_window = current_stats.get('window') if ENABLE_WINDOW_TITLES else None
+    top_processes = current_stats.get('top_processes') if ENABLE_TOP_PROCESSES else []
+    app_usage_seconds = _collect_app_usage_seconds()
+
+    payload = {
+        "timestamp": sampled_at_utc.isoformat(),
+        "meta": {
+            "sample_uuid": sample_uuid,
+            "sampled_at_utc": sampled_at_utc.isoformat(),
+            "sample_interval_seconds": 60,
+            "schema_version": "2",
+            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+        },
+        "device_info": {
+            "mac_address": get_mac_address(),
+            "hostname": socket.gethostname(),
+            "ip": get_local_ip(),
+            "system": platform.system(),
+            "processor": platform.processor(),
+            "unique_client_id": get_persistent_client_id(),
+        },
+        "current_activity": {
             "keyboard_active": activity_snapshot['keyboard_active'],
             "mouse_active": activity_snapshot['mouse_active'],
             "idle_seconds": round(activity_snapshot['idle_seconds'], 2),
-            "total_active_today": activity_snapshot['total_duration']
+            "current_application": system_monitor.current_app,
         },
-        "system": {
-            "cpu": cpu,
-            "memory": memory,
-            "current_app": system_monitor.current_app
+        "today_stats": {
+            "total_active_hours": round(activity_snapshot['total_duration'] / 3600, 2),
+            "keyboard_active_hours": round(activity_snapshot['keyboard_duration'] / 3600, 2),
+            "mouse_active_hours": round(activity_snapshot['mouse_duration'] / 3600, 2),
+            "keyboard_events": activity_snapshot['keyboard_count'],
+            "mouse_events": activity_snapshot['mouse_count'],
+            "characters_typed": typed_characters_count,
+            "applications_used": list(system_monitor.app_usage.keys()),
+            "app_usage_seconds": app_usage_seconds,
         },
-        "network": net_stats
+        "system_metrics": {
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory_percent,
+            "used_gb": used_gb,
+            "total_gb": total_gb,
+            "disk_usage": disk_usage,
+            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+            "network_speed": network_stats if ENABLE_NET_MONITOR else None,
+            "active_window": active_window,
+            "top_processes": top_processes,
+        },
+        "network": network_stats,
     }
+
+    if include_legacy_aliases:
+        payload["activity"] = {
+            "keyboard_active": activity_snapshot['keyboard_active'],
+            "mouse_active": activity_snapshot['mouse_active'],
+            "idle_seconds": round(activity_snapshot['idle_seconds'], 2),
+            "total_active_today": activity_snapshot['total_duration'],
+            "keyboard_count": activity_snapshot['keyboard_count'],
+            "mouse_count": activity_snapshot['mouse_count'],
+        }
+        payload["system"] = {
+            "cpu": cpu_percent,
+            "memory": memory_percent,
+            "current_app": system_monitor.current_app,
+        }
+
+    if include_security:
+        payload["security"] = {
+            "encryption_enabled": True,
+            "last_sync": datetime.now().isoformat(),
+            "data_retention": "Daily summaries + Encrypted chunks",
+        }
+
+    return payload
+
+
+def build_live_stats_payload():
+    """Build live statistics payload for sync/background usage."""
+    return _build_monitoring_stats_payload(include_security=False, include_legacy_aliases=True)
 
 def get_live_stats():
     """Get live statistics as Flask response."""
@@ -1337,6 +1472,7 @@ class AutoDiscoveryService:
         self.sync_interval = max(15, int(os.getenv('ADMIN_SYNC_INTERVAL_SECONDS', '60') or '60'))
         self.admin_server_url = self._normalize_admin_url(os.getenv('ADMIN_SERVER_URL'))
         self.admin_ports = self._parse_admin_ports(os.getenv('ADMIN_SERVER_PORTS', '5001,5000'))
+        self.local_admin_hosts = self._parse_admin_hosts(os.getenv('ADMIN_LOCAL_FALLBACK_HOSTS', '127.0.0.1,localhost'))
         self.discovery_subnet = (os.getenv('ADMIN_DISCOVERY_SUBNET') or '').strip() or None
         self.shared_api_key = (
             os.getenv('TRACKING_API_KEY')
@@ -1388,8 +1524,19 @@ class AutoDiscoveryService:
                 ports.append(port)
         return ports or [5001, 5000]
 
+    def _parse_admin_hosts(self, raw_hosts):
+        hosts = []
+        for raw_part in str(raw_hosts or '').split(','):
+            host = raw_part.strip()
+            if not host or host in hosts:
+                continue
+            hosts.append(host)
+        return hosts or ['127.0.0.1', 'localhost']
+
     def _admin_auth_headers(self):
-        headers = {'X-API-Key': self.shared_api_key}
+        headers = {}
+        if self.shared_api_key:
+            headers['X-API-Key'] = self.shared_api_key
         auth_data = load_agent_auth()
         key_id = str(auth_data.get('key_id') or '').strip()
         agent_key = str(auth_data.get('agent_key') or '').strip()
@@ -1397,6 +1544,10 @@ class AutoDiscoveryService:
             headers['X-Agent-Key-Id'] = key_id
             headers['X-Agent-Key'] = agent_key
         return headers
+
+    def _has_admin_auth(self):
+        headers = self._admin_auth_headers()
+        return bool(headers.get('X-API-Key')) or bool(headers.get('X-Agent-Key-Id') and headers.get('X-Agent-Key'))
 
     def _probe_admin_server(self, base_url, source='discovery'):
         target = f"{base_url.rstrip('/')}/api/tracking/register"
@@ -1424,6 +1575,21 @@ class AutoDiscoveryService:
 
     def _probe_admin_ip_port(self, ip, port):
         return self._probe_admin_server(f"http://{ip}:{port}", source='subnet-scan')
+
+    def _probe_local_admin_servers(self):
+        discovered_servers = []
+        seen_base_urls = set()
+        for host in self.local_admin_hosts:
+            for port in self.admin_ports:
+                server = self._probe_admin_server(f"http://{host}:{port}", source='local-fallback')
+                if not server:
+                    continue
+                base_url = server.get('base_url')
+                if not base_url or base_url in seen_base_urls:
+                    continue
+                seen_base_urls.add(base_url)
+                discovered_servers.append(server)
+        return discovered_servers
 
     def _build_scan_candidates(self, network_range=None):
         configured_range = (network_range or self.discovery_subnet or '').strip()
@@ -1468,6 +1634,10 @@ class AutoDiscoveryService:
         """Discover admin servers using explicit target first, then optional subnet scan."""
         discovered_servers = []
 
+        if not self._has_admin_auth():
+            self.last_discovery_reason = 'admin auth not configured (set TRACKING_API_KEY or bootstrap agent binding)'
+            return []
+
         if self.admin_server_url:
             explicit_server = self._probe_admin_server(self.admin_server_url, source='explicit-url')
             if explicit_server:
@@ -1476,6 +1646,11 @@ class AutoDiscoveryService:
             self.last_discovery_reason = f"explicit target unreachable ({self.admin_server_url})"
             if not self.discovery_enabled:
                 return []
+
+        local_servers = self._probe_local_admin_servers()
+        if local_servers:
+            self.last_discovery_reason = 'discovered via local fallback'
+            return local_servers
 
         if not self.discovery_enabled:
             self.last_discovery_reason = 'subnet discovery disabled'
@@ -1939,7 +2114,7 @@ def get_client_system_info():
             'system': {
                 'platform': platform.platform(),
                 'hostname': socket.gethostname(),
-                'username': os.getlogin(),
+                'username': getpass.getuser(),
                 'home_directory': os.path.expanduser('~')
             },
             'storage': disk_info,
@@ -1957,74 +2132,7 @@ def get_client_system_info():
 @require_api_key
 def get_secure_stats():
     """Get secure enhanced statistics"""
-    current_time = time.time()
-    activity_snapshot = get_activity_snapshot(current_time)
-    typed_characters_count = get_typed_text_length()
-    sampled_at_utc = datetime.utcnow()
-    sample_uuid = str(uuid.uuid4())
-    
-    # Get latest cached stats (thread-safe copy)
-    with current_stats_lock:
-        current_stats = current_secure_stats.copy()
-
-    app_usage_seconds = {}
-    for app_name, duration_seconds in (system_monitor.app_usage or {}).items():
-        try:
-            parsed_duration = max(0, int(float(duration_seconds)))
-        except (TypeError, ValueError):
-            continue
-        app_usage_seconds[str(app_name)] = parsed_duration
-    
-    return jsonify({
-        "meta": {
-            "sample_uuid": sample_uuid,
-            "sampled_at_utc": sampled_at_utc.isoformat(),
-            "sample_interval_seconds": 60,
-            "schema_version": "2",
-            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
-        },
-        "device_info": {
-            "mac_address": get_mac_address(),
-            "hostname": socket.gethostname(),
-            "ip": get_local_ip(),
-            "system": platform.system(),
-            "processor": platform.processor(),
-            "unique_client_id": get_persistent_client_id(),
-        },
-        "current_activity": {
-            "keyboard_active": activity_snapshot['keyboard_active'],
-            "mouse_active": activity_snapshot['mouse_active'],
-            "idle_seconds": round(activity_snapshot['idle_seconds'], 2),
-            "current_application": system_monitor.current_app
-        },
-        "today_stats": {
-            "total_active_hours": round(activity_snapshot['total_duration'] / 3600, 2),
-            "keyboard_active_hours": round(activity_snapshot['keyboard_duration'] / 3600, 2),
-            "mouse_active_hours": round(activity_snapshot['mouse_duration'] / 3600, 2),
-            "keyboard_events": activity_snapshot['keyboard_count'],
-            "mouse_events": activity_snapshot['mouse_count'],
-            "characters_typed": typed_characters_count,
-            "applications_used": list(system_monitor.app_usage.keys()),
-            "app_usage_seconds": app_usage_seconds,
-        },
-        "system_metrics": {
-            "cpu_percent": current_stats.get('core', {}).get('cpu_percent', 0),
-            "memory_percent": current_stats.get('core', {}).get('memory_percent', 0),
-            "used_gb": current_stats.get('core', {}).get('used_gb', 0),
-            "total_gb": current_stats.get('core', {}).get('total_gb', 0),
-            "disk_usage": current_stats.get('core', {}).get('disk_usage', 0),  # Use cached value
-            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
-            # New Enhanced Metrics (Respecting Gating)
-            "network_speed": current_stats.get('network') if ENABLE_NET_MONITOR else None, 
-            "active_window": current_stats.get('window') if ENABLE_WINDOW_TITLES else None,
-            "top_processes": current_stats.get('top_processes') if ENABLE_TOP_PROCESSES else []
-        },
-        "security": {
-            "encryption_enabled": True,
-            "last_sync": datetime.now().isoformat(),
-            "data_retention": "Daily summaries + Encrypted chunks"
-        }
-    })
+    return jsonify(_build_monitoring_stats_payload(include_security=True, include_legacy_aliases=True))
 
 @app.route('/api/secure/sync', methods=['POST'])
 @require_api_key  
@@ -2927,7 +3035,7 @@ def initialize_enhanced_tracker():
     print(f"[OK] Auto-sync service started ({discovery_service.sync_interval}s intervals)")
     print("[OK] Secure encryption enabled")
     print("[OK] Application usage tracking active")
-    print(f"[INFO] Service running on: http://{get_local_ip()}:5002")
+    print(f"[INFO] Service running on: http://{get_local_ip()}:{AGENT_PORT}")
     print("=" * 60)
 
 def enhanced_activity_tracker():
@@ -3086,7 +3194,7 @@ if __name__ == '__main__':
     initialize_enhanced_tracker()
     
     try:
-        app.run(host='0.0.0.0', port=5002, debug=False, use_reloader=False)
+        app.run(host='0.0.0.0', port=AGENT_PORT, debug=False, use_reloader=False)
     except KeyboardInterrupt:
         print("\n\n[STOP] Shutting down enhanced tracker...")
         # Final data save

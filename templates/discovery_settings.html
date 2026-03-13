@@ -1,397 +1,271 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_badge, ui_empty_state %}
 
 {% block title %}Discovery Settings - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
+<!-- Specific discovery settings styling not covered by global layout -->
 <style>
-    .discovery-settings-page {
-        font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
-    }
-
-    .discovery-settings-page .section-block {
-        padding-inline: 10px;
-    }
-
-    .discovery-settings-page .overall-health-card {
-        margin-top: 1rem;
-        margin-bottom: 0.9rem;
-    }
-
-    .discovery-settings-page .settings-grid {
-        align-items: flex-start;
-    }
-
-    .discovery-settings-page .tactical-card {
-        border-color: rgba(148, 163, 184, 0.2);
-    }
-
-    .discovery-settings-page .tactical-card .card-header {
-        padding: 10px 14px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-    }
-
-    .discovery-settings-page .tactical-card .card-body {
-        padding: 12px 14px;
-    }
-
-    .discovery-settings-page .compact-field .form-label {
-        font-size: 0.66rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--e-text-muted, #8a97a6);
-        margin-bottom: 4px;
-        font-weight: 700;
-    }
-
-    .discovery-settings-page .compact-field .form-control,
-    .discovery-settings-page .compact-field .form-select {
-        min-height: 34px;
-        font-size: 0.78rem;
-    }
-
-    .discovery-settings-page .master-toggle-wrap {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 0.75rem;
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 6px;
-        background: rgba(16, 19, 27, 0.7);
-        padding: 9px 12px;
-        margin-bottom: 10px;
+        margin-bottom: 2rem;
     }
 
-    .discovery-settings-page .master-toggle-title {
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--e-text-secondary, #c3cfdb);
-        font-weight: 700;
-        margin: 0;
-    }
-
-    .discovery-settings-page .master-toggle-sub {
-        font-size: 0.72rem;
-        color: var(--e-text-muted, #8a97a6);
-        margin: 2px 0 0;
-    }
-
-    .discovery-settings-page .form-check.form-switch .form-check-input {
-        width: 2.8rem;
-        height: 1.35rem;
-        cursor: pointer;
-    }
-
-    .discovery-settings-page .subnet-card {
+    .metric-card {
+        background: rgba(16, 19, 27, 0.92);
         border: 1px solid rgba(148, 163, 184, 0.16);
         border-radius: 6px;
-        background: rgba(16, 19, 27, 0.6);
-        padding: 10px;
-        margin-bottom: 12px;
+        padding: 1rem;
+        transition: all 0.2s ease;
     }
 
-    .discovery-settings-page .subnet-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        gap: 6px;
-        max-height: 220px;
-        overflow: auto;
+    .metric-card.health-degraded {
+        border-color: rgba(245, 158, 11, 0.3);
+        background: rgba(245, 158, 11, 0.05);
+    }
+    
+    .metric-card.health-critical {
+        border-color: rgba(239, 68, 68, 0.3);
+        background: rgba(239, 68, 68, 0.05);
     }
 
-    .discovery-settings-page .subnet-item {
+    .metric-card .stat-label {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.5rem;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        background: rgba(15, 17, 24, 0.82);
-        border-radius: 4px;
-        padding: 6px 8px;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
-        color: var(--e-text-primary, #e6edf5);
+        gap: 0.4rem;
     }
 
-    .discovery-settings-page .subnet-item .remove-subnet {
-        border: none;
-        border-radius: 3px;
-        background: rgba(220, 53, 69, 0.15);
-        color: #dc3545;
-        width: 24px;
-        height: 24px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+    .metric-card .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #e6edf5;
+        line-height: 1.1;
+    }
+
+    .subnet-item-enter {
+        animation: pulseSubnet 0.3s ease-out;
+    }
+    
+    @keyframes pulseSubnet {
+        0% { background: rgba(59, 130, 246, 0.2); }
+        100% { background: rgba(15, 17, 24, 0.82); }
+    }
+
+    .form-switch .form-check-input {
+        width: 3rem;
+        height: 1.5rem;
+        background-color: rgba(148, 163, 184, 0.2);
+        border-color: rgba(148, 163, 184, 0.4);
         cursor: pointer;
     }
-
-    .discovery-settings-page .subnet-item .remove-subnet:hover {
-        background: rgba(220, 53, 69, 0.28);
-    }
-
-    .discovery-settings-page .subnet-empty {
-        border: 1px dashed rgba(148, 163, 184, 0.28);
-        border-radius: 4px;
-        padding: 8px;
-        font-size: 0.74rem;
-        color: var(--e-text-muted, #8a97a6);
-    }
-
-    .discovery-settings-page .input-group .btn {
-        min-width: 78px;
-    }
-
-    .discovery-settings-page .dense-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-    }
-
-    .discovery-settings-page .dense-kpi {
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 6px;
-        background: rgba(16, 19, 27, 0.66);
-        padding: 8px 9px;
-    }
-
-    .discovery-settings-page .dense-kpi .stat-label {
-        display: block;
-        font-size: 0.62rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--e-text-muted, #8a97a6);
-        margin-bottom: 3px;
-        font-weight: 700;
-    }
-
-    .discovery-settings-page .dense-kpi .stat-value {
-        font-family: 'IBM Plex Mono', monospace;
-        font-variant-numeric: tabular-nums;
-        font-size: 0.84rem;
-        color: var(--e-text-primary, #e6edf5);
-        line-height: 1.3;
-        word-break: break-word;
-    }
-
-    .discovery-settings-page .status-banner {
-        margin-top: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 4px;
-        padding: 7px 9px;
-        font-size: 0.74rem;
-        color: var(--e-text-secondary, #c3cfdb);
-        background: rgba(15, 17, 24, 0.72);
-    }
-
-    .discovery-settings-page .status-banner.is-hidden {
-        display: none;
-    }
-
-    .discovery-settings-page .status-banner.is-success {
-        border-color: rgba(32, 201, 151, 0.32);
-        background: rgba(32, 201, 151, 0.1);
-        color: #20c997;
-    }
-
-    .discovery-settings-page .status-banner.is-warning {
-        border-color: rgba(255, 193, 7, 0.34);
-        background: rgba(255, 193, 7, 0.09);
-        color: #ffc107;
-    }
-
-    .discovery-settings-page .status-banner.is-error {
-        border-color: rgba(220, 53, 69, 0.34);
-        background: rgba(220, 53, 69, 0.09);
-        color: #dc3545;
-    }
-
-    .discovery-settings-page .save-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        margin-top: 12px;
-    }
-
-    .discovery-settings-page .save-actions .btn {
-        min-width: 148px;
-    }
-
-    .discovery-settings-page .meta-note {
-        font-size: 0.72rem;
-        color: var(--e-text-muted, #8a97a6);
-        margin-bottom: 8px;
-    }
-
-    .discovery-settings-page .card-title-inline {
-        font-size: 0.86rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--e-text-secondary, #c3cfdb);
-        margin: 0;
-    }
-
-    .discovery-settings-page .status-badge {
-        font-size: 0.63rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    @media (max-width: 1199.98px) {
-        .discovery-settings-page .dense-kpi-grid {
-            grid-template-columns: 1fr;
-        }
+    
+    .form-switch .form-check-input:checked {
+        background-color: #3b82f6;
+        border-color: #3b82f6;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid tactical-theme dashboard-enterprise discovery-settings-page">
-    <div id="settingsHealthStrip" class="overall-health-card enterprise-header-strip health-degraded">
-        <div class="card-body py-2 px-3">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div class="d-flex flex-wrap align-items-center gap-3">
-                    <div>
-                        <div class="strip-label">Discovery Control</div>
-                        <div class="strip-value d-flex align-items-center gap-2">
-                            <span class="overall-health-dot" id="stripDot"></span>
-                            <span id="stripState">Loading...</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="strip-label">Last Enrichment Scan</div>
-                        <div class="strip-value" id="stripLastScan">-</div>
-                    </div>
-                </div>
-                <div class="d-flex flex-wrap align-items-center gap-3">
-                    <div>
-                        <div class="strip-label">New</div>
-                        <div class="strip-value" id="stripNewCount">0</div>
-                    </div>
-                    <div>
-                        <div class="strip-label">Updated</div>
-                        <div class="strip-value" id="stripUpdatedCount">0</div>
-                    </div>
-                    <div>
-                        <div class="strip-label">Duration</div>
-                        <div class="strip-value" id="stripDuration">-</div>
-                    </div>
-                </div>
+<div class="page-section">
+    <div class="page-container">
+
+        <!-- Header -->
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white mb-2">Discovery Telemetry Settings</h1>
+                <p class="text-sm text-slate-400">Configure automated environment scanning and asset classification</p>
+            </div>
+            
+            <div class="flex gap-3">
+                <button class="rounded-md bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-400 shadow-sm ring-1 ring-inset ring-amber-500/30 hover:bg-amber-500/20 transition-colors" id="triggerHeavyBtn">
+                    <i class="fas fa-microscope mr-2"></i> INITIATE_ENRICHMENT
+                </button>
             </div>
         </div>
-    </div>
 
-    <div class="row g-3 settings-grid section-block">
-        <div class="col-xxl-8 col-xl-8">
-            <div class="tactical-card enterprise-panel">
-                <div class="card-header d-flex align-items-center justify-content-between">
-                    <h4 class="card-title-inline"><i class="fas fa-satellite-dish me-2"></i>Auto Discovery Settings</h4>
-                    <span class="badge tactical-badge-info status-badge" id="statusBadge">Loading...</span>
+        <!-- Metric Strip -->
+        <div class="metric-strip opacity-0 translate-y-2 animate-[slideUp_0.4s_ease-out_forwards]" id="settingsHealthStrip">
+            <div class="metric-card" id="healthCard">
+                <div class="stat-label"><i class="fas fa-satellite-dish text-blue-500"></i> Discovery Subsystem</div>
+                <div class="stat-value text-lg flex items-center h-full pt-1 gap-2">
+                    <div class="h-2.5 w-2.5 rounded-full bg-slate-500" id="stripDot"></div>
+                    <span id="stripState">INITIALIZING...</span>
                 </div>
-                <div class="card-body">
-                    <div class="master-toggle-wrap">
-                        <div>
-                            <p class="master-toggle-title">Enable Auto Discovery</p>
-                            <p class="master-toggle-sub">Saving settings will immediately start scanner classification on configured subnets.</p>
-                        </div>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="enabledToggle">
-                        </div>
-                    </div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-history text-slate-400"></i> Last Enrichment Cycle</div>
+                <div class="stat-value text-lg flex items-center h-full pt-1 text-slate-300" id="stripLastScan">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-plus-circle text-emerald-500"></i> Delta (New)</div>
+                <div class="stat-value text-emerald-400" id="stripNewCount">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-sync text-blue-500"></i> Delta (Updated)</div>
+                <div class="stat-value text-blue-400" id="stripUpdatedCount">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-stopwatch text-amber-500"></i> Phase Duration</div>
+                <div class="stat-value text-amber-400" id="stripDuration">--</div>
+            </div>
+        </div>
 
-                    <div class="subnet-card">
-                        <p class="meta-note">CIDR targets for automatic scanner runs.</p>
-                        <ul class="subnet-list" id="subnetList"></ul>
-                        <div class="input-group input-group-sm mt-2">
-                            <input type="text" class="form-control tactical-input" id="newSubnet" placeholder="e.g. 192.168.1.0/24">
-                            <button class="btn btn-outline-secondary" type="button" id="addSubnetBtn">
-                                <i class="fas fa-plus"></i> Add
+        <div class="page-body">
+            
+            <div id="triggerStatus" class="hidden rounded-md p-4 mb-6 border"></div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <!-- Main Configuration Panel -->
+                <div class="xl:col-span-2">
+                    <div class="bg-slate-900/80 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                        <div class="border-b border-slate-700/60 bg-slate-800/50 px-5 py-4 flex justify-between items-center">
+                            <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300"><i class="fas fa-cogs mr-2"></i> Autodiscovery Parameters</h3>
+                            <span id="statusBadge" class="inline-flex items-center rounded-md bg-slate-400/10 px-2 py-1 text-xs font-medium text-slate-400 ring-1 ring-inset ring-slate-400/20">LOADING</span>
+                        </div>
+                        
+                        <div class="p-6">
+                            <!-- Master Toggle -->
+                            <div class="flex items-center justify-between p-4 bg-slate-800/60 border border-slate-700/50 rounded-lg mb-6">
+                                <div>
+                                    <h4 class="text-sm font-bold text-slate-200 uppercase tracking-wider mb-1">Enable Autonomous Discovery</h4>
+                                    <p class="text-xs text-slate-400">Activating this will immediately dispatch ICMP probes to configured subnets.</p>
+                                </div>
+                                <div class="form-check form-switch ml-4">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="enabledToggle">
+                                </div>
+                            </div>
+
+                            <!-- Subnet Configuration -->
+                            <div class="mb-8">
+                                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-700/50 pb-2">Target CIDR Blocks</h4>
+                                
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-lg p-3 mb-3 h-48 overflow-y-auto">
+                                    <ul id="subnetList" class="space-y-2">
+                                        <!-- Subnets injected via JS -->
+                                    </ul>
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    <div class="relative flex-grow">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <i class="fas fa-network-wired text-slate-500"></i>
+                                        </div>
+                                        <input type="text" id="newSubnet" class="block w-full rounded-md border-0 bg-slate-800 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" placeholder="Format: 192.168.1.0/24">
+                                    </div>
+                                    <button type="button" id="addSubnetBtn" class="flex-shrink-0 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 border border-slate-600 rounded-md shadow flex items-center transition-colors">
+                                        <i class="fas fa-plus mr-2"></i> Append
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Advanced Tunables -->
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-700/50 pb-2">Operational Tunables</h4>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                                    
+                                    <div>
+                                        <label for="heavyInterval" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Enrichment Period (MIN)</label>
+                                        <input type="number" id="heavyInterval" min="1" max="10080" class="block w-full rounded-md border-0 bg-slate-800 py-1.5 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 font-mono">
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="maxPings" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Max Concurrent Probes</label>
+                                        <input type="number" id="maxPings" min="1" max="200" class="block w-full rounded-md border-0 bg-slate-800 py-1.5 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 font-mono">
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="pingTimeout" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">ICMP T/O (SEC)</label>
+                                        <input type="number" id="pingTimeout" min="1" max="10" class="block w-full rounded-md border-0 bg-slate-800 py-1.5 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 font-mono">
+                                    </div>
+                                    
+                                    <div class="sm:col-span-2">
+                                        <label for="autoAddPolicy" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Node Ingestion Policy</label>
+                                        <select id="autoAddPolicy" class="block w-full rounded-md border-0 bg-slate-800 py-1.5 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 cursor-pointer">
+                                            <option value="auto">AUTOMATIC (Commit Instantly)</option>
+                                            <option value="approval">QUARANTINE (Require Approval)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="autoAddAfterN" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Required Detections</label>
+                                        <input type="number" id="autoAddAfterN" min="1" max="10" class="block w-full rounded-md border-0 bg-slate-800 py-1.5 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 font-mono">
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-6 flex items-center pl-1">
+                                    <input id="autoMonitor" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-900 cursor-pointer">
+                                    <label for="autoMonitor" class="ml-3 block text-sm font-medium leading-6 text-slate-300 cursor-pointer">Immediately attach monitoring probe to discovered nodes</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-800/50 border-t border-slate-700 px-6 py-4 flex justify-end">
+                            <button id="saveBtn" type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 border border-blue-500 flex items-center">
+                                <i class="fas fa-save mr-2"></i> COMMIT CONFIGURATION
                             </button>
                         </div>
                     </div>
-
-                    <div class="row g-2 compact-field">
-                        <div class="col-md-4">
-                            <label class="form-label">Enrichment Interval (Minutes)</label>
-                            <input type="number" class="form-control tactical-input" id="heavyInterval" min="1" max="10080">
+                </div>
+                
+                <!-- Side Panel (Metrics & Logs) -->
+                <div class="xl:col-span-1 space-y-6">
+                    
+                    <div class="bg-slate-900/80 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                        <div class="border-b border-slate-700/60 bg-slate-800/50 px-5 py-3">
+                            <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300"><i class="fas fa-chart-pie mr-2 text-slate-400"></i> Operation Metrics</h3>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Max Concurrent Pings</label>
-                            <input type="number" class="form-control tactical-input" id="maxPings" min="1" max="200">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Ping Timeout (Seconds)</label>
-                            <input type="number" class="form-control tactical-input" id="pingTimeout" min="1" max="10">
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label">Auto Add Policy</label>
-                            <select class="form-select tactical-select" id="autoAddPolicy">
-                                <option value="auto">Auto-add immediately</option>
-                                <option value="approval">Queue for approval</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Consecutive Detections</label>
-                            <input type="number" class="form-control tactical-input" id="autoAddAfterN" min="1" max="10">
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <div class="form-check mb-1">
-                                <input class="form-check-input" type="checkbox" id="autoMonitor">
-                                <label class="form-check-label small" for="autoMonitor">Monitor new devices</label>
+                        <div class="p-5">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-md p-3">
+                                    <div class="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1">Time Initiated</div>
+                                    <div class="text-xs text-slate-300 font-mono" id="statHeavyScan">--</div>
+                                </div>
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-md p-3">
+                                    <div class="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1">Runtime</div>
+                                    <div class="text-xs text-slate-300 font-mono" id="statDuration">--</div>
+                                </div>
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-md p-3">
+                                    <div class="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1">Nodes Discovered</div>
+                                    <div class="text-lg font-bold text-emerald-400 font-mono" id="statNew">0</div>
+                                </div>
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-md p-3">
+                                    <div class="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1">Nodes Updated</div>
+                                    <div class="text-lg font-bold text-blue-400 font-mono" id="statUpdated">0</div>
+                                </div>
                             </div>
+                            
+                            <div id="statError" class="hidden mt-4 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-900/80 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                        <div class="border-b border-slate-700/60 bg-slate-800/50 px-5 py-3">
+                            <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300"><i class="fas fa-terminal mr-2 text-slate-400"></i> Local Overrides</h3>
+                        </div>
+                        <div class="p-5">
+                            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                                Bypass scheduled cron intervals and force immediate heavy data enrichment on all currently cataloged network assets.
+                            </p>
+                            
                         </div>
                     </div>
 
-                    <div class="save-actions">
-                        <button class="btn btn-primary" id="saveBtn">
-                            <i class="fas fa-save"></i> Save and Scan
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xxl-4 col-xl-4">
-            <div class="tactical-card enterprise-panel mb-3">
-                <div class="card-header">
-                    <h4 class="card-title-inline"><i class="fas fa-chart-bar me-2"></i>Latest Scan Metrics</h4>
-                </div>
-                <div class="card-body">
-                    <div class="dense-kpi-grid">
-                        <div class="dense-kpi">
-                            <span class="stat-label">Last Enrichment Scan</span>
-                            <span class="stat-value" id="statHeavyScan">-</span>
-                        </div>
-                        <div class="dense-kpi">
-                            <span class="stat-label">Duration</span>
-                            <span class="stat-value" id="statDuration">-</span>
-                        </div>
-                        <div class="dense-kpi">
-                            <span class="stat-label">New Devices</span>
-                            <span class="stat-value" id="statNew">0</span>
-                        </div>
-                        <div class="dense-kpi">
-                            <span class="stat-label">Updated Devices</span>
-                            <span class="stat-value" id="statUpdated">0</span>
-                        </div>
-                    </div>
-                    <div id="statError" class="status-banner is-hidden"></div>
                 </div>
             </div>
 
-            <div class="tactical-card enterprise-panel">
-                <div class="card-header">
-                    <h4 class="card-title-inline"><i class="fas fa-bolt me-2"></i>Manual Trigger</h4>
-                </div>
-                <div class="card-body">
-                    <p class="meta-note">Run enrichment against already stored devices.</p>
-                    <button class="btn btn-outline-warning w-100" id="triggerHeavyBtn">
-                        <i class="fas fa-microscope"></i> Run Enrichment Now
-                    </button>
-                    <div id="triggerStatus" class="status-banner is-hidden"></div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -413,16 +287,14 @@
 
         function formatScanTimestamp(value) {
             const dt = parseApiTimestamp(value);
-            if (!dt) return '-';
+            if (!dt) return '--';
             return dt.toLocaleString([], {
-                year: 'numeric',
                 month: 'short',
                 day: '2-digit',
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
-                hour12: true,
-                timeZoneName: 'short'
+                hour12: false
             });
         }
 
@@ -433,36 +305,38 @@
                 populateForm(cfg);
             } catch (e) {
                 console.error('Failed to load settings:', e);
-                showTriggerStatus('Failed to load discovery settings.', 'error');
+                showTriggerStatus('Failed to load discovery settings: ' + e.message, 'error');
             }
         }
 
         function updateStatusStrip(cfg) {
-            const strip = document.getElementById('settingsHealthStrip');
+            const card = document.getElementById('healthCard');
             const state = document.getElementById('stripState');
             const dot = document.getElementById('stripDot');
 
-            if (!strip || !state || !dot) return;
+            if (!card || !state || !dot) return;
 
-            strip.classList.remove('health-healthy', 'health-degraded', 'health-critical');
+            card.classList.remove('health-degraded', 'health-critical');
             if (!cfg.enabled) {
-                strip.classList.add('health-degraded');
-                state.textContent = 'Disabled';
-                dot.className = 'overall-health-dot status-offline';
+                card.classList.add('health-degraded');
+                state.textContent = 'OFFLINE';
+                state.className = 'text-amber-500 font-bold tracking-wider';
+                dot.className = 'h-2.5 w-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]';
             } else if (cfg.last_error) {
-                strip.classList.add('health-critical');
-                state.textContent = 'Error';
-                dot.className = 'overall-health-dot status-critical';
+                card.classList.add('health-critical');
+                state.textContent = 'FAULT';
+                state.className = 'text-red-500 font-bold tracking-wider';
+                dot.className = 'h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]';
             } else {
-                strip.classList.add('health-healthy');
-                state.textContent = 'Enabled';
-                dot.className = 'overall-health-dot status-healthy';
+                state.textContent = 'NOMINAL';
+                state.className = 'text-emerald-500 font-bold tracking-wider';
+                dot.className = 'h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse';
             }
 
             document.getElementById('stripLastScan').textContent = formatScanTimestamp(cfg.last_heavy_scan);
             document.getElementById('stripNewCount').textContent = cfg.last_new_count || 0;
             document.getElementById('stripUpdatedCount').textContent = cfg.last_updated_count || 0;
-            document.getElementById('stripDuration').textContent = cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '-';
+            document.getElementById('stripDuration').textContent = cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '--';
         }
 
         function populateForm(cfg) {
@@ -479,25 +353,24 @@
 
             const badge = document.getElementById('statusBadge');
             if (cfg.enabled) {
-                badge.textContent = 'Active';
-                badge.className = 'badge tactical-badge-success status-badge';
+                badge.innerHTML = '<i class="fas fa-check-circle mr-1 text-emerald-400"></i> ACTIVE';
+                badge.className = 'inline-flex items-center rounded-md bg-emerald-400/10 px-2 py-1 text-xs font-medium text-emerald-400 ring-1 ring-inset ring-emerald-400/20';
             } else {
-                badge.textContent = 'Disabled';
-                badge.className = 'badge tactical-badge-secondary status-badge';
+                badge.innerHTML = '<i class="fas fa-pause-circle mr-1 text-slate-400"></i> SUSPENDED';
+                badge.className = 'inline-flex items-center rounded-md bg-slate-400/10 px-2 py-1 text-xs font-medium text-slate-400 ring-1 ring-inset ring-slate-400/20';
             }
 
             document.getElementById('statHeavyScan').textContent = formatScanTimestamp(cfg.last_heavy_scan);
-            document.getElementById('statDuration').textContent = cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '-';
+            document.getElementById('statDuration').textContent = cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '--';
             document.getElementById('statNew').textContent = cfg.last_new_count || 0;
             document.getElementById('statUpdated').textContent = cfg.last_updated_count || 0;
 
             const errEl = document.getElementById('statError');
             if (cfg.last_error) {
-                errEl.textContent = cfg.last_error;
-                errEl.className = 'status-banner is-error';
+                errEl.innerHTML = `<i class="fas fa-exclamation-triangle mr-2"></i> ${cfg.last_error}`;
+                errEl.classList.remove('hidden');
             } else {
-                errEl.textContent = '';
-                errEl.className = 'status-banner is-hidden';
+                errEl.classList.add('hidden');
             }
 
             updateStatusStrip(cfg);
@@ -508,17 +381,27 @@
             if (!list) return;
 
             if (!currentSubnets.length) {
-                list.innerHTML = '<li class="subnet-empty">No subnets configured.</li>';
+                list.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
+                        <i class="fas fa-network-wired text-2xl opacity-50"></i>
+                        <p class="text-xs font-medium">No target scope defined</p>
+                    </div>
+                `;
                 return;
             }
 
             list.innerHTML = currentSubnets.map(function (subnet, idx) {
-                return '<li class="subnet-item">' +
-                    '<span>' + subnet + '</span>' +
-                    '<button type="button" class="remove-subnet" data-idx="' + idx + '" title="Remove subnet">' +
-                    '<i class="fas fa-times"></i>' +
-                    '</button>' +
-                    '</li>';
+                return `
+                    <li class="flex items-center justify-between bg-slate-800/80 border border-slate-700/50 rounded p-2 subnet-item-enter">
+                        <div class="flex items-center">
+                            <i class="fas fa-sitemap text-slate-500 text-xs mr-3 ml-1"></i>
+                            <span class="font-mono text-sm text-slate-200 tracking-wide">${subnet}</span>
+                        </div>
+                        <button type="button" class="remove-subnet h-7 w-7 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center justify-center focus:outline-none" data-idx="${idx}" title="Revoke Subnet">
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </li>
+                `;
             }).join('');
 
             list.querySelectorAll('.remove-subnet').forEach(function (button) {
@@ -536,12 +419,13 @@
             const input = document.getElementById('newSubnet');
             const value = (input.value || '').trim();
             if (!value) return;
-            if (!/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(value)) {
-                showTriggerStatus('Enter a valid CIDR (example: 192.168.1.0/24).', 'warning');
+            // Basic CIDR validation
+            if (!/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$/.test(value)) {
+                showTriggerStatus('Invalid CIDR format. Example: 10.0.0.0/24', 'error');
                 return;
             }
             if (currentSubnets.includes(value)) {
-                showTriggerStatus('Subnet already exists in the list.', 'warning');
+                showTriggerStatus('CIDR block already mapped in current scope.', 'warning');
                 return;
             }
             currentSubnets.push(value);
@@ -553,7 +437,7 @@
             const btn = document.getElementById('saveBtn');
             const originalHtml = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> COMMITTING...';
 
             try {
                 const payload = {
@@ -575,20 +459,20 @@
 
                 const data = await res.json();
                 if (!data.success) {
-                    showTriggerStatus('Save failed: ' + (data.error || 'Unknown error'), 'error');
+                    showTriggerStatus(`TRANSACTION FAILED: ${data.error || 'Unknown error'}`, 'error');
                     return;
                 }
 
                 populateForm(data.config);
                 if (data.auto_scan_triggered) {
-                    showTriggerStatus('Settings saved. Started classified subnet scan for ' + (data.queued_subnets || 0) + ' subnet(s).', 'success');
+                    showTriggerStatus(`CONFIGURATION COMMITTED. Probe dispatch initiated on ${data.queued_subnets || 0} subnets.`, 'success');
                 } else {
-                    showTriggerStatus('Settings saved.', 'success');
+                    showTriggerStatus('CONFIGURATION COMMITTED SUCCESSFULLY.', 'success');
                 }
 
                 setTimeout(loadSettings, 8000);
             } catch (e) {
-                showTriggerStatus('Save failed: ' + e.message, 'error');
+                showTriggerStatus(`TRANSACTION FAILED: ${e.message}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalHtml;
@@ -599,19 +483,19 @@
             const btn = document.getElementById('triggerHeavyBtn');
             const originalHtml = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> EXECUTING PROBES...';
 
             try {
                 const res = await fetch('/api/discovery-settings/trigger-heavy', { method: 'POST' });
                 const data = await res.json();
                 if (data.success) {
-                    showTriggerStatus(data.message || 'Enrichment started.', 'warning');
+                    showTriggerStatus(data.message || 'ENRICHMENT PROTOCOL INITIATED.', 'success');
                     setTimeout(loadSettings, 8000);
                 } else {
-                    showTriggerStatus(data.error || 'Failed to trigger enrichment.', 'error');
+                    showTriggerStatus(`PROBE DISPATCH FAILED: ${data.error}`, 'error');
                 }
             } catch (e) {
-                showTriggerStatus('Failed to trigger enrichment: ' + e.message, 'error');
+                showTriggerStatus(`PROBE DISPATCH FAILED: ${e.message}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalHtml;
@@ -622,15 +506,26 @@
             const el = document.getElementById('triggerStatus');
             if (!el) return;
 
-            let cls = 'status-banner is-success';
-            if (tone === 'warning') cls = 'status-banner is-warning';
-            if (tone === 'error') cls = 'status-banner is-error';
+            let styles = '';
+            let icon = '';
+            
+            if (tone === 'success') {
+                styles = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+                icon = '<i class="fas fa-check-circle mr-2"></i>';
+            } else if (tone === 'warning') {
+                styles = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+                icon = '<i class="fas fa-exclamation-triangle mr-2"></i>';
+            } else {
+                styles = 'bg-red-500/10 border-red-500/30 text-red-500';
+                icon = '<i class="fas fa-bolt mr-2"></i>';
+            }
 
-            el.textContent = message;
-            el.className = cls;
+            el.innerHTML = `<div class="font-mono text-sm tracking-wide flex items-center">${icon} ${message}</div>`;
+            el.className = `rounded-md p-4 mb-6 border ${styles}`;
 
+            // Auto-hide after 7 seconds
             window.setTimeout(function () {
-                el.className = 'status-banner is-hidden';
+                el.classList.add('hidden');
             }, 7000);
         }
 
@@ -647,8 +542,14 @@
 
         document.getElementById('enabledToggle').addEventListener('change', function () {
             const badge = document.getElementById('statusBadge');
-            badge.textContent = this.checked ? 'Active (unsaved)' : 'Disabled (unsaved)';
-            badge.className = 'badge tactical-badge-warning status-badge';
+            
+            if (this.checked) {
+                badge.innerHTML = '<i class="fas fa-sync fa-spin mr-1 text-amber-400"></i> PENDING COMMIT';
+                badge.className = 'inline-flex items-center rounded-md bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-400 ring-1 ring-inset ring-amber-400/20';
+            } else {
+                badge.innerHTML = '<i class="fas fa-pause-circle mr-1 text-slate-400"></i> SUSPENSION PENDING';
+                badge.className = 'inline-flex items-center rounded-md bg-slate-400/10 px-2 py-1 text-xs font-medium text-slate-400 ring-1 ring-inset ring-slate-400/20';
+            }
         });
 
         loadSettings();

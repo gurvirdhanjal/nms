@@ -19,6 +19,7 @@
     const eventFeedApi = window.DeviceConsoleEventFeedStore || {};
     const ackFallbackApi = window.DeviceConsoleAckFallbackStore || {};
     const apiNormalizer = window.DeviceConsoleApiNormalizer || {};
+    const uiAdapterApi = window.DeviceConsoleUiAdapter || {};
 
     const responseCache = typeof cacheStoreApi.createCacheStore === 'function'
         ? cacheStoreApi.createCacheStore(10000)
@@ -65,6 +66,7 @@
         modals: {},
         lazyLoaded: {
             history: false,
+            files: false,
             websitePolicy: false,
             alerts: false,
         },
@@ -118,14 +120,32 @@
             ram: [],
             network: [],
         },
+        files: {
+            loading: false,
+            loadedAt: 0,
+            agentIp: '',
+            currentPath: '',
+            parentPath: '',
+            selectedPath: '',
+            selectedItem: null,
+            items: [],
+            system: null,
+            storage: [],
+            directories: {},
+            dragDepth: 0,
+        },
     };
 
     const dom = {};
+    let uiAdapter = null;
 
     document.addEventListener('DOMContentLoaded', init);
 
     function init() {
         cacheDom();
+        uiAdapter = typeof uiAdapterApi.create === 'function'
+            ? uiAdapterApi.create({ toastRoot: dom.toastRoot })
+            : null;
         bindEvents();
         initModalHandles();
         applyInitialIdentityBadges();
@@ -190,6 +210,24 @@
         dom.tabCountProcesses = document.getElementById('tabCountProcesses');
         dom.tabCountPolicy = document.getElementById('tabCountPolicy');
         dom.tabCountAlerts = document.getElementById('tabCountAlerts');
+        dom.filesAgentTarget = document.getElementById('filesAgentTarget');
+        dom.filesSelectionMeta = document.getElementById('filesSelectionMeta');
+        dom.filesPathMeta = document.getElementById('filesPathMeta');
+        dom.filesCountMeta = document.getElementById('filesCountMeta');
+        dom.filesWorkspaceBanner = document.getElementById('filesWorkspaceBanner');
+        dom.filesDriveSelect = document.getElementById('filesDriveSelect');
+        dom.filesRefreshBtn = document.getElementById('filesRefreshBtn');
+        dom.filesUploadTriggerBtn = document.getElementById('filesUploadTriggerBtn');
+        dom.filesDownloadBtn = document.getElementById('filesDownloadBtn');
+        dom.filesOpenBtn = document.getElementById('filesOpenBtn');
+        dom.filesParentBtn = document.getElementById('filesParentBtn');
+        dom.filesCreateFolderBtn = document.getElementById('filesCreateFolderBtn');
+        dom.filesDeleteBtn = document.getElementById('filesDeleteBtn');
+        dom.filesUploadInput = document.getElementById('filesUploadInput');
+        dom.filesUploadStatus = document.getElementById('filesUploadStatus');
+        dom.filesUploadDropzone = document.getElementById('filesUploadDropzone');
+        dom.filesBreadcrumbs = document.getElementById('filesBreadcrumbs');
+        dom.filesList = document.getElementById('filesList');
         dom.agentHealthAwaiting = document.getElementById('agentHealthAwaiting');
         dom.telemetryBanner = document.getElementById('telemetryWaitingBanner');
         dom.telemetryHeartbeat = document.getElementById('telemetryBannerHeartbeat');
@@ -260,6 +298,51 @@
         dom.policyViolationList?.addEventListener('click', handleAlertActionClick);
         dom.policyViolationList?.addEventListener('click', handleRetryActions);
         dom.errorBanner?.addEventListener('click', handleRetryActions);
+        dom.filesRefreshBtn?.addEventListener('click', () => {
+            void loadFilesTabData(true);
+        });
+        dom.filesDriveSelect?.addEventListener('change', handleFilesDriveChange);
+        dom.filesUploadTriggerBtn?.addEventListener('click', () => {
+            dom.filesUploadInput?.click();
+        });
+        dom.filesUploadInput?.addEventListener('change', handleFilesUploadSelection);
+        dom.filesDownloadBtn?.addEventListener('click', () => {
+            void downloadSelectedWorkstationFile();
+        });
+        dom.filesOpenBtn?.addEventListener('click', () => {
+            openSelectedWorkstationFolder();
+        });
+        dom.filesParentBtn?.addEventListener('click', () => {
+            void openWorkstationPath(state.files.parentPath || '');
+        });
+        dom.filesCreateFolderBtn?.addEventListener('click', () => {
+            void createWorkstationFolder();
+        });
+        dom.filesDeleteBtn?.addEventListener('click', () => {
+            void deleteSelectedWorkstationPath();
+        });
+        dom.filesBreadcrumbs?.addEventListener('click', handleFilesBreadcrumbClick);
+        dom.filesList?.addEventListener('click', handleFilesListClick);
+        dom.filesList?.addEventListener('dblclick', handleFilesListDoubleClick);
+        dom.filesUploadDropzone?.addEventListener('click', () => {
+            if (state.files.loading) {
+                return;
+            }
+            dom.filesUploadInput?.click();
+        });
+        dom.filesUploadDropzone?.addEventListener('keydown', (event) => {
+            if (state.files.loading) {
+                return;
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                dom.filesUploadInput?.click();
+            }
+        });
+        dom.filesUploadDropzone?.addEventListener('dragenter', handleFilesDropEnter);
+        dom.filesUploadDropzone?.addEventListener('dragover', handleFilesDropOver);
+        dom.filesUploadDropzone?.addEventListener('dragleave', handleFilesDropLeave);
+        dom.filesUploadDropzone?.addEventListener('drop', handleFilesDrop);
 
         dom.cameraStartBtn?.addEventListener('click', () => startCameraStream());
         dom.cameraStopBtn?.addEventListener('click', () => stopCameraStream(false));
@@ -382,7 +465,7 @@
             clearTimeout(state.pollTimer);
         }
         state.pollTimer = window.setTimeout(() => {
-            void refreshLiveData(false);
+            void refreshLiveData(false, { preferCache: true });
         }, duration);
     }
 
@@ -1396,6 +1479,12 @@
     function setButtonBusy(button, isBusy) {
         const node = button;
         if (!node) return;
+        if (uiAdapter && typeof uiAdapter.setBusy === 'function') {
+            uiAdapter.setBusy(node, isBusy, {
+                labelIdle: node.dataset.uiIdleLabel || node.innerHTML,
+            });
+            return;
+        }
         node.disabled = Boolean(isBusy);
         node.classList.toggle('is-busy', Boolean(isBusy));
     }
@@ -1730,6 +1819,11 @@
             state.lazyLoaded.history = true;
             return;
         }
+        if (normalized === 'files') {
+            await loadFilesTabData(false);
+            state.lazyLoaded.files = true;
+            return;
+        }
         if (normalized === 'website-policy') {
             await loadWebsitePolicyData(false);
             state.lazyLoaded.websitePolicy = true;
@@ -1745,6 +1839,742 @@
         if (!showModal('remoteView')) {
             window.open(`/api/tracking/stream/screenshot/${encodeURIComponent(macAddress)}`, '_blank', 'noopener,noreferrer');
         }
+    }
+
+    function getFilesApiUrl(suffix) {
+        return `/api/tracking/devices/${encodeURIComponent(deviceId)}/files/${suffix}`;
+    }
+
+    async function loadFilesTabData(forceReload) {
+        if (!config.fileTransferEnabled || !dom.filesList) {
+            return;
+        }
+        if (state.files.loading && !forceReload) {
+            return;
+        }
+        state.files.loading = true;
+        updateFilesControlsState();
+        renderFilesLoadingState('Loading workstation file workspace...');
+
+        try {
+            if (!state.files.system || forceReload) {
+                await loadWorkstationFileSystemInfo();
+            }
+            const defaultPath = (
+                state.files.currentPath
+                || state.files.directories.downloads
+                || state.files.directories.home
+                || state.files.system?.home_directory
+                || ''
+            );
+            await openWorkstationPath(defaultPath, {
+                keepSelection: !forceReload,
+                silentBanner: true,
+            });
+            state.files.loadedAt = Date.now();
+            clearFilesWorkspaceBanner();
+        } catch (error) {
+            setFilesWorkspaceBanner(error?.message || 'Failed to load workstation files.', 'danger');
+            renderFilesLoadingState('Workstation files are unavailable right now.');
+        } finally {
+            state.files.loading = false;
+            updateFilesControlsState();
+        }
+    }
+
+    async function loadWorkstationFileSystemInfo() {
+        const { payload } = await requestJson(getFilesApiUrl('system-info'), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        state.files.system = ensureObject(payload.system);
+        state.files.storage = Array.isArray(payload.storage) ? payload.storage : [];
+        state.files.directories = ensureObject(payload.directories);
+        state.files.agentIp = String(payload.device?.agent_ip || '').trim();
+        renderWorkstationFileMeta();
+    }
+
+    async function openWorkstationPath(pathValue, options) {
+        if (!config.fileTransferEnabled || !dom.filesList) {
+            return;
+        }
+        const opts = options || {};
+        const requestPath = String(pathValue || '').trim();
+        const alreadyLoading = Boolean(state.files.loading);
+        state.files.loading = true;
+        updateFilesControlsState();
+        renderFilesLoadingState(requestPath ? `Loading ${requestPath}...` : 'Loading workstation files...');
+        try {
+            const { payload } = await requestJson(getFilesApiUrl('list'), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ path: requestPath }),
+            });
+
+            state.files.currentPath = String(payload.current_path || '').trim();
+            state.files.parentPath = String(payload.parent_path || '').trim();
+            state.files.items = Array.isArray(payload.items) ? payload.items : [];
+            state.files.agentIp = String(payload.agent_ip || state.files.agentIp || '').trim();
+
+            if (opts.keepSelection) {
+                const matching = state.files.items.find((item) => String(item.path || '') === state.files.selectedPath);
+                state.files.selectedItem = matching || null;
+                if (!matching) {
+                    state.files.selectedPath = '';
+                }
+            } else {
+                state.files.selectedPath = '';
+                state.files.selectedItem = null;
+            }
+
+            renderWorkstationFileMeta();
+            renderWorkstationFiles();
+            if (!opts.silentBanner) {
+                clearFilesWorkspaceBanner();
+            }
+        } finally {
+            state.files.loading = alreadyLoading;
+            updateFilesControlsState();
+        }
+    }
+
+    function renderWorkstationFileMeta() {
+        if (dom.filesAgentTarget) {
+            const parts = [];
+            const hostname = String(state.files.system?.hostname || config.initialDisplayIp || '').trim();
+            const deviceAgentIp = String(state.files.agentIp || config.initialDisplayIp || '').trim();
+            if (hostname) {
+                parts.push(hostname);
+            }
+            if (deviceAgentIp && deviceAgentIp !== hostname) {
+                parts.push(deviceAgentIp);
+            }
+            dom.filesAgentTarget.textContent = parts.join(' | ') || config.initialDisplayIp || '--';
+        }
+
+        renderDriveDropdown();
+        renderFilesBreadcrumbs();
+        updateFilesSelectionMeta();
+    }
+
+    function renderDriveDropdown() {
+        if (!dom.filesDriveSelect) {
+            return;
+        }
+        const drives = Array.isArray(state.files.storage) ? state.files.storage : [];
+        if (!drives.length) {
+            dom.filesDriveSelect.innerHTML = '<option value="">No drives</option>';
+            return;
+        }
+        dom.filesDriveSelect.innerHTML = drives.map((drive) => {
+            const drivePath = String(drive?.drive || '').trim();
+            const freeLabel = formatByteSize(drive.free);
+            return `<option value="${escapeHtml(drivePath)}">${escapeHtml(drivePath)} (${escapeHtml(freeLabel)} free)</option>`;
+        }).join('');
+    }
+
+    function handleFilesDriveChange(event) {
+        const drivePath = event?.target?.value;
+        if (drivePath) {
+            void openWorkstationPath(drivePath);
+        }
+    }
+
+    function renderFilesBreadcrumbs() {
+        if (!dom.filesBreadcrumbs) {
+            return;
+        }
+        const currentPath = String(state.files.currentPath || '').trim();
+        if (!currentPath) {
+            dom.filesBreadcrumbs.innerHTML = '<span class="files-breadcrumb-empty">Default workstation directory</span>';
+            return;
+        }
+
+        const segments = currentPath.split(/[\\/]+/).filter(Boolean);
+        const buttons = [];
+        let runningPath = '';
+
+        if (/^[A-Za-z]:\\?$/.test(currentPath)) {
+            const rootPath = `${segments[0]}\\`;
+            buttons.push(`
+                <button type="button" class="files-breadcrumb-btn" data-files-breadcrumb-path="${escapeHtml(rootPath)}">
+                    ${escapeHtml(rootPath)}
+                </button>
+            `);
+        } else {
+            buttons.push(`
+                <button type="button" class="files-breadcrumb-btn" data-files-breadcrumb-path="">
+                    Home
+                </button>
+            `);
+        }
+
+        segments.forEach((segment, index) => {
+            if (/^[A-Za-z]:$/.test(segment)) {
+                runningPath = `${segment}\\`;
+                if (index === 0) {
+                    return;
+                }
+            } else if (!runningPath) {
+                runningPath = segment;
+            } else if (runningPath.endsWith('\\')) {
+                runningPath = `${runningPath}${segment}`;
+            } else {
+                runningPath = `${runningPath}\\${segment}`;
+            }
+            buttons.push(`
+                <span class="files-breadcrumb-sep">/</span>
+                <button
+                    type="button"
+                    class="files-breadcrumb-btn"
+                    data-files-breadcrumb-path="${escapeHtml(runningPath)}"
+                >
+                    ${escapeHtml(segment)}
+                </button>
+            `);
+        });
+
+        dom.filesBreadcrumbs.innerHTML = buttons.join('');
+    }
+
+    function updateFilesSummaryMeta() {
+        const currentPath = String(state.files.currentPath || '').trim();
+        const items = Array.isArray(state.files.items) ? state.files.items : [];
+        const folderCount = items.filter((item) => Boolean(item?.is_dir)).length;
+        const fileCount = Math.max(0, items.length - folderCount);
+
+        if (dom.filesPathMeta) {
+            const valueNode = dom.filesPathMeta.querySelector('span:last-child');
+            if (valueNode) {
+                valueNode.textContent = currentPath || 'Default workstation directory';
+                valueNode.title = currentPath || 'Default workstation directory';
+            }
+        }
+
+        if (dom.filesCountMeta) {
+            const valueNode = dom.filesCountMeta.querySelector('span:last-child');
+            if (valueNode) {
+                valueNode.textContent = `${items.length} total | ${folderCount} folders | ${fileCount} files`;
+            }
+        }
+    }
+
+    function renderWorkstationFiles() {
+        if (!dom.filesList) {
+            return;
+        }
+        const items = Array.isArray(state.files.items) ? state.files.items : [];
+        updateFilesSummaryMeta();
+        if (!items.length) {
+            dom.filesList.innerHTML = '<div class="files-placeholder">This workstation directory is empty.</div>';
+            return;
+        }
+
+        dom.filesList.innerHTML = items.map((item) => {
+            const itemPath = String(item.path || '');
+            const isSelected = itemPath === state.files.selectedPath;
+            const isDir = Boolean(item.is_dir);
+            const sizeLabel = isDir ? 'Folder' : formatByteSize(item.size);
+            const modifiedLabel = formatFileTimestamp(item.modified);
+            const typeLabel = isDir ? 'Directory' : 'File';
+            return `
+                <article
+                    class="files-row ${isSelected ? 'is-selected' : ''}"
+                    data-files-row="1"
+                    data-path="${escapeHtml(itemPath)}"
+                    data-is-dir="${isDir ? '1' : '0'}"
+                >
+                    <div class="files-row-name">
+                        <span class="files-row-icon ${isDir ? 'is-dir' : 'is-file'}">
+                            <i class="fas fa-${isDir ? 'folder' : 'file-lines'}" aria-hidden="true"></i>
+                        </span>
+                        <div class="files-row-labels">
+                            <strong>${escapeHtml(String(item.name || itemPath || 'Unnamed'))}</strong>
+                            <small title="${escapeHtml(itemPath)}">${escapeHtml(itemPath)}</small>
+                        </div>
+                    </div>
+                    <div class="files-row-cell files-row-type">${escapeHtml(typeLabel)}</div>
+                    <div class="files-row-cell files-row-size">${escapeHtml(sizeLabel)}</div>
+                    <div class="files-row-cell files-row-modified">${escapeHtml(modifiedLabel)}</div>
+                    <div class="files-row-actions">
+                        ${isDir ? `
+                            <button
+                                type="button"
+                                class="files-row-action"
+                                data-files-open="${escapeHtml(itemPath)}"
+                            >
+                                Open
+                            </button>
+                        ` : ''}
+                        <button
+                            type="button"
+                            class="files-row-action"
+                            data-files-download="${escapeHtml(itemPath)}"
+                        >
+                            ${isDir ? 'Fetch Zip' : 'Download'}
+                        </button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    function updateFilesSelectionMeta() {
+        if (!dom.filesSelectionMeta) {
+            return;
+        }
+        const item = state.files.selectedItem;
+        if (!item) {
+            dom.filesSelectionMeta.textContent = '0 items selected';
+            return;
+        }
+        const kind = item.is_dir ? 'folder' : 'file';
+        dom.filesSelectionMeta.textContent = `Selected: 1 ${kind}`;
+    }
+
+    function updateFilesControlsState() {
+        const selectedItem = state.files.selectedItem;
+        const isBusy = Boolean(state.files.loading);
+        if (dom.filesDownloadBtn) {
+            dom.filesDownloadBtn.disabled = isBusy || !selectedItem;
+        }
+        if (dom.filesDeleteBtn) {
+            dom.filesDeleteBtn.disabled = isBusy || !selectedItem;
+        }
+        if (dom.filesOpenBtn) {
+            dom.filesOpenBtn.disabled = isBusy || !selectedItem || !selectedItem.is_dir;
+        }
+        if (dom.filesParentBtn) {
+            dom.filesParentBtn.disabled = isBusy || !state.files.parentPath;
+        }
+        if (dom.filesRefreshBtn) {
+            dom.filesRefreshBtn.disabled = isBusy;
+        }
+        if (dom.filesCreateFolderBtn) {
+            dom.filesCreateFolderBtn.disabled = isBusy;
+        }
+        if (dom.filesUploadTriggerBtn) {
+            dom.filesUploadTriggerBtn.disabled = isBusy;
+        }
+        dom.filesUploadDropzone?.classList.toggle('is-disabled', isBusy);
+        updateFilesSelectionMeta();
+    }
+
+    function setFilesWorkspaceBanner(message, level) {
+        if (!dom.filesWorkspaceBanner) {
+            return;
+        }
+        const text = String(message || '').trim();
+        dom.filesWorkspaceBanner.textContent = text;
+        dom.filesWorkspaceBanner.classList.remove('d-none', 'is-danger', 'is-warning', 'is-info', 'is-success');
+        dom.filesWorkspaceBanner.classList.add(`is-${String(level || 'info').toLowerCase()}`);
+        if (!text) {
+            dom.filesWorkspaceBanner.classList.add('d-none');
+        }
+    }
+
+    function clearFilesWorkspaceBanner() {
+        if (!dom.filesWorkspaceBanner) {
+            return;
+        }
+        dom.filesWorkspaceBanner.textContent = '';
+        dom.filesWorkspaceBanner.classList.add('d-none');
+        dom.filesWorkspaceBanner.classList.remove('is-danger', 'is-warning', 'is-info', 'is-success');
+    }
+
+    function setFilesUploadStatus(message, level) {
+        if (!dom.filesUploadStatus) {
+            return;
+        }
+        const text = String(message || '').trim();
+        if (!text) {
+            dom.filesUploadStatus.textContent = '';
+            dom.filesUploadStatus.classList.add('d-none');
+            dom.filesUploadStatus.classList.remove('is-danger', 'is-warning', 'is-info', 'is-success');
+            return;
+        }
+        dom.filesUploadStatus.textContent = text;
+        dom.filesUploadStatus.classList.remove('d-none', 'is-danger', 'is-warning', 'is-info', 'is-success');
+        dom.filesUploadStatus.classList.add(`is-${String(level || 'info').toLowerCase()}`);
+    }
+
+    function renderFilesLoadingState(message) {
+        if (!dom.filesList) {
+            return;
+        }
+        updateFilesSummaryMeta();
+        if (uiAdapter && typeof uiAdapter.setRegionState === 'function') {
+            uiAdapter.setRegionState(dom.filesList, {
+                state: 'loading',
+                title: 'Loading workstation files',
+                detail: String(message || 'Loading workstation files...'),
+                compact: true,
+            });
+            return;
+        }
+        dom.filesList.innerHTML = `
+            <div class="files-placeholder files-placeholder-loading">
+                <span>${escapeHtml(String(message || 'Loading workstation files...'))}</span>
+            </div>
+        `;
+    }
+
+    function resolveFileItemByPath(pathValue) {
+        const requestedPath = String(pathValue || '').trim();
+        if (!requestedPath) {
+            return null;
+        }
+        return state.files.items.find((item) => String(item.path || '').trim() === requestedPath) || null;
+    }
+
+    function selectWorkstationPath(pathValue) {
+        const item = resolveFileItemByPath(pathValue);
+        state.files.selectedPath = item ? String(item.path || '') : '';
+        state.files.selectedItem = item;
+        renderWorkstationFiles();
+        updateFilesControlsState();
+    }
+
+    function handleFilesBreadcrumbClick(event) {
+        const crumb = event?.target?.closest('[data-files-breadcrumb-path]');
+        if (!crumb) {
+            return;
+        }
+        event.preventDefault();
+        void openWorkstationPath(crumb.getAttribute('data-files-breadcrumb-path') || '');
+    }
+
+    function handleFilesListClick(event) {
+        const openBtn = event?.target?.closest('[data-files-open]');
+        if (openBtn) {
+            event.preventDefault();
+            void openWorkstationPath(openBtn.getAttribute('data-files-open') || '');
+            return;
+        }
+        const downloadBtn = event?.target?.closest('[data-files-download]');
+        if (downloadBtn) {
+            event.preventDefault();
+            const item = resolveFileItemByPath(downloadBtn.getAttribute('data-files-download') || '');
+            if (item) {
+                void downloadWorkstationItem(item);
+            }
+            return;
+        }
+        const row = event?.target?.closest('[data-files-row]');
+        if (!row) {
+            return;
+        }
+        selectWorkstationPath(row.getAttribute('data-path') || '');
+    }
+
+    function handleFilesListDoubleClick(event) {
+        const row = event?.target?.closest('[data-files-row]');
+        if (!row) {
+            return;
+        }
+        if (row.getAttribute('data-is-dir') === '1') {
+            void openWorkstationPath(row.getAttribute('data-path') || '');
+        }
+    }
+
+    function handleFilesUploadSelection(event) {
+        const fileList = event?.target?.files;
+        if (!fileList || !fileList.length) {
+            return;
+        }
+        void uploadFilesToWorkstation(fileList);
+        if (dom.filesUploadInput) {
+            dom.filesUploadInput.value = '';
+        }
+    }
+
+    function handleFilesDropEnter(event) {
+        event.preventDefault();
+        state.files.dragDepth += 1;
+        dom.filesUploadDropzone?.classList.add('is-dragover');
+    }
+
+    function handleFilesDropOver(event) {
+        event.preventDefault();
+        dom.filesUploadDropzone?.classList.add('is-dragover');
+    }
+
+    function handleFilesDropLeave(event) {
+        event.preventDefault();
+        state.files.dragDepth = Math.max(0, state.files.dragDepth - 1);
+        if (state.files.dragDepth === 0) {
+            dom.filesUploadDropzone?.classList.remove('is-dragover');
+        }
+    }
+
+    function handleFilesDrop(event) {
+        event.preventDefault();
+        state.files.dragDepth = 0;
+        dom.filesUploadDropzone?.classList.remove('is-dragover');
+        if (state.files.loading) {
+            return;
+        }
+        const fileList = event?.dataTransfer?.files;
+        if (fileList && fileList.length) {
+            void uploadFilesToWorkstation(fileList);
+        }
+    }
+
+    async function uploadFilesToWorkstation(fileList) {
+        const files = Array.from(fileList || []).filter(Boolean);
+        if (!files.length) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('path', state.files.currentPath || '');
+        files.forEach((file) => {
+            formData.append('file', file, file.name);
+        });
+
+        state.files.loading = true;
+        updateFilesControlsState();
+        setFilesUploadStatus(`Uploading ${files.length} file${files.length === 1 ? '' : 's'} to workstation...`, 'info');
+
+        try {
+            const { payload } = await requestMultipartJson(getFilesApiUrl('upload'), formData);
+            const uploadedCount = Math.max(0, Math.floor(toNumber(payload.uploaded, files.length)));
+            setFilesUploadStatus(
+                `Installed ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} to the workstation.`,
+                'success'
+            );
+            showToast('Workstation upload completed.', 'success');
+            await openWorkstationPath(state.files.currentPath || '', { keepSelection: true, silentBanner: true });
+        } catch (error) {
+            setFilesUploadStatus(error?.message || 'Workstation upload failed.', 'danger');
+            setFilesWorkspaceBanner(error?.message || 'Workstation upload failed.', 'danger');
+        } finally {
+            state.files.loading = false;
+            updateFilesControlsState();
+        }
+    }
+
+    async function downloadSelectedWorkstationFile() {
+        if (!state.files.selectedItem) {
+            return;
+        }
+        await downloadWorkstationItem(state.files.selectedItem);
+    }
+
+    async function downloadWorkstationItem(item) {
+        const target = item || state.files.selectedItem;
+        if (!target) {
+            return;
+        }
+        const requestBody = {
+            path: String(target.path || ''),
+            name: String(target.name || ''),
+            is_dir: Boolean(target.is_dir),
+        };
+
+        try {
+            const response = await fetch(getFilesApiUrl('download'), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/octet-stream, application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(requestBody),
+            });
+
+            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+            if (
+                response.status === 401 ||
+                response.status === 403 ||
+                response.redirected ||
+                contentType.includes('text/html')
+            ) {
+                throw new Error(response.status === 403 ? 'Access denied for this action.' : 'Session expired. Please sign in again.');
+            }
+            if (!response.ok || contentType.includes('application/json')) {
+                const payload = contentType.includes('application/json')
+                    ? await response.json().catch(() => null)
+                    : null;
+                const errorMessage = payload?.error || payload?.message || `Download failed (${response.status}).`;
+                throw new Error(errorMessage);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const fallbackName = target.is_dir
+                ? `${String(target.name || 'workstation-folder')}.zip`
+                : String(target.name || 'workstation-file');
+            link.href = url;
+            link.download = resolveDownloadName(response, fallbackName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('Workstation file download ready.', 'success');
+        } catch (error) {
+            setFilesWorkspaceBanner(error?.message || 'Failed to download workstation file.', 'danger');
+        }
+    }
+
+    function openSelectedWorkstationFolder() {
+        if (!state.files.selectedItem?.is_dir) {
+            return;
+        }
+        void openWorkstationPath(state.files.selectedItem.path || '');
+    }
+
+    async function createWorkstationFolder() {
+        const folderName = window.prompt('Enter the new folder name for this workstation path:');
+        const normalizedName = String(folderName || '').trim();
+        if (!normalizedName) {
+            return;
+        }
+
+        try {
+            await requestJson(getFilesApiUrl('create-folder'), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    path: state.files.currentPath || '',
+                    name: normalizedName,
+                }),
+            });
+            showToast(`Folder "${normalizedName}" created on the workstation.`, 'success');
+            await openWorkstationPath(state.files.currentPath || '', { keepSelection: true, silentBanner: true });
+        } catch (error) {
+            setFilesWorkspaceBanner(error?.message || 'Failed to create workstation folder.', 'danger');
+        }
+    }
+
+    async function deleteSelectedWorkstationPath() {
+        const item = state.files.selectedItem;
+        if (!item) {
+            return;
+        }
+        const confirmed = window.confirm(
+            `Delete "${item.name || item.path}" from the workstation? This action cannot be undone.`
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const { payload } = await requestJson(getFilesApiUrl('delete'), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ path: item.path }),
+            });
+            if (toNumber(payload.failed_count, 0) > 0) {
+                throw new Error(payload.failed?.[0]?.error || 'Workstation delete failed.');
+            }
+            showToast(`Deleted "${item.name || item.path}" from the workstation.`, 'success');
+            state.files.selectedItem = null;
+            state.files.selectedPath = '';
+            await openWorkstationPath(state.files.currentPath || '', { keepSelection: false, silentBanner: true });
+        } catch (error) {
+            setFilesWorkspaceBanner(error?.message || 'Failed to delete workstation file.', 'danger');
+        }
+    }
+
+    async function requestMultipartJson(url, formData) {
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+        });
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        let payload = null;
+        if (contentType.includes('application/json')) {
+            payload = await response.json().catch(() => null);
+        } else {
+            const bodyText = await response.text().catch(() => '');
+            if (
+                response.status === 401 ||
+                response.status === 403 ||
+                response.redirected ||
+                /<form[^>]*login|name=["']username["']/i.test(bodyText)
+            ) {
+                if (response.status === 403) {
+                    const forbiddenError = new Error('Access denied for this action.');
+                    forbiddenError.status = 403;
+                    throw forbiddenError;
+                }
+                const authError = new Error('Session expired. Please sign in again.');
+                authError.status = 401;
+                throw authError;
+            }
+            const requestError = new Error(`Unexpected response format (${response.status}).`);
+            requestError.status = response.status;
+            throw requestError;
+        }
+
+        if (response.status === 401) {
+            const authError = new Error('Session expired. Please sign in again.');
+            authError.status = 401;
+            throw authError;
+        }
+        if (response.status === 403) {
+            const forbiddenError = new Error('Access denied for this action.');
+            forbiddenError.status = 403;
+            throw forbiddenError;
+        }
+        if (!response.ok || payload?.success === false) {
+            throw new Error(payload?.error || payload?.message || `Request failed (${response.status}).`);
+        }
+        return { response, payload: payload || {} };
+    }
+
+    function resolveDownloadName(response, fallbackName) {
+        const contentDisposition = String(response?.headers?.get('content-disposition') || '').trim();
+        const match = contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const encoded = match?.[1] || match?.[2] || '';
+        if (encoded) {
+            try {
+                return decodeURIComponent(encoded);
+            } catch (_error) {
+                return encoded;
+            }
+        }
+        return fallbackName;
+    }
+
+    function formatByteSize(value) {
+        const bytes = toNumber(value, 0);
+        if (!Number.isFinite(bytes) || bytes <= 0) {
+            return '--';
+        }
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex += 1;
+        }
+        const decimals = size >= 100 || unitIndex === 0 ? 0 : 1;
+        return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+    }
+
+    function formatFileTimestamp(value) {
+        const numeric = toNumber(value, NaN);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return '--';
+        }
+        return formatHumanTimestamp(numeric * 1000);
     }
 
     function getRemoteViewSnapshotUrl() {
@@ -3374,6 +4204,10 @@
         }
         state.lastToast.message = text;
         state.lastToast.at = nowTs;
+        if (uiAdapter && typeof uiAdapter.toast === 'function') {
+            uiAdapter.toast(text, level || 'info');
+            return;
+        }
         if (!container) {
             showBanner(text, level || 'info', 2400);
             return;

@@ -21,6 +21,7 @@ class Site(db.Model):
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(80), nullable=True)
 
     # Relationships
     devices = db.relationship('Device', backref='site', lazy='dynamic')
@@ -55,6 +56,7 @@ class Site(db.Model):
             'device_count': device_count,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_by': self.created_by or 'SYSTEM',
         }
 
     def __repr__(self):

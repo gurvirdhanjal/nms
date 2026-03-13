@@ -1,17 +1,27 @@
+import io
 import logging
 import time
 import uuid
 from datetime import datetime, timedelta
 
 import pytest
+from openpyxl import load_workbook
 
 from extensions import db
 from models.dashboard import DailyDeviceStats, DashboardEvent
 from models.department import Department
 from models.device import Device
+from models.interfaces import DeviceInterface, InterfaceTrafficHistory
 from models.report_export_job import ReportExportJob
 from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
+from models.tracked_device import (
+    DeviceActivityLog,
+    DeviceApplicationLog,
+    TrackedDevice,
+    TrackedDeviceAvailabilityEvent,
+    TrackingSample,
+)
 
 
 pytestmark = pytest.mark.integration
@@ -335,6 +345,99 @@ def test_network_report_falls_back_to_raw_scan_history(admin_client):
     assert payload["uptime_summary"][0]["avg_uptime"] == 50.0
 
 
+def test_executive_xlsx_export_includes_custom_kpi_tabs(admin_client):
+    alpha_department = Department.query.filter_by(name="Alpha Department").first()
+    device = _scoped_device("Exec-XLSX", "10.41.4.20", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    now = datetime.utcnow()
+    db.session.add(
+        DeviceScanHistory(
+            device_ip=device.device_ip,
+            device_name=device.device_name,
+            status="Online",
+            scan_timestamp=now - timedelta(minutes=20),
+            ping_time_ms=4.8,
+        )
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/reports/executive/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}&format=xlsx"
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.data))
+    assert {"Summary", "Overview", "Health Mix", "Problem Devices", "Data"}.issubset(set(workbook.sheetnames))
+    overview = workbook["Overview"]
+    assert overview["A1"].value == "Executive Overview"
+    assert isinstance(overview["B3"].value, (int, float))
+
+
+def test_network_xlsx_export_includes_custom_bandwidth_tabs(admin_client):
+    alpha_department = Department.query.filter_by(name="Alpha Department").first()
+    device = _scoped_device("Network-XLSX", "10.41.4.21", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    now = datetime.utcnow()
+
+    interface = DeviceInterface(
+        device_id=device.device_id,
+        if_index=1,
+        name="Gi0/1",
+        canonical_name="Gi0/1",
+        speed_bps=1_000_000_000,
+    )
+    db.session.add(interface)
+    db.session.flush()
+    db.session.add(
+        InterfaceTrafficHistory(
+            interface_id=interface.interface_id,
+            timestamp=now - timedelta(minutes=10),
+            rx_bps=125000.5,
+            tx_bps=64000.25,
+            rx_utilization_pct=12.5,
+            tx_utilization_pct=6.4,
+        )
+    )
+    db.session.add(
+        DailyDeviceStats(
+            device_id=device.device_id,
+            date=now.date(),
+            uptime_percent=99.2,
+            total_scans=24,
+            online_scans=24,
+            avg_latency_ms=5.4,
+            avg_packet_loss_pct=0.3,
+        )
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/reports/network/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}&format=xlsx"
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.data))
+    assert {"Summary", "Overview", "Uptime Summary", "Bandwidth", "Data"}.issubset(set(workbook.sheetnames))
+    bandwidth = workbook["Bandwidth"]
+    assert bandwidth["A1"].value == "Bandwidth Timeline"
+    assert isinstance(bandwidth["C4"].value, datetime)
+    assert isinstance(bandwidth["D4"].value, float)
+
+
+def test_alerts_xlsx_export_includes_custom_alert_tabs(admin_client):
+    alpha_department = Department.query.filter_by(name="Alpha Department").first()
+    device = _scoped_device("Alert-XLSX", "10.41.4.22", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    now = datetime.utcnow()
+    _alert(device, timestamp=now, message="alert-xlsx-export")
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/reports/alerts/export?start={(now - timedelta(hours=1)).isoformat()}&end={(now + timedelta(minutes=1)).isoformat()}&format=xlsx"
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.data))
+    assert {"Summary", "Overview", "Alerts", "Severity Mix", "Daily Trend", "Top Devices", "Data"}.issubset(set(workbook.sheetnames))
+    alerts = workbook["Alerts"]
+    assert alerts["A1"].value == "Alert Detail"
+    assert isinstance(alerts["A4"].value, datetime)
+
+
 def test_report_rate_limit_is_per_report_type_and_cached_requests_do_not_fail(admin_client, app):
     from routes import reports as reports_module
 
@@ -403,7 +506,50 @@ def test_async_export_jobs_use_db_backend(admin_client, app):
 
     download_response = admin_client.get(f"/api/reports/export-jobs/{job_id}/download")
     assert download_response.status_code == 200
-    assert download_response.data.startswith(b"Section,")
+    assert download_response.data.startswith(b"Report Type,")
+    assert b",Section," in download_response.data.splitlines()[0]
+
+
+def test_async_xlsx_export_includes_decorated_meta_and_section_sheets(admin_client, app):
+    app.config["REPORT_EXPORT_JOB_BACKEND"] = "db"
+    alpha_department = Department.query.filter_by(name="Alpha Department").first()
+    device = _scoped_device("Job-Alert-XLSX", "10.50.1.11", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    now = datetime.utcnow()
+    _alert(device, timestamp=now, message="async-xlsx-job")
+    db.session.commit()
+
+    create_response = admin_client.post(
+        "/api/reports/alerts/export-jobs",
+        json={
+            "start": (now - timedelta(hours=1)).isoformat(),
+            "end": (now + timedelta(minutes=1)).isoformat(),
+            "format": "xlsx",
+        },
+    )
+    assert create_response.status_code == 202
+    job_id = create_response.get_json()["job_id"]
+
+    status = None
+    for _ in range(40):
+        status_response = admin_client.get(f"/api/reports/export-jobs/{job_id}")
+        assert status_response.status_code == 200
+        status = status_response.get_json()
+        if status["status"] == "completed":
+            break
+        time.sleep(0.1)
+    assert status is not None
+    assert status["status"] == "completed"
+
+    download_response = admin_client.get(f"/api/reports/export-jobs/{job_id}/download")
+    assert download_response.status_code == 200
+    workbook = load_workbook(io.BytesIO(download_response.data))
+    assert "Summary" in workbook.sheetnames
+    assert "Alerts" in workbook.sheetnames
+
+    summary = workbook["Summary"]
+    summary_values = {(summary[f"A{row}"].value, summary[f"B{row}"].value) for row in range(1, summary.max_row + 1)}
+    assert ("Report Type", "Alerts") in summary_values
+    assert any(label == "Freshness State" and value for label, value in summary_values)
 
 
 @pytest.mark.parametrize(
@@ -424,3 +570,79 @@ def test_new_enterprise_report_endpoints_return_meta(admin_client, app, endpoint
     assert "meta" in payload
     assert "source_tables" in payload["meta"]
     assert "freshness_state" in payload["meta"]
+
+
+def test_tracking_operations_meta_omits_tracking_rollups_when_timescaledb_enabled(admin_client, monkeypatch):
+    from services.timescaledb_service import TimescaleDBService
+
+    alpha_department = Department.query.filter_by(name="Alpha Department").first()
+    device = TrackedDevice(
+        mac_address="AA:BB:CC:DD:EE:F2",
+        device_name="Tracking-Ops",
+        employee_name="Tracking User",
+        hostname="tracking-ops",
+        ip_address="10.60.0.11",
+        site_id=alpha_department.site_id,
+        department_id=alpha_department.id,
+        availability_status="online",
+    )
+    db.session.add(device)
+    db.session.flush()
+
+    now = datetime.utcnow()
+    db.session.add_all(
+        [
+            TrackingSample(
+                device_id=device.id,
+                idempotency_key=f"{device.id}:meta:1",
+                received_at=now - timedelta(hours=6),
+                sampled_at=now - timedelta(hours=6),
+                integrity_status="verified",
+            ),
+            DeviceActivityLog(
+                device_id=device.id,
+                timestamp=now - timedelta(hours=6),
+                activity_type="keyboard",
+                event_count=9,
+            ),
+            DeviceApplicationLog(
+                device_id=device.id,
+                timestamp=now - timedelta(hours=6),
+                application_name="Microsoft Excel",
+                duration=900,
+                status="active",
+            ),
+            TrackedDeviceAvailabilityEvent(
+                device_id=device.id,
+                observed_at=now - timedelta(hours=5),
+                status="online",
+                metrics_available=True,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    monkeypatch.setattr(TimescaleDBService, "is_timescaledb_enabled", lambda: True)
+    response = admin_client.get(
+        f"/api/reports/tracking-operations?start={(now - timedelta(days=2)).isoformat()}&end={now.isoformat()}"
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert payload["meta"]["source_tables"] == [
+        "tracked_devices",
+        "tracking_samples",
+        "device_activity_logs",
+        "device_application_logs",
+        "tracked_device_availability_events",
+        "tracking_history_integrity_audit",
+    ]
+    assert payload["meta"]["freshness_sources"] == [
+        "tracking_samples",
+        "device_activity_logs",
+        "device_application_logs",
+        "tracked_device_availability_events",
+        "tracking_history_integrity_audit",
+    ]
+    assert not any("tracking_hourly_rollups" in warning for warning in payload["meta"]["completeness_warnings"])
+    assert not any("tracking_daily_rollups" in warning for warning in payload["meta"]["completeness_warnings"])

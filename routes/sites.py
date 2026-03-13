@@ -7,11 +7,18 @@ from models.dashboard import DashboardEvent
 from models.server_health import ServerHealthLog
 from services.dashboard_availability import build_device_availability_snapshot
 from services.sites_service import SitesService
-from middleware.rbac import require_role
+from middleware.rbac import require_login, require_role
 from datetime import datetime, timedelta
 from sqlalchemy import func
 
 sites_bp = Blueprint('sites', __name__)
+
+
+def _clean_text(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
 
 
 # ============================================================================
@@ -22,10 +29,18 @@ sites_bp = Blueprint('sites', __name__)
 @require_role('admin')
 def sites_list_page():
     """Render the sites management page."""
-    return render_template('sites/list.html')
+    from middleware.rbac import scoped_query
+
+    sites = scoped_query(Site).order_by(Site.site_name).all()
+    return render_template(
+        'sites/list.html',
+        sites=sites,
+        sites_payload=[site.to_dict() for site in sites],
+    )
 
 
 @sites_bp.route('/sites/<int:site_id>/dashboard')
+@require_login
 def site_dashboard(site_id):
     """Render the site dashboard page with statistics, alerts, metrics, and devices."""
     from middleware.rbac import scoped_query
@@ -152,7 +167,7 @@ def site_dashboard(site_id):
 # ============================================================================
 
 @sites_bp.route('/api/sites', methods=['GET'])
-
+@require_login
 def list_sites():
     """List all sites with device counts."""
     from middleware.rbac import scoped_query
@@ -167,23 +182,34 @@ def list_sites():
 @require_role('admin')
 def create_site():
     """Create a new site."""
-    data = request.get_json()
-    if not data or not data.get('site_name'):
+    data = request.get_json() or {}
+    site_name = _clean_text(data.get('site_name'))
+    site_code = _clean_text(data.get('site_code'))
+
+    if not site_name:
         return jsonify({'status': 'error', 'message': 'site_name is required'}), 400
 
-    # Check for duplicates
-    existing = Site.query.filter_by(site_name=data['site_name']).first()
+    existing = Site.query.filter(
+        db.func.lower(db.func.trim(Site.site_name)) == site_name.lower()
+    ).first()
     if existing:
         return jsonify({'status': 'error', 'message': 'A site with that name already exists'}), 409
 
+    if site_code:
+        existing_code = Site.query.filter(
+            db.func.lower(db.func.trim(Site.site_code)) == site_code.lower()
+        ).first()
+        if existing_code:
+            return jsonify({'status': 'error', 'message': 'A site with that code already exists'}), 409
+
     site = Site(
-        site_name=data['site_name'],
-        site_code=data.get('site_code'),
-        address=data.get('address'),
-        timezone=data.get('timezone', 'UTC'),
-        contact_name=data.get('contact_name'),
-        contact_email=data.get('contact_email'),
-        contact_phone=data.get('contact_phone'),
+        site_name=site_name,
+        site_code=site_code,
+        address=_clean_text(data.get('address')),
+        timezone=_clean_text(data.get('timezone')) or 'UTC',
+        contact_name=_clean_text(data.get('contact_name')),
+        contact_email=_clean_text(data.get('contact_email')),
+        contact_phone=_clean_text(data.get('contact_phone')),
     )
     db.session.add(site)
     db.session.commit()
@@ -202,7 +228,7 @@ def create_site():
 
 
 @sites_bp.route('/api/sites/<int:site_id>', methods=['GET'])
-
+@require_login
 def get_site(site_id):
     """Get a single site by ID."""
     from middleware.rbac import scoped_query
@@ -215,20 +241,40 @@ def get_site(site_id):
 def update_site(site_id):
     """Update an existing site."""
     site = Site.query.get_or_404(site_id)
-    data = request.get_json()
+    data = request.get_json() or {}
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
     if 'site_name' in data:
-        # Check uniqueness for new name
-        dup = Site.query.filter(Site.site_name == data['site_name'], Site.id != site_id).first()
+        site_name = _clean_text(data.get('site_name'))
+        if not site_name:
+            return jsonify({'status': 'error', 'message': 'site_name is required'}), 400
+
+        dup = Site.query.filter(
+            db.func.lower(db.func.trim(Site.site_name)) == site_name.lower(),
+            Site.id != site_id
+        ).first()
         if dup:
             return jsonify({'status': 'error', 'message': 'A site with that name already exists'}), 409
-        site.site_name = data['site_name']
+        site.site_name = site_name
 
-    for field in ('site_code', 'address', 'timezone', 'contact_name', 'contact_email', 'contact_phone'):
+    if 'site_code' in data:
+        site_code = _clean_text(data.get('site_code'))
+        if site_code:
+            dup_code = Site.query.filter(
+                db.func.lower(db.func.trim(Site.site_code)) == site_code.lower(),
+                Site.id != site_id
+            ).first()
+            if dup_code:
+                return jsonify({'status': 'error', 'message': 'A site with that code already exists'}), 409
+        site.site_code = site_code
+
+    for field in ('address', 'timezone', 'contact_name', 'contact_email', 'contact_phone'):
         if field in data:
-            setattr(site, field, data[field])
+            value = _clean_text(data[field])
+            if field == 'timezone':
+                value = value or 'UTC'
+            setattr(site, field, value)
 
     db.session.commit()
     return jsonify({'status': 'ok', 'data': site.to_dict()})

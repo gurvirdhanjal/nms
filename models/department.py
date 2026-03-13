@@ -16,6 +16,7 @@ class Department(db.Model):
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(80), nullable=True)
 
     # Relationships
     site = db.relationship('Site', backref=db.backref('departments', lazy='dynamic'))
@@ -31,6 +32,7 @@ class Department(db.Model):
             'user_count': self.users.count() if self.users else 0,
             'device_count': self.devices.count() if self.devices else 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by': self.created_by or 'SYSTEM',
         }
 
     def __repr__(self):

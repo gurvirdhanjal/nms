@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, flash
+from datetime import datetime
 from extensions import db, bcrypt
 from models.user import User
-from middleware.rbac import require_role
+from middleware.rbac import require_login, require_role
 
 user_management_bp = Blueprint('user_management_bp', __name__, url_prefix='')
 
@@ -28,33 +29,51 @@ def user_management():
 
     from models.department import Department
     departments = Department.query.all()
+    roles = list(User.VALID_ROLES)
 
-    return render_template('user_management.html', users=users, user=user, departments=departments)
+    return render_template('user_management.html', users=users, user=user, departments=departments, roles=roles)
+
+@user_management_bp.route('/users/<int:user_id>')
+@require_login
+def user_profile(user_id):
+    """View detailed user profile."""
+    user = User.query.get_or_404(user_id)
+    return render_template('users/profile.html', user=user)
 
 @user_management_bp.route('/user_management/save', methods=['POST'])
 @require_role('admin')
 def save_user():
     try:
+        from models.department import Department
+
         user_id = request.form.get('user_id')
-        username = request.form['username']
+        username = request.form['username'].strip()
         password = request.form.get('password', '')  # Make optional for updates
         role = request.form['role']
-        email = request.form['email']
-        phone_number = request.form.get('phone_number', '')
+        email = request.form['email'].strip().lower()
+        phone_number = request.form.get('phone_number', '').strip()
         department_id = request.form.get('department_id')
         if department_id:
             department_id = int(department_id)
         else:
             department_id = None
 
+        if role not in User.VALID_ROLES:
+            flash('Invalid role selected.', 'danger')
+            return redirect(url_for('user_management_bp.user_management'))
+
+        if department_id and not Department.query.get(department_id):
+            flash('Selected department was not found.', 'danger')
+            return redirect(url_for('user_management_bp.user_management'))
+
         # Check if username already exists (for new users or when changing username)
-        existing_user = User.query.filter_by(username=username).first()
+        existing_user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
         if existing_user and (not user_id or existing_user.id != int(user_id)):
             flash('Username already exists!', 'danger')
             return redirect(url_for('user_management_bp.user_management'))
 
         # Check if email already exists (for new users or when changing email)
-        existing_email = User.query.filter_by(email=email).first()
+        existing_email = User.query.filter(db.func.lower(User.email) == email.lower()).first()
         if existing_email and (not user_id or existing_email.id != int(user_id)):
             flash('Email already exists!', 'danger')
             return redirect(url_for('user_management_bp.user_management'))
@@ -170,3 +189,65 @@ def toggle_user_status(user_id):
         return jsonify({'success': True, 'is_active': user.is_active})
     else:
         return jsonify({'error': 'User not found'}), 404
+@user_management_bp.route('/api/user_management/bulk_delete', methods=['POST'])
+@require_role('admin')
+def bulk_delete_users():
+    try:
+        from flask import session
+        data = request.get_json()
+        if not data or 'user_ids' not in data:
+            return jsonify({'error': 'Invalid data. Expected user_ids list.'}), 400
+        
+        user_ids = data['user_ids']
+        if not isinstance(user_ids, list):
+            return jsonify({'error': 'user_ids must be a list'}), 400
+            
+        current_user_id = session.get('user_id')
+        deleted_count = 0
+        errors = []
+        
+        for u_id in user_ids:
+            try:
+                # Convert to int if needed
+                u_id = int(u_id)
+            except (ValueError, TypeError):
+                errors.append(f"Invalid user ID: {u_id}")
+                continue
+
+            if u_id == current_user_id:
+                errors.append(f"Cannot delete your own account (ID {u_id})")
+                continue
+                
+            user = User.query.get(u_id)
+            if user:
+                db.session.delete(user)
+                deleted_count += 1
+            else:
+                errors.append(f"User ID {u_id} not found")
+        
+        db.session.commit()
+        
+        if deleted_count > 0:
+            from middleware.rbac import create_audit_log
+            create_audit_log(
+                action='bulk_delete',
+                entity_type='user',
+                description=f"Bulk user deletion: {deleted_count} users deleted",
+                changes={'deleted_ids': [str(x) for x in user_ids]}
+            )
+            
+        return jsonify({
+            'success': True,
+            'deleted': deleted_count,
+            'errors': errors
+        })
+        
+    except Exception as e:
+        import traceback
+        import os
+        log_path = os.path.join('instance', 'error_debug.log')
+        with open(log_path, 'a') as f:
+            f.write(f"\n--- {datetime.utcnow()} ---\n")
+            f.write(traceback.format_exc())
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

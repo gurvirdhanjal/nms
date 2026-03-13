@@ -9,6 +9,9 @@
 
     const SUSPICIOUS_APP_PATTERNS = [/keylogger/i, /remote/i, /miner/i, /rat/i, /inject/i];
     const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+    const historyLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false && window.UI?.Loading
+        ? window.UI.Loading
+        : null;
 
     const state = {
         days: Number(config.defaultDays || 7),
@@ -138,6 +141,14 @@
     function setLoading(isLoading) {
         const node = document.getElementById('historyLoading');
         if (node) {
+            if (isLoading && historyLoadingApi) {
+                historyLoadingApi.setRegionState(node, {
+                    state: 'loading',
+                    title: 'Loading history data',
+                    detail: 'Pulling activity, resource, integrity, and policy data.',
+                    compact: true,
+                });
+            }
             node.classList.toggle('d-none', !isLoading);
         }
     }

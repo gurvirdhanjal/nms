@@ -213,6 +213,21 @@ def _current_user_key():
     return 'system'
 
 
+def _current_session_snapshot():
+    if not has_request_context():
+        return {}
+    keys = (
+        'logged_in',
+        'role',
+        'username',
+        'user_id',
+        'site_id',
+        'department_id',
+        'last_activity',
+    )
+    return {key: session.get(key) for key in keys if key in session}
+
+
 def _current_scope_details():
     scope = build_scope_context()
     scope_id = None
@@ -689,31 +704,43 @@ def _run_export_job_worker(
     device_ids,
     severity,
     payload_cache_key,
+    session_snapshot,
 ):
     with app.app_context():
         _update_export_job(job_id, status='running', started_at=time.time())
         try:
-            payload, row_count, duration, _ = _run_report(
-                report_type,
-                start_date,
-                end_date,
-                device_ids=device_ids,
-                severity=severity,
-                is_export=True,
-                use_cache=True,
-                enforce_rate_limit=False,
-                cache_key_override=payload_cache_key,
-            )
-            payload = _normalize_report_timestamps(copy.deepcopy(payload))
+            with app.test_request_context('/api/reports/export-jobs/worker'):
+                for key, value in (session_snapshot or {}).items():
+                    session[key] = value
 
-            from services.export_service import export_report_buffer
+                payload, row_count, duration, cache_meta = _run_report(
+                    report_type,
+                    start_date,
+                    end_date,
+                    device_ids=device_ids,
+                    severity=severity,
+                    is_export=True,
+                    use_cache=True,
+                    enforce_rate_limit=False,
+                    cache_key_override=payload_cache_key,
+                )
+                payload = _decorate_report_payload(
+                    report_type,
+                    payload,
+                    start_date,
+                    end_date,
+                    row_count,
+                    cache_meta,
+                )
 
-            timestamp = _utcnow().strftime('%Y%m%d_%H%M')
-            filename = f'{report_type}_report_{timestamp}.{export_format}'
-            export_dir = os.path.join(app.instance_path, 'report_exports')
-            os.makedirs(export_dir, exist_ok=True)
-            file_path = os.path.join(export_dir, f'{job_id}_{filename}')
-            buf = export_report_buffer(payload, report_type, export_format)
+                from services.export_service import export_report_buffer
+
+                timestamp = _utcnow().strftime('%Y%m%d_%H%M')
+                filename = f'{report_type}_report_{timestamp}.{export_format}'
+                export_dir = os.path.join(app.instance_path, 'report_exports')
+                os.makedirs(export_dir, exist_ok=True)
+                file_path = os.path.join(export_dir, f'{job_id}_{filename}')
+                buf = export_report_buffer(payload, report_type, export_format)
 
             with open(file_path, 'wb') as handle:
                 handle.write(buf.getvalue())
@@ -774,7 +801,52 @@ def get_device_statistics():
         hours = 24
 
     stats = monitor.get_device_statistics(device_ip, hours)
-    return jsonify(stats if stats else {'error': 'No data available'})
+    if not stats:
+        return jsonify({'error': 'No data available'})
+
+    # Augment with agent telemetry from server_health_logs
+    from models.device import Device
+    from models.server_health import ServerHealthLog
+
+    agent_data = {'available': False}
+    device = Device.query.filter_by(device_ip=device_ip).first()
+    if device:
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        agent_logs = (
+            ServerHealthLog.query
+            .filter(
+                ServerHealthLog.device_id == device.device_id,
+                ServerHealthLog.source == 'agent',
+                ServerHealthLog.timestamp >= cutoff,
+            )
+            .order_by(ServerHealthLog.timestamp.asc())
+            .limit(300)
+            .all()
+        )
+        if agent_logs:
+            latest = agent_logs[-1]
+            agent_data = {
+                'available': True,
+                'latest': {
+                    'cpu_percent': latest.cpu_usage,
+                    'memory_percent': latest.memory_usage,
+                    'disk_percent': latest.disk_usage,
+                    'uptime_seconds': latest.uptime,
+                    'network_in_bps': latest.network_in_bps,
+                    'network_out_bps': latest.network_out_bps,
+                },
+                'time_series': [
+                    {
+                        'timestamp': log.timestamp.isoformat(),
+                        'cpu': log.cpu_usage,
+                        'memory': log.memory_usage,
+                        'disk': log.disk_usage,
+                    }
+                    for log in agent_logs
+                ],
+            }
+    stats['agent_data'] = agent_data
+    return jsonify(stats)
 
 
 @reports_bp.route('/api/daily_report')
@@ -898,6 +970,206 @@ def get_printer_operations_report():
     return _run_report_endpoint('printer-operations')
 
 
+_PREVIEW_COLUMNS = {
+    "executive": ["Device", "Type", "IP", "Uptime %", "Status"],
+    "alerts": ["Timestamp", "Device", "IP", "Severity", "Type", "Message", "Resolved"],
+    "inventory-assets": ["Device", "IP", "Type", "Site", "Department", "Status"],
+    "device-health": ["Device", "Avg CPU %", "Avg Mem %", "Avg Disk %", "Points"],
+    "network": ["Device", "Avg Uptime %", "Avg Latency (ms)", "Avg Packet Loss %"],
+    "operational": ["Timestamp", "Action", "Details"],
+    "maintenance-availability": ["Device", "IP", "Availability %", "Status"],
+    "security-compliance": ["Timestamp", "Device", "Severity", "Type", "Detail"],
+    "tracking-operations": ["Device", "Coverage %", "Freshness", "Sample Count"],
+    "printer-operations": ["Device", "Status", "Page Count", "Timestamp"],
+    "productivity": ["Device", "Application", "Category", "Usage (s)"],
+}
+
+_PREVIEW_STATUS_FIELD = "Status"
+
+
+def _build_preview_rows(report_type, payload):
+    """Reshape a report payload into flat row dicts keyed by _PREVIEW_COLUMNS."""
+    if report_type == "executive":
+        rows = []
+        for item in (payload.get("top_problematic") or []):
+            uptime = item.get("uptime") or 0
+            status = "CRITICAL" if uptime < 90 else ("WARN" if uptime < 95 else "OK")
+            rows.append({
+                "Device": item.get("name", ""),
+                "Type": item.get("type", ""),
+                "IP": item.get("ip", ""),
+                "Uptime %": uptime,
+                "Status": status,
+            })
+        return rows
+
+    if report_type == "alerts":
+        rows = []
+        for alert in (payload.get("alerts") or []):
+            rows.append({
+                "Timestamp": alert.get("timestamp", ""),
+                "Device": alert.get("device_name", ""),
+                "IP": alert.get("device_ip", ""),
+                "Severity": alert.get("severity", ""),
+                "Type": alert.get("event_type", ""),
+                "Message": (alert.get("message") or "")[:120],
+                "Resolved": "Yes" if alert.get("resolved") else "No",
+            })
+        return rows
+
+    if report_type == "inventory-assets":
+        rows = []
+        for device in (payload.get("inventory_devices") or []):
+            rows.append({
+                "Device": device.get("name", ""),
+                "IP": device.get("ip", ""),
+                "Type": device.get("device_type", ""),
+                "Site": device.get("site_name", "") or "",
+                "Department": device.get("department_name", "") or "",
+                "Status": device.get("status", ""),
+            })
+        return rows
+
+    if report_type == "device-health":
+        rows = []
+        for dev_key, dev_data in (payload.get("time_series") or {}).items():
+            points = dev_data.get("points") or []
+            if not points:
+                continue
+            cpu_vals = [p.get("cpu") for p in points if p.get("cpu") is not None]
+            mem_vals = [p.get("memory") for p in points if p.get("memory") is not None]
+            disk_vals = [p.get("disk") for p in points if p.get("disk") is not None]
+            rows.append({
+                "Device": dev_data.get("device_name") or dev_key,
+                "Avg CPU %": round(sum(cpu_vals) / len(cpu_vals), 1) if cpu_vals else "",
+                "Avg Mem %": round(sum(mem_vals) / len(mem_vals), 1) if mem_vals else "",
+                "Avg Disk %": round(sum(disk_vals) / len(disk_vals), 1) if disk_vals else "",
+                "Points": len(points),
+            })
+        return rows
+
+    if report_type == "network":
+        rows = []
+        for item in (payload.get("uptime_summary") or []):
+            rows.append({
+                "Device": item.get("device_name", ""),
+                "Avg Uptime %": item.get("avg_uptime", ""),
+                "Avg Latency (ms)": item.get("avg_latency_ms", ""),
+                "Avg Packet Loss %": item.get("avg_packet_loss", ""),
+            })
+        return rows
+
+    if report_type == "operational":
+        rows = []
+        for entry in (payload.get("audit_log") or []):
+            rows.append({
+                "Timestamp": entry.get("timestamp", ""),
+                "Action": entry.get("action", ""),
+                "Details": (entry.get("description") or "")[:120],
+            })
+        return rows
+
+    if report_type == "maintenance-availability":
+        rows = []
+        for item in (payload.get("downtime_leaders") or []):
+            avail = item.get("availability_pct")
+            status = "CRITICAL" if (avail or 100) < 90 else ("WARN" if (avail or 100) < 99 else "OK")
+            rows.append({
+                "Device": item.get("device_name", ""),
+                "IP": item.get("device_ip", ""),
+                "Availability %": avail,
+                "Status": status,
+            })
+        return rows
+
+    if report_type == "security-compliance":
+        rows = []
+        for event in (payload.get("recent_alerts") or []):
+            rows.append({
+                "Timestamp": event.get("timestamp", ""),
+                "Device": event.get("device_name", ""),
+                "Severity": event.get("severity", ""),
+                "Type": event.get("event_type", ""),
+                "Detail": (event.get("message") or "")[:120],
+            })
+        return rows
+
+    if report_type == "tracking-operations":
+        rows = []
+        for item in (payload.get("device_freshness") or []):
+            rows.append({
+                "Device": item.get("device_name", ""),
+                "Coverage %": item.get("coverage_pct", ""),
+                "Freshness": item.get("freshness_state", ""),
+                "Sample Count": item.get("sample_count", ""),
+            })
+        return rows
+
+    if report_type == "printer-operations":
+        rows = []
+        for item in (payload.get("printer_status") or []):
+            rows.append({
+                "Device": item.get("device_name", ""),
+                "Status": item.get("status", ""),
+                "Page Count": item.get("page_count_total", ""),
+                "Timestamp": item.get("timestamp", ""),
+            })
+        return rows
+
+    if report_type == "productivity":
+        rows = []
+        for dev_key, dev_data in (payload.get("app_breakdown") or {}).items():
+            dev_name = dev_data.get("device_name") or dev_key
+            for app in (dev_data.get("apps") or []):
+                rows.append({
+                    "Device": dev_name,
+                    "Application": app.get("application_name", ""),
+                    "Category": app.get("category", ""),
+                    "Usage (s)": app.get("total_seconds", ""),
+                })
+        return rows
+
+    return []
+
+
+@reports_bp.route('/api/reports/<report_type>/preview', methods=['GET'])
+def preview_report(report_type):
+    """Return a flat, preview-ready payload for the enterprise table view.
+    Read-only — never writes to DB."""
+    if report_type == 'productivity' and not _is_productivity_report_enabled():
+        return _productivity_disabled_response()
+
+    try:
+        _validate_report_type(report_type)
+        start_date, end_date = _parse_date_range(max_days=_max_days_for_report(report_type))
+        device_ids = _parse_device_ids()
+        severity = _parse_severity()
+    except ReportValidationError as exc:
+        return _json_error(str(exc), exc.status_code)
+
+    try:
+        payload, row_count, _, cache_meta = _run_report(
+            report_type,
+            start_date,
+            end_date,
+            device_ids=device_ids,
+            severity=severity,
+        )
+        payload = _decorate_report_payload(report_type, payload, start_date, end_date, row_count, cache_meta)
+        columns = _PREVIEW_COLUMNS.get(report_type, ["Key", "Value"])
+        rows = _build_preview_rows(report_type, payload)
+        return jsonify({
+            "report_type": report_type,
+            "columns": columns,
+            "rows": rows,
+            "meta": payload.get("meta", {}),
+        })
+    except ReportValidationError as exc:
+        return _json_error(str(exc), exc.status_code)
+    except Exception as exc:
+        return _handle_report_exception(report_type, exc)
+
+
 @reports_bp.route('/api/reports/<report_type>/export')
 def export_report(report_type):
     if report_type == 'productivity' and not _is_productivity_report_enabled():
@@ -988,6 +1260,7 @@ def create_export_job(report_type):
             device_ids=device_ids,
             extras={'severity': severity},
         )
+        session_snapshot = _current_session_snapshot()
         _run_report(
             report_type,
             start_date,
@@ -1024,6 +1297,7 @@ def create_export_job(report_type):
                 device_ids,
                 severity,
                 payload_cache_key,
+                session_snapshot,
             ),
             daemon=True,
         )

@@ -16,6 +16,7 @@
     <!-- Bootstrap & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    {% block ui_assets %}{% endblock %}
 
     <!-- Tactical Theme CSS -->
     <link href="{{ url_for('static', filename='css/tactical.css') }}?v=4" rel="stylesheet">
@@ -1853,6 +1854,12 @@
                         <i data-lucide="radar"></i><span class="link-text">Discovery</span>
                     </a>
                     {% endif %}
+                    {% if rbac_context.capabilities.admin %}
+                    <a href="{{ url_for('user_management_bp.user_management') }}"
+                        class="sidebar-link {% if request.endpoint and 'user_management' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="users-cog"></i><span class="link-text">User Management</span>
+                    </a>
+                    {% endif %}
                 </nav>
 
             </div>
@@ -1975,6 +1982,7 @@
     <script>
         window.__RBAC_CONTEXT__ = {{ rbac_context | tojson }};
     </script>
+    <script src="{{ url_for('static', filename='js/ui/slideover.js') }}?v=1"></script>
     {% block extra_js %}{% endblock %}
     <script>
         // ============================================================

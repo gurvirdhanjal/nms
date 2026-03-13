@@ -1,202 +1,225 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_table_container, ui_slide_over, ui_badge, ui_empty_state %}
 
 {% block title %}Audit Logs - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
+<!-- Specific audit log styles not covered by global layout -->
 <style>
-    /* Audit Logs - Tactical Theme */
-    .audit-table-container {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        overflow: hidden;
+    /* Metric Cards Strip */
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 2rem;
     }
-    
-    .filter-card {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
+
+    .metric-card {
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 6px;
         padding: 1rem;
-        margin-bottom: 1.5rem;
+    }
+
+    .metric-card .stat-label {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .metric-card .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #e6edf5;
+        line-height: 1.1;
     }
     
-    .action-badge {
-        font-size: 0.85rem;
-        padding: 0.35rem 0.65rem;
-    }
-    
-    .changes-cell {
-        max-width: 300px;
+    /* Changes Cell Truncation */
+    .changes-compact {
+        max-width: 250px;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    
-    .changes-cell:hover {
-        overflow: visible;
-        white-space: normal;
-        word-wrap: break-word;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.65rem;
+        color: #94a3b8;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1><i class="fas fa-clipboard-list"></i> Audit Logs</h1>
-        <p class="lead">View system activity and security audit trail</p>
-    </div>
-</div>
-
-<!-- Filters -->
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="filter-card">
-            <form method="GET" action="{{ url_for('audit.audit_logs') }}" class="row g-3">
-                <div class="col-md-3">
-                    <label for="action" class="form-label">Action</label>
-                    <select class="form-select" id="action" name="action">
-                        <option value="">All Actions</option>
-                        {% for action in unique_actions %}
-                        <option value="{{ action }}" {% if action == current_action %}selected{% endif %}>
-                            {{ action }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="entity_type" class="form-label">Entity Type</label>
-                    <select class="form-select" id="entity_type" name="entity_type">
-                        <option value="">All Types</option>
-                        {% for entity_type in unique_entity_types %}
-                        <option value="{{ entity_type }}" {% if entity_type == current_entity_type %}selected{% endif %}>
-                            {{ entity_type }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                
-                <div class="col-md-4">
-                    <label for="username" class="form-label">Username</label>
-                    <input type="text" class="form-control" id="username" name="username" 
-                           value="{{ current_username }}" placeholder="Search by username">
-                </div>
-                
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-filter"></i> Filter
-                    </button>
-                </div>
-            </form>
+<div class="page-section">
+    <div class="page-container">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white mb-2 flex items-center gap-3">
+                    <i data-lucide="scroll-text" class="w-6 h-6 text-slate-400"></i>
+                    System Audit Trail
+                </h1>
+                <p class="text-sm text-slate-400">Immutable ledger of platform access and entity modifications</p>
+            </div>
             
-            {% if current_action or current_entity_type or current_username %}
-            <div class="mt-3">
-                <a href="{{ url_for('audit.audit_logs') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-times"></i> Clear Filters
+            <div class="flex flex-wrap items-center gap-3">
+                {% if current_action or current_entity_type or current_username %}
+                <a href="{{ url_for('audit.audit_logs') }}" class="inline-flex items-center justify-center rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">
+                    <i data-lucide="x-circle" class="w-4 h-4 mr-2"></i> Clear Filters
                 </a>
+                {% endif %}
+                <button type="button" class="inline-flex items-center justify-center rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-inset ring-slate-700 hover:bg-slate-700 transition-colors" onclick="window.location.reload()">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 mr-2 text-blue-400"></i> Refresh Ledger
+                </button>
             </div>
-            {% endif %}
         </div>
-    </div>
-</div>
 
-<!-- Audit Logs Table -->
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="mb-0"><i class="fas fa-list"></i> Audit Trail</h5>
-                    </div>
-                    <div class="col-md-6 text-end">
-                        {% if pagination.total %}
-                        <span class="text-muted">
-                            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} - 
-                            {% if pagination.page * pagination.per_page < pagination.total %}
-                                {{ pagination.page * pagination.per_page }}
-                            {% else %}
-                                {{ pagination.total }}
-                            {% endif %}
-                            of {{ pagination.total }} entries
-                        </span>
-                        {% endif %}
-                    </div>
+        <!-- Metric Strip -->
+        <div class="metric-strip opacity-0 translate-y-2 animate-[slideUp_0.4s_ease-out_forwards]">
+            <div class="metric-card">
+                <div class="stat-label"><i data-lucide="database" class="w-3.5 h-3.5 text-blue-500"></i> Event Count</div>
+                <div class="stat-value">{{ pagination.total if pagination else 0 }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i data-lucide="filter" class="w-3.5 h-3.5 text-emerald-500"></i> Filter Scope</div>
+                <div class="stat-value text-emerald-400 text-lg flex items-center h-full pt-1">
+                    {% if current_action or current_entity_type or current_username %}
+                        ACTIVE
+                    {% else %}
+                        <span class="text-slate-500">GLOBAL</span>
+                    {% endif %}
                 </div>
             </div>
-            <div class="card-body">
+            <div class="metric-card">
+                <div class="stat-label"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-amber-500"></i> Ledger Status</div>
+                <div class="stat-value text-emerald-400 text-lg flex items-center h-full pt-1">VERIFIED</div>
+            </div>
+        </div>
+
+        <div class="page-body">
+            <!-- Filtering Ribbon -->
+            <div class="bg-slate-900/50 border border-slate-700/50 rounded-lg p-4 mb-6 ring-1 ring-white/5 shadow-sm">
+                <form method="GET" action="{{ url_for('audit.audit_logs') }}" class="flex flex-col sm:flex-row gap-4">
+                    
+                    <div class="flex-1">
+                        <label for="action" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Action Signature</label>
+                        <select id="action" name="action" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                            <option value="">-- ANY ACTION --</option>
+                            {% for action_type in unique_actions %}
+                            <option value="{{ action_type }}" {% if action_type == current_action %}selected{% endif %}>
+                                {{ action_type | upper }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="flex-1">
+                        <label for="entity_type" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Target Entity Context</label>
+                        <select id="entity_type" name="entity_type" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                            <option value="">-- ANY CONTEXT --</option>
+                            {% for entity_type in unique_entity_types %}
+                            <option value="{{ entity_type }}" {% if entity_type == current_entity_type %}selected{% endif %}>
+                                {{ entity_type | upper }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="flex-1">
+                        <label for="username" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Principal / Subject</label>
+                        <div class="relative">
+                            <input type="text" id="username" name="username" value="{{ current_username }}" placeholder="* wildcard filter..." class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <i data-lucide="user-search" class="w-4 h-4 text-slate-500"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-end">
+                        <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center rounded-md bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-400 ring-1 ring-inset ring-blue-500/30 hover:bg-blue-500/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+                            Apply Criteria
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Log Table Container -->
+            {% call ui_table_container() %}
                 {% if logs %}
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm">
-                        <thead class="table-dark">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50">
+                        <thead class="bg-slate-900/50">
                             <tr>
-                                <th>Timestamp</th>
-                                <th>User</th>
-                                <th>Role</th>
-                                <th>Action</th>
-                                <th>Entity Type</th>
-                                <th>Entity</th>
-                                <th>Description</th>
-                                <th>IP Address</th>
-                                <th>Changes</th>
+                                <th scope="col" class="py-3 pl-4 pr-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider sm:pl-6 w-48">Timestamp</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-40">Principal Actor</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-32">Event Class</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Target Entity</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-32">Source Node</th>
+                                <th scope="col" class="relative py-3 pl-3 pr-4 sm:pr-6 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider w-24">Diffs</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="divide-y divide-slate-700/50 bg-slate-800/20">
                             {% for log in logs %}
-                            <tr>
-                                <td>
-                                    <small>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}</small>
+                            <tr class="hover:bg-slate-700/30 transition-colors group">
+                                <td class="whitespace-nowrap py-3.5 pl-4 pr-3 text-sm font-mono text-slate-400 sm:pl-6">
+                                    {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}
                                 </td>
-                                <td>
-                                    <strong>{{ log.username }}</strong>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm">
+                                    <div class="flex items-center gap-2">
+                                        {% if log.user_role == 'admin' %}
+                                            <i data-lucide="crown" class="w-3 h-3 text-amber-500" title="Administrator"></i>
+                                        {% elif log.user_role == 'manager' %}
+                                            <i data-lucide="star" class="w-3 h-3 text-blue-400" title="Manager"></i>
+                                        {% else %}
+                                            <i data-lucide="user" class="w-3 h-3 text-slate-500" title="Standard User"></i>
+                                        {% endif %}
+                                        <span class="font-medium text-slate-200">{{ log.username }}</span>
+                                    </div>
                                 </td>
-                                <td>
-                                    <span class="badge bg-{{ 'primary' if log.user_role == 'admin' else 'info' if log.user_role == 'manager' else 'secondary' }}">
-                                        {{ log.user_role }}
-                                    </span>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm">
+                                    {% set action_lower = log.action|lower %}
+                                    {% set badge_type = 'emerald' if action_lower == 'create' else ('amber' if action_lower == 'update' else ('red' if action_lower == 'delete' else ('blue' if action_lower == 'login' else 'slate'))) %}
+                                    {{ ui_badge(log.action, type=badge_type) }}
                                 </td>
-                                <td>
-                                    <span class="badge action-badge bg-{{ 
-                                        'success' if log.action == 'create' else 
-                                        'warning' if log.action == 'update' else 
-                                        'danger' if log.action == 'delete' else 
-                                        'info' if log.action in ['login', 'logout'] else 
-                                        'secondary' 
-                                    }}">
-                                        {{ log.action }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge bg-light text-dark">{{ log.entity_type }}</span>
-                                </td>
-                                <td>
-                                    {% if log.entity_name %}
-                                    <strong>{{ log.entity_name }}</strong>
-                                    {% if log.entity_id %}
-                                    <small class="text-muted">(ID: {{ log.entity_id }})</small>
+                                <td class="px-3 py-3.5 text-sm max-w-[200px]">
+                                    <div class="flex items-baseline gap-2 truncate">
+                                        <span class="text-[0.65rem] font-mono text-slate-500 border border-slate-700 rounded px-1">{{ log.entity_type|upper }}</span>
+                                        <span class="text-slate-300 font-medium truncate">
+                                            {% if log.entity_name %}
+                                                {{ log.entity_name }}
+                                                {% if log.entity_id %}<span class="text-slate-500 font-mono text-xs ml-1">[ID:{{ log.entity_id }}]</span>{% endif %}
+                                            {% elif log.entity_id %}
+                                                <span class="font-mono text-slate-400">[ID:{{ log.entity_id }}]</span>
+                                            {% else %}
+                                                <span class="text-slate-500 italic">Global Context</span>
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                    {% if log.description %}
+                                        <div class="text-xs text-slate-500 mt-1 truncate">{{ log.description }}</div>
                                     {% endif %}
-                                    {% elif log.entity_id %}
-                                    <small class="text-muted">ID: {{ log.entity_id }}</small>
-                                    {% else %}
-                                    <small class="text-muted">N/A</small>
-                                    {% endif %}
                                 </td>
-                                <td>
-                                    <small>{{ log.description or '-' }}</small>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm font-mono text-slate-400 text-xs">
+                                    {{ log.ip_address or 'System IP' }}
                                 </td>
-                                <td>
-                                    <small class="text-muted">{{ log.ip_address or 'N/A' }}</small>
-                                </td>
-                                <td class="changes-cell">
+                                <td class="relative whitespace-nowrap py-3.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                                     {% if log.changes %}
-                                    <button class="btn btn-sm btn-outline-info" 
-                                            onclick="showChanges({{ log.id }}, {{ log.changes | tojson | safe }})"
-                                            title="View changes">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
+                                        <button type="button" 
+                                                class="inline-flex items-center justify-center rounded border border-blue-500/30 bg-blue-500/10 p-1.5 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
+                                                title="Inspect JSON Differences"
+                                                onclick='inspectChanges({{ log.id }}, {{ log.changes | tojson | safe }})'>
+                                            <i data-lucide="file-code-2" class="w-4 h-4"></i>
+                                        </button>
                                     {% else %}
-                                    <small class="text-muted">-</small>
+                                        <span class="text-slate-600 font-mono text-xs">-</span>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -205,119 +228,167 @@
                     </table>
                 </div>
                 
-                <!-- Pagination -->
-                {% if pagination.pages > 1 %}
-                <nav aria-label="Audit log pagination" class="mt-3">
-                    <ul class="pagination justify-content-center">
-                        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                            <a class="page-link" href="{{ url_for('audit.audit_logs', page=pagination.prev_num, action=current_action, entity_type=current_entity_type, username=current_username) if pagination.has_prev else '#' }}">
-                                Previous
-                            </a>
-                        </li>
-                        
-                        {% for page_num in range(1, pagination.pages + 1) %}
-                            {% if page_num == pagination.page %}
-                            <li class="page-item active">
-                                <span class="page-link">{{ page_num }}</span>
-                            </li>
-                            {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
-                            <li class="page-item">
-                                <a class="page-link" href="{{ url_for('audit.audit_logs', page=page_num, action=current_action, entity_type=current_entity_type, username=current_username) }}">
-                                    {{ page_num }}
-                                </a>
-                            </li>
-                            {% elif page_num == 4 or page_num == pagination.pages - 3 %}
-                            <li class="page-item disabled">
-                                <span class="page-link">...</span>
-                            </li>
-                            {% endif %}
-                        {% endfor %}
-                        
-                        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                            <a class="page-link" href="{{ url_for('audit.audit_logs', page=pagination.next_num, action=current_action, entity_type=current_entity_type, username=current_username) if pagination.has_next else '#' }}">
-                                Next
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-                {% endif %}
-                
-                {% else %}
-                <div class="text-center py-4">
-                    <i class="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
-                    <h5>No Audit Logs Found</h5>
-                    <p class="text-muted">
-                        {% if current_action or current_entity_type or current_username %}
-                        No logs match your filter criteria. Try adjusting your filters.
-                        {% else %}
-                        No audit logs have been recorded yet.
-                        {% endif %}
-                    </p>
+                <!-- Pagination Footer -->
+                {% if pagination and pagination.pages > 1 %}
+                <div class="border-t border-slate-700/50 bg-slate-800/50 px-4 py-3 sm:px-6 flex items-center justify-between">
+                    <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm text-slate-400 font-mono">
+                                Extracting records <span class="font-medium text-slate-200">{{ ((pagination.page - 1) * pagination.per_page) + 1 }}</span>
+                                to <span class="font-medium text-slate-200">{% if pagination.page * pagination.per_page < pagination.total %}{{ pagination.page * pagination.per_page }}{% else %}{{ pagination.total }}{% endif %}</span>
+                                block size <span class="font-medium text-slate-200">{{ pagination.total }}</span>
+                            </p>
+                        </div>
+                        <div>
+                            <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                <!-- Previous -->
+                                {% if pagination.has_prev %}
+                                    <a href="{{ url_for('audit.audit_logs', page=pagination.prev_num, action=current_action, entity_type=current_entity_type, username=current_username) }}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-700 bg-slate-800 hover:bg-slate-700 focus:z-20 focus:outline-offset-0">
+                                        <span class="sr-only">Previous block</span>
+                                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                                    </a>
+                                {% else %}
+                                    <span class="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-600 ring-1 ring-inset ring-slate-700/50 bg-slate-800/50 cursor-not-allowed">
+                                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                                    </span>
+                                {% endif %}
+                                
+                                <!-- Pages -->
+                                {% for page_num in range(1, pagination.pages + 1) %}
+                                    {% if page_num == pagination.page %}
+                                        <span aria-current="page" class="relative z-10 inline-flex items-center bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-400 ring-1 ring-inset ring-blue-500 focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">{{ page_num }}</span>
+                                    {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                        <a href="{{ url_for('audit.audit_logs', page=page_num, action=current_action, entity_type=current_entity_type, username=current_username) }}" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-300 ring-1 ring-inset ring-slate-700 bg-slate-800 hover:bg-slate-700 focus:z-20 focus:outline-offset-0">{{ page_num }}</a>
+                                    {% elif page_num == 4 or page_num == pagination.pages - 3 %}
+                                        <span class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-500 ring-1 ring-inset ring-slate-700 bg-slate-800/50">...</span>
+                                    {% endif %}
+                                {% endfor %}
+
+                                <!-- Next -->
+                                {% if pagination.has_next %}
+                                    <a href="{{ url_for('audit.audit_logs', page=pagination.next_num, action=current_action, entity_type=current_entity_type, username=current_username) }}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-700 bg-slate-800 hover:bg-slate-700 focus:z-20 focus:outline-offset-0">
+                                        <span class="sr-only">Next block</span>
+                                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                                    </a>
+                                {% else %}
+                                    <span class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-600 ring-1 ring-inset ring-slate-700/50 bg-slate-800/50 cursor-not-allowed">
+                                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                                    </span>
+                                {% endif %}
+                            </nav>
+                        </div>
+                    </div>
                 </div>
                 {% endif %}
-            </div>
+
+                {% else %}
+                    <div class="py-12">
+                        {{ ui_empty_state('No Audit Records Located', 'The query parameters provided yielded no matching historical system events.', icon='file-search') }}
+                    </div>
+                {% endif %}
+            {% endcall %}
         </div>
     </div>
 </div>
 
-<!-- Changes Modal -->
-<div class="modal fade" id="changesModal" tabindex="-1" aria-labelledby="changesModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="changesModalLabel">
-                    <i class="fas fa-exchange-alt"></i> Change Details
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="changesContent">
-                    <!-- Changes will be populated here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
+<!-- Changes Slide Over -->
+{% call ui_slide_over('changes-slide-over', 'Differential Inspection') %}
+    <div class="h-full flex flex-col">
+        <div class="mb-4 text-sm text-slate-400 leading-relaxed border-b border-slate-700/50 pb-4">
+            Viewing pre- and post-mutation state capture for the selected event. Cryptographic hashing guarantees ledger immutability.
+        </div>
+
+        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar" id="changesDiffViewer">
+            <!-- Content injected via JS -->
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-slate-700/50 text-right">
+            <button type="button" onclick="window.UI.SlideOver.close('changes-slide-over')" class="inline-flex items-center justify-center rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">
+                <i data-lucide="x" class="w-4 h-4 mr-2"></i> Close Inspector
+            </button>
         </div>
     </div>
-</div>
+{% endcall %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    function showChanges(logId, changes) {
-        const content = document.getElementById('changesContent');
-        
-        if (!changes || Object.keys(changes).length === 0) {
-            content.innerHTML = '<p class="text-muted">No change details available.</p>';
-        } else {
-            let html = '<table class="table table-sm table-bordered">';
-            html += '<thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>';
-            html += '<tbody>';
-            
-            for (const [field, values] of Object.entries(changes)) {
-                const before = values.before !== undefined ? values.before : 'N/A';
-                const after = values.after !== undefined ? values.after : 'N/A';
-                
-                html += `<tr>
-                    <td><strong>${escapeHtml(field)}</strong></td>
-                    <td>${escapeHtml(String(before))}</td>
-                    <td>${escapeHtml(String(after))}</td>
-                </tr>`;
-            }
-            
-            html += '</tbody></table>';
-            content.innerHTML = html;
-        }
-        
-        const modal = new bootstrap.Modal(document.getElementById('changesModal'));
-        modal.show();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        lucide.createIcons();
     }
-    
+
     function escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function inspectChanges(logId, changes) {
+        const viewer = document.getElementById('changesDiffViewer');
+        
+        if (!changes || Object.keys(changes).length === 0) {
+            viewer.innerHTML = `
+                <div class="text-center py-12 border border-dashed border-slate-700/60 rounded-lg bg-slate-800/20">
+                    <i data-lucide="database" class="w-10 h-10 text-slate-600 mx-auto mb-4"></i>
+                    <p class="text-slate-400 font-mono text-sm max-w-xs mx-auto">No structured differential data payload registered for this transaction.</p>
+                </div>
+            `;
+            if (window.lucide) {
+                setTimeout(() => lucide.createIcons({ root: viewer }), 0);
+            }
+            window.UI.SlideOver.open('changes-slide-over');
+            return;
+        }
+
+        let html = '<div class="space-y-4">';
+        
+        for (const [field, values] of Object.entries(changes)) {
+            const beforeVal = values.before !== undefined ? values.before : 'null';
+            const afterVal = values.after !== undefined ? values.after : 'null';
+            
+            // Format arrays or objects if necessary
+            const formatVal = (v) => {
+                if(typeof v === 'object' && v !== null) {
+                    return JSON.stringify(v, null, 2);
+                }
+                return String(v);
+            }
+
+            const strBefore = formatVal(beforeVal);
+            const strAfter = formatVal(afterVal);
+            
+            html += `
+                <div class="rounded-md border border-slate-700/60 bg-slate-900/60 overflow-hidden shadow-sm">
+                    <div class="bg-slate-800/80 px-3 py-2 border-b border-slate-700/60 flex items-center gap-2">
+                        <i data-lucide="git-branch" class="w-3.5 h-3.5 text-blue-400/70"></i>
+                        <span class="font-mono text-xs font-semibold text-slate-300">Property: ${escapeHtml(field)}</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-700/50">
+                        <div class="p-3 bg-red-900/10 hover:bg-red-900/20 transition-colors">
+                            <div class="text-[0.65rem] uppercase tracking-wider text-red-400/70 mb-1.5 font-bold flex items-center">
+                                <i data-lucide="minus-circle" class="w-3 h-3 mr-1.5"></i> Previous State
+                            </div>
+                            <pre class="font-mono text-xs text-slate-400 whitespace-pre-wrap break-all">${escapeHtml(strBefore)}</pre>
+                        </div>
+                        <div class="p-3 bg-emerald-900/10 hover:bg-emerald-900/20 transition-colors">
+                            <div class="text-[0.65rem] uppercase tracking-wider text-emerald-400/70 mb-1.5 font-bold flex items-center">
+                                <i data-lucide="plus-circle" class="w-3 h-3 mr-1.5"></i> Mutated State
+                            </div>
+                            <pre class="font-mono text-xs text-slate-300 whitespace-pre-wrap break-all">${escapeHtml(strAfter)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        viewer.innerHTML = html;
+        if (window.lucide) {
+            setTimeout(() => lucide.createIcons({ root: viewer }), 0);
+        }
+        window.UI.SlideOver.open('changes-slide-over');
     }
 </script>
 {% endblock %}

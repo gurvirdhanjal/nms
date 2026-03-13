@@ -35,17 +35,17 @@ Current state for the reporting stack as implemented in March 2026. This matrix 
 
 | Domain | Current UI surface | Endpoint | Primary tables | Readiness | Export parity | Enterprise gap |
 | --- | --- | --- | --- | --- | --- | --- |
-| Executive Health | Reports tab | `/api/reports/executive` | `device`, `daily_device_stats`, `device_scan_history`, `dashboard_events` | Partial | CSV/XLSX/PDF | Blocked on `daily_device_stats` backfill for true uptime rollups |
-| Operational | Reports tab | `/api/reports/operational` | `server_health_logs`, `server_health_hourly_rollups`, `server_health_daily_rollups`, `dashboard_events`, `device` | Partial | CSV/XLSX/PDF | Long-range heatmap quality depends on hourly/daily rollups |
-| Device Health | Reports tab | `/api/reports/device-health` | `server_health_logs`, `server_health_hourly_rollups`, `server_health_daily_rollups`, `device` | Partial | CSV/XLSX/PDF | 30d+ reporting depends on rollup coverage |
-| Productivity | Reports tab | `/api/reports/productivity` | `tracking_samples`, `device_application_logs`, `device_activity_logs` | Partial | CSV/XLSX/PDF | Long-range tracking rollups still missing |
+| Executive Health | Reports tab | `/api/reports/executive` | `device`, `daily_device_stats`, `device_scan_history`, `dashboard_events` | Partial | CSV/XLSX/PDF | Raw fallback is meaningful, but `daily_device_stats` backfill still improves true uptime rollups |
+| Operational | Reports tab | `/api/reports/operational` | `server_health_logs`, `server_health_hourly_cagg`, `server_health_daily_cagg`, `dashboard_events`, `device` | Partial | CSV/XLSX/PDF | Long-range heatmaps now use Timescale continuous aggregates; freshness depends on cagg policy lag |
+| Device Health | Reports tab | `/api/reports/device-health` | `server_health_logs`, `server_health_hourly_cagg`, `server_health_daily_cagg`, `device` | Partial | CSV/XLSX/PDF | 30d+ reporting now uses Timescale continuous aggregates instead of legacy rollup tables |
+| Productivity | Reports tab | `/api/reports/productivity` | `tracking_samples`, `device_application_logs`, `device_activity_logs` | Partial | CSV/XLSX/PDF | Legacy tracking rollups are no longer required, but long-range app/activity summaries are still raw-query backed |
 | Network | Reports tab | `/api/reports/network` | `daily_device_stats`, `device_interfaces`, `interface_traffic_history`, `dashboard_events` | Blocked-by-empty-data | CSV/XLSX/PDF | Missing daily stats and interface/bandwidth ingestion |
 | Alerts | Reports tab | `/api/reports/alerts` | `dashboard_events`, `device` | Ready | CSV/XLSX/PDF | Needs sustained SLA semantics, but core dataset exists |
 | Device Inspector | Reports tab | existing diagnostic UI | mixed live inventory tables | Diagnostic only | Excluded | Explicitly out of enterprise reporting/export scope |
 | Maintenance & Availability | New enterprise API | `/api/reports/maintenance-availability` | `maintenance_window`, `daily_device_stats`, `device_scan_history`, `tracked_device_availability_events`, `device` | Partial | CSV/XLSX/PDF | Falls back to raw availability until daily stats mature |
 | Security & Compliance | New enterprise API | `/api/reports/security-compliance` | `dashboard_events`, `audit_logs`, `restricted_site_events`, `tracking_history_integrity_audit`, `server_metric_threshold_state` | Partial | CSV/XLSX/PDF | Integrity audits and threshold-state coverage still sparse |
 | Inventory & Asset | New enterprise API | `/api/reports/inventory-assets` | `device`, `tracked_devices`, `device_identity_links`, `device_identity_link_candidates`, `sites`, `departments`, `subnets` | Partial | CSV/XLSX/PDF | Site/department/subnet dimensions missing in live DB |
-| Tracking Operations | New enterprise API | `/api/reports/tracking-operations` | `tracked_devices`, `tracking_samples`, `device_activity_logs`, `device_application_logs`, `tracked_device_availability_events`, rollups | Partial | CSV/XLSX/PDF | Rollups missing for reliable 7d/30d aggregation |
+| Tracking Operations | New enterprise API | `/api/reports/tracking-operations` | `tracked_devices`, `tracking_samples`, `device_activity_logs`, `device_application_logs`, `tracked_device_availability_events`, `tracking_history_integrity_audit` | Partial | CSV/XLSX/PDF | Legacy rollups are not required, but longer-range app/activity aggregation is still raw-query backed |
 | Printer Operations | New enterprise API | `/api/reports/printer-operations` | `printer_metrics`, `print_job_audit`, `device` | Blocked-by-empty-data | CSV/XLSX/PDF | Awaiting printer telemetry and audit ingestion triggers |
 
 ## Decisions Locked In Code
@@ -62,6 +62,7 @@ Current state for the reporting stack as implemented in March 2026. This matrix 
   - `tracking_daily_rollups`: every day
 - Maintenance exposes `/api/maintenance/backfill-rollups` to backfill the reporting foundation across daily stats, server health, and tracking rollups.
 - Export jobs now support persistent DB storage through `report_export_jobs` with memory fallback.
+- Async export jobs preserve caller RBAC scope and use the same decorated payload/meta contract as synchronous exports.
 - Sync report caching is range-aware:
   - `24h`: 60s
   - `7d` / `30d`: 180s
@@ -70,3 +71,4 @@ Current state for the reporting stack as implemented in March 2026. This matrix 
 - `freshness_state` is based on report telemetry sources and now distinguishes `fresh`, `delayed`, `stale`, and `empty`.
 - Rollup coverage gaps are surfaced through `completeness_warnings` using `rollup_coverage_low`.
 - `PDF` export is part of the supported format contract for enterprise reports.
+- XLSX export is report-specific for `executive`, `network`, and `alerts`; the remaining report types use typed sectioned workbooks with a shared summary/meta contract.

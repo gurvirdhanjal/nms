@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Server Operations Dashboard{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -402,10 +403,20 @@
 
 
 {% block extra_js %}
+<script>
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
+</script>
 <script type="module">
     import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
     import { initServerModal, openServerModal } from "{{ url_for('static', filename='js/dashboard/modals/serverDetailModal.js') }}?v=2.13";
     import { timeAgo } from "{{ url_for('static', filename='js/dashboard/utils.js') }}?v=2.13";
+    const serverLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false && window.UI?.Loading
+        ? window.UI.Loading
+        : null;
 
     // Initialize modal
     initServerModal();
@@ -422,6 +433,15 @@
             updateDashboard(data);
         } catch (error) {
             console.error('Failed to fetch server data:', error);
+            const fleetBody = document.getElementById('server-fleet-body');
+            if (fleetBody && serverLoadingApi && !fleetBody.querySelector('tr')) {
+                serverLoadingApi.setTableState(fleetBody, {
+                    state: 'error',
+                    colspan: 9,
+                    title: 'Unable to load server fleet',
+                    detail: 'Retry when the server health API becomes available.'
+                });
+            }
         }
     }
 
@@ -640,8 +660,22 @@
     });
 
     // Refresh button
-    document.getElementById('btnRefreshDashboard').addEventListener('click', () => {
-        fetchServerData();
+    document.getElementById('btnRefreshDashboard').addEventListener('click', async () => {
+        const refreshButton = document.getElementById('btnRefreshDashboard');
+        if (serverLoadingApi && refreshButton) {
+            serverLoadingApi.setButtonBusy(refreshButton, {
+                busy: true,
+                labelBusy: 'Refreshing...',
+                labelIdle: '<i class="fas fa-sync-alt me-1"></i>Refresh'
+            });
+        }
+        await fetchServerData();
+        if (serverLoadingApi && refreshButton) {
+            serverLoadingApi.setButtonBusy(refreshButton, {
+                busy: false,
+                labelIdle: '<i class="fas fa-sync-alt me-1"></i>Refresh'
+            });
+        }
     });
 
     // Initial load

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Real-time Monitoring - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
 <style>
     /* Monitoring - Tactical Theme (Minimal Overrides) */
@@ -52,25 +53,8 @@
         margin: 0;
     }
 
-    /* Loading override */
-    .loading {
-        border: 4px solid var(--tactical-bg-elevated);
-        border-top: 4px solid var(--tactical-accent);
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        animation: spin 1s linear infinite;
-        margin: 2rem auto;
-    }
-
-    @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-
-        100% {
-            transform: rotate(360deg);
-        }
+    #refreshBtn.ui-btn-busy {
+        min-width: 108px;
     }
 </style>
 {% endblock %}
@@ -115,12 +99,27 @@
                 </div>
             </div>
             <div class="card-body">
-                <div id="loadingIndicator" class="text-center">
-                    <div class="loading"></div>
-                    <p>Loading device status...</p>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div id="monitoringRefreshMeta" class="ui-refresh-meta">Last refreshed: n/a</div>
                 </div>
-                <div id="devicesTable" style="display: none;">
-                    <!-- Devices will be loaded here dynamically -->
+                <div id="devicesTableShell" class="ui-table-shell">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Device Name</th>
+                                    <th>IP Address</th>
+                                    <th>Type</th>
+                                    <th>Hostname</th>
+                                    <th>Status</th>
+                                    <th>Latency</th>
+                                    <th>Last Check</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monitoringTableBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -145,174 +144,215 @@
 
 {% block extra_js %}
 <script>
-    let refreshInterval;
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
 
-    function loadDeviceStatus() {
+    const monitoringFlags = window.__UI_SURFACE_FLAGS__ || {};
+    const toastApi = monitoringFlags.sharedToast !== false && window.UI?.Toast?.show
+        ? window.UI.Toast
+        : {
+            show(message) {
+                console.warn('[Monitoring]', message);
+            }
+        };
+    const loadingApi = monitoringFlags.sharedLoading !== false && window.UI?.Loading
+        ? window.UI.Loading
+        : {
+            setButtonBusy(button, config) {
+                if (!button) return;
+                if (!button.dataset.uiLegacyIdle) {
+                    button.dataset.uiLegacyIdle = button.innerHTML;
+                }
+                if (config?.busy) {
+                    button.disabled = true;
+                    button.innerHTML = config.labelBusy || 'Refreshing...';
+                    return;
+                }
+                button.disabled = false;
+                button.innerHTML = config?.labelIdle || button.dataset.uiLegacyIdle || button.innerHTML;
+            },
+            setTableState(tbody, config) {
+                if (!tbody) return;
+                tbody.innerHTML = `<tr><td colspan="${config.colspan || 1}" class="text-center text-secondary p-3">${config.title || ''}</td></tr>`;
+            },
+            setRegionState(container, config) {
+                if (!container) return;
+                container.innerHTML = `<div class="col-12"><div class="alert alert-secondary mb-0">${config.title || ''}</div></div>`;
+            }
+        };
+
+    let refreshInterval = null;
+    let monitoringController = null;
+    let tableHydrated = false;
+    let statsHydrated = false;
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function buildStatusUrl() {
         const statusFilter = document.getElementById('statusFilter').value;
         const typeFilter = document.getElementById('typeFilter').value;
-
         let url = '/api/monitoring/status';
         const params = new URLSearchParams();
         if (statusFilter !== 'all') params.append('status', statusFilter);
         if (typeFilter !== 'all') params.append('device_type', typeFilter);
-
         if (params.toString()) {
             url += '?' + params.toString();
         }
-
-        // Only show full loading spinner if checking for the first time (table hidden)
-        // Otherwise, keep table visible for seamless update
-        const table = document.getElementById('devicesTable');
-        const isFirstLoad = table.style.display === 'none';
-
-        if (isFirstLoad) {
-            document.getElementById('loadingIndicator').style.display = 'block';
-        }
-
-        // Add a subtle refreshing class to the refresh button if it exists
-        const refBtn = document.getElementById('refreshBtn');
-        if (refBtn) refBtn.querySelector('i').classList.add('fa-spin');
-
-        fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-                displayDevices(data.devices);
-                updateStatistics(data.devices);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('devicesTable').innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle"></i> Error loading device status: ${error.message}
-                </div>
-            `;
-                document.getElementById('devicesTable').style.display = 'block';
-            })
-            .finally(() => {
-                document.getElementById('loadingIndicator').style.display = 'none';
-                const refBtn = document.getElementById('refreshBtn');
-                if (refBtn) refBtn.querySelector('i').classList.remove('fa-spin');
-            });
+        return url;
     }
 
-    function displayDevices(devices) {
-        if (devices.length === 0) {
-            document.getElementById('devicesTable').innerHTML = `
-            <div class="alert alert-warning">
-                <i class="fas fa-info-circle"></i> No devices found matching the current filters.
-            </div>
-        `;
-            document.getElementById('devicesTable').style.display = 'block';
+    function setRefreshMeta(lastSuccessAt) {
+        const meta = document.getElementById('monitoringRefreshMeta');
+        if (!meta) return;
+        if (!lastSuccessAt) {
+            meta.textContent = 'Last refreshed: n/a';
+            return;
+        }
+        meta.textContent = `Last refreshed: ${new Date(lastSuccessAt).toLocaleTimeString()}`;
+    }
+
+    function patchTableRows(devices) {
+        const tbody = document.getElementById('monitoringTableBody');
+        if (!tbody) return;
+
+        if (!Array.isArray(devices) || devices.length === 0) {
+            loadingApi.setTableState(tbody, {
+                state: 'empty',
+                colspan: 8,
+                title: 'No devices match the current filters',
+                detail: 'Adjust the live status or type filters to broaden the view.'
+            });
+            tableHydrated = true;
             return;
         }
 
-        let html = `
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Device Name</th>
-                        <th>IP Address</th>
-                        <th>Type</th>
-                        <th>Hostname</th>
-                        <th>Status</th>
-                        <th>Latency</th>
-                        <th>Last Check</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
+        const existingRows = new Map();
+        tbody.querySelectorAll('tr[data-device-id]').forEach((row) => {
+            existingRows.set(String(row.dataset.deviceId), row);
+        });
 
-        devices.forEach(device => {
-            const statusClass = device.status === 'Online' ? 'success' : 'danger';
-            const statusIcon = device.status === 'Online' ? 'fa-wifi' : 'fa-times-circle';
-            const latencyText = device.latency ? `${device.latency} ms` : 'N/A';
+        const fragment = document.createDocumentFragment();
+
+        devices.forEach((device) => {
+            const key = String(device.device_id);
+            let row = existingRows.get(key);
+            if (!row) {
+                row = document.createElement('tr');
+                row.dataset.deviceId = key;
+            } else {
+                existingRows.delete(key);
+            }
+
+            const status = String(device.status || 'Offline');
+            const latencyText = device.latency ? `${Math.round(device.latency)} ms` : 'N/A';
             const lastCheck = new Date().toLocaleTimeString();
 
-            html += `
-            <tr>
+            row.innerHTML = `
                 <td>
-                    <strong>${device.device_name}</strong>
+                    <strong>${escapeHtml(device.device_name || 'Unknown')}</strong>
                     ${device.is_monitored ? '<i class="fas fa-chart-line text-success ms-1" title="Monitored"></i>' : ''}
                 </td>
-                <td><code>${device.device_ip}</code></td>
-                <td><span class="badge bg-secondary">${device.device_type}</span></td>
-                <td>${device.hostname}</td>
-                <td class="text-center" title="${device.status}">
-                    <span class="status-indicator ${device.status === 'Online' ? 'status-online' : 'status-offline'}"></span>
+                <td><code>${escapeHtml(device.device_ip || 'N/A')}</code></td>
+                <td><span class="badge bg-secondary">${escapeHtml(device.device_type || 'unknown')}</span></td>
+                <td>${escapeHtml(device.hostname || 'N/A')}</td>
+                <td class="text-center" title="${escapeHtml(status)}">
+                    <span class="status-indicator ${status === 'Online' ? 'status-online' : 'status-offline'}"></span>
                 </td>
-
-                <td>${latencyText}</td>
-                <td><small class="text-muted">${lastCheck}</small></td>
+                <td>${escapeHtml(latencyText)}</td>
+                <td><small class="text-muted">${escapeHtml(lastCheck)}</small></td>
                 <td>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-info" onclick="viewDeviceDetails(${device.device_id})" title="View Details">
+                        <button class="btn btn-outline-info" onclick="viewDeviceDetails(${Number(device.device_id)})" title="View Details">
                             <i class="fas fa-info-circle"></i>
                         </button>
-                        <button class="btn btn-outline-warning" onclick="toggleMonitoring(${device.device_id})" title="${device.is_monitored ? 'Stop Monitoring' : 'Start Monitoring'}">
+                        <button class="btn btn-outline-warning" onclick="toggleMonitoring(${Number(device.device_id)})" title="${device.is_monitored ? 'Stop Monitoring' : 'Start Monitoring'}">
                             <i class="fas ${device.is_monitored ? 'fa-pause' : 'fa-play'}"></i>
                         </button>
                     </div>
                 </td>
-            </tr>
-        `;
+            `;
+            fragment.appendChild(row);
         });
 
-        html += '</tbody></table></div>';
-        document.getElementById('devicesTable').innerHTML = html;
-        document.getElementById('devicesTable').style.display = 'block';
+        existingRows.forEach((row) => row.remove());
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
+        tableHydrated = true;
     }
 
-    function updateStatistics(devices) {
-        const totalDevices = devices.length;
-        const onlineDevices = devices.filter(d => d.status === 'Online').length;
-        const offlineDevices = devices.filter(d => d.status === 'Offline').length;
-        const monitoredDevices = devices.filter(d => d.is_monitored).length;
-
-        const onlinePercentage = totalDevices > 0 ? (onlineDevices / totalDevices * 100).toFixed(1) : 0;
+    function renderStats(devices) {
+        const rows = Array.isArray(devices) ? devices : [];
+        const totalDevices = rows.length;
+        const onlineDevices = rows.filter((d) => d.status === 'Online').length;
+        const offlineDevices = rows.filter((d) => d.status === 'Offline').length;
+        const monitoredDevices = rows.filter((d) => d.is_monitored).length;
+        const onlinePercentage = totalDevices > 0 ? (onlineDevices / totalDevices * 100).toFixed(1) : '0.0';
 
         document.getElementById('statsContainer').innerHTML = `
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body text-center">
+            <div class="col-md-3">
+                <div class="stats-card primary">
                     <h3>${totalDevices}</h3>
                     <p>Total Devices</p>
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body text-center">
+            <div class="col-md-3">
+                <div class="stats-card success">
                     <h3>${onlineDevices}</h3>
                     <p>Online</p>
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body text-center">
+            <div class="col-md-3">
+                <div class="stats-card danger">
                     <h3>${offlineDevices}</h3>
                     <p>Offline</p>
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white">
-                <div class="card-body text-center">
+            <div class="col-md-3">
+                <div class="stats-card info">
                     <h3>${onlinePercentage}%</h3>
-                    <p>Uptime</p>
+                    <p>${monitoredDevices} Monitored</p>
                 </div>
             </div>
-        </div>
-    `;
+        `;
+        statsHydrated = true;
+    }
+
+    function handleMonitoringState(state) {
+        const refreshBtn = document.getElementById('refreshBtn');
+        const shell = document.getElementById('devicesTableShell');
+        if (shell) {
+            shell.classList.toggle('ui-refreshing', Boolean(state.isRefreshing));
+        }
+        if (refreshBtn) {
+            loadingApi.setButtonBusy(refreshBtn, {
+                busy: Boolean(state.isRefreshing && state.lastReason === 'manual'),
+                labelBusy: 'Refreshing...',
+                labelIdle: '<i class="fas fa-sync-alt"></i> Refresh'
+            });
+        }
+        if (state.lastSuccessAt) {
+            setRefreshMeta(state.lastSuccessAt);
+        }
+    }
+
+    function loadDeviceStatus(options = {}) {
+        if (monitoringController) {
+            return monitoringController.refresh(options);
+        }
+        return Promise.resolve(null);
     }
 
     function viewDeviceDetails(deviceId) {
-        // Navigate to device details page or show modal
         window.location.href = `/devices?edit_id=${deviceId}`;
     }
 
@@ -320,39 +360,153 @@
         fetch(`/api/devices/${deviceId}/toggle_monitoring`, {
             method: 'POST'
         })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    loadDeviceStatus(); // Refresh the list
-                } else {
-                    alert('Error toggling monitoring');
+            .then((response) => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error('Error toggling monitoring');
                 }
+                return loadDeviceStatus({ reason: 'manual', manual: true });
             })
-            .catch(error => {
+            .catch((error) => {
                 console.error('Error:', error);
-                alert('Error toggling monitoring');
+                toastApi.show(error.message || 'Error toggling monitoring', 'danger');
             });
     }
 
-    // Initialize page
+    window.viewDeviceDetails = viewDeviceDetails;
+    window.toggleMonitoring = toggleMonitoring;
+
     document.addEventListener('DOMContentLoaded', function () {
-        // Load initial data
-        loadDeviceStatus();
+        const tbody = document.getElementById('monitoringTableBody');
+        const statsContainer = document.getElementById('statsContainer');
+        const fetchMonitoringPayload = function () {
+            return fetch(buildStatusUrl())
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    return data;
+                });
+        };
+        const handleMonitoringError = function (error) {
+            console.error('Error:', error);
+            if (!tableHydrated) {
+                loadingApi.setTableState(tbody, {
+                    state: 'error',
+                    colspan: 8,
+                    title: 'Unable to load device status',
+                    detail: error.message || 'The monitoring API did not return a valid response.'
+                });
+            } else {
+                toastApi.show(`Unable to refresh monitoring data: ${error.message}`, 'danger');
+            }
 
-        // Set up auto-refresh every 30 seconds
-        refreshInterval = setInterval(loadDeviceStatus, 30000);
+            if (!statsHydrated) {
+                loadingApi.setRegionState(statsContainer, {
+                    state: 'error',
+                    title: 'Unable to load statistics',
+                    detail: 'Retry when connectivity to the monitoring API is restored.',
+                    preserveHeight: 120
+                });
+            }
+        };
 
-        // Set up event listeners
-        document.getElementById('refreshBtn').addEventListener('click', loadDeviceStatus);
-        document.getElementById('statusFilter').addEventListener('change', loadDeviceStatus);
-        document.getElementById('typeFilter').addEventListener('change', loadDeviceStatus);
+        loadingApi.setTableState(tbody, {
+            state: 'loading',
+            colspan: 8,
+            title: 'Loading device status',
+            detail: 'Checking live reachability across monitored devices.'
+        });
+        loadingApi.setRegionState(statsContainer, {
+            state: 'loading',
+            title: 'Loading monitoring statistics',
+            detail: 'Summarizing current fleet reachability.',
+            preserveHeight: 120
+        });
+
+        const refreshFactory = monitoringFlags.sharedRefresh !== false && window.UI?.Refresh?.createController
+            ? window.UI.Refresh
+            : null;
+
+        if (refreshFactory) {
+            monitoringController = refreshFactory.createController({
+                shouldDefer: function shouldDefer() {
+                    return Boolean(document.querySelector('.modal.show'));
+                },
+                resumeStaleMs: 35000,
+                fetcher: fetchMonitoringPayload,
+                applyData: function applyMonitoringData(payload) {
+                    patchTableRows(payload.devices || []);
+                    renderStats(payload.devices || []);
+                },
+                onError: handleMonitoringError,
+                onStateChange: handleMonitoringState
+            });
+        } else {
+            monitoringController = {
+                refresh: function legacyRefresh(refreshOptions) {
+                    handleMonitoringState({
+                        isRefreshing: true,
+                        lastReason: refreshOptions?.reason || 'manual',
+                        lastSuccessAt: tableHydrated ? Date.now() : 0
+                    });
+                    return fetchMonitoringPayload()
+                        .then((payload) => {
+                            patchTableRows(payload.devices || []);
+                            renderStats(payload.devices || []);
+                            handleMonitoringState({
+                                isRefreshing: false,
+                                lastReason: refreshOptions?.reason || 'manual',
+                                lastSuccessAt: Date.now()
+                            });
+                            return payload;
+                        })
+                        .catch((error) => {
+                            handleMonitoringError(error);
+                            handleMonitoringState({
+                                isRefreshing: false,
+                                lastReason: refreshOptions?.reason || 'manual',
+                                lastSuccessAt: tableHydrated ? Date.now() : 0
+                            });
+                            return null;
+                        });
+                },
+                flushDeferred: function flushDeferred() {
+                    return Promise.resolve(null);
+                },
+                destroy: function destroy() {
+                    return null;
+                }
+            };
+        }
+
+        loadDeviceStatus({ reason: 'initial' });
+        refreshInterval = setInterval(function pollMonitoring() {
+            loadDeviceStatus({ reason: 'interval' });
+        }, 30000);
+
+        document.getElementById('refreshBtn').addEventListener('click', function onManualRefresh() {
+            loadDeviceStatus({ reason: 'manual', manual: true });
+        });
+        document.getElementById('statusFilter').addEventListener('change', function onStatusFilterChange() {
+            loadDeviceStatus({ reason: 'filter-change', manual: true });
+        });
+        document.getElementById('typeFilter').addEventListener('change', function onTypeFilterChange() {
+            loadDeviceStatus({ reason: 'filter-change', manual: true });
+        });
+        document.addEventListener('hidden.bs.modal', function onModalHidden() {
+            if (!document.querySelector('.modal.show')) {
+                monitoringController?.flushDeferred();
+            }
+        });
     });
 
-    // Clean up on page unload
     window.addEventListener('beforeunload', function () {
         if (refreshInterval) {
             clearInterval(refreshInterval);
         }
+        monitoringController?.destroy();
     });
 </script>
 {% endblock %}

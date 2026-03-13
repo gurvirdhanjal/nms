@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, desc, func, or_
+from sqlalchemy import and_, bindparam, case, desc, func, or_, text
 
 from extensions import db
 from middleware.rbac import build_scope_context, scoped_query
@@ -34,6 +34,7 @@ from models.tracked_device import (
     TrackingHistoryIntegrityAudit,
     TrackingSample,
 )
+from services.timescaledb_service import TimescaleDBService
 from services.tracking_freshness import build_productivity_freshness_summary
 from services.tracking_workstation import scoped_tracked_device_query
 
@@ -89,6 +90,15 @@ def _safe_round(value, digits=2):
     return round(value, digits) if value is not None else None
 
 
+def _row_value(row, key, default=None):
+    if isinstance(row, dict):
+        return row.get(key, default)
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        return mapping.get(key, default)
+    return getattr(row, key, default)
+
+
 class ReportingService:
     def __init__(self):
         self.scope = build_scope_context()
@@ -101,6 +111,14 @@ class ReportingService:
 
     def _inventory_device_ids_subquery(self, device_ids=None):
         return self._inventory_devices_query(device_ids).with_entities(Device.device_id.label("device_id")).subquery()
+
+    def _inventory_device_id_list(self, device_ids=None):
+        inventory_ids = self._inventory_device_ids_subquery(device_ids)
+        return [
+            int(row.device_id)
+            for row in db.session.query(inventory_ids.c.device_id).all()
+            if row.device_id is not None
+        ]
 
     def _inventory_device_ips_subquery(self, device_ids=None):
         return self._inventory_devices_query(device_ids).with_entities(Device.device_ip.label("device_ip")).subquery()
@@ -153,6 +171,14 @@ class ReportingService:
     @staticmethod
     def _heatmap_day_index(ts):
         return (ts.weekday() + 1) % 7
+
+    @staticmethod
+    def _timescaledb_rows(statement: str, device_ids, **params):
+        if not device_ids:
+            return []
+        query = text(statement).bindparams(bindparam("device_ids", expanding=True))
+        result = db.session.execute(query, {"device_ids": device_ids, **params})
+        return [dict(row._mapping) for row in result]
 
     def _raw_scan_uptime_rows(self, device_ids=None, start_date=None, end_date=None):
         inventory_ids = self._inventory_device_ids_subquery(device_ids)
@@ -274,6 +300,7 @@ class ReportingService:
 
         problematic_devices = (
             db.session.query(
+                Device.device_id,
                 Device.device_name,
                 Device.device_ip,
                 Device.device_type,
@@ -312,6 +339,7 @@ class ReportingService:
             },
             "top_problematic": [
                 {
+                    "device_id": row.device_id if hasattr(row, "device_id") else None,
                     "name": row.device_name,
                     "ip": row.device_ip,
                     "type": row.device_type,
@@ -396,6 +424,30 @@ class ReportingService:
         return [[day, hour, count] for (day, hour), count in sorted(buckets.items())]
 
     def _operational_heatmap_from_hourly(self, start_date, end_date):
+        if TimescaleDBService.is_timescaledb_enabled():
+            device_ids = self._inventory_device_id_list()
+            rows = self._timescaledb_rows(
+                """
+                SELECT
+                    bucket_hour,
+                    SUM(COALESCE(sample_count, 0)) AS activity_count
+                FROM server_health_hourly_cagg
+                WHERE device_id IN :device_ids
+                  AND bucket_hour >= :start_date
+                  AND bucket_hour <= :end_date
+                GROUP BY bucket_hour
+                ORDER BY bucket_hour ASC
+                """,
+                device_ids,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            return [
+                [self._heatmap_day_index(row["bucket_hour"]), row["bucket_hour"].hour, int(row["activity_count"] or 0)]
+                for row in rows
+                if row.get("bucket_hour") is not None
+            ]
+
         inventory_ids = self._inventory_device_ids_subquery()
         rows = (
             db.session.query(
@@ -418,6 +470,30 @@ class ReportingService:
         ]
 
     def _operational_heatmap_from_daily(self, start_date, end_date):
+        if TimescaleDBService.is_timescaledb_enabled():
+            device_ids = self._inventory_device_id_list()
+            rows = self._timescaledb_rows(
+                """
+                SELECT
+                    bucket_day,
+                    SUM(COALESCE(sample_count, 0)) AS activity_count
+                FROM server_health_daily_cagg
+                WHERE device_id IN :device_ids
+                  AND bucket_day >= :start_date
+                  AND bucket_day <= :end_date
+                GROUP BY bucket_day
+                ORDER BY bucket_day ASC
+                """,
+                device_ids,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            return [
+                [self._heatmap_day_index(row["bucket_day"]), 12, int(row["activity_count"] or 0)]
+                for row in rows
+                if row.get("bucket_day") is not None
+            ]
+
         inventory_ids = self._inventory_device_ids_subquery()
         rows = (
             db.session.query(
@@ -513,6 +589,96 @@ class ReportingService:
         return self._build_time_series(rows), self._build_health_summary(summary_rows)
 
     def _health_from_hourly(self, device_ids, start_dt, end_dt):
+        if TimescaleDBService.is_timescaledb_enabled():
+            scoped_ids = self._inventory_device_id_list(device_ids)
+            rows = self._timescaledb_rows(
+                """
+                SELECT
+                    c.device_id,
+                    d.device_name,
+                    c.bucket_hour AS timestamp,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_cpu_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS cpu_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_memory_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS memory_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_disk_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS disk_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_network_in_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_network_in_bps * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_network_in_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS network_in_bps,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_network_out_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_network_out_bps * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_network_out_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS network_out_bps
+                FROM server_health_hourly_cagg c
+                JOIN device d ON d.device_id = c.device_id
+                WHERE c.device_id IN :device_ids
+                  AND c.bucket_hour >= :start_dt
+                  AND c.bucket_hour <= :end_dt
+                GROUP BY c.device_id, d.device_name, c.bucket_hour
+                ORDER BY timestamp ASC, d.device_name ASC
+                """,
+                scoped_ids,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            summary_rows = self._timescaledb_rows(
+                """
+                SELECT
+                    c.device_id,
+                    d.device_name,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_cpu_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_cpu,
+                    MAX(c.max_cpu_usage) AS max_cpu,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_memory_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_mem,
+                    MAX(c.max_memory_usage) AS max_mem,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_disk_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_disk,
+                    SUM(COALESCE(c.sample_count, 0)) AS samples
+                FROM server_health_hourly_cagg c
+                JOIN device d ON d.device_id = c.device_id
+                WHERE c.device_id IN :device_ids
+                  AND c.bucket_hour >= :start_dt
+                  AND c.bucket_hour <= :end_dt
+                GROUP BY c.device_id, d.device_name
+                ORDER BY d.device_name ASC
+                """,
+                scoped_ids,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            return self._build_time_series(rows), self._build_health_summary(summary_rows)
+
         inventory_ids = self._inventory_device_ids_subquery(device_ids)
         rows = (
             db.session.query(
@@ -557,6 +723,96 @@ class ReportingService:
         return self._build_time_series(rows), self._build_health_summary(summary_rows)
 
     def _health_from_daily(self, device_ids, start_dt, end_dt):
+        if TimescaleDBService.is_timescaledb_enabled():
+            scoped_ids = self._inventory_device_id_list(device_ids)
+            rows = self._timescaledb_rows(
+                """
+                SELECT
+                    c.device_id,
+                    d.device_name,
+                    c.bucket_day AS timestamp,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_cpu_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS cpu_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_memory_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS memory_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_disk_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS disk_usage,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_network_in_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_network_in_bps * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_network_in_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS network_in_bps,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_network_out_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_network_out_bps * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_network_out_bps IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS network_out_bps
+                FROM server_health_daily_cagg c
+                JOIN device d ON d.device_id = c.device_id
+                WHERE c.device_id IN :device_ids
+                  AND c.bucket_day >= :start_dt
+                  AND c.bucket_day <= :end_dt
+                GROUP BY c.device_id, d.device_name, c.bucket_day
+                ORDER BY timestamp ASC, d.device_name ASC
+                """,
+                scoped_ids,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            summary_rows = self._timescaledb_rows(
+                """
+                SELECT
+                    c.device_id,
+                    d.device_name,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_cpu_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_cpu_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_cpu,
+                    MAX(c.max_cpu_usage) AS max_cpu,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_memory_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_memory_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_mem,
+                    MAX(c.max_memory_usage) AS max_mem,
+                    CASE
+                        WHEN SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END) > 0
+                        THEN SUM(c.avg_disk_usage * COALESCE(c.sample_count, 0))
+                             / SUM(CASE WHEN c.avg_disk_usage IS NOT NULL THEN COALESCE(c.sample_count, 0) ELSE 0 END)
+                        ELSE NULL
+                    END AS avg_disk,
+                    SUM(COALESCE(c.sample_count, 0)) AS samples
+                FROM server_health_daily_cagg c
+                JOIN device d ON d.device_id = c.device_id
+                WHERE c.device_id IN :device_ids
+                  AND c.bucket_day >= :start_dt
+                  AND c.bucket_day <= :end_dt
+                GROUP BY c.device_id, d.device_name
+                ORDER BY d.device_name ASC
+                """,
+                scoped_ids,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            return self._build_time_series(rows), self._build_health_summary(summary_rows)
+
         inventory_ids = self._inventory_device_ids_subquery(device_ids)
         rows = (
             db.session.query(
@@ -604,14 +860,14 @@ class ReportingService:
     def _build_health_summary(rows):
         return [
             {
-                "device_id": row.device_id,
-                "device_name": row.device_name,
-                "avg_cpu": _safe_round(row.avg_cpu),
-                "max_cpu": _safe_round(row.max_cpu),
-                "avg_mem": _safe_round(row.avg_mem),
-                "max_mem": _safe_round(row.max_mem),
-                "avg_disk": _safe_round(row.avg_disk),
-                "samples": row.samples,
+                "device_id": _row_value(row, "device_id"),
+                "device_name": _row_value(row, "device_name"),
+                "avg_cpu": _safe_round(_row_value(row, "avg_cpu")),
+                "max_cpu": _safe_round(_row_value(row, "max_cpu")),
+                "avg_mem": _safe_round(_row_value(row, "avg_mem")),
+                "max_mem": _safe_round(_row_value(row, "max_mem")),
+                "avg_disk": _safe_round(_row_value(row, "avg_disk")),
+                "samples": _row_value(row, "samples"),
             }
             for row in rows
         ]
@@ -620,15 +876,18 @@ class ReportingService:
     def _build_time_series(rows):
         by_device = {}
         for row in rows:
-            by_device.setdefault(row.device_id, {"device_name": row.device_name, "points": []})
-            by_device[row.device_id]["points"].append(
+            device_id = _row_value(row, "device_id")
+            device_name = _row_value(row, "device_name")
+            timestamp = _row_value(row, "timestamp")
+            by_device.setdefault(device_id, {"device_name": device_name, "points": []})
+            by_device[device_id]["points"].append(
                 {
-                    "ts": row.timestamp.isoformat() if hasattr(row.timestamp, "isoformat") else str(row.timestamp),
-                    "cpu": _safe_round(row.cpu_usage),
-                    "mem": _safe_round(row.memory_usage),
-                    "disk": _safe_round(row.disk_usage),
-                    "net_in": _safe_round(row.network_in_bps),
-                    "net_out": _safe_round(row.network_out_bps),
+                    "ts": timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp),
+                    "cpu": _safe_round(_row_value(row, "cpu_usage")),
+                    "mem": _safe_round(_row_value(row, "memory_usage")),
+                    "disk": _safe_round(_row_value(row, "disk_usage")),
+                    "net_in": _safe_round(_row_value(row, "network_in_bps")),
+                    "net_out": _safe_round(_row_value(row, "network_out_bps")),
                 }
             )
         return by_device
@@ -683,25 +942,64 @@ class ReportingService:
         activity_rows = (
             db.session.query(
                 DeviceActivityLog.device_id,
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
                 DeviceActivityLog.activity_type,
                 func.sum(DeviceActivityLog.event_count).label("total_events"),
             )
+            .join(TrackedDevice, TrackedDevice.id == DeviceActivityLog.device_id)
             .filter(
                 DeviceActivityLog.device_id.in_(db.session.query(tracked_ids.c.device_id)),
                 DeviceActivityLog.timestamp >= start_date,
                 DeviceActivityLog.timestamp <= end_date,
             )
-            .group_by(DeviceActivityLog.device_id, DeviceActivityLog.activity_type)
+            .group_by(
+                DeviceActivityLog.device_id,
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
+                DeviceActivityLog.activity_type,
+            )
             .all()
         )
         activity_summary = {}
         for row in activity_rows:
-            activity_summary.setdefault(row.device_id, {"active": 0, "idle": 0, "keyboard": 0, "mouse": 0})
+            activity_summary.setdefault(
+                row.device_id,
+                {
+                    "device_name": row.device_name,
+                    "employee_name": row.employee_name,
+                    "active": 0,
+                    "idle": 0,
+                    "keyboard": 0,
+                    "mouse": 0,
+                },
+            )
             activity_type = str(row.activity_type or "").lower()
             if activity_type in activity_summary[row.device_id]:
                 activity_summary[row.device_id][activity_type] = int(row.total_events or 0)
             elif activity_type == "scroll":
                 activity_summary[row.device_id]["active"] += int(row.total_events or 0)
+
+        for device_id, info in app_breakdown.items():
+            info["apps"].sort(key=lambda item: (-int(item.get("total_seconds") or 0), str(item.get("name") or "")))
+            activity_summary.setdefault(
+                device_id,
+                {
+                    "device_name": info.get("device_name"),
+                    "employee_name": info.get("employee_name"),
+                    "active": 0,
+                    "idle": 0,
+                    "keyboard": 0,
+                    "mouse": 0,
+                },
+            )
+
+        category_totals = dict(
+            sorted(
+                category_totals.items(),
+                key=lambda item: (-int(item[1] or 0), str(item[0] or "")),
+            )
+        )
 
         freshness_device_ids = [
             int(row[0])
@@ -1444,6 +1742,7 @@ class ReportingService:
                     "device_name": device_name,
                     "freshness_state": freshness.get("freshness_state", "empty"),
                     "coverage_pct": freshness.get("coverage_pct", 0.0),
+                    "last_sample_at": freshness.get("last_sample_at"),
                     "sample_count": freshness.get("sample_count", 0),
                     "report_eligible": bool(freshness.get("report_eligible")),
                 }

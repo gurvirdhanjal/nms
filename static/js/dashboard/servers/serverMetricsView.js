@@ -137,6 +137,17 @@ function truncateMiddle(value, maxLength = 34) {
     return `${text.slice(0, head)}...${text.slice(text.length - tail)}`;
 }
 
+const TELEMETRY_CACHE_TTL_MS = 20000;
+const TELEMETRY_RANGE_ORDER = ['15m', '1h', '6h', '24h', '7d'];
+
+export function buildTelemetryCacheKey(deviceId, range) {
+    return `${deviceId}:${range || '24h'}`;
+}
+
+export function buildTelemetryPrefetchOrder(activeRange) {
+    return TELEMETRY_RANGE_ORDER.filter((range) => range !== (activeRange || '24h'));
+}
+
 export function calculateSeriesStats(values) {
     const points = Array.isArray(values)
         ? values
@@ -268,6 +279,8 @@ function sortProcesses(processes, mode) {
 
 export function createServerMetricsView({ root, prefix }) {
     const charts = {};
+    const payloadCache = new Map();
+    const prefetchPromises = new Map();
     let currentDeviceId = null;
     let currentRange = '24h';
     let thresholdState = { version: null, metrics: {} };
@@ -275,6 +288,7 @@ export function createServerMetricsView({ root, prefix }) {
     let currentPayload = null;
     let currentLoadPromise = null;
     let currentLoadKey = null;
+    let currentAbortController = null;
 
     const element = (name) => root?.querySelector(`#${prefix}-${name}`) || null;
 
@@ -285,7 +299,7 @@ export function createServerMetricsView({ root, prefix }) {
 
     function setOpenDetailsLink(deviceId) {
         const link = document.getElementById('server-modal-open-page');
-        if (link) link.href = `/devices/${deviceId}/details`;
+        if (link) link.href = `/devices/${deviceId}/server-monitoring`;
     }
 
     function setChartEmptyState(canvasId, isEmpty, message) {
@@ -1032,7 +1046,181 @@ export function createServerMetricsView({ root, prefix }) {
         bindThresholdEditor();
     }
 
+    function getCachedPayload(deviceId, range) {
+        const cacheKey = buildTelemetryCacheKey(deviceId, range);
+        const entry = payloadCache.get(cacheKey);
+        if (!entry) return null;
+        if ((Date.now() - entry.cachedAt) > TELEMETRY_CACHE_TTL_MS) {
+            payloadCache.delete(cacheKey);
+            return null;
+        }
+        return entry.payload;
+    }
+
+    function cachePayload(deviceId, range, payload) {
+        const cacheKey = buildTelemetryCacheKey(deviceId, range);
+        payloadCache.set(cacheKey, {
+            payload,
+            cachedAt: Date.now(),
+        });
+        if (payloadCache.size > 30) {
+            const oldestKey = payloadCache.keys().next().value;
+            if (oldestKey) payloadCache.delete(oldestKey);
+        }
+    }
+
+    async function fetchTelemetry(deviceId, range, { signal } = {}) {
+        const response = await fetch(`/api/devices/${deviceId}/telemetry?range=${range}`, {
+            credentials: 'same-origin',
+            signal,
+        });
+        const data = await parseApiResponse(response);
+        if (!response.ok || data.error) {
+            throw new Error(getApiErrorMessage(data, 'Failed to load server telemetry'));
+        }
+        return data;
+    }
+
+    function applyPayload(deviceId, data) {
+        currentPayload = data;
+        bindProcessSortControls();
+
+        setText('title', data.device_name || 'Server Details');
+        setText('ip', data.ip || '-');
+        setText('hostname', data.hostname || '-');
+        setText('uptime', formatUptime(data.uptime, data.uptime_seconds));
+        setText('boot-time', formatDateTime(data.boot_time));
+        setText('os', [data.os?.name, data.os?.version, data.os?.arch].filter(Boolean).join(' ') || '-');
+        setText('hardware', formatHardwareSpecs(data.hardware_specs || {}));
+        setText('last-seen', formatDateTime(data.last_seen));
+        setOpenDetailsLink(deviceId);
+
+        const labels = Array.isArray(data.labels) ? data.labels : [];
+        const cpu = Array.isArray(data.cpu) ? data.cpu : [];
+        const memory = Array.isArray(data.memory) ? data.memory : [];
+        const disk = Array.isArray(data.disk) ? data.disk : [];
+        const netIn = Array.isArray(data.net_in) ? data.net_in : [];
+        const netOut = Array.isArray(data.net_out) ? data.net_out : [];
+        const hasAnyValue = (values) => Array.isArray(values) && values.some((value) => value !== null && value !== undefined && !Number.isNaN(value));
+        const isEmpty = labels.length === 0 || !(hasAnyValue(cpu) || hasAnyValue(memory) || hasAnyValue(disk) || hasAnyValue(netIn) || hasAnyValue(netOut));
+
+        setChartEmptyState('chart-cpu', isEmpty, 'No telemetry in range');
+        setChartEmptyState('chart-mem', isEmpty, 'No telemetry in range');
+        setChartEmptyState('chart-disk', isEmpty, 'No telemetry in range');
+        setChartEmptyState('chart-net', isEmpty, 'No telemetry in range');
+
+        const thresholds = data.thresholds || { metrics: {} };
+        thresholdState = {
+            version: data.threshold_profile?.version ?? thresholdState.version,
+            metrics: thresholds.metrics || {},
+        };
+
+        const evaluations = data.health_evaluations || {};
+        updateHealthHeader(data);
+        renderMetricSummaries(data, evaluations);
+        renderAlertsBanner(data.alerts || []);
+        renderLoadAveragePanel(data);
+        renderSwapUsage(data.swap || {}, data.memory_paging_label || 'Swap Usage');
+        renderProcessesAndConnections(data.processes || {}, data.network_connections || {});
+        renderDiskIO(data.disk_io || {}, data.disk_io_rates || {});
+        renderTopProcessesTable();
+
+        const snapshot = data.connection_snapshot || {
+            rows: data.network_top_remote_ips || [],
+            meta: {
+                timestamp: data.last_seen || null,
+                unique_remote_ips_count: data.network_connections_unique_ips,
+            },
+        };
+        renderAgentConnectionSnapshot(snapshot);
+        renderConnectionSnapshotTable(snapshot.rows || [], snapshot.meta || {});
+        renderExtendedMetrics(data);
+        renderThresholdEditor(thresholds.metrics || {}, data.threshold_profile || {});
+
+        if (isEmpty) return data;
+
+        renderChart({
+            canvasId: 'chart-cpu',
+            labels,
+            series: [{ label: 'CPU', data: cpu, color: '#0d6efd' }],
+            unit: '%',
+            yAxisLabel: 'Utilization %',
+            thresholds: thresholds.metrics?.cpu_usage_pct?.bands || [],
+            thresholdConfig: thresholds.metrics?.cpu_usage_pct || null,
+            forceMax: 100,
+        });
+        renderChart({
+            canvasId: 'chart-mem',
+            labels,
+            series: [{ label: 'Memory', data: memory, color: '#6610f2' }],
+            unit: '%',
+            yAxisLabel: 'Utilization %',
+            thresholds: thresholds.metrics?.memory_usage_pct?.bands || [],
+            thresholdConfig: thresholds.metrics?.memory_usage_pct || null,
+            forceMax: 100,
+        });
+        renderChart({
+            canvasId: 'chart-disk',
+            labels,
+            series: [{ label: 'Disk', data: disk, color: '#dc3545' }],
+            unit: '%',
+            yAxisLabel: 'Utilization %',
+            thresholds: thresholds.metrics?.disk_usage_pct?.bands || [],
+            thresholdConfig: thresholds.metrics?.disk_usage_pct || null,
+            forceMax: 100,
+        });
+
+        const netUnitInfo = detectRateUnit([...netIn, ...netOut]);
+        renderChart({
+            canvasId: 'chart-net',
+            labels,
+            series: [
+                { label: 'Inbound', data: netIn, color: '#20c997' },
+                { label: 'Outbound', data: netOut, color: '#fd7e14' },
+            ],
+            yAxisLabel: `Bandwidth (${netUnitInfo.label})`,
+            tickFormatter: (value) => {
+                const numeric = toFiniteNumber(value);
+                return numeric === null ? '-' : (numeric / netUnitInfo.divisor).toFixed(2);
+            },
+            tooltipLabelFormatter: (ctx) => {
+                const raw = toFiniteNumber(ctx.parsed.y);
+                return raw === null ? `${ctx.dataset.label}: -` : `${ctx.dataset.label}: ${formatRate(raw, netUnitInfo)}`;
+            },
+        });
+
+        return data;
+    }
+
+    function prefetch(deviceId, activeRange = currentRange) {
+        buildTelemetryPrefetchOrder(activeRange).forEach((range, index) => {
+            if (getCachedPayload(deviceId, range)) return;
+
+            const cacheKey = buildTelemetryCacheKey(deviceId, range);
+            if (prefetchPromises.has(cacheKey)) return;
+
+            const delayMs = 120 * (index + 1);
+            window.setTimeout(() => {
+                if (getCachedPayload(deviceId, range) || prefetchPromises.has(cacheKey)) return;
+                const promise = fetchTelemetry(deviceId, range)
+                    .then((payload) => {
+                        cachePayload(deviceId, range, payload);
+                        return payload;
+                    })
+                    .catch(() => null)
+                    .finally(() => {
+                        prefetchPromises.delete(cacheKey);
+                    });
+                prefetchPromises.set(cacheKey, promise);
+            }, delayMs);
+        });
+    }
+
     function destroy() {
+        if (currentAbortController) {
+            currentAbortController.abort();
+            currentAbortController = null;
+        }
         Object.values(charts).forEach((chart) => chart?.destroy?.());
         Object.keys(charts).forEach((key) => delete charts[key]);
         currentDeviceId = null;
@@ -1044,153 +1232,65 @@ export function createServerMetricsView({ root, prefix }) {
     async function load(deviceId, range, options = {}) {
         currentDeviceId = deviceId;
         currentRange = range || currentRange;
-        const { showSnapshotLoadingState = false } = options;
-        if (showSnapshotLoadingState) {
+        const { showSnapshotLoadingState = false, preferCache = false } = options;
+        const cachedPayload = getCachedPayload(deviceId, currentRange);
+        if (showSnapshotLoadingState && !cachedPayload) {
             renderConnectionSnapshotStatus('Loading latest telemetry...');
         }
 
-        const requestKey = `${deviceId}:${currentRange}`;
+        if (preferCache && cachedPayload) {
+            applyPayload(deviceId, cachedPayload);
+            prefetch(deviceId, currentRange);
+            return cachedPayload;
+        }
+
+        const requestKey = buildTelemetryCacheKey(deviceId, currentRange);
         if (currentLoadPromise && currentLoadKey === requestKey) {
             return currentLoadPromise;
         }
 
+        if (currentAbortController) {
+            currentAbortController.abort();
+        }
+        currentAbortController = new AbortController();
         currentLoadKey = requestKey;
         currentLoadPromise = (async () => {
-            const response = await fetch(`/api/devices/${deviceId}/telemetry?range=${currentRange}`, {
-                credentials: 'same-origin',
+            const data = await fetchTelemetry(deviceId, currentRange, {
+                signal: currentAbortController?.signal,
             });
-            const data = await parseApiResponse(response);
-            if (!response.ok || data.error) {
-                throw new Error(getApiErrorMessage(data, 'Failed to load server telemetry'));
-            }
-
-            currentPayload = data;
-            bindProcessSortControls();
-
-            setText('title', data.device_name || 'Server Details');
-            setText('ip', data.ip || '-');
-            setText('hostname', data.hostname || '-');
-            setText('uptime', formatUptime(data.uptime, data.uptime_seconds));
-            setText('boot-time', formatDateTime(data.boot_time));
-            setText('os', [data.os?.name, data.os?.version, data.os?.arch].filter(Boolean).join(' ') || '-');
-            setText('hardware', formatHardwareSpecs(data.hardware_specs || {}));
-            setText('last-seen', formatDateTime(data.last_seen));
-            setOpenDetailsLink(deviceId);
-
-            const labels = Array.isArray(data.labels) ? data.labels : [];
-            const cpu = Array.isArray(data.cpu) ? data.cpu : [];
-            const memory = Array.isArray(data.memory) ? data.memory : [];
-            const disk = Array.isArray(data.disk) ? data.disk : [];
-            const netIn = Array.isArray(data.net_in) ? data.net_in : [];
-            const netOut = Array.isArray(data.net_out) ? data.net_out : [];
-            const hasAnyValue = (values) => Array.isArray(values) && values.some((value) => value !== null && value !== undefined && !Number.isNaN(value));
-            const isEmpty = labels.length === 0 || !(hasAnyValue(cpu) || hasAnyValue(memory) || hasAnyValue(disk) || hasAnyValue(netIn) || hasAnyValue(netOut));
-
-            setChartEmptyState('chart-cpu', isEmpty, 'No telemetry in range');
-            setChartEmptyState('chart-mem', isEmpty, 'No telemetry in range');
-            setChartEmptyState('chart-disk', isEmpty, 'No telemetry in range');
-            setChartEmptyState('chart-net', isEmpty, 'No telemetry in range');
-
-            const thresholds = data.thresholds || { metrics: {} };
-            thresholdState = {
-                version: data.threshold_profile?.version ?? thresholdState.version,
-                metrics: thresholds.metrics || {},
-            };
-
-            const evaluations = data.health_evaluations || {};
-            updateHealthHeader(data);
-            renderMetricSummaries(data, evaluations);
-            renderAlertsBanner(data.alerts || []);
-            renderLoadAveragePanel(data);
-            renderSwapUsage(data.swap || {}, data.memory_paging_label || 'Swap Usage');
-            renderProcessesAndConnections(data.processes || {}, data.network_connections || {});
-            renderDiskIO(data.disk_io || {}, data.disk_io_rates || {});
-            renderTopProcessesTable();
-
-            const snapshot = data.connection_snapshot || {
-                rows: data.network_top_remote_ips || [],
-                meta: {
-                    timestamp: data.last_seen || null,
-                    unique_remote_ips_count: data.network_connections_unique_ips,
-                },
-            };
-            renderAgentConnectionSnapshot(snapshot);
-            renderConnectionSnapshotTable(snapshot.rows || [], snapshot.meta || {});
-            renderExtendedMetrics(data);
-            renderThresholdEditor(thresholds.metrics || {}, data.threshold_profile || {});
-
-            if (isEmpty) return data;
-
-            renderChart({
-                canvasId: 'chart-cpu',
-                labels,
-                series: [{ label: 'CPU', data: cpu, color: '#0d6efd' }],
-                unit: '%',
-                yAxisLabel: 'Utilization %',
-                thresholds: thresholds.metrics?.cpu_usage_pct?.bands || [],
-                thresholdConfig: thresholds.metrics?.cpu_usage_pct || null,
-                forceMax: 100,
-            });
-            renderChart({
-                canvasId: 'chart-mem',
-                labels,
-                series: [{ label: 'Memory', data: memory, color: '#6610f2' }],
-                unit: '%',
-                yAxisLabel: 'Utilization %',
-                thresholds: thresholds.metrics?.memory_usage_pct?.bands || [],
-                thresholdConfig: thresholds.metrics?.memory_usage_pct || null,
-                forceMax: 100,
-            });
-            renderChart({
-                canvasId: 'chart-disk',
-                labels,
-                series: [{ label: 'Disk', data: disk, color: '#dc3545' }],
-                unit: '%',
-                yAxisLabel: 'Utilization %',
-                thresholds: thresholds.metrics?.disk_usage_pct?.bands || [],
-                thresholdConfig: thresholds.metrics?.disk_usage_pct || null,
-                forceMax: 100,
-            });
-
-            const netUnitInfo = detectRateUnit([...netIn, ...netOut]);
-            renderChart({
-                canvasId: 'chart-net',
-                labels,
-                series: [
-                    { label: 'Inbound', data: netIn, color: '#20c997' },
-                    { label: 'Outbound', data: netOut, color: '#fd7e14' },
-                ],
-                yAxisLabel: `Bandwidth (${netUnitInfo.label})`,
-                tickFormatter: (value) => {
-                    const numeric = toFiniteNumber(value);
-                    return numeric === null ? '-' : (numeric / netUnitInfo.divisor).toFixed(2);
-                },
-                tooltipLabelFormatter: (ctx) => {
-                    const raw = toFiniteNumber(ctx.parsed.y);
-                    return raw === null ? `${ctx.dataset.label}: -` : `${ctx.dataset.label}: ${formatRate(raw, netUnitInfo)}`;
-                },
-            });
-
+            cachePayload(deviceId, currentRange, data);
+            applyPayload(deviceId, data);
+            prefetch(deviceId, currentRange);
             return data;
         })();
 
         try {
             return await currentLoadPromise;
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                return cachedPayload || currentPayload || null;
+            }
+            throw error;
         } finally {
             if (currentLoadKey === requestKey) {
                 currentLoadPromise = null;
                 currentLoadKey = null;
+                currentAbortController = null;
             }
         }
     }
 
     async function fetchConnectionSnapshot(deviceId, { showLoadingState = false } = {}) {
-        return load(deviceId, currentRange, { showSnapshotLoadingState: showLoadingState });
+        return load(deviceId, currentRange, {
+            showSnapshotLoadingState: showLoadingState,
+            preferCache: !showLoadingState,
+        });
     }
 
     return {
         load,
         fetchConnectionSnapshot,
+        prefetch,
         destroy,
         setOpenDetailsLink,
         getCurrentRange: () => currentRange,

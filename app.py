@@ -4,12 +4,12 @@ import threading
 import webbrowser
 from datetime import timedelta
 
-from flask import Flask, request
+from flask import Flask, jsonify, render_template, request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine.url import make_url
 
 from config import Config
-from extensions import db, bcrypt
+from extensions import db, bcrypt, limiter
 
 try:
     from flask_compress import Compress
@@ -86,6 +86,7 @@ def create_app(test_config=None):
 
     db.init_app(app)
     bcrypt.init_app(app)
+    limiter.init_app(app)
 
     # ---------------------------
     # Response compression
@@ -96,6 +97,29 @@ def create_app(test_config=None):
             compress.init_app(app)
         else:
             print("[WARN] Flask-Compress is not installed; compression is disabled.")
+
+    # ---------------------------
+    # Rate limit error handler
+    # ---------------------------
+    from flask_limiter.errors import RateLimitExceeded
+
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit(e):
+        from flask import render_template, request as _req
+        # Build the default 429 response to extract the Retry-After header
+        default_response = e.get_response()
+        try:
+            retry_after = int(default_response.headers.get('Retry-After', 60))
+        except (TypeError, ValueError):
+            retry_after = 60
+        if _req.accept_mimetypes.best == 'application/json':
+            from flask import jsonify
+            response = jsonify({'error': 'Too many requests', 'retry_after': retry_after})
+            response.status_code = 429
+            response.headers['Retry-After'] = retry_after
+            return response
+        response = render_template('errors/429.html', retry_after=retry_after), 429
+        return response
 
     # ---------------------------
     # Global RBAC Write Protection
@@ -126,6 +150,14 @@ def create_app(test_config=None):
                         response.headers['Cache-Control'] = f'public, max-age={max_age}'
         except Exception:
             pass
+        return response
+
+    @app.after_request
+    def _apply_security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        response.headers.setdefault('X-XSS-Protection', '1; mode=block')
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         return response
 
     # ---------------------------
@@ -181,6 +213,7 @@ def create_app(test_config=None):
             DeviceEffectivePolicyCache, PolicyRebuildTask,
             AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
         )
+        from models.compliance_profile import ComplianceProfile
         from models.discovery_config import DiscoveryConfig
         from utils.db_migrations import ensure_server_health_columns, ensure_tracking_stabilization_columns
 
@@ -260,6 +293,7 @@ def create_app(test_config=None):
     from routes.audit import audit_bp
     from routes.device_console import device_console_bp
     from routes.device_identity_admin import device_identity_admin_bp
+    from routes.config_backup import config_backup_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -288,6 +322,7 @@ def create_app(test_config=None):
         audit_bp,
         device_console_bp,
         device_identity_admin_bp,
+        config_backup_bp,
     ]
 
     for bp in protected_blueprints:
@@ -305,6 +340,33 @@ def create_app(test_config=None):
     def inject_rbac_context():
         from middleware.rbac import get_ui_rbac_context
         return {'rbac_context': get_ui_rbac_context()}
+
+    # ---------------------------
+    # Error handlers
+    # ---------------------------
+    def _wants_json():
+        return request.path.startswith('/api/') or \
+               request.accept_mimetypes.best_match(
+                   ['application/json', 'text/html']
+               ) == 'application/json'
+
+    @app.errorhandler(404)
+    def not_found(e):
+        if _wants_json():
+            return jsonify({'error': 'Not found'}), 404
+        return render_template('errors/404.html'), 404
+
+    @app.errorhandler(403)
+    def forbidden(e):
+        if _wants_json():
+            return jsonify({'error': 'Forbidden'}), 403
+        return render_template('errors/403.html'), 403
+
+    @app.errorhandler(500)
+    def server_error(e):
+        if _wants_json():
+            return jsonify({'error': 'Internal server error'}), 500
+        return render_template('errors/500.html'), 500
 
     return app
 

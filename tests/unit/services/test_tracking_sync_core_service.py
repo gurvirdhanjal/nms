@@ -3,6 +3,7 @@ import pytest
 from services.tracking_sync_core_service import (
     apply_sync_core_plan,
     build_sync_dedupe_key,
+    extract_current_stats_payload,
     plan_sync_core_mutations,
 )
 
@@ -63,3 +64,38 @@ def test_plan_sync_core_mutations_supports_legacy_payload_shape():
     assert plan.has_system_metrics is True
     assert result.applied is True
     assert result.summary['restricted_event_count'] == 1
+
+
+def test_extract_current_stats_payload_normalizes_service_agent_legacy_shape():
+    payload = {
+        'hostname': 'pc-legacy',
+        'current_stats': {
+            'activity': {
+                'keyboard_active': True,
+                'mouse_active': False,
+                'idle_seconds': 12,
+                'total_active_today': 7200,
+                'keyboard_count': 8,
+                'mouse_count': 4,
+            },
+            'system': {
+                'cpu': 18.5,
+                'memory': 44.1,
+                'current_app': 'Code.exe',
+            },
+            'network': {
+                'upload_speed_kbps': 16.5,
+                'download_speed_kbps': 144.2,
+            },
+        },
+    }
+
+    normalized = extract_current_stats_payload(payload)
+
+    assert normalized['current_activity']['keyboard_active'] is True
+    assert normalized['current_activity']['current_application'] == 'Code.exe'
+    assert normalized['today_stats']['total_active_hours'] == pytest.approx(2.0)
+    assert normalized['today_stats']['keyboard_events'] == 8
+    assert normalized['system_metrics']['cpu_percent'] == pytest.approx(18.5)
+    assert normalized['system_metrics']['memory_percent'] == pytest.approx(44.1)
+    assert normalized['system_metrics']['network_speed']['download_speed_kbps'] == pytest.approx(144.2)

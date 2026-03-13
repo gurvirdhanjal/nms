@@ -25,6 +25,7 @@ from models.tracked_device import (
     TrackingHourlyRollup,
     TrackingSample,
 )
+from services.timescaledb_service import TimescaleDBService
 from services.tracking_reconcile import normalize_mac
 
 logger = logging.getLogger(__name__)
@@ -1318,6 +1319,18 @@ def run_tracking_retention(
     hourly_days: int = 365,
     daily_days: int = 1095,
 ) -> dict[str, Any]:
+    backend = db.engine.url.get_backend_name()
+    if backend == "postgresql" and TimescaleDBService.is_timescaledb_enabled():
+        return {
+            "success": True,
+            "skipped": True,
+            "policy_managed": True,
+            "task": "run_tracking_retention",
+            "backend": backend,
+            "reason": "Managed by TimescaleDB",
+            "detail": "Tracking raw hypertables are retention-managed by TimescaleDB and legacy tracking rollup tables are not maintained.",
+        }
+
     raw_cutoff = datetime.utcnow() - timedelta(days=max(1, int(raw_days or 30)))
     hourly_cutoff = datetime.utcnow() - timedelta(days=max(1, int(hourly_days or 365)))
     daily_cutoff = (datetime.utcnow() - timedelta(days=max(1, int(daily_days or 1095)))).date()

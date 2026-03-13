@@ -1,773 +1,346 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_card, ui_button, ui_badge, ui_modal %}
 
-{% block title %}File Transfer System{% endblock %}
+{% block title %}File Transfer - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* File Transfer - Tactical Theme Overrides */
-    
-    /* Dual Panel Layout */
-    .dual-panel-layout {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        gap: 20px;
-        margin: 20px 0;
-        min-height: 600px;
+    /* Custom Scrollbar for explorers */
+    .explorer-scrollbar::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    .explorer-scrollbar::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.6); /* slate-900 */
+        border-radius: 4px;
+    }
+    .explorer-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(51, 65, 85, 0.8); /* slate-700 */
+        border-radius: 4px;
+    }
+    .explorer-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(71, 85, 105, 1); /* slate-600 */
     }
 
-    @media (max-width: 1200px) {
-        .dual-panel-layout {
-            grid-template-columns: 1fr;
-        }
-        .transfer-controls {
-            order: 2;
-        }
-    }
-
-    /* Explorer Panels */
-    .explorer-panel {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        height: 600px;
-    }
-
-    .panel-header {
-        background: var(--tactical-bg-dark);
-        padding: 15px;
-        border-bottom: 1px solid var(--tactical-border-accent);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .panel-title {
-        font-weight: 700;
-        font-size: 1rem;
-        color: var(--tactical-accent);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    .panel-actions {
-        display: flex;
-        gap: 10px;
-    }
-
-    /* File Explorer */
-    .file-explorer {
-        flex: 1;
-        overflow-y: auto;
-        padding: 10px;
-        background: var(--tactical-bg-darkest);
-    }
-
-    .file-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .file-item {
-        display: flex;
-        align-items: center;
-        padding: 12px;
-        margin-bottom: 5px;
-        border-radius: var(--tactical-radius-sm);
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        transition: var(--tactical-transition);
-        cursor: pointer;
-    }
-
-    .file-item:hover {
-        background: var(--tactical-bg-elevated);
-        border-color: var(--tactical-border-accent);
-        transform: translateX(5px);
-    }
-
+    /* Selected state */
     .file-item.selected {
-        background: rgba(0, 212, 170, 0.15);
-        border-color: var(--tactical-accent);
+        background-color: rgba(59, 130, 246, 0.15); /* blue-500/15 */
+        border-color: rgba(59, 130, 246, 0.5); /* blue-500/50 */
     }
 
-    .file-icon {
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 12px;
-        border-radius: var(--tactical-radius-sm);
-        font-size: 18px;
-    }
-
-    .file-icon.folder {
-        background: var(--tactical-warning);
-        color: var(--tactical-bg-darkest);
-    }
-
-    .file-icon.file {
-        background: var(--tactical-accent-dim);
-        color: var(--tactical-text-primary);
-    }
-
-    .file-info {
-        flex: 1;
-        min-width: 0;
-    }
-
-    file-name {
-        font-weight: 500;
-        color: var(--tactical-text-primary);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .file-details {
-        font-size: 0.75rem;
-        color: var(--tactical-text-muted);
-        display: flex;
-        gap: 15px;
-        margin-top: 3px;
-    }
-
-    .file-size {
-        font-family: 'JetBrains Mono', 'Courier New', monospace;
-    }
-
-    /* Transfer Controls */
-    .transfer-controls {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        gap: 15px;
-        min-width: 240px;
-    }
-
-    .transfer-button {
-        width: 220px;
-        padding: 15px;
-        border: none;
-        border-radius: var(--tactical-radius-md);
-        font-weight: 700;
-        font-size: 0.9rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        transition: var(--tactical-transition);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .transfer-button:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-    }
-
-    .btn-copy-to-client {
-        background: var(--tactical-accent-dim);
-        color: var(--tactical-bg-darkest);
-        border: 1px solid var(--tactical-accent);
-    }
-
-    .btn-copy-to-client:hover:not(:disabled) {
-        background: var(--tactical-accent);
-        box-shadow: var(--tactical-glow-md) var(--tactical-accent-glow);
-        transform: translateY(-3px);
-    }
-
-    .btn-move-to-client {
-        background: rgba(255, 170, 0, 0.2);
-        color: var(--tactical-warning);
-        border: 1px solid var(--tactical-warning);
-    }
-
-    .btn-move-to-client:hover:not(:disabled) {
-        background: var(--tactical-warning);
-        color: var(--tactical-bg-darkest);
-        box-shadow: var(--tactical-glow-md) var(--tactical-warning-glow);
-        transform: translateY(-3px);
-    }
-
-    .btn-copy-to-server {
-        background: rgba(0, 255, 136, 0.2);
-        color: var(--tactical-success);
-        border: 1px solid var(--tactical-success);
-    }
-
-    .btn-copy-to-server:hover:not(:disabled) {
-        background: var(--tactical-success);
-        color: var(--tactical-bg-darkest);
-        box-shadow: var(--tactical-glow-md) var(--tactical-success-glow);
-        transform: translateY(-3px);
-    }
-
-    .btn-move-to-server {
-        background: rgba(255, 59, 92, 0.2);
-        color: var(--tactical-danger);
-        border: 1px solid var(--tactical-danger);
-    }
-
-    .btn-move-to-server:hover:not(:disabled) {
-        background: var(--tactical-danger);
-        color: white;
-        box-shadow: var(--tactical-glow-md) var(--tactical-danger-glow);
-        transform: translateY(-3px);
-    }
-
-    /* Action Buttons */
-    .action-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin: 20px 0;
-    }
-
-    .action-btn {
-        padding: 10px 20px;
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-sm);
-        background: var(--tactical-bg-surface);
-        color: var(--tactical-text-secondary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: var(--tactical-transition);
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-
-    .action-btn:hover:not(:disabled) {
-        background: var(--tactical-bg-elevated);
-        border-color: var(--tactical-accent);
-        color: var(--tactical-accent);
-    }
-
-    .action-btn:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-    }
-
-    /* Upload Section */
-    .upload-section {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        padding: 25px;
-        margin-top: 25px;
-    }
-
-    .upload-area {
-        border: 3px dashed var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        padding: 60px 40px;
-        text-align: center;
-        cursor: pointer;
-        transition: var(--tactical-transition);
-        background: var(--tactical-bg-darkest);
-    }
-
-    .upload-area:hover {
-        border-color: var(--tactical-accent);
-        background: var(--tactical-bg-surface);
-    }
-
+    /* Drag over state */
     .upload-area.dragover {
-        border-color: var(--tactical-success);
-        background: rgba(0, 255, 136, 0.05);
-    }
-
-    .upload-icon {
-        font-size: 64px;
-        color: var(--tactical-text-dim);
-        margin-bottom: 20px;
-    }
-
-    /* Client Discovery */
-    .client-discovery {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    .clients-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 15px;
-        margin-top: 15px;
-    }
-
-    .client-card {
-        background: var(--tactical-bg-elevated);
-        border-radius: var(--tactical-radius-md);
-        padding: 15px;
-        border: 1px solid var(--tactical-border);
-        transition: var(--tactical-transition);
-        cursor: pointer;
-    }
-
-    .client-card:hover {
-        border-color: var(--tactical-accent);
-        transform: translateY(-3px);
-        box-shadow: var(--tactical-shadow-accent);
-    }
-
-    .client-card.selected {
-        border-color: var(--tactical-success);
-        background: rgba(0, 255, 136, 0.05);
-    }
-
-    .client-ip {
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 700;
-        color: var(--tactical-accent-bright);
-    }
-
-    .client-status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 10px;
-    }
-
-    /* Connection Status */
-    .connection-status {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 15px;
-        color: var(--tactical-text-secondary);
-    }
-
-    .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-    }
-
-    .status-online {
-        background: var(--tactical-success);
-        box-shadow: 0 0 10px var(--tactical-success-glow);
-        animation: tactical-pulse 2s infinite;
-    }
-
-    .status-offline {
-        background: var(--tactical-danger);
-        opacity: 0.5;
-    }
-
-    /* Breadcrumb */
-    .breadcrumb {
-        background: var(--tactical-bg-dark);
-        border-radius: var(--tactical-radius-sm);
-        padding: 8px 12px;
-        margin-bottom: 10px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        font-size: 0.85rem;
-    }
-
-    .breadcrumb-item {
-        color: var(--tactical-text-muted);
-        cursor: pointer;
-        padding: 2px 6px;
-        border-radius: var(--tactical-radius-sm);
-        transition: var(--tactical-transition-fast);
-    }
-
-    .breadcrumb-item:hover {
-        color: var(--tactical-accent);
-        background: var(--tactical-bg-elevated);
-    }
-
-    .breadcrumb-separator {
-        color: var(--tactical-text-dim);
-    }
-
-    /* Path Display */
-    .path-display {
-        font-family: 'JetBrains Mono', monospace;
-        background: var(--tactical-bg-darkest);
-        padding: 8px 12px;
-        border-radius: var(--tactical-radius-sm);
-        color: var(--tactical-text-muted);
-        font-size: 0.85rem;
-        word-break: break-all;
-        margin: 10px 0;
-        border: 1px solid var(--tactical-border);
-    }
-
-    /* Selected Items Panel */
-    .selected-items-panel {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border-accent);
-        border-radius: var(--tactical-radius-md);
-        padding: 15px;
-        margin-top: 20px;
-        max-height: 200px;
-        overflow-y: auto;
-    }
-
-    .selected-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 12px;
-        background: var(--tactical-bg-dark);
-        border-radius: var(--tactical-radius-sm);
-        margin-bottom: 5px;
-        color: var(--tactical-text-secondary);
-    }
-
-    /* Storage Info */
-    .storage-info {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-md);
-        padding: 15px;
-        margin-top: 15px;
-    }
-
-    /* Empty State */
-    .empty-state {
-        text-align: center;
-        padding: 60px 20px;
-        color: var(--tactical-text-dim);
-    }
-
-    .empty-state i {
-        font-size: 64px;
-        margin-bottom: 20px;
-        color: var(--tactical-text-dim);
-        opacity: 0.3;
-    }
-
-    .empty-state h4 {
-        color: var(--tactical-text-muted);
-    }
-
-    /* Loading Overlay */
-    .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(10, 10, 15, 0.9);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        border-radius: var(--tactical-radius-lg);
-    }
-
-    .spinner {
-        width: 60px;
-        height: 60px;
-        border: 5px solid var(--tactical-bg-elevated);
-        border-top: 5px solid var(--tactical-accent);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+        border-color: #3b82f6; /* blue-500 */
+        background-color: rgba(59, 130, 246, 0.05);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="file-transfer-container">
-    <!-- Header -->
-    <div class="transfer-header">
-        <h1><i class="fas fa-exchange-alt"></i> LAN File Transfer System</h1>
-        <p class="mb-0">Transfer files between admin system and client devices over LAN</p>
-    </div>
-
-    <!-- Client Discovery & Connection -->
-    <div class="client-discovery">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4><i class="fas fa-search-network"></i> Discover Clients</h4>
-            <div>
-                <button class="btn btn-sm btn-primary" onclick="discoverClients()">
-                    <i class="fas fa-sync-alt"></i> Scan Network
-                </button>
-                <button class="btn btn-sm btn-success" onclick="connectManual()">
-                    <i class="fas fa-plug"></i> Manual Connect
-                </button>
-            </div>
-        </div>
+<div class="page-section">
+    <div class="page-container max-w-7xl mx-auto">
         
-        <div class="connection-status">
-            <span class="status-indicator" id="connectionStatus"></span>
-            <span id="connectionText">Not connected to any client</span>
-        </div>
-
-        <div id="clientsList" class="clients-grid">
-            <!-- Client cards will appear here -->
-            <div class="empty-state">
-                <i class="fas fa-laptop-house"></i>
-                <h4>No clients discovered</h4>
-                <p>Click "Scan Network" to discover clients</p>
+        <!-- Header Section -->
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white mb-2 flex items-center gap-3">
+                    <i data-lucide="arrow-right-left" class="w-6 h-6 text-slate-400"></i>
+                    LAN File Transfer
+                </h1>
+                <p class="text-sm text-slate-400">Transfer files between admin system and client devices</p>
+            </div>
+            
+            <div class="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+                <div class="flex items-center gap-2 px-3 py-1 bg-slate-900/50 rounded-md border border-slate-700">
+                    <span id="connectionStatus" class="flex h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_disabled]"></span>
+                    <span id="connectionText" class="text-xs font-medium text-slate-300">Not connected</span>
+                </div>
+                <button class="inline-flex items-center justify-center rounded-md bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 transition-colors border border-slate-600" onclick="discoverClients()">
+                    <i data-lucide="radar" class="w-3.5 h-3.5 mr-1.5"></i> Scan Network
+                </button>
+                <button class="inline-flex items-center justify-center rounded-md bg-blue-600/20 px-3 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-600/30 transition-colors border border-blue-500/30" onclick="connectManual()">
+                    <i data-lucide="plug" class="w-3.5 h-3.5 mr-1.5"></i> Manual
+                </button>
             </div>
         </div>
 
-        <div id="manualConnectForm" style="display: none; margin-top: 20px;">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label text-light">Client IP Address</label>
-                    <input type="text" class="form-control" id="manualIP" placeholder="192.168.1.100">
+        <!-- Client Discovery Grid -->
+        <div id="clientsGridContainer" class="mb-6">
+            <div id="clientsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <!-- Empty state initially -->
+            </div>
+        </div>
+
+        <!-- Manual Connect Form -->
+        <div id="manualConnectForm" style="display: none;" class="mb-6 bg-slate-800/50 border border-slate-700/50 rounded-lg p-4">
+            <div class="flex flex-col sm:flex-row items-end gap-4">
+                <div class="flex-1">
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Client IP Address</label>
+                    <input type="text" id="manualIP" placeholder="192.168.1.100" class="block w-full rounded-md border-0 bg-slate-900 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label text-light">Port</label>
-                    <input type="number" class="form-control" id="manualPort" value="5002">
+                <div class="w-32">
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Port</label>
+                    <input type="number" id="manualPort" value="5002" class="block w-full rounded-md border-0 bg-slate-900 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
                 </div>
-                <div class="col-md-5 d-flex align-items-end">
-                    <button class="btn btn-primary me-2" onclick="connectToManual()">
-                        <i class="fas fa-plug"></i> Connect
+                <div class="flex gap-2">
+                    <button class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors" onclick="connectToManual()">
+                        Connect
                     </button>
-                    <button class="btn btn-secondary" onclick="hideManualForm()">
+                    <button class="inline-flex items-center justify-center rounded-md bg-slate-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-600 transition-colors" onclick="hideManualForm()">
                         Cancel
                     </button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Dual Panel Layout -->
-    <div class="dual-panel-layout">
-        <!-- Server (Admin) Panel -->
-        <div class="explorer-panel">
-            <div class="panel-header">
-                <div>
-                    <div class="panel-title">
-                        <i class="fas fa-server"></i> Server Files
+        <!-- Dual Panel Interface -->
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 mb-6 relative">
+            
+            <!-- Server Panel -->
+            <div class="flex flex-col h-[600px] bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                <!-- Panel Header -->
+                <div class="bg-slate-900/80 p-3 border-b border-slate-700 flex justify-between items-center shrink-0">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="server" class="w-4 h-4 text-blue-400"></i>
+                        <span class="font-semibold text-slate-200 text-sm tracking-wide">SERVER FILES</span>
                     </div>
-                    <div class="path-display" id="serverPath">Loading...</div>
-                </div>
-                <div class="panel-actions">
-                    <button class="btn btn-sm btn-outline-light" onclick="createFolder('server')">
-                        <i class="fas fa-folder-plus"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-light" onclick="refreshServer()">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <div class="breadcrumb" id="serverBreadcrumb">
-                <span class="breadcrumb-item" onclick="navigateServer('')">
-                    <i class="fas fa-home"></i> Root
-                </span>
-            </div>
-            
-            <div class="file-explorer" id="serverExplorer">
-                <div class="empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <h4>Loading server files...</h4>
-                </div>
-            </div>
-        </div>
-
-        <!-- Transfer Controls -->
-        <div class="transfer-controls">
-            <button class="transfer-button btn-copy-to-client" onclick="transferFiles('client', 'copy')" disabled>
-                <i class="fas fa-arrow-right"></i> Copy to Client
-            </button>
-            
-            <button class="transfer-button btn-move-to-client" onclick="transferFiles('client', 'move')" disabled>
-                <i class="fas fa-arrow-right"></i> Move to Client
-            </button>
-            
-            <div style="margin: 20px 0; text-align: center;">
-                <i class="fas fa-exchange-alt fa-2x text-muted"></i>
-            </div>
-            
-            <button class="transfer-button btn-copy-to-server" onclick="transferFiles('server', 'copy')" disabled>
-                <i class="fas fa-arrow-left"></i> Copy to Server
-            </button>
-            
-            <button class="transfer-button btn-move-to-server" onclick="transferFiles('server', 'move')" disabled>
-                <i class="fas fa-arrow-left"></i> Move to Server
-            </button>
-            
-            <div class="mt-4 text-center">
-                <p class="text-muted">
-                    <i class="fas fa-info-circle"></i>
-                    Select files from either panel to enable transfers
-                </p>
-            </div>
-        </div>
-
-        <!-- Client Panel -->
-        <div class="explorer-panel">
-            <div class="panel-header">
-                <div>
-                    <div class="panel-title">
-                        <i class="fas fa-laptop"></i> Client Files
-                        <span id="clientName" class="ms-2 text-warning"></span>
+                    <div class="flex items-center gap-1">
+                        <button class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors" onclick="createFolder('server')" title="New Folder">
+                            <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                        </button>
+                        <button class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors" onclick="refreshServer()" title="Refresh">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        </button>
                     </div>
-                    <div class="path-display" id="clientPath">Not connected</div>
                 </div>
-                <div class="panel-actions">
-                    <button class="btn btn-sm btn-outline-light" onclick="createFolder('client')" disabled id="clientFolderBtn">
-                        <i class="fas fa-folder-plus"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-light" onclick="refreshClient()" disabled id="clientRefreshBtn">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
+                
+                <!-- Path/Breadcrumb -->
+                <div class="bg-slate-800 p-2 border-b border-slate-700/50 flex flex-col gap-1 shrink-0">
+                    <div class="flex items-center gap-1 text-xs text-slate-400 overflow-x-auto whitespace-nowrap" id="serverBreadcrumb">
+                        <span class="hover:text-blue-400 cursor-pointer flex items-center gap-1" onclick="navigateServer('')">
+                            <i data-lucide="home" class="w-3 h-3"></i> Root
+                        </span>
+                    </div>
+                    <div class="font-mono text-[10px] text-slate-500 truncate" id="serverPath">Loading...</div>
+                </div>
+
+                <!-- Explorer Content -->
+                <div class="flex-1 overflow-y-auto explorer-scrollbar p-2" id="serverExplorer">
+                    <div class="flex flex-col items-center justify-center h-full text-slate-500">
+                        <i data-lucide="loader-2" class="w-6 h-6 animate-spin mb-2"></i>
+                        <span class="text-sm">Loading files...</span>
+                    </div>
                 </div>
             </div>
+
+            <!-- Transfer Controls (Middle Column on large screens) -->
+            <div class="flex lg:flex-col items-center justify-center gap-3 py-4 lg:py-0 bg-slate-800/30 lg:bg-transparent rounded-lg border border-slate-700/30 lg:border-none px-4 lg:px-0">
+                
+                <button class="transfer-button flex-1 lg:flex-none w-full lg:w-40 flex items-center justify-center gap-2 py-2.5 px-3 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded focus:outline-none hover:bg-blue-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all" onclick="transferFiles('client', 'copy')" disabled title="Copy Server -> Client">
+                    <span class="text-xs font-bold uppercase tracking-wider hidden lg:block">Copy</span>
+                    <i data-lucide="copy" class="w-3.5 h-3.5 lg:hidden"></i>
+                    <i data-lucide="chevron-right" class="w-4 h-4 hidden lg:block"></i>
+                    <i data-lucide="chevron-down" class="w-4 h-4 lg:hidden"></i>
+                </button>
+
+                <button class="transfer-button flex-1 lg:flex-none w-full lg:w-40 flex items-center justify-center gap-2 py-2.5 px-3 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded focus:outline-none hover:bg-indigo-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all" onclick="transferFiles('client', 'move')" disabled title="Move Server -> Client">
+                    <span class="text-xs font-bold uppercase tracking-wider hidden lg:block">Move</span>
+                    <i data-lucide="scissors" class="w-3.5 h-3.5 lg:hidden"></i>
+                    <i data-lucide="chevrons-right" class="w-4 h-4 hidden lg:block"></i>
+                    <i data-lucide="chevrons-down" class="w-4 h-4 lg:hidden"></i>
+                </button>
+
+                <div class="hidden lg:flex my-4 text-slate-600">
+                    <i data-lucide="arrow-right-left" class="w-6 h-6"></i>
+                </div>
+
+                <button class="transfer-button flex-1 lg:flex-none w-full lg:w-40 flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded focus:outline-none hover:bg-emerald-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all" onclick="transferFiles('server', 'copy')" disabled title="Copy Client -> Server">
+                    <i data-lucide="chevron-left" class="w-4 h-4 hidden lg:block"></i>
+                    <i data-lucide="chevron-up" class="w-4 h-4 lg:hidden"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider hidden lg:block">Copy</span>
+                    <i data-lucide="copy" class="w-3.5 h-3.5 lg:hidden"></i>
+                </button>
+
+                <button class="transfer-button flex-1 lg:flex-none w-full lg:w-40 flex items-center justify-center gap-2 py-2.5 px-3 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded focus:outline-none hover:bg-amber-600/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all" onclick="transferFiles('server', 'move')" disabled title="Move Client -> Server">
+                    <i data-lucide="chevrons-left" class="w-4 h-4 hidden lg:block"></i>
+                    <i data-lucide="chevrons-up" class="w-4 h-4 lg:hidden"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider hidden lg:block">Move</span>
+                    <i data-lucide="scissors" class="w-3.5 h-3.5 lg:hidden"></i>
+                </button>
+
+            </div>
+
+            <!-- Client Panel -->
+            <div class="flex flex-col h-[600px] bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                <!-- Panel Header -->
+                <div class="bg-slate-900/80 p-3 border-b border-slate-700 flex justify-between items-center shrink-0">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="laptop" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="font-semibold text-slate-200 text-sm tracking-wide">CLIENT FILES</span>
+                        <span id="clientName" class="text-xs font-mono text-emerald-500 ml-1"></span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button id="clientFolderBtn" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors" onclick="createFolder('client')" disabled title="New Folder">
+                            <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                        </button>
+                        <button id="clientRefreshBtn" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors" onclick="refreshClient()" disabled title="Refresh">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Path/Breadcrumb -->
+                <div class="bg-slate-800 p-2 border-b border-slate-700/50 flex flex-col gap-1 shrink-0">
+                    <div class="flex items-center gap-1 text-xs text-slate-400 overflow-x-auto whitespace-nowrap" id="clientBreadcrumb">
+                        <span class="hover:text-emerald-400 cursor-pointer flex items-center gap-1" onclick="navigateClient('')">
+                            <i data-lucide="home" class="w-3 h-3"></i> Root
+                        </span>
+                    </div>
+                    <div class="font-mono text-[10px] text-slate-500 truncate" id="clientPath">Not connected</div>
+                </div>
+
+                <!-- Explorer Content -->
+                <div class="flex-1 overflow-y-auto explorer-scrollbar p-2" id="clientExplorer">
+                    <div class="flex flex-col items-center justify-center h-full text-slate-500">
+                        <i data-lucide="monitor-off" class="w-8 h-8 opacity-50 mb-3"></i>
+                        <h4 class="text-sm font-medium text-slate-400">Not Connected</h4>
+                        <p class="text-xs mt-1">Discover and connect to a client</p>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- End Dual Panel -->
+
+        <!-- Actions & Upload Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
-            <div class="breadcrumb" id="clientBreadcrumb">
-                <span class="breadcrumb-item" onclick="navigateClient('')">
-                    <i class="fas fa-home"></i> Root
-                </span>
-            </div>
-            
-            <div class="file-explorer" id="clientExplorer">
-                <div class="empty-state">
-                    <i class="fas fa-laptop"></i>
-                    <h4>Connect to a client first</h4>
-                    <p>Discover and connect to view client files</p>
+            <!-- File Actions -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Actions
+                </h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="action-btn flex items-center justify-center gap-2 py-2 px-3 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onclick="downloadSelected('server')" disabled id="downloadServerBtn">
+                        <i data-lucide="download" class="w-4 h-4 text-blue-400"></i> Download (Server)
+                    </button>
+                    <button class="action-btn flex items-center justify-center gap-2 py-2 px-3 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onclick="downloadSelected('client')" disabled id="downloadClientBtn">
+                        <i data-lucide="download" class="w-4 h-4 text-emerald-400"></i> Download (Client)
+                    </button>
+                    <button class="action-btn flex items-center justify-center gap-2 py-2 px-3 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onclick="deleteSelected('server')" disabled id="deleteServerBtn">
+                        <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i> Delete (Server)
+                    </button>
+                    <button class="action-btn flex items-center justify-center gap-2 py-2 px-3 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onclick="deleteSelected('client')" disabled id="deleteClientBtn">
+                        <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i> Delete (Client)
+                    </button>
+                </div>
+                
+                <div class="mt-3 pt-3 border-t border-slate-700">
+                    <button class="action-btn w-full flex items-center justify-center gap-2 py-2 px-3 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onclick="showSystemInfo('client')" disabled id="infoClientBtn">
+                        <i data-lucide="info" class="w-4 h-4 text-cyan-400"></i> Client System Info
+                    </button>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Selected Items Panel -->
-    <div class="selected-items-panel" id="selectedItemsPanel" style="display: none;">
-        <h6><i class="fas fa-check-circle"></i> Selected Items</h6>
-        <div id="selectedItemsList"></div>
-    </div>
+            <!-- Upload Panel -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                        <i data-lucide="upload-cloud" class="w-4 h-4 text-purple-400"></i> Local Upload
+                    </h3>
+                    <div class="flex gap-4 text-sm">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
+                            <input type="radio" name="uploadTarget" value="server" checked class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                            Server
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
+                            <input type="radio" name="uploadTarget" value="client" id="uploadToClient" disabled class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                            Client
+                        </label>
+                    </div>
+                </div>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-        <button class="action-btn" onclick="downloadSelected('server')" disabled id="downloadServerBtn">
-            <i class="fas fa-download"></i> Download from Server
-        </button>
-        <button class="action-btn" onclick="downloadSelected('client')" disabled id="downloadClientBtn">
-            <i class="fas fa-download"></i> Download from Client
-        </button>
-        <button class="action-btn" onclick="deleteSelected('server')" disabled id="deleteServerBtn">
-            <i class="fas fa-trash"></i> Delete from Server
-        </button>
-        <button class="action-btn" onclick="deleteSelected('client')" disabled id="deleteClientBtn">
-            <i class="fas fa-trash"></i> Delete from Client
-        </button>
-        <button class="action-btn" onclick="showSystemInfo('client')" disabled id="infoClientBtn">
-            <i class="fas fa-info-circle"></i> Client System Info
-        </button>
-    </div>
+                <div id="uploadArea" class="upload-area border-2 border-dashed border-slate-600 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-800/80 hover:border-blue-500/50 transition-all h-[130px]" onclick="document.getElementById('fileInput').click()">
+                    <i data-lucide="upload" class="w-8 h-8 text-slate-400 mb-2"></i>
+                    <p class="text-sm font-medium text-slate-300 mb-1">Click to browse or drag & drop</p>
+                    <p class="text-xs text-slate-500">Uploads to the current directory in the selected panel</p>
+                    <input type="file" id="fileInput" multiple class="hidden" onchange="handleFileSelect()">
+                </div>
 
-    <!-- Upload Section -->
-    <div class="upload-section">
-        <h4><i class="fas fa-cloud-upload-alt"></i> Upload Files</h4>
-        <div class="mb-3">
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="uploadTarget" 
-                       id="uploadToServer" value="server" checked>
-                <label class="form-check-label text-light" for="uploadToServer">
-                    <i class="fas fa-server"></i> Upload to Server
-                </label>
+                <!-- Upload Progress -->
+                <div id="uploadProgress" class="mt-3 hidden">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span id="uploadStatusText" class="text-slate-300">Uploading...</span>
+                        <span id="uploadPercentage" class="text-blue-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1.5">
+                        <div id="uploadProgressBar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="uploadTarget" 
-                       id="uploadToClient" value="client">
-                <label class="form-check-label text-light" for="uploadToClient">
-                    <i class="fas fa-laptop"></i> Upload to Client
-                </label>
-            </div>
-        </div>
-        
-        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-            <div class="upload-icon">
-                <i class="fas fa-cloud-upload-alt"></i>
-            </div>
-            <div class="mb-3">
-                <h5 class="text-light">Drag & drop files here</h5>
-                <p class="text-muted">or click to browse files</p>
-            </div>
-            <button class="btn btn-primary btn-lg">
-                <i class="fas fa-folder-open"></i> Browse Files
-            </button>
-            <input type="file" id="fileInput" multiple style="display: none;" onchange="handleFileSelect()">
-        </div>
-        
-        <div id="uploadProgress" style="display: none; margin-top: 20px;">
-            <div class="progress" style="height: 20px;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                     id="uploadProgressBar" style="width: 0%"></div>
-            </div>
-            <div class="mt-2 text-center">
-                <span id="uploadStatus" class="text-light">Uploading...</span>
-            </div>
-        </div>
-    </div>
 
-    <!-- Client Storage Info -->
-    <div class="storage-info" id="clientStorageInfo" style="display: none;">
-        <h5><i class="fas fa-database"></i> Client Storage Information</h5>
-        <div id="storageDetails"></div>
+        </div>
+
     </div>
 </div>
 
+<!-- Modals -->
+
 <!-- Transfer Confirmation Modal -->
-<div class="modal fade" id="transferModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-exchange-alt"></i> Confirm File Transfer
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="transferDetails"></div>
-                <div class="mb-3">
-                    <label class="form-label text-dark">Transfer Action:</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="transferAction" 
-                               id="transferCopy" value="copy" checked>
-                        <label class="form-check-label text-dark" for="transferCopy">
-                            <i class="fas fa-copy"></i> Copy (Keep original files)
-                        </label>
+<div class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden" id="transferModal" tabindex="-1" aria-hidden="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</div>
+        
+        <div class="relative inline-block align-bottom bg-slate-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full border border-slate-700">
+            <div class="bg-slate-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div class="sm:flex sm:items-start">
+                    <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-900/30 sm:mx-0 sm:h-10 sm:w-10">
+                        <i data-lucide="arrow-right-left" class="h-5 w-5 text-blue-400"></i>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="transferAction" 
-                               id="transferMove" value="move">
-                        <label class="form-check-label text-dark" for="transferMove">
-                            <i class="fas fa-arrows-alt-h"></i> Move (Remove original files)
-                        </label>
+                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                        <h3 class="text-lg leading-6 font-medium text-white" id="modal-title">Confirm Transfer</h3>
+                        
+                        <div class="mt-4">
+                            <div id="transferDetails" class="bg-slate-900/50 p-3 rounded border border-slate-700/50 mb-4 max-h-40 overflow-y-auto">
+                                <!-- Populated dynamically -->
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-sm font-medium text-slate-300 mb-2 block">Action</label>
+                                    <div class="space-y-2">
+                                        <label class="flex items-center gap-2 cursor-pointer border border-slate-700 rounded p-2 hover:bg-slate-700/30">
+                                            <input type="radio" name="transferAction" value="copy" checked class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                                            <div class="flex flex-col">
+                                                <span class="text-sm text-slate-200">Copy</span>
+                                                <span class="text-xs text-slate-500">Keep original files</span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer border border-slate-700 rounded p-2 hover:bg-slate-700/30">
+                                            <input type="radio" name="transferAction" value="move" class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                                            <div class="flex flex-col">
+                                                <span class="text-sm text-slate-200">Move</span>
+                                                <span class="text-xs text-slate-500">Remove original files (Cut/Paste)</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label for="destinationPath" class="text-sm font-medium text-slate-300 mb-1 block">Destination Path Overflow (Optional)</label>
+                                    <input type="text" id="destinationPath" placeholder="Leave empty to use the current panel directory" class="block w-full rounded-md border-0 bg-slate-900 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label text-dark">Destination Path:</label>
-                    <input type="text" class="form-control" id="destinationPath" 
-                           placeholder="Leave empty for current directory">
-                </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancel
+            <div class="bg-slate-900/80 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-slate-700">
+                <button type="button" onclick="confirmTransfer()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                    Start Transfer
                 </button>
-                <button type="button" class="btn btn-primary" onclick="confirmTransfer()">
-                    <i class="fas fa-check"></i> Start Transfer
+                <button type="button" onclick="closeModal('transferModal')" class="mt-3 w-full inline-flex justify-center rounded-md border border-slate-600 shadow-sm px-4 py-2 bg-slate-800 text-base font-medium text-slate-300 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-slate-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    Cancel
                 </button>
             </div>
         </div>
@@ -775,962 +348,119 @@
 </div>
 
 <!-- System Info Modal -->
-<div class="modal fade" id="systemInfoModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-info text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-info-circle"></i> Client System Information
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden" id="systemInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</div>
+        <div class="relative inline-block align-bottom bg-slate-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl w-full border border-slate-700">
+            <div class="bg-slate-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+                    <h3 class="text-lg leading-6 font-medium text-white flex items-center gap-2">
+                        <i data-lucide="info" class="w-5 h-5 text-cyan-400"></i> Client System Information
+                    </h3>
+                    <button type="button" onclick="closeModal('systemInfoModal')" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div id="systemInfoContent" class="text-sm text-slate-300 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    Loading system information...
+                </div>
             </div>
-            <div class="modal-body" id="systemInfoContent">
-                Loading system information...
+            <div class="bg-slate-900/80 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-slate-700">
+                 <button type="button" onclick="closeModal('systemInfoModal')" class="w-full inline-flex justify-center rounded-md border border-slate-600 shadow-sm px-4 py-2 bg-slate-800 text-base font-medium text-slate-300 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-slate-500 sm:mt-0 sm:w-auto sm:text-sm">
+                    Close
+                </button>
             </div>
         </div>
     </div>
 </div>
+
 <!-- Development Warning Modal -->
-<div class="modal fade" id="devWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-radiation"></i> DANGER: DO NOT USE
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="fixed inset-0 bg-red-900/60 backdrop-blur-md z-[100] hidden flex items-center justify-center p-4" id="devWarningModal">
+    <div class="bg-slate-900 border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)] rounded-xl max-w-lg w-full overflow-hidden">
+        <div class="bg-red-500 text-white p-3 flex items-center justify-center gap-2">
+            <i data-lucide="radiation" class="w-6 h-6"></i>
+            <h2 class="font-bold tracking-widest uppercase">Development Version</h2>
+            <i data-lucide="radiation" class="w-6 h-6"></i>
+        </div>
+        <div class="p-6 text-center">
+            <div class="bg-red-500/10 border border-red-500/30 rounded p-4 mb-4">
+                <i data-lucide="triangle-alert" class="w-12 h-12 text-red-500 mx-auto mb-3"></i>
+                <h3 class="text-lg font-bold text-red-400 mb-2">DO NOT USE FOR REAL DATA</h3>
+                <p class="text-sm text-slate-300">File transfer is actively in development. Using this module on live environments could result in <strong class="text-white">file corruption or data loss</strong>.</p>
             </div>
-            <div class="modal-body text-center">
-                <div class="mb-4">
-                    <i class="fas fa-bug fa-4x text-danger mb-3"></i>
-                    <h1 class="text-danger fw-bold">⚠️ WARNING: DEVELOPMENT VERSION</h1>
-                </div>
-                
-                <div class="alert alert-danger">
-                    <h4><i class="fas fa-skull-crossbones"></i> CRITICAL WARNING:</h4>
-                    <p class="fs-5 mb-2"><strong>DO NOT USE THIS FEATURE!</strong></p>
-                    <p class="mb-0">This file transfer system is <strong class="text-decoration-underline">STILL IN DEVELOPMENT</strong> and <strong class="text-decoration-underline">CAN HARM YOUR PROJECT</strong>.</p>
-                </div>
-                
-                <div class="alert alert-warning">
-                    <h5><i class="fas fa-exclamation-triangle"></i> Why you should go back:</h5>
-                    <ul class="text-start mb-0">
-                        <li><strong>Data Corruption Risk:</strong> May corrupt or delete important files</li>
-                        <li><strong>Security Vulnerabilities:</strong> No security measures implemented yet</li>
-                        <li><strong>System Instability:</strong> Can crash or freeze your system</li>
-                        <li><strong>Unfinished Features:</strong> Most functions don't work properly</li>
-                        <li><strong>Testing Mode Only:</strong> Not meant for actual file transfers</li>
-                    </ul>
-                </div>
-                
-                <div class="alert alert-dark">
-                    <h6><i class="fas fa-hand-point-right"></i> <strong>This is NOT a production-ready feature</strong></h6>
-                    <p class="mb-0">This is purely for testing and development purposes. Using it for real file transfers WILL cause problems.</p>
-                </div>
-            </div>
-            <div class="modal-footer justify-content-between">
-                <button type="button" class="btn btn-success" onclick="window.history.back()">
-                    <i class="fas fa-arrow-left"></i> <strong>GO BACK TO SAFETY</strong>
+            <ul class="text-left text-sm text-slate-400 space-y-2 mb-6 bg-slate-800/50 p-4 rounded border border-slate-700">
+                <li class="flex items-start gap-2"><i data-lucide="shield-alert" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i> <span>No security constraints are implemented.</span></li>
+                <li class="flex items-start gap-2"><i data-lucide="file-warning" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i> <span>Large files may crash the backend process.</span></li>
+                <li class="flex items-start gap-2"><i data-lucide="bug" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i> <span>Client disconnects aren't handled gracefully yet.</span></li>
+            </ul>
+            <div class="flex gap-3 justify-center">
+                <button type="button" onclick="window.history.back()" class="bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded transition-colors flex items-center gap-2">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Go Back
                 </button>
-                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">
-                    <i class="fas fa-biohazard"></i> <strong>I UNDERSTAND THE RISKS - PROCEED ANYWAY</strong>
+                <button type="button" onclick="acknowledgeWarning()" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded transition-colors border border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+                    I Understand Disasters May Occur
                 </button>
-            </div>
-            
-            <div class="modal-footer justify-content-center">
-                <small class="text-muted">
-                    <i class="fas fa-shield-alt"></i> 
-                    <strong>ADMIN NOTE:</strong> This feature is still in testing mode. Do not use for production data.
-                </small>
             </div>
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // Initialize Lucide icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    // Modal logic
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) modal.classList.remove('hidden');
+    }
+    
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function acknowledgeWarning() {
+        closeModal('devWarningModal');
+        disableAllControls(false);
+    }
+
     // Global state
     let currentClient = null;
-    let selectedFiles = {
-        server: [],
-        client: []
-    };
-    let currentPaths = {
-        server: '',
-        client: ''
-    };
-    let transferConfig = {
-        direction: '',
-        action: 'copy'
-    };
+    let selectedFiles = { server: [], client: [] };
+    let currentPaths = { server: '', client: '' };
+    let transferConfig = { direction: '', action: 'copy' };
 
-    // Initialize
     document.addEventListener('DOMContentLoaded', function() {
+        // Show development warning modal initially
+        openModal('devWarningModal');
+        disableAllControls(true);
+        
         loadServerFiles();
         checkCurrentConnection();
-    });
-
-    // Discover clients in network
-    async function discoverClients() {
-        showLoading('Discovering clients in network...');
         
-        try {
-            const response = await fetch('/api/clients/discover');
-            const data = await response.json();
-            
-            if (data.success && data.clients.length > 0) {
-                renderClientsList(data.clients);
-            } else {
-                showError('No clients found in network');
-                document.getElementById('clientsList').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-search"></i>
-                        <h4>No clients found</h4>
-                        <p>No clients responded to discovery request</p>
-                    </div>
-                `;
-            }
-        } catch (error) {
-            showError('Failed to discover clients');
-        }
-        
-        hideLoading();
-    }
-
-    // Render clients list
-    function renderClientsList(clients) {
-        const container = document.getElementById('clientsList');
-        let html = '';
-        
-        clients.forEach(client => {
-            html += `
-                <div class="client-card" onclick="connectToClient('${client.ip}', ${client.port})">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="client-ip">${client.ip}:${client.port}</div>
-                            <div class="text-muted">${client.hostname}</div>
-                        </div>
-                        <div class="client-status">
-                            <span class="status-indicator status-online"></span>
-                            <span class="text-success">Online</span>
-                        </div>
-                    </div>
-                    <div class="mt-2 text-muted">
-                        <small><i class="far fa-clock"></i> Last seen: ${new Date(client.last_seen).toLocaleTimeString()}</small>
-                    </div>
-                </div>
-            `;
-        });
-        
-        container.innerHTML = html;
-    }
-
-    // Connect to client
-    async function connectToClient(ip, port = 5002) {
-        showLoading(`Connecting to ${ip}:${port}...`);
-        
-        try {
-            const response = await fetch('/api/clients/connect', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ ip, port })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                currentClient = data.client;
-                updateConnectionStatus(true, `${ip}:${port}`);
-                showSuccess(`Connected to ${ip}`);
-                
-                // Enable client controls
-                document.getElementById('clientFolderBtn').disabled = false;
-                document.getElementById('clientRefreshBtn').disabled = false;
-                document.getElementById('uploadToClient').disabled = false;
-                
-                // Load client files
-                loadClientFiles();
-            } else {
-                showError(data.error || 'Connection failed');
-            }
-        } catch (error) {
-            showError('Connection failed');
-        }
-        
-        hideLoading();
-    }
-
-    // Manual connection
-    function connectManual() {
-        document.getElementById('manualConnectForm').style.display = 'block';
-    }
-
-    function hideManualForm() {
-        document.getElementById('manualConnectForm').style.display = 'none';
-    }
-
-    async function connectToManual() {
-        const ip = document.getElementById('manualIP').value.trim();
-        const port = document.getElementById('manualPort').value;
-        
-        if (!ip) {
-            showError('IP address is required');
-            return;
-        }
-        
-        await connectToClient(ip, port);
-        hideManualForm();
-    }
-
-    // Disconnect from client
-    async function disconnectClient() {
-        try {
-            await fetch('/api/clients/disconnect', {
-                method: 'POST'
-            });
-            
-            currentClient = null;
-            updateConnectionStatus(false, 'Not connected');
-            showSuccess('Disconnected from client');
-            
-            // Disable client controls
-            document.getElementById('clientFolderBtn').disabled = true;
-            document.getElementById('clientRefreshBtn').disabled = true;
-            document.getElementById('uploadToClient').disabled = true;
-            
-            // Clear client explorer
-            document.getElementById('clientExplorer').innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-laptop"></i>
-                    <h4>Not connected</h4>
-                    <p>Connect to a client to view files</p>
-                </div>
-            `;
-        } catch (error) {
-            showError('Failed to disconnect');
-        }
-    }
-
-    // Check current connection
-    async function checkCurrentConnection() {
-        try {
-            const response = await fetch('/api/clients/current');
-            const data = await response.json();
-            
-            if (data.success && data.client) {
-                currentClient = data.client.info;
-                updateConnectionStatus(true, `${data.client.ip}:${data.client.port}`);
-                
-                // Enable client controls
-                document.getElementById('clientFolderBtn').disabled = false;
-                document.getElementById('clientRefreshBtn').disabled = false;
-                document.getElementById('uploadToClient').disabled = false;
-                
-                loadClientFiles();
-            }
-        } catch (error) {
-            // No current connection
-        }
-    }
-
-    // Update connection status UI
-    function updateConnectionStatus(connected, text) {
-        const statusIndicator = document.getElementById('connectionStatus');
-        const statusText = document.getElementById('connectionText');
-        const clientName = document.getElementById('clientName');
-        
-        if (connected) {
-            statusIndicator.className = 'status-indicator status-online';
-            statusText.textContent = `Connected to: ${text}`;
-            clientName.textContent = `(${text})`;
-        } else {
-            statusIndicator.className = 'status-indicator status-offline';
-            statusText.textContent = text;
-            clientName.textContent = '';
-        }
-    }
-
-    // Load server files
-    async function loadServerFiles(path = '') {
-        try {
-            const response = await fetch('/api/files/local/list', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ path })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                currentPaths.server = data.current_path;
-                document.getElementById('serverPath').textContent = data.current_path;
-                renderFileExplorer('server', data.items);
-                updateBreadcrumb('server', data.current_path);
-            } else {
-                showError('Failed to load server files');
-            }
-        } catch (error) {
-            showError('Failed to load server files');
-        }
-    }
-
-    // Load client files
-    async function loadClientFiles(path = '') {
-        if (!currentClient) return;
-        
-        try {
-            const response = await fetch('/api/files/client/list', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ path })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                currentPaths.client = data.current_path;
-                document.getElementById('clientPath').textContent = data.current_path;
-                renderFileExplorer('client', data.items);
-                updateBreadcrumb('client', data.current_path);
-            } else {
-                showError('Failed to load client files');
-            }
-        } catch (error) {
-            showError('Failed to load client files');
-        }
-    }
-
-    // Render file explorer
-    function renderFileExplorer(panel, items) {
-        const container = document.getElementById(`${panel}Explorer`);
-        
-        if (!items || items.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <h4>Empty directory</h4>
-                    <p>No files or folders found</p>
-                </div>
-            `;
-            return;
-        }
-        
-        let html = '<ul class="file-list">';
-        
-        items.forEach(item => {
-            const isSelected = selectedFiles[panel].includes(item.path);
-            const iconClass = item.is_dir ? 'folder' : 'file';
-            const size = formatFileSize(item.size);
-            const modified = new Date(item.modified * 1000).toLocaleString();
-            
-            html += `
-                <li class="file-item ${isSelected ? 'selected' : ''}"
-                    data-path="${item.path}"
-                    data-name="${item.name}"
-                    data-type="${item.is_dir ? 'folder' : 'file'}"
-                    onclick="selectFile(event, '${panel}', '${item.path}')">
-                    
-                    <div class="file-icon ${iconClass}">
-                        <i class="fas fa-${item.is_dir ? 'folder' : 'file'}"></i>
-                    </div>
-                    
-                    <div class="file-info">
-                        <div class="file-name">${item.name}</div>
-                        <div class="file-details">
-                            <span class="file-size">${size}</span>
-                            <span>${modified}</span>
-                            ${item.is_dir ? '<span class="badge bg-warning">Folder</span>' : ''}
-                        </div>
-                    </div>
-                </li>
-            `;
-        });
-        
-        html += '</ul>';
-        container.innerHTML = html;
-    }
-
-    // Select file
-    function selectFile(event, panel, filePath) {
-        event.stopPropagation();
-        
-        if (event.ctrlKey || event.metaKey) {
-            // Multi-select
-            const index = selectedFiles[panel].indexOf(filePath);
-            if (index === -1) {
-                selectedFiles[panel].push(filePath);
-            } else {
-                selectedFiles[panel].splice(index, 1);
-            }
-        } else {
-            // Single select
-            selectedFiles[panel] = [filePath];
-            selectedFiles[panel === 'server' ? 'client' : 'server'] = [];
-        }
-        
-        updateSelectionUI();
-    }
-
-    // Update selection UI
-    function updateSelectionUI() {
-        // Update file items
-        ['server', 'client'].forEach(panel => {
-            document.querySelectorAll(`#${panel}Explorer .file-item`).forEach(item => {
-                const path = item.dataset.path;
-                if (selectedFiles[panel].includes(path)) {
-                    item.classList.add('selected');
-                } else {
-                    item.classList.remove('selected');
-                }
-            });
-        });
-        
-        // Update transfer buttons
-        const serverSelected = selectedFiles.server.length > 0;
-        const clientSelected = selectedFiles.client.length > 0;
-        
-        document.querySelectorAll('.transfer-button').forEach(btn => {
-            btn.disabled = !(serverSelected || clientSelected);
-        });
-        
-        // Update action buttons
-        document.getElementById('downloadServerBtn').disabled = selectedFiles.server.length === 0;
-        document.getElementById('deleteServerBtn').disabled = selectedFiles.server.length === 0;
-        document.getElementById('downloadClientBtn').disabled = selectedFiles.client.length === 0;
-        document.getElementById('deleteClientBtn').disabled = selectedFiles.client.length === 0;
-        document.getElementById('infoClientBtn').disabled = !currentClient;
-        
-        // Show/hide selected items panel
-        const selectedPanel = document.getElementById('selectedItemsPanel');
-        const selectedList = document.getElementById('selectedItemsList');
-        
-        const totalSelected = selectedFiles.server.length + selectedFiles.client.length;
-        if (totalSelected > 0) {
-            selectedPanel.style.display = 'block';
-            
-            let html = '';
-            selectedFiles.server.forEach(path => {
-                html += `<div class="selected-item">
-                    <span><i class="fas fa-server"></i> ${path.split('/').pop() || path.split('\\\\').pop()}</span>
-                    <span class="badge bg-primary">Server</span>
-                </div>`;
-            });
-            
-            selectedFiles.client.forEach(path => {
-                html += `<div class="selected-item">
-                    <span><i class="fas fa-laptop"></i> ${path.split('/').pop() || path.split('\\\\').pop()}</span>
-                    <span class="badge bg-success">Client</span>
-                </div>`;
-            });
-            
-            selectedList.innerHTML = html;
-        } else {
-            selectedPanel.style.display = 'none';
-        }
-    }
-
-    // Transfer files
-    function transferFiles(direction, action) {
-        const sourcePanel = direction === 'client' ? 'server' : 'client';
-        const sourcePaths = selectedFiles[sourcePanel];
-        
-        if (sourcePaths.length === 0) {
-            showError('No files selected');
-            return;
-        }
-        
-        transferConfig.direction = direction;
-        transferConfig.action = action;
-        
-        const modal = new bootstrap.Modal(document.getElementById('transferModal'));
-        const detailsDiv = document.getElementById('transferDetails');
-        
-        let html = `
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i>
-                ${action === 'copy' ? 'Copying' : 'Moving'} ${sourcePaths.length} item(s)
-                ${direction === 'client' ? 'to client' : 'to server'}
-            </div>
-            <div class="selected-items-panel">
-        `;
-        
-        sourcePaths.forEach(path => {
-            const name = path.split('/').pop() || path.split('\\\\').pop();
-            html += `<div class="selected-item">
-                <span><i class="fas fa-file"></i> ${name}</span>
-                <span class="badge bg-secondary">${path.includes('/') || path.includes('\\\\') ? 'File' : 'Folder'}</span>
-            </div>`;
-        });
-        
-        html += '</div>';
-        detailsDiv.innerHTML = html;
-        
-        modal.show();
-    }
-
-    // Confirm transfer
-    async function confirmTransfer() {
-        const action = document.querySelector('input[name="transferAction"]:checked').value;
-        const destinationPath = document.getElementById('destinationPath').value;
-        const sourcePanel = transferConfig.direction === 'client' ? 'server' : 'client';
-        const sourcePaths = selectedFiles[sourcePanel];
-        
-        const modal = bootstrap.Modal.getInstance(document.getElementById('transferModal'));
-        modal.hide();
-        
-        showLoading(`Transferring ${sourcePaths.length} file(s)...`);
-        
-        try {
-            const response = await fetch('/api/files/transfer_between', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    source_paths: sourcePaths,
-                    destination_type: transferConfig.direction,
-                    destination_path: destinationPath || currentPaths[transferConfig.direction === 'client' ? 'client' : 'server'],
-                    action: action
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                showSuccess(`Transferred ${data.transferred} item(s) successfully`);
-                
-                // Refresh both panels
-                loadServerFiles(currentPaths.server);
-                if (currentClient) {
-                    loadClientFiles(currentPaths.client);
-                }
-                
-                // Clear selection
-                selectedFiles = { server: [], client: [] };
-                updateSelectionUI();
-            } else {
-                showError('Transfer failed');
-            }
-        } catch (error) {
-            showError('Transfer failed');
-        }
-        
-        hideLoading();
-    }
-
-    // Download selected files
-    async function downloadSelected(panel) {
-        const paths = selectedFiles[panel];
-        
-        if (paths.length === 0) return;
-        
-        if (panel === 'server') {
-            // Download from server
-            if (paths.length === 1) {
-                // Single file download
-                try {
-                    const response = await fetch('/api/files/local/download', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ path: paths[0] })
-                    });
-                    
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = paths[0].split('/').pop() || paths[0].split('\\\\').pop();
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                    }
-                } catch (error) {
-                    showError('Download failed');
-                }
-            }
-        } else {
-            // Download from client
-            try {
-                const response = await fetch('/api/files/client/download', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ path: paths[0] })
-                });
-                
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = paths[0].split('/').pop() || paths[0].split('\\\\').pop();
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                }
-            } catch (error) {
-                showError('Download failed');
-            }
-        }
-    }
-
-    // Delete selected files
-    async function deleteSelected(panel) {
-        const paths = selectedFiles[panel];
-        
-        if (paths.length === 0) return;
-        
-        if (!confirm(`Are you sure you want to delete ${paths.length} item(s)? This action cannot be undone.`)) {
-            return;
-        }
-        
-        showLoading(`Deleting ${paths.length} item(s)...`);
-        
-        try {
-            const endpoint = panel === 'server' ? '/api/files/local/delete' : '/api/files/client/delete';
-            
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ paths })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                showSuccess(`Deleted ${paths.length} item(s) successfully`);
-                
-                // Refresh panel
-                if (panel === 'server') {
-                    loadServerFiles(currentPaths.server);
-                } else {
-                    loadClientFiles(currentPaths.client);
-                }
-                
-                // Clear selection
-                selectedFiles[panel] = [];
-                updateSelectionUI();
-            } else {
-                showError('Delete failed');
-            }
-        } catch (error) {
-            showError('Delete failed');
-        }
-        
-        hideLoading();
-    }
-
-    // Create folder
-    async function createFolder(panel) {
-        const path = currentPaths[panel];
-        const name = prompt('Enter folder name:');
-        
-        if (!name || !name.trim()) {
-            return;
-        }
-        
-        try {
-            const endpoint = panel === 'server' ? '/api/files/local/create_folder' : '/api/files/client/create_folder';
-            
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    path: path,
-                    name: name.trim() 
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                showSuccess(`Folder "${name}" created`);
-                
-                // Refresh panel
-                if (panel === 'server') {
-                    loadServerFiles(currentPaths.server);
-                } else {
-                    loadClientFiles(currentPaths.client);
-                }
-            } else {
-                showError('Failed to create folder');
-            }
-        } catch (error) {
-            showError('Failed to create folder');
-        }
-    }
-
-    // Navigate
-    function navigateServer(path) {
-        loadServerFiles(path);
-        selectedFiles.server = [];
-        updateSelectionUI();
-    }
-
-    function navigateClient(path) {
-        if (!currentClient) return;
-        loadClientFiles(path);
-        selectedFiles.client = [];
-        updateSelectionUI();
-    }
-
-    // Update breadcrumb
-    function updateBreadcrumb(panel, currentPath) {
-        const container = document.getElementById(`${panel}Breadcrumb`);
-        
-        if (!currentPath) {
-            container.innerHTML = `
-                <span class="breadcrumb-item" onclick="navigate${panel === 'server' ? 'Server' : 'Client'}('')">
-                    <i class="fas fa-home"></i> Root
-                </span>
-            `;
-            return;
-        }
-        
-        let html = `<span class="breadcrumb-item" onclick="navigate${panel === 'server' ? 'Server' : 'Client'}('')">
-            <i class="fas fa-home"></i> Root
-        </span>`;
-        
-        const parts = currentPath.split(/[\/\\\\]/).filter(p => p);
-        let current = '';
-        
-        for (let i = 0; i < parts.length; i++) {
-            current += (current ? '/' : '') + parts[i];
-            html += `<span class="breadcrumb-separator">/</span>
-                    <span class="breadcrumb-item" onclick="navigate${panel === 'server' ? 'Server' : 'Client'}('${current}')">
-                        ${parts[i]}
-                    </span>`;
-        }
-        
-        container.innerHTML = html;
-    }
-
-    // File upload handling
-    function handleFileSelect() {
-        const files = document.getElementById('fileInput').files;
-        const target = document.querySelector('input[name="uploadTarget"]:checked').value;
-        
-        if (files.length === 0) return;
-        
-        if (target === 'client' && !currentClient) {
-            showError('Please connect to a client first');
-            return;
-        }
-        
-        uploadFiles(files, target);
-    }
-
-    async function uploadFiles(files, target) {
-        const formData = new FormData();
-        const currentPath = target === 'server' ? currentPaths.server : currentPaths.client;
-        
-        formData.append('path', currentPath);
-        
-        for (let i = 0; i < files.length; i++) {
-            formData.append('file', files[i]);
-        }
-        
-        // Show progress
-        const progressDiv = document.getElementById('uploadProgress');
-        const progressBar = document.getElementById('uploadProgressBar');
-        const statusText = document.getElementById('uploadStatus');
-        
-        progressDiv.style.display = 'block';
-        progressBar.style.width = '0%';
-        statusText.textContent = `Uploading ${files.length} file(s)...`;
-        
-        try {
-            const endpoint = target === 'server' ? '/api/files/local/upload' : '/api/files/client/upload';
-            
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                progressBar.style.width = '100%';
-                statusText.textContent = `Uploaded ${data.uploaded} file(s) successfully`;
-                
-                // Refresh panel
-                if (target === 'server') {
-                    loadServerFiles(currentPaths.server);
-                } else {
-                    loadClientFiles(currentPaths.client);
-                }
-                
-                // Clear file input
-                document.getElementById('fileInput').value = '';
-                
-                setTimeout(() => {
-                    progressDiv.style.display = 'none';
-                    progressBar.style.width = '0%';
-                }, 2000);
-            } else {
-                showError('Upload failed');
-                progressDiv.style.display = 'none';
-            }
-        } catch (error) {
-            showError('Upload failed');
-            progressDiv.style.display = 'none';
-        }
-    }
-
-    // Show system info
-    async function showSystemInfo(panel) {
-        if (panel === 'client' && !currentClient) return;
-        
-        try {
-            const response = await fetch('/api/files/client/system_info');
-            const data = await response.json();
-            
-            if (data.success) {
-                const modal = new bootstrap.Modal(document.getElementById('systemInfoModal'));
-                const contentDiv = document.getElementById('systemInfoContent');
-                
-                let html = `
-                    <div class="mb-3">
-                        <h6><i class="fas fa-computer"></i> System Information</h6>
-                        <div class="card">
-                            <div class="card-body">
-                                <p><strong>Hostname:</strong> ${data.system.hostname}</p>
-                                <p><strong>Platform:</strong> ${data.system.platform}</p>
-                                <p><strong>Username:</strong> ${data.system.username}</p>
-                                <p><strong>Home Directory:</strong> ${data.system.home_directory}</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <h6><i class="fas fa-database"></i> Storage Information</h6>
-                `;
-                
-                data.storage.forEach(disk => {
-                    const usedGB = (disk.used / (1024**3)).toFixed(2);
-                    const totalGB = (disk.total / (1024**3)).toFixed(2);
-                    const freeGB = (disk.free / (1024**3)).toFixed(2);
-                    
-                    html += `
-                        <div class="card mb-2">
-                            <div class="card-body">
-                                <h6>${disk.drive}</h6>
-                                <div class="progress-bar-container">
-                                    <div class="progress-bar" style="width: ${disk.percent}%"></div>
-                                </div>
-                                <div class="d-flex justify-content-between mt-2">
-                                    <small>${usedGB} GB used</small>
-                                    <small>${freeGB} GB free</small>
-                                    <small>${totalGB} GB total</small>
-                                </div>
-                                <div class="text-center mt-1">
-                                    <small class="text-muted">${disk.percent.toFixed(1)}% used</small>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += `
-                    </div>
-                    
-                    <div class="mb-3">
-                        <h6><i class="fas fa-folder"></i> Special Directories</h6>
-                        <div class="card">
-                            <div class="card-body">
-                `;
-                
-                for (const [key, value] of Object.entries(data.directories)) {
-                    html += `<p><strong>${key}:</strong> ${value}</p>`;
-                }
-                
-                html += `
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                contentDiv.innerHTML = html;
-                modal.show();
-            }
-        } catch (error) {
-            showError('Failed to get system information');
-        }
-    }
-
-    // Refresh functions
-    function refreshServer() {
-        loadServerFiles(currentPaths.server);
-        selectedFiles.server = [];
-        updateSelectionUI();
-    }
-
-    function refreshClient() {
-        if (!currentClient) return;
-        loadClientFiles(currentPaths.client);
-        selectedFiles.client = [];
-        updateSelectionUI();
-    }
-
-    // Utility functions
-    function formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    function showLoading(message = 'Loading...') {
-        // You can implement a loading overlay
-        console.log(message);
-    }
-
-    function hideLoading() {
-        // Hide loading overlay
-    }
-
-    function showSuccess(message) {
-        alertify.success(message);
-    }
-
-    function showError(message) {
-        alertify.error(message);
-    }
-
-    // Drag and drop
-    document.addEventListener('DOMContentLoaded', function() {
+        // Drag and Drop Setup
         const uploadArea = document.getElementById('uploadArea');
-        
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.classList.add('dragover');
+            uploadArea.classList.add('border-blue-500');
         });
         
         uploadArea.addEventListener('dragleave', () => {
             uploadArea.classList.remove('dragover');
+            uploadArea.classList.remove('border-blue-500');
         });
         
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
+            uploadArea.classList.remove('border-blue-500');
             
             const files = e.dataTransfer.files;
             if (files.length > 0) {
@@ -1740,61 +470,512 @@
         });
     });
 
-// Add this in your extra_js block, at the beginning of the script section
-document.addEventListener('DOMContentLoaded', function() {
-    // Show development warning modal
-    const devModal = new bootstrap.Modal(document.getElementById('devWarningModal'));
-    devModal.show();
-    
-    // Disable all interactive elements until user acknowledges warning
-    disableAllControls(true);
-    
-    // When modal is closed, enable controls
-    document.getElementById('devWarningModal').addEventListener('hidden.bs.modal', function() {
-        disableAllControls(false);
-    });
-    
-    // Load server files after modal interaction
-    loadServerFiles();
-    checkCurrentConnection();
-});
-
-// Function to disable/enable all controls
-function disableAllControls(disable) {
-    const interactiveElements = [
-        '.transfer-button',
-        '.action-btn',
-        '#uploadArea',
-        '#fileInput',
-        '.btn-copy-to-client',
-        '.btn-move-to-client',
-        '.btn-copy-to-server',
-        '.btn-move-to-server',
-        '#downloadServerBtn',
-        '#downloadClientBtn',
-        '#deleteServerBtn',
-        '#deleteClientBtn',
-        '#infoClientBtn',
-        '.client-card',
-        '.client-discovery button',
-        '.panel-actions button',
-        '#manualConnectForm input',
-        '#manualConnectForm button'
-    ];
-    
-    interactiveElements.forEach(selector => {
-        document.querySelectorAll(selector).forEach(element => {
-            element.disabled = disable;
-            if (disable) {
-                element.style.opacity = '0.5';
-                element.style.cursor = 'not-allowed';
-            } else {
-                element.style.opacity = '';
-                element.style.cursor = '';
-            }
+    function disableAllControls(disable) {
+        const selectors = [
+            '.transfer-button', '.action-btn', '#uploadArea', '#fileInput',
+            'button[onclick="discoverClients()"]', 'button[onclick="connectManual()"]',
+            'button[onclick="createFolder(\'server\')"]', 'button[onclick="refreshServer()"]',
+            '#clientFolderBtn', '#clientRefreshBtn', '#uploadToClient'
+        ];
+        
+        selectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(el => {
+                el.disabled = disable;
+                if(disable && el.tagName === 'DIV') el.style.pointerEvents = 'none'; // for upload area
+                else if(!disable && el.tagName === 'DIV') el.style.pointerEvents = 'auto';
+            });
         });
-    });
-}
+    }
 
+    // UI Notifiers
+    function showLoading(msg) { console.log("Loading:", msg); /* Optional UI implementation */ }
+    function hideLoading() { }
+    function showSuccess(msg) { window.UI.Notification.show(msg, 'success'); }
+    function showError(msg) { window.UI.Notification.show(msg, 'error'); }
+
+    // Client Connection Logic
+    async function discoverClients() {
+        showLoading('Scanning...');
+        const btn = document.querySelector('button[onclick="discoverClients()"]');
+        const icon = btn.querySelector('i');
+        icon.classList.add('animate-spin');
+        
+        try {
+            const res = await fetch('/api/clients/discover');
+            const data = await res.json();
+            const container = document.getElementById('clientsList');
+            
+            if (data.success && data.clients.length > 0) {
+                container.innerHTML = '';
+                data.clients.forEach(c => {
+                    container.innerHTML += `
+                        <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg p-3 hover:border-blue-500/50 cursor-pointer transition-colors" onclick="connectToClient('${c.ip}', ${c.port})">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <div class="text-sm font-mono text-blue-400 font-bold">${c.ip}:${c.port}</div>
+                                    <div class="text-xs text-slate-400 truncate w-32">${c.hostname}</div>
+                                </div>
+                                <span class="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                            </div>
+                            <div class="text-[10px] text-slate-500"><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i> ${new Date(c.last_seen).toLocaleTimeString()}</div>
+                        </div>
+                    `;
+                });
+                if(window.lucide) lucide.createIcons();
+            } else {
+                showError('No clients found on subnet.');
+                container.innerHTML = `<div class="col-span-full text-center py-6 text-slate-500 text-sm border-2 border-dashed border-slate-700/50 rounded-lg"><i data-lucide="radar" class="w-6 h-6 mx-auto mb-2 opacity-50"></i>No clients discovered</div>`;
+                if(window.lucide) lucide.createIcons();
+            }
+        } catch (e) {
+            showError('Network scan failed.');
+        } finally {
+            icon.classList.remove('animate-spin');
+            hideLoading();
+        }
+    }
+
+    function connectManual() {
+        const form = document.getElementById('manualConnectForm');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+    function hideManualForm() { document.getElementById('manualConnectForm').style.display = 'none'; }
+
+    async function connectToManual() {
+        const ip = document.getElementById('manualIP').value.trim();
+        const port = document.getElementById('manualPort').value;
+        if (!ip) { showError('IP required'); return; }
+        await connectToClient(ip, port);
+        hideManualForm();
+    }
+
+    async function connectToClient(ip, port = 5002) {
+        showLoading(`Connecting to ${ip}...`);
+        try {
+            const res = await fetch('/api/clients/connect', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, port })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentClient = data.client;
+                updateConnectionStatus(true, `${ip}:${port}`);
+                showSuccess('Connected to Client');
+                
+                document.getElementById('clientFolderBtn').disabled = false;
+                document.getElementById('clientRefreshBtn').disabled = false;
+                document.getElementById('uploadToClient').disabled = false;
+                document.getElementById('infoClientBtn').disabled = false;
+                
+                loadClientFiles();
+            } else {
+                showError(data.error || 'Connection failed');
+            }
+        } catch (e) { showError('Connection error'); }
+        hideLoading();
+    }
+
+    async function checkCurrentConnection() {
+        try {
+            const res = await fetch('/api/clients/current');
+            const data = await res.json();
+            if (data.success && data.client) {
+                currentClient = data.client.info;
+                updateConnectionStatus(true, `${data.client.ip}:${data.client.port}`);
+                
+                document.getElementById('clientFolderBtn').disabled = false;
+                document.getElementById('clientRefreshBtn').disabled = false;
+                document.getElementById('uploadToClient').disabled = false;
+                document.getElementById('infoClientBtn').disabled = false;
+                
+                loadClientFiles();
+            }
+        } catch (e) {}
+    }
+
+    function updateConnectionStatus(connected, text) {
+        const indicator = document.getElementById('connectionStatus');
+        const statusText = document.getElementById('connectionText');
+        const clientNameLbl = document.getElementById('clientName');
+        const clientExp = document.getElementById('clientExplorer');
+        
+        if (connected) {
+            indicator.className = 'flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_bg-emerald-500] animate-pulse';
+            statusText.textContent = text;
+            clientNameLbl.textContent = `(${text})`;
+        } else {
+            indicator.className = 'flex h-2 w-2 rounded-full bg-red-500 opacity-50';
+            statusText.textContent = 'Not connected';
+            clientNameLbl.textContent = '';
+            
+            document.getElementById('clientPath').textContent = 'Not connected';
+            document.getElementById('clientBreadcrumb').innerHTML = '<span class="text-slate-500 italic flex items-center gap-1"><i data-lucide="slash" class="w-3 h-3"></i> Disconnected</span>';
+            clientExp.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-slate-500"><i data-lucide="monitor-off" class="w-8 h-8 opacity-50 mb-3"></i><h4 class="text-sm font-medium text-slate-400">Not Connected</h4></div>`;
+            if(window.lucide) lucide.createIcons();
+        }
+    }
+
+    // Browsing Logic
+    async function loadServerFiles(path = '') {
+        try {
+            const res = await fetch('/api/files/local/list', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentPaths.server = data.current_path;
+                document.getElementById('serverPath').textContent = data.current_path || '/';
+                renderExplorer('server', data.items);
+                updateBreadcrumb('server', data.current_path);
+            }
+        } catch (e) { showError('Failed to load server files'); }
+    }
+
+    async function loadClientFiles(path = '') {
+        if (!currentClient) return;
+        try {
+            const res = await fetch('/api/files/client/list', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentPaths.client = data.current_path;
+                document.getElementById('clientPath').textContent = data.current_path || '/';
+                renderExplorer('client', data.items);
+                updateBreadcrumb('client', data.current_path);
+            }
+        } catch (e) { showError('Failed to load client files'); }
+    }
+
+    function renderExplorer(panel, items) {
+        const container = document.getElementById(`${panel}Explorer`);
+        if (!items || items.length === 0) {
+            container.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-slate-500"><i data-lucide="folder-open" class="w-8 h-8 opacity-50 mb-3"></i><span class="text-xs">Empty directory</span></div>`;
+            if(window.lucide) lucide.createIcons();
+            return;
+        }
+
+        let html = '<ul class="space-y-1">';
+        items.forEach(item => {
+            const isSelected = selectedFiles[panel].includes(item.path);
+            const size = formatFileSize(item.size);
+            const timeStr = new Date(item.modified * 1000).toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+            
+            const icon = item.is_dir ? '<i data-lucide="folder" class="w-4 h-4 text-amber-400"></i>' : '<i data-lucide="file" class="w-4 h-4 text-slate-400"></i>';
+            const bgHover = isSelected ? 'bg-blue-500/15 border-blue-500/50' : 'bg-slate-800/40 border-transparent hover:bg-slate-700/50 hover:border-slate-600';
+            const textClr = isSelected ? 'text-blue-100' : 'text-slate-200';
+
+            html += `
+                <li class="file-item flex items-center p-2 rounded border cursor-pointer select-none transition-colors ${bgHover}" 
+                    data-path="${item.path}" data-type="${item.is_dir ? 'dir' : 'file'}"
+                    onclick="selectFile(event, '${panel}', '${item.path}')">
+                    <div class="mr-3 shrink-0">${icon}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium truncate ${textClr}">${item.name}</div>
+                        <div class="flex gap-3 text-[10px] text-slate-500 mt-0.5 font-mono">
+                            ${item.is_dir ? '<span>Directory</span>' : `<span>${size}</span>`}
+                            <span>${timeStr}</span>
+                        </div>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+        if(window.lucide) lucide.createIcons({root: container});
+    }
+
+    function selectFile(e, panel, path) {
+        e.stopPropagation();
+        const list = selectedFiles[panel];
+        // Multi-select or drill down? Let's implement simple click = select, double click = drill for dirs.
+        // For simplicity with given HTML structure, shift/ctrl handling:
+        if (e.ctrlKey || e.metaKey) {
+            const idx = list.indexOf(path);
+            if (idx === -1) list.push(path);
+            else list.splice(idx, 1);
+        } else {
+            // Check if directory and handling navigation
+            const itemEl = e.currentTarget;
+            if (itemEl.dataset.type === 'dir' && list.length === 1 && list[0] === path) {
+                // If it's already selected and clicked again (fake double click), enter it. Timeouts are better for real dblclick but this is fine.
+                if(panel === 'server') navigateServer(path);
+                else navigateClient(path);
+                return;
+            }
+            selectedFiles[panel] = [path];
+            selectedFiles[panel === 'server' ? 'client' : 'server'] = [];
+        }
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        ['server', 'client'].forEach(panel => {
+            document.querySelectorAll(`#${panel}Explorer .file-item`).forEach(el => {
+                const isSel = selectedFiles[panel].includes(el.dataset.path);
+                if (isSel) {
+                    el.classList.add('bg-blue-500/15', 'border-blue-500/50');
+                    el.classList.remove('bg-slate-800/40', 'border-transparent', 'hover:bg-slate-700/50', 'hover:border-slate-600');
+                    el.querySelector('.text-sm').classList.replace('text-slate-200', 'text-blue-100');
+                } else {
+                    el.classList.remove('bg-blue-500/15', 'border-blue-500/50');
+                    el.classList.add('bg-slate-800/40', 'border-transparent', 'hover:bg-slate-700/50', 'hover:border-slate-600');
+                    if(el.querySelector('.text-sm').classList.contains('text-blue-100')) {
+                        el.querySelector('.text-sm').classList.replace('text-blue-100', 'text-slate-200');
+                    }
+                }
+            });
+        });
+
+        const sCt = selectedFiles.server.length;
+        const cCt = selectedFiles.client.length;
+
+        document.querySelectorAll('button[onclick^="transferFiles(\'client\'"]').forEach(b => b.disabled = sCt === 0);
+        document.querySelectorAll('button[onclick^="transferFiles(\'server\'"]').forEach(b => b.disabled = cCt === 0);
+        
+        document.getElementById('downloadServerBtn').disabled = sCt === 0;
+        document.getElementById('deleteServerBtn').disabled = sCt === 0;
+        document.getElementById('downloadClientBtn').disabled = cCt === 0;
+        document.getElementById('deleteClientBtn').disabled = cCt === 0;
+    }
+
+    function transferFiles(direction, action) {
+        const sourcePanel = direction === 'client' ? 'server' : 'client';
+        const sourcePaths = selectedFiles[sourcePanel];
+        if (sourcePaths.length === 0) return;
+
+        transferConfig = { direction, action };
+        const detailsDiv = document.getElementById('transferDetails');
+        
+        let actStr = action === 'copy' ? 'Copying' : 'Moving';
+        let dirStr = direction === 'client' ? 'to Client' : 'to Server';
+        
+        let html = `<p class="text-sm font-semibold text-white mb-2">${actStr} ${sourcePaths.length} items ${dirStr}</p><ul class="text-xs text-slate-300 space-y-1 list-disc pl-4">`;
+        sourcePaths.forEach(p => {
+            html += `<li>${p.split(/[\/\\]/).pop()}</li>`;
+        });
+        html += `</ul>`;
+        
+        detailsDiv.innerHTML = html;
+        document.querySelector(`input[name="transferAction"][value="${action}"]`).checked = true;
+        
+        openModal('transferModal');
+    }
+
+    async function confirmTransfer() {
+        const action = document.querySelector('input[name="transferAction"]:checked').value;
+        const destInput = document.getElementById('destinationPath').value;
+        const sourcePanel = transferConfig.direction === 'client' ? 'server' : 'client';
+        const destPanel = transferConfig.direction;
+        
+        closeModal('transferModal');
+        // show pseudo loading
+        updateSelectionUI(); // clears logic
+        
+        try {
+            const res = await fetch('/api/files/transfer_between', {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    source_paths: selectedFiles[sourcePanel],
+                    destination_type: destPanel,
+                    destination_path: destInput || currentPaths[destPanel],
+                    action: action
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showSuccess(`Transferred ${data.transferred} items.`);
+                refreshServer();
+                refreshClient();
+            } else { showError('Transfer failed: ' + (data.error || 'Unknown')); }
+        } catch(e){ showError('Transfer threw error.'); }
+    }
+
+    // Actions
+    async function createFolder(panel) {
+        const name = prompt('Folder name:');
+        if(!name || !name.trim()) return;
+        try {
+            const ep = panel === 'server' ? '/api/files/local/create_folder' : '/api/files/client/create_folder';
+            const res = await fetch(ep, {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ path: currentPaths[panel], name: name.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showSuccess(`Folder created.`);
+                panel === 'server' ? refreshServer() : refreshClient();
+            } else showError('Folder creation failed.');
+        } catch(e) { showError('Folder creation error.'); }
+    }
+
+    async function deleteSelected(panel) {
+        const paths = selectedFiles[panel];
+        if (!paths.length || !confirm(`Delete ${paths.length} items? This is permanent.`)) return;
+        try {
+            const ep = panel === 'server' ? '/api/files/local/delete' : '/api/files/client/delete';
+            const res = await fetch(ep, {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ paths })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showSuccess('Items deleted.');
+                selectedFiles[panel] = [];
+                panel === 'server' ? refreshServer() : refreshClient();
+            } else showError('Delete failed.');
+        } catch(e) { showError('Delete error.'); }
+    }
+
+    async function downloadSelected(panel) {
+        const path = selectedFiles[panel][0]; // Backend logic generally only handles 1 for now via a prompt
+        if(!path) return;
+        const ep = panel === 'server' ? '/api/files/local/download' : '/api/files/client/download';
+        try {
+            const res = await fetch(ep, {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ path })
+            });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = path.split(/[\/\\]/).pop();
+                document.body.appendChild(a); a.click(); a.remove();
+                window.URL.revokeObjectURL(url);
+            } else showError('Download failed API side.');
+        } catch(e) { showError('Download error.'); }
+    }
+
+    // Upload
+    function handleFileSelect() {
+        const input = document.getElementById('fileInput');
+        if(!input.files.length) return;
+        const tgt = document.querySelector('input[name="uploadTarget"]:checked').value;
+        if(tgt === 'client' && !currentClient) { showError('Not connected to client.'); return; }
+        uploadFiles(input.files, tgt);
+    }
+    
+    async function uploadFiles(files, target) {
+        const fd = new FormData();
+        fd.append('path', currentPaths[target]);
+        for(let i=0; i<files.length; i++) fd.append('file', files[i]);
+
+        const progContainer = document.getElementById('uploadProgress');
+        const progBar = document.getElementById('uploadProgressBar');
+        const statusTxt = document.getElementById('uploadStatusText');
+        const pctTxt = document.getElementById('uploadPercentage');
+        
+        progContainer.classList.remove('hidden');
+        progBar.style.width = '10%'; pctTxt.textContent = '10%';
+        statusTxt.textContent = `Uploading ${files.length} items...`;
+
+        try {
+            const ep = target === 'server' ? '/api/files/local/upload' : '/api/files/client/upload';
+            const res = await fetch(ep, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                progBar.style.width = '100%'; pctTxt.textContent = '100%';
+                statusTxt.textContent = 'Upload complete.';
+                target === 'server' ? refreshServer() : refreshClient();
+            } else {
+                showError('Upload failed.');
+                statusTxt.textContent = 'Failed.';
+                progBar.classList.replace('bg-blue-500', 'bg-red-500');
+            }
+        } catch (e) {
+            showError('Upload error.');
+        } finally {
+            document.getElementById('fileInput').value = '';
+            setTimeout(() => { 
+                progContainer.classList.add('hidden'); 
+                progBar.style.width = '0%'; pctTxt.textContent = '0%';
+                progBar.classList.replace('bg-red-500', 'bg-blue-500');
+            }, 3000);
+        }
+    }
+
+    // Nav
+    function navigateServer(p) { loadServerFiles(p); selectedFiles.server=[]; updateSelectionUI(); }
+    function navigateClient(p) { if(currentClient) { loadClientFiles(p); selectedFiles.client=[]; updateSelectionUI(); } }
+    function refreshServer() { loadServerFiles(currentPaths.server); selectedFiles.server=[]; updateSelectionUI(); }
+    function refreshClient() { if(currentClient) { loadClientFiles(currentPaths.client); selectedFiles.client=[]; updateSelectionUI(); } }
+
+    function updateBreadcrumb(panel, path) {
+        const container = document.getElementById(`${panel}Breadcrumb`);
+        if (!path) {
+            container.innerHTML = `<span class="hover:text-blue-400 cursor-pointer flex items-center gap-1" onclick="navigate${panel==='server'?'Server':'Client'}('')"><i data-lucide="home" class="w-3 h-3"></i> Root</span>`;
+            if(window.lucide) lucide.createIcons({root:container});
+            return;
+        }
+        
+        let html = `<span class="hover:text-amber-400 cursor-pointer flex items-center gap-1" onclick="navigate${panel==='server'?'Server':'Client'}('')"><i data-lucide="home" class="w-3 h-3"></i> Root</span>`;
+        const parts = path.split(/[\/\\]/).filter(Boolean);
+        let curr = '';
+        parts.forEach(p => {
+            curr += (curr?'/':'') + p;
+            html += `<span class="text-slate-600">/</span><span class="hover:text-amber-400 cursor-pointer" onclick="navigate${panel==='server'?'Server':'Client'}('${curr}')">${p}</span>`;
+        });
+        container.innerHTML = html;
+        if(window.lucide) lucide.createIcons({root:container});
+    }
+
+    // System Info
+    async function showSystemInfo(panel) {
+        if(panel === 'client' && !currentClient) return;
+        try {
+            const res = await fetch('/api/files/client/system_info');
+            const data = await res.json();
+            if(data.success) {
+                const info = data.system;
+                let html = `
+                    <div class="mb-5">
+                        <h4 class="text-white font-medium mb-2 border-b border-slate-700 pb-1 flex items-center gap-2"><i data-lucide="cpu" class="w-4 h-4 text-slate-400"></i> Host Details</h4>
+                        <div class="grid grid-cols-2 gap-4 bg-slate-900/50 p-3 rounded">
+                            <div><span class="text-slate-500 text-xs block">Hostname</span><span class="font-mono text-sm">${info.hostname}</span></div>
+                            <div><span class="text-slate-500 text-xs block">Platform</span><span class="font-mono text-sm">${info.platform}</span></div>
+                            <div><span class="text-slate-500 text-xs block">User</span><span class="font-mono text-sm">${info.username}</span></div>
+                            <div class="col-span-2"><span class="text-slate-500 text-xs block">Home Dir</span><span class="font-mono text-xs break-all">${info.home_directory}</span></div>
+                        </div>
+                    </div>
+                `;
+                if(data.storage && data.storage.length) {
+                    html += `
+                        <div class="mb-5">
+                            <h4 class="text-white font-medium mb-2 border-b border-slate-700 pb-1 flex items-center gap-2"><i data-lucide="hard-drive" class="w-4 h-4 text-slate-400"></i> Disks</h4>
+                            <div class="space-y-3">
+                    `;
+                    data.storage.forEach(d => {
+                        const uGB = (d.used/1e9).toFixed(1); const fGB = (d.free/1e9).toFixed(1); const tGB = (d.total/1e9).toFixed(1);
+                        const clr = d.percent > 90 ? 'bg-red-500' : (d.percent > 75 ? 'bg-amber-500' : 'bg-emerald-500');
+                        html += `
+                            <div class="bg-slate-900/50 p-2 rounded">
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="font-bold text-slate-200">${d.drive}</span>
+                                    <span class="text-slate-400">${d.percent.toFixed(1)}% Used</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5 mb-1"><div class="${clr} h-1.5 rounded-full" style="width: ${d.percent}%"></div></div>
+                                <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                                    <span>${uGB}GB Used</span><span>${fGB}GB Free</span><span>${tGB}GB Total</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += `</div></div>`;
+                }
+                document.getElementById('systemInfoContent').innerHTML = html;
+                openModal('systemInfoModal');
+                if(window.lucide) lucide.createIcons({root: document.getElementById('systemInfoModal')});
+            }
+        } catch(e) { showError('Failed grabbing info.'); }
+    }
+
+    function formatFileSize(bytes) {
+        if(bytes===0) return '0 B';
+        const k=1024, sizes=['B','KB','MB','GB','TB'], i=Math.floor(Math.log(bytes)/Math.log(k));
+        return parseFloat((bytes/Math.pow(k,i)).toFixed(1)) + ' ' + sizes[i];
+    }
 </script>
 {% endblock %}

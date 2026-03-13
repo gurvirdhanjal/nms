@@ -1,97 +1,235 @@
 {% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_table_container, ui_badge, ui_empty_state, ui_slide_over %}
 
 {% block title %}User Management - Device Monitoring{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
+<!-- Specific user management styles not covered by global layout -->
 <style>
-    /* User Management - Tactical Theme */
-    .user-table-container {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        overflow: hidden;
+    /* Metric Cards Strip */
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+    }
+
+    .metric-card {
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 6px;
+        padding: 1rem;
+    }
+
+    .metric-card .stat-label {
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .metric-card .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #e6edf5;
+        line-height: 1.1;
+    }
+
+    .user-form-compact .field-label {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #94a3b8;
+    }
+
+    .user-form-compact .field-help {
+        display: inline;
+        margin-left: 0.35rem;
+        font-size: 0.65rem;
+        font-weight: 400;
+        letter-spacing: 0;
+        text-transform: none;
+        color: #64748b;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1><i class="fas fa-users-cog"></i> User Management</h1>
-        <p class="lead">Manage system users and permissions</p>
-    </div>
-</div>
+<div class="page-section">
+    <div class="page-container">
+        
+        <!-- Header -->
+        {% call ui_page_header('Users', 'Manage users, roles, and department access.') %}
+            <button type="button" class="hidden rounded-md bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-400 shadow-sm ring-1 ring-inset ring-red-500/30 hover:bg-red-500/20 transition-colors" id="bulkDeleteBtn">
+                <i class="fas fa-trash-alt mr-2"></i> Delete Selected (<span id="selectedCount">0</span>)
+            </button>
+            <button type="button" class="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" onclick="openUserModal()">
+                <i class="fas fa-user-plus mr-2"></i> Add User
+            </button>
+        {% endcall %}
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="mb-0"><i class="fas fa-list"></i> User List</h5>
+        <!-- Metric Strip -->
+        <div class="metric-strip ui-fade-up">
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-users text-blue-500"></i> Total Users</div>
+                <div class="stat-value">{{ users|length }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-crown text-amber-500"></i> Administrators</div>
+                <div class="stat-value">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-shield-alt text-emerald-500"></i> Active Users</div>
+                <div class="stat-value">{{ users|selectattr('is_active')|list|length }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-building text-slate-400"></i> Assigned Department</div>
+                <div class="stat-value">{{ users|selectattr('department_id')|list|length }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-clock text-slate-400"></i> UTC Time</div>
+                <div class="stat-value text-slate-300 text-lg flex items-center h-full pt-1" id="utc-clock">--:--:--</div>
+            </div>
+        </div>
+
+        <div class="page-body">
+            <!-- Filtering Ribbon -->
+            <div class="bg-slate-900/50 border border-slate-700/50 rounded-lg p-4 mb-6 flex flex-col sm:flex-row gap-4">
+                <div class="flex-1 relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-search text-slate-500"></i>
                     </div>
-                    <div class="col-md-6 text-end">
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal">
-                            <i class="fas fa-plus"></i> Add New User
-                        </button>
-                    </div>
+                    <input type="text" id="userSearch" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" placeholder="Search users by name or email..." autocomplete="off">
+                </div>
+                
+                <div class="w-full sm:w-48">
+                    <select id="roleFilter" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 cursor-pointer">
+                        <option value="">All Roles</option>
+                        {% for r in roles %}
+                            <option value="{{ r }}">{{ r|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="w-full sm:w-56">
+                    <select id="deptFilter" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 cursor-pointer">
+                        <option value="">All Departments</option>
+                        {% for dept in departments %}
+                            <option value="{{ dept.name }}">{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
             </div>
-            <div class="card-body">
+
+            <!-- Asset Table Container -->
+            {% call ui_table_container() %}
                 {% if users %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-dark">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50" id="usersTable">
+                        <thead class="bg-slate-900/50">
                             <tr>
-                                <th>Username</th>
-                                <th>Email</th>
-                                <th>Role</th>
-                                <th>Phone</th>
-                                <th>Status</th>
-                                <th>Created</th>
-                                <th>Actions</th>
+                                <th scope="col" class="py-3 pl-4 pr-3 text-left w-12 sm:pl-6">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" id="selectAll" class="h-4 w-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-600 focus:ring-offset-slate-900 cursor-pointer">
+                                    </div>
+                                </th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">User</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Email</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-32">Role</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Department</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-32">Status</th>
+                                <th scope="col" class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-32">Established</th>
+                                <th scope="col" class="relative py-3 pl-3 pr-4 sm:pr-6 w-16">
+                                    <span class="sr-only">Actions</span>
+                                </th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="divide-y divide-slate-700/50 bg-slate-800/20">
                             {% for user in users %}
-                            <tr>
-                                <td>
-                                    <strong>{{ user.username }}</strong>
-                                    {% if user.id == session.user_id %}
-                                    <span class="badge bg-info ms-1">You</span>
-                                    {% endif %}
+                            {% set is_self = user.id == session.user_id %}
+                            <tr class="hover:bg-slate-700/30 transition-colors group user-row" 
+                                data-id="{{ user.id }}"
+                                data-username="{{ user.username }}"
+                                data-username-filter="{{ user.username|lower }}"
+                                data-email="{{ user.email }}"
+                                data-email-filter="{{ user.email|lower }}"
+                                data-role="{{ user.role }}"
+                                data-dept="{{ user.department.name if user.department else 'global' }}"
+                                data-department-id="{{ user.department_id or '' }}"
+                                data-phone-number="{{ user.phone_number or '' }}">
+                                
+                                <td class="whitespace-nowrap py-3.5 pl-4 pr-3 sm:pl-6">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-600 focus:ring-offset-slate-900 user-cb cursor-pointer" value="{{ user.id }}" {% if is_self %}disabled{% endif %}>
+                                    </div>
                                 </td>
-                                <td>{{ user.email }}</td>
-                                <td>
-                                    <span
-                                        class="badge bg-{{ 'primary' if user.role == 'admin' else 'info' if user.role == 'manager' else 'secondary' }}">
-                                        {{ user.role }}
-                                    </span>
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5">
+                                    <div class="flex items-center gap-2">
+                                        <div class="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 border border-slate-600 uppercase">
+                                            {{ user.username[0] }}
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <a href="/users/{{ user.id }}" class="text-sm font-medium text-slate-200 hover:text-blue-400 transition-colors">{{ user.username }}</a>
+                                            {% if is_self %}
+                                                <span class="text-[0.65rem] text-blue-500 font-bold uppercase tracking-wider">Current Account</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </td>
-                                <td>{{ user.phone_number or 'N/A' }}</td>
-                                <td>
-                                    {% if user.is_active %}
-                                    <span class="badge bg-success">Active</span>
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm text-slate-400">
+                                    {{ user.email }}
+                                </td>
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5">
+                                    {% if user.role == 'admin' %}
+                                        {{ ui_badge(user.role|upper, 'info') }}
+                                    {% elif user.role == 'manager' %}
+                                        {{ ui_badge(user.role|upper, 'success') }}
                                     {% else %}
-                                    <span class="badge bg-danger">Inactive</span>
+                                        {{ ui_badge(user.role|upper, 'neutral') }}
                                     {% endif %}
                                 </td>
-                                <td><small>{{ user.created_at.strftime('%Y-%m-%d') }}</small></td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-primary" onclick="editUser({{ user.id }})"
-                                            title="Edit User">
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm font-mono text-slate-400">
+                                    {{ user.department.name if user.department else 'No Department' }}
+                                </td>
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5">
+                                    <div class="flex items-center gap-2">
+                                        <div class="h-2 w-2 rounded-full {% if user.is_active %}bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]{% else %}bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]{% endif %}"></div>
+                                        <span class="text-xs font-mono {% if user.is_active %}text-emerald-400{% else %}text-red-400{% endif %}">
+                                            {{ 'Active' if user.is_active else 'Inactive' }}
+                                        </span>
+                                    </div>
+                                </td>
+                                
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm font-mono text-slate-500 text-xs">
+                                    {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '---' }}
+                                </td>
+                                
+                                <td class="relative whitespace-nowrap py-3.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                                    <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onclick="editUser(this)" class="table-action-btn" title="Edit user">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <button class="btn btn-outline-warning"
-                                            onclick="toggleUserStatus({{ user.id }})"
-                                            title="{{ 'Deactivate' if user.is_active else 'Activate' }} User" {% if
-                                            user.id==session.user_id %}disabled{% endif %}>
-                                            <i class="fas {{ 'fa-pause' if user.is_active else 'fa-play' }}"></i>
+                                        <button data-action="toggle-status" data-user-id="{{ user.id }}" class="table-action-btn" title="{{ 'Disable user' if user.is_active else 'Enable user' }}">
+                                            <i class="fas {{ 'fa-user-slash text-amber-500' if user.is_active else 'fa-user-check text-emerald-500' }}"></i>
                                         </button>
-                                        <button class="btn btn-outline-danger" onclick="deleteUser({{ user.id }})"
-                                            title="Delete User" {% if user.id==session.user_id %}disabled{% endif %}>
-                                            <i class="fas fa-trash"></i>
+                                        <button {% if not is_self %}data-action="delete" data-user-id="{{ user.id }}"{% endif %} class="table-action-btn text-red-400 {% if is_self %}opacity-50 cursor-not-allowed{% endif %}" title="Delete user" {% if is_self %}disabled{% endif %}>
+                                            <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -101,169 +239,347 @@
                     </table>
                 </div>
                 {% else %}
-                <div class="text-center py-4">
-                    <i class="fas fa-users fa-3x text-muted mb-3"></i>
-                    <h5>No Users Found</h5>
-                    <p class="text-muted">Get started by adding your first user.</p>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal">
-                        <i class="fas fa-plus"></i> Add First User
-                    </button>
-                </div>
+                    <div class="py-12">
+                        {{ ui_empty_state('No Users Found', 'No users are available yet. Add a user to get started.') }}
+                        <div class="mt-6 flex justify-center">
+                            <button type="button" class="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" onclick="openUserModal()">
+                                <i class="fas fa-user-plus mr-2"></i> Add First User
+                            </button>
+                        </div>
+                    </div>
                 {% endif %}
-            </div>
+            {% endcall %}
         </div>
     </div>
 </div>
 
-<!-- User Modal -->
-<div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="userModalLabel">
-                    {% if user %}Edit User{% else %}Add New User{% endif %}
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<!-- Sliding Panel for User Management -->
+{% call ui_slide_over('user-slide-over', 'User details', 'userSlideOverTitle') %}
+    <form method="POST" action="{{ url_for('user_management_bp.save_user') }}" id="userForm" class="user-form-compact flex min-h-full flex-col gap-4">
+        <input type="hidden" id="field-user-id" name="user_id">
+        
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
+            <div>
+                <label for="field-username" class="field-label">Username *</label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-id-badge text-slate-500"></i>
+                    </div>
+                    <input type="text" id="field-username" name="username" required minlength="3" maxlength="80" autocomplete="username" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                </div>
             </div>
-            <form method="POST" action="{{ url_for('user_management_bp.save_user') }}">
-                <div class="modal-body">
-                    {% if user %}
-                    <input type="hidden" name="user_id" value="{{ user.id }}">
-                    {% endif %}
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username *</label>
-                                <input type="text" class="form-control" id="username" name="username"
-                                    value="{{ user.username if user else '' }}" required minlength="3" maxlength="80"
-                                    placeholder="Enter username">
-                                <div class="form-text">Minimum 3 characters</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email Address *</label>
-                                <input type="email" class="form-control" id="email" name="email"
-                                    value="{{ user.email if user else '' }}" required placeholder="Enter email address">
-                            </div>
-                        </div>
+            
+            <div>
+                <label for="field-email" class="field-label">Email *</label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-envelope text-slate-500"></i>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="password" class="form-label">
-                                    Password {% if not user %}*{% else %}(leave blank to keep current){% endif %}
-                                </label>
-                                <input type="password" class="form-control" id="password" name="password" {% if not user
-                                    %}required{% endif %} minlength="6" placeholder="Enter password">
-                                <div class="form-text">Minimum 6 characters</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="role" class="form-label">Role *</label>
-                                <select class="form-control" id="role" name="role" required>
-                                    <option value="">Select Role</option>
-                                    <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>
-                                        Administrator</option>
-                                    <option value="manager" {% if user and user.role=='manager' %}selected{% endif %}>
-                                        Manager</option>
-                                    <option value="operator" {% if user and user.role=='operator' %}selected{% endif %}>
-                                        Operator</option>
-                                    <option value="viewer" {% if user and user.role=='viewer' %}selected{% endif %}>
-                                        Viewer</option>
-                                    <option value="user" {% if user and user.role=='user' %}selected{% endif %}>User
-                                        (Legacy)</option>
-                                </select>
-                                <div class="form-text">Admin has full system access, Managers/Operators are restricted
-                                    to Departments</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="department_id" class="form-label">Department (For non-admins)</label>
-                                <select class="form-control" id="department_id" name="department_id">
-                                    <option value="">No Department Assigned</option>
-                                    {% for dept in departments %}
-                                    <option value="{{ dept.id }}" {% if user and user.department_id==dept.id
-                                        %}selected{% endif %}>{{ dept.name }}</option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">Restricts user to see only devices in this department</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="phone_number" class="form-label">Phone Number</label>
-                                <input type="tel" class="form-control" id="phone_number" name="phone_number"
-                                    value="{{ user.phone_number if user else '' }}" placeholder="Enter phone number">
-                                <div class="form-text">Optional - for notifications</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {% if user %}
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        Leave password blank to keep the current password.
-                    </div>
-                    {% endif %}
+                    <input type="email" id="field-email" name="email" required autocomplete="email" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        {% if user %}Update User{% else %}Add User{% endif %}
-                    </button>
+            </div>
+            
+            <div>
+                <label for="field-password" class="field-label">
+                    Password <span id="pwd-hint" class="field-help hidden">(Leave blank to keep the current password)</span>
+                </label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-key text-slate-500"></i>
+                    </div>
+                    <input type="password" id="field-password" name="password" minlength="6" autocomplete="new-password" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
                 </div>
-            </form>
+            </div>
+            
+            <div>
+                <label for="field-role" class="field-label">Role *</label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-shield-alt text-slate-500 z-10"></i>
+                    </div>
+                    <select id="field-role" name="role" required class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 cursor-pointer appearance-none">
+                        {% for r in roles %}
+                            <option value="{{ r }}">{{ r|title }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                        <i class="fas fa-chevron-down text-blue-500 text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label for="field-department-id" class="field-label">Department</label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-building text-slate-500 z-10"></i>
+                    </div>
+                    <select id="field-department-id" name="department_id" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 cursor-pointer appearance-none">
+                        <option value="">No Department</option>
+                        {% for dept in departments %}
+                            <option value="{{ dept.id }}">{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                        <i class="fas fa-chevron-down text-blue-500 text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label for="field-phone-number" class="field-label">Phone Number</label>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <i class="fas fa-phone text-slate-500"></i>
+                    </div>
+                    <input type="tel" id="field-phone-number" name="phone_number" autocomplete="tel" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                </div>
+            </div>
         </div>
-    </div>
-</div>
+        
+        <div class="sticky bottom-0 mt-auto -mx-6 border-t border-slate-700/50 bg-slate-800/95 px-6 pt-4 pb-1 backdrop-blur-sm sm:-mx-8 sm:px-8">
+            <div class="flex justify-end gap-x-3">
+            <button type="button" class="rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors" onclick="window.UI.SlideOver.close('user-slide-over')">Cancel</button>
+            <button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 border border-blue-500">Save User</button>
+            </div>
+        </div>
+    </form>
+{% endcall %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    function editUser(userId) {
-        window.location.href = '/user_management?edit_id=' + userId;
-    }
+(function () {
+    'use strict';
 
-    function toggleUserStatus(userId) {
-        if (confirm('Are you sure you want to change this user\'s status?')) {
-            fetch('/api/users/' + userId + '/toggle_status', {
-                method: 'POST'
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    } else {
-                        alert(data.error || 'Error changing user status');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error changing user status');
-                });
+    /* ── Utilities ── */
+    const $ = (sel, ctx = document) => ctx.querySelector(sel);
+    const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+    async function api(url, opts = {}) {
+        try {
+            const res = await fetch(url, { credentials: 'same-origin', ...opts });
+            if (res.ok) return { ok: true, data: res.headers.get('content-type')?.includes('json') ? await res.json() : null };
+            const body = await res.json().catch(() => ({}));
+            return { ok: false, error: body.error || `HTTP ${res.status}` };
+        } catch (e) {
+            return { ok: false, error: e.message };
         }
     }
 
-    function deleteUser(userId) {
-        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-            window.location.href = '/user_management?delete_id=' + userId;
+    /* ── Clock ── */
+    function tickClock() {
+        const el = $('#utc-clock');
+        if (el) {
+            const now = new Date();
+            el.innerHTML = `<span class="font-bold text-slate-200">${now.getUTCHours().toString().padStart(2, '0')}:${now.getUTCMinutes().toString().padStart(2, '0')}</span><span class="text-slate-500 text-sm ml-1">${now.getUTCSeconds().toString().padStart(2, '0')}</span>`;
         }
     }
+    tickClock();
+    setInterval(tickClock, 1000);
 
-    // Auto-open modal if editing user
-    {% if user %}
-    document.addEventListener('DOMContentLoaded', function () {
-        const modal = new bootstrap.Modal(document.getElementById('userModal'));
-        modal.show();
+    /* ── Table filtering ── */
+    const searchInput = $('#userSearch');
+    const roleFilter  = $('#roleFilter');
+    const deptFilter  = $('#deptFilter');
+    const rows        = $$('.user-row');
+    const userForm    = $('#userForm');
+
+    function applyFilters() {
+        if(!rows.length) return;
+        const q    = (searchInput?.value || '').toLowerCase();
+        const role = (roleFilter?.value  || '').toLowerCase();
+        const dept = (deptFilter?.value  || '').toLowerCase();
+
+        rows.forEach(row => {
+            const matchQ    = !q    || row.dataset.usernameFilter.includes(q) || row.dataset.emailFilter.includes(q);
+            const matchRole = !role || row.dataset.role.toLowerCase() === role;
+            const matchDept = !dept || row.dataset.dept.toLowerCase() === dept;
+            if(matchQ && matchRole && matchDept) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    roleFilter?.addEventListener('change', applyFilters);
+    deptFilter?.addEventListener('change', applyFilters);
+
+    ['field-username', 'field-email'].forEach((fieldId) => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('input', () => field.setCustomValidity(''));
+        }
     });
+
+    /* ── Bulk selection ── */
+    const selectAll  = $('#selectAll');
+    const bulkBtn    = $('#bulkDeleteBtn');
+    const countSpan  = $('#selectedCount');
+    const checkboxes = $$('.user-cb');
+
+    function syncBulkUI() {
+        const checked = checkboxes.filter(cb => cb.checked);
+        countSpan.textContent = checked.length;
+        if(checked.length === 0) {
+            bulkBtn.classList.add('hidden');
+        } else {
+            bulkBtn.classList.remove('hidden');
+        }
+    }
+
+    selectAll?.addEventListener('change', () => {
+        checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = selectAll.checked; });
+        syncBulkUI();
+    });
+
+    checkboxes.forEach(cb => cb.addEventListener('change', syncBulkUI));
+
+    /* ── Delegated row actions ── */
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+
+        const action = btn.dataset.action;
+        const userId = btn.dataset.userId;
+
+        if (action === 'toggle-status') {
+            if (!confirm('Change this user\'s status?')) return;
+            const res = await api(`/api/users/${userId}/toggle_status`, { method: 'POST' });
+            if (res.ok) return location.reload();
+            alert(res.error);
+        }
+
+        if (action === 'delete') {
+            if (!confirm('Delete this user?')) return;
+            window.location.href = `/user_management?delete_id=${userId}`;
+        }
+    });
+
+    /* ── Bulk delete ── */
+    bulkBtn?.addEventListener('click', async () => {
+        const ids = checkboxes.filter(cb => cb.checked).map(cb => Number(cb.value));
+        if (!ids.length) return;
+        if (!confirm(`Delete ${ids.length} selected user(s)?`)) return;
+
+        const res = await api('/api/user_management/bulk_delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_ids: ids }),
+        });
+
+        if (res.ok) return location.reload();
+        alert(res.error);
+    });
+
+    /* ── Slide Over handling ── */
+    function clearUserFieldErrors() {
+        ['field-username', 'field-email'].forEach((fieldId) => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.setCustomValidity('');
+            }
+        });
+    }
+
+    function normalizeUserFormValues() {
+        $('#field-username').value = $('#field-username').value.trim();
+        $('#field-email').value = $('#field-email').value.trim().toLowerCase();
+        $('#field-phone-number').value = $('#field-phone-number').value.trim();
+    }
+
+    function validateUserForm() {
+        clearUserFieldErrors();
+        normalizeUserFormValues();
+
+        const currentId = $('#field-user-id')?.value || '';
+        const username = ($('#field-username')?.value || '').toLowerCase();
+        const email = ($('#field-email')?.value || '').toLowerCase();
+
+        const duplicateUsername = rows.find((row) => row.dataset.id !== currentId && row.dataset.usernameFilter === username);
+        if (duplicateUsername) {
+            $('#field-username').setCustomValidity('A user with this username already exists.');
+            $('#field-username').reportValidity();
+            return false;
+        }
+
+        const duplicateEmail = rows.find((row) => row.dataset.id !== currentId && row.dataset.emailFilter === email);
+        if (duplicateEmail) {
+            $('#field-email').setCustomValidity('A user with this email already exists.');
+            $('#field-email').reportValidity();
+            return false;
+        }
+
+        return userForm ? userForm.reportValidity() : true;
+    }
+
+    userForm?.addEventListener('submit', (event) => {
+        if (!validateUserForm()) {
+            event.preventDefault();
+        }
+    });
+
+    window.openUserModal = function() {
+        clearUserFieldErrors();
+        $('#field-user-id').value = '';
+        $('#field-username').value = '';
+        $('#field-email').value = '';
+        $('#field-password').value = '';
+        $('#field-password').required = true;
+        $('#field-role').value = 'operator'; // default
+        $('#field-department-id').value = '';
+        $('#field-phone-number').value = '';
+        $('#pwd-hint').classList.add('hidden');
+        $('#userSlideOverTitle').innerHTML = '<i class="fas fa-user-plus text-blue-500 mr-2"></i> Add User';
+        window.UI.SlideOver.open('user-slide-over');
+    };
+
+    window.editUser = function(btn) {
+        const tr = btn.closest('tr');
+        clearUserFieldErrors();
+        $('#field-user-id').value = tr.dataset.id;
+        $('#field-username').value = tr.dataset.username;
+        $('#field-email').value = tr.dataset.email;
+        $('#field-password').value = '';
+        $('#field-password').required = false;
+        $('#pwd-hint').classList.remove('hidden');
+        $('#field-role').value = tr.dataset.role;
+        $('#field-department-id').value = tr.dataset.departmentId || '';
+        $('#field-phone-number').value = tr.dataset.phoneNumber || '';
+        $('#userSlideOverTitle').innerHTML = '<i class="fas fa-user-edit text-blue-500 mr-2"></i> Edit User';
+        window.UI.SlideOver.open('user-slide-over');
+    };
+
+    {% if edit_id %}
+    // If we land on page with edit_id, try to open the edit
+    const rowToEdit = document.querySelector('tr[data-id="{{ edit_id }}"]');
+    if (rowToEdit) {
+        const editBtn = rowToEdit.querySelector('button[title="Edit user"]');
+        if(editBtn) editBtn.click();
+    }
     {% endif %}
+
+    // Also auto open if jinja provides us a `user` object directly (from failed validation, etc)
+    {% if user %}
+        $('#field-user-id').value = '{{ user.id or "" }}';
+        $('#field-username').value = '{{ user.username }}';
+        $('#field-email').value = '{{ user.email }}';
+        $('#field-role').value = '{{ user.role }}';
+        $('#field-department-id').value = '{{ user.department_id or "" }}';
+        $('#field-phone-number').value = '{{ user.phone_number or "" }}';
+        {% if user.id %}
+            $('#pwd-hint').classList.remove('hidden');
+            $('#field-password').required = false;
+            $('#userSlideOverTitle').innerHTML = '<i class="fas fa-user-edit text-blue-500 mr-2"></i> Edit User';
+        {% else %}
+            $('#userSlideOverTitle').innerHTML = '<i class="fas fa-user-plus text-blue-500 mr-2"></i> Add User';
+        {% endif %}
+        window.UI.SlideOver.open('user-slide-over');
+    {% endif %}
+
+})();
 </script>
 {% endblock %}

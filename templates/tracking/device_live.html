@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Device Live View - {{ device.device_name }}{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block content %}
 <div class="dashboard-enterprise device-live-page">
@@ -189,6 +190,12 @@
                         <i class="fas fa-globe" aria-hidden="true"></i>
                         <span class="device-tab-label">Network</span>
                     </button>
+                    {% if file_transfer_enabled|default(false, true) %}
+                    <button class="device-tab-btn" data-tab="files">
+                        <i class="fas fa-folder-tree" aria-hidden="true"></i>
+                        <span class="device-tab-label">Files</span>
+                    </button>
+                    {% endif %}
                     <button class="device-tab-btn" data-tab="surveillance">
                         <i class="fas fa-video" aria-hidden="true"></i>
                         <span class="device-tab-label">Surveillance</span>
@@ -412,6 +419,95 @@
                     </div>
                 </div>
             </section>
+
+            {% if file_transfer_enabled|default(false, true) %}
+            <section class="device-tab-panel" data-panel="files">
+                <div class="device-info-card files-unified-panel">
+                    <div class="files-panel-header">
+                        <div class="files-panel-title">
+                            <h6 class="mb-0">Workstation Files</h6>
+                            <span id="filesAgentChip" class="files-agent-chip">
+                                <i class="fas fa-server"></i> <span id="filesAgentTarget">Resolving...</span>
+                            </span>
+                        </div>
+                        <div class="files-panel-controls">
+                            <select id="filesDriveSelect" class="form-select form-select-sm files-drive-select">
+                                <option value="">Loading drives...</option>
+                            </select>
+                            <button id="filesRefreshBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm">
+                                <i class="fas fa-rotate"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="files-toolbar">
+                        <div id="filesBreadcrumbs" class="files-breadcrumbs" aria-label="Remote path">
+                            <span class="files-breadcrumb-empty">Awaiting workstation path...</span>
+                        </div>
+                    </div>
+
+                    <div class="files-summary-bar" aria-live="polite">
+                        <span id="filesPathMeta" class="files-summary-chip">
+                            <i class="fas fa-folder-tree"></i>
+                            <strong>Path:</strong>
+                            <span>Awaiting workstation path</span>
+                        </span>
+                        <span id="filesCountMeta" class="files-summary-chip">
+                            <i class="fas fa-list"></i>
+                            <strong>Items:</strong>
+                            <span>0</span>
+                        </span>
+                        <span id="filesSelectionMeta" class="files-summary-chip files-summary-chip-selection">0 items selected</span>
+                    </div>
+
+                    <div class="files-action-bar">
+                        <div class="files-action-group">
+                            <button id="filesUploadTriggerBtn" type="button" class="mo-btn mo-btn-primary mo-btn-sm">
+                                <i class="fas fa-upload"></i> Upload
+                            </button>
+                            <button id="filesCreateFolderBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm">
+                                <i class="fas fa-folder-plus"></i> New Folder
+                            </button>
+                            <button id="filesParentBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm" disabled>
+                                <i class="fas fa-level-up-alt"></i> Up
+                            </button>
+                        </div>
+                        <div class="files-action-group">
+                            <button id="filesDownloadBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm" disabled>
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                            <button id="filesOpenBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm" disabled>
+                                <i class="fas fa-folder-open"></i> Open
+                            </button>
+                            <button id="filesDeleteBtn" type="button" class="mo-btn mo-btn-destructive mo-btn-sm" disabled>
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                        <input id="filesUploadInput" type="file" class="d-none" multiple>
+                    </div>
+
+                    <div id="filesUploadDropzone" class="files-compact-dropzone" tabindex="0" role="button">
+                        <i class="fas fa-file-import"></i>
+                        <span>Drop files here to upload to workstation</span>
+                    </div>
+                    <div id="filesUploadStatus" class="files-upload-status d-none" role="status"></div>
+                    <div id="filesWorkspaceBanner" class="files-inline-banner d-none" role="status"></div>
+
+                    <div class="files-list-shell">
+                        <div class="files-grid-header" aria-hidden="true">
+                            <span>Name</span>
+                            <span>Type</span>
+                            <span>Size</span>
+                            <span>Modified</span>
+                            <span>Action</span>
+                        </div>
+                        <div id="filesList" class="files-list" role="list">
+                            <div class="files-placeholder">Loading workstation files...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
 
             <section class="device-tab-panel" data-panel="surveillance">
                 <div class="surveillance-tab-head mb-2">
@@ -852,11 +948,17 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=8">
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
+
     window.TRACKING_DEVICE_LIVE_CONFIG = {
         deviceId: {{ device.id }},
         macAddress: {{ (device.mac_address or '') | tojson }},
@@ -865,6 +967,7 @@
         initialStatus: {{ (device.availability_status or 'offline') | tojson }},
         initialAgentSyncAt: {{ ((device.last_agent_sync_at.isoformat() + 'Z') if device.last_agent_sync_at else '') | tojson }},
         initialLastSeenUtc: {{ (initial_last_seen_utc or '') | tojson }},
+        fileTransferEnabled: {{ file_transfer_enabled | default(false, true) | tojson }},
         deviceType: {{ (device_type_label or 'Workstation') | tojson }},
         policyStatus: {{ (policy_status or 'compliant') | tojson }},
         policyDomain: {{ (policy_domain or '') | tojson }},
@@ -879,5 +982,6 @@
 <script src="{{ url_for('static', filename='js/tracking/console/eventFeedStore.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/console/ackFallbackStore.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/console/apiNormalizer.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_console_ui_adapter.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}?v=8"></script>
 {% endblock %}

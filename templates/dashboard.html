@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard{% endblock %}
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -1436,6 +1437,50 @@
         height: 220px;
     }
 
+    #serverDetailsModal .server-modal-action-link {
+        background: rgba(148, 163, 184, 0.16) !important;
+        border-color: rgba(125, 211, 252, 0.28) !important;
+        color: #e6f7ff !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    #serverDetailsModal .server-modal-action-link:hover {
+        background: rgba(56, 189, 248, 0.18) !important;
+        border-color: rgba(125, 211, 252, 0.42) !important;
+        color: #f8feff !important;
+    }
+
+    .dashboard-enterprise .server-range-toggle .btn,
+    #serverDetailsModal .server-range-toggle .btn {
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        background: rgba(15, 23, 42, 0.72);
+        color: rgba(226, 232, 240, 0.82);
+    }
+
+    .dashboard-enterprise .server-range-toggle .tactical-btn-ghost,
+    #serverDetailsModal .server-range-toggle .tactical-btn-ghost {
+        background: rgba(15, 23, 42, 0.72) !important;
+        color: rgba(226, 232, 240, 0.82) !important;
+        border-color: rgba(125, 211, 252, 0.18) !important;
+    }
+
+    .dashboard-enterprise .server-range-toggle .btn:hover,
+    #serverDetailsModal .server-range-toggle .btn:hover {
+        background: rgba(34, 211, 238, 0.16) !important;
+        color: #f8feff !important;
+        border-color: rgba(103, 232, 249, 0.34) !important;
+    }
+
+    .dashboard-enterprise .server-range-toggle .tactical-btn-primary,
+    .dashboard-enterprise .server-range-toggle .btn.active,
+    #serverDetailsModal .server-range-toggle .tactical-btn-primary,
+    #serverDetailsModal .server-range-toggle .btn.active {
+        background: linear-gradient(135deg, rgba(45, 212, 191, 0.95), rgba(34, 197, 94, 0.88)) !important;
+        color: #03141a !important;
+        border-color: rgba(94, 234, 212, 0.58) !important;
+        box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.14), 0 10px 24px rgba(6, 182, 212, 0.18);
+    }
+
     #serverDetailsModal .load-avg-row {
         height: 80px;
     }
@@ -1971,20 +2016,171 @@
         border-color: rgba(15, 23, 42, 0.14);
         box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
     }
+
+    .dashboard-dense {
+        padding-top: 0.45rem;
+        padding-inline: 0.85rem;
+    }
+
+    .dashboard-dense .dashboard-header {
+        margin-bottom: 0.72rem !important;
+        gap: 0.75rem;
+    }
+
+    .dashboard-dense .dashboard-toolbar {
+        gap: 0.45rem !important;
+        flex-wrap: wrap;
+    }
+
+    .dashboard-dense .dashboard-toolbar .btn,
+    .dashboard-dense .dashboard-toolbar .dash-config-btn,
+    .dashboard-dense .dashboard-toolbar .dropdown-toggle {
+        min-height: 34px;
+        padding: 0.34rem 0.72rem;
+        font-size: 0.74rem;
+    }
+
+    .dashboard-dense .dashboard-toolbar .dash-config-btn {
+        width: 34px;
+        padding-inline: 0;
+    }
+
+    .dashboard-dense .enterprise-section-sub {
+        line-height: 1.25;
+    }
+
+    .dashboard-dense #overall-health-card.enterprise-header-strip {
+        padding: 0.42rem 0.62rem;
+        margin-bottom: 0.45rem;
+    }
+
+    .dashboard-dense .enterprise-strip-item {
+        gap: 0.28rem;
+        font-size: 0.7rem;
+    }
+
+    .dashboard-dense .enterprise-strip-item .strip-label {
+        font-size: 0.54rem;
+    }
+
+    .dashboard-dense #device-kpi-row,
+    .dashboard-dense #fleet-overview-row {
+        gap: 0.52rem;
+        margin-bottom: 0.72rem !important;
+    }
+
+    .dashboard-dense #device-kpi-row .tactical-stat-card,
+    .dashboard-dense #fleet-overview-row .tactical-stat-card {
+        min-height: 96px;
+        padding: 0.62rem 0.72rem 0.64rem;
+    }
+
+    .dashboard-dense #device-kpi-row .stat-value {
+        font-size: 1.38rem;
+    }
+
+    .dashboard-dense #fleet-overview-row .stat-value,
+    .dashboard-dense .tactical-stat-card .stat-value {
+        font-size: 1.05rem;
+    }
+
+    .dashboard-dense .tactical-stat-card .metric-sub {
+        margin-top: 0.22rem;
+        line-height: 1.25;
+    }
+
+    .dashboard-dense .section-block {
+        margin-top: 0.6rem;
+    }
+
+    .dashboard-dense .breakdown-panel {
+        padding: 0.8rem;
+    }
+
+    .dashboard-dense .breakdown-grid,
+    .dashboard-dense .breakdown-left,
+    .dashboard-dense .breakdown-right {
+        gap: 0.7rem;
+    }
+
+    .dashboard-dense .card-header {
+        padding: 0.56rem 0.76rem;
+    }
+
+    .dashboard-dense .card-body:not(.p-0) {
+        padding: 0.74rem;
+    }
+
+    .dashboard-dense .alerts-container {
+        margin-bottom: 0.8rem !important;
+    }
+
+    .dashboard-dense .alerts-filters {
+        padding: 0.58rem 0.72rem;
+    }
+
+    .dashboard-dense .alerts-filters select,
+    .dashboard-dense .alerts-filters input {
+        height: 34px;
+        padding: 0 10px;
+        font-size: 0.78rem;
+    }
+
+    .dashboard-dense .tactical-table {
+        font-size: 0.76rem;
+    }
+
+    .dashboard-dense .tactical-table thead th {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.6rem;
+    }
+
+    .dashboard-dense .tactical-table tbody td {
+        padding: 0.34rem 0.5rem;
+    }
+
+    .dashboard-dense .dash-modal-card {
+        max-width: 500px;
+    }
+
+    .dashboard-dense .dash-modal-header {
+        padding: 0.72rem 0.9rem;
+    }
+
+    .dashboard-dense .dash-modal-body {
+        padding: 0.9rem;
+    }
+
+    .dashboard-dense .dash-modal-body label {
+        margin-bottom: 0.24rem;
+        font-size: 0.66rem;
+    }
+
+    .dashboard-dense .dash-modal-body input,
+    .dashboard-dense .dash-modal-body select,
+    .dashboard-dense .dash-modal-body textarea {
+        min-height: 36px;
+        padding: 0.52rem 0.7rem;
+        font-size: 0.82rem;
+    }
+
+    .dashboard-dense .dash-modal-footer {
+        padding: 0.72rem 0.9rem;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<div class="container-fluid dashboard-enterprise">
+<div class="container-fluid dashboard-enterprise dashboard-dense">
     <!-- Dashboard Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 dashboard-header">
         <div>
             <h2 class="enterprise-section-title mb-0">Network Operations Center</h2>
             <div class="enterprise-section-sub">Real-time infrastructure monitoring</div>
             <div id="dashboardScopeSummary" class="enterprise-section-sub">Scope: {{ rbac_context.scope_label }}</div>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 dashboard-toolbar">
             <div class="dropdown d-inline-block" id="time-range-container">
                 <button class="btn tactical-select dropdown-toggle btn-sm" type="button" data-bs-toggle="dropdown"
                     data-value="24h">Last 24 Hours</button>
@@ -3481,7 +3677,7 @@
             <h5>Add Device</h5>
             <button class="close-btn" id="dash-modal-close">&times;</button>
         </div>
-        <form id="dash-add-device-form">
+        <form id="dash-add-device-form" action="{{ url_for('devices_bp.save_device') }}" method="POST">
             <div class="dash-modal-body">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.7rem;">
                     <div>
@@ -3546,40 +3742,72 @@
         const open = document.getElementById('dash-add-device-btn');
         const close = document.getElementById('dash-modal-close');
         const cancel = document.getElementById('dash-modal-cancel');
+        const submit = form ? form.querySelector('button[type="submit"]') : null;
+        const nameInput = document.getElementById('dash-device-name');
 
-        function show() { modal.style.display = 'flex'; }
-        function hide() { modal.style.display = 'none'; form.reset(); }
+        if (!modal || !form || !open || !close || !cancel || !submit) {
+            return;
+        }
+
+        let submitting = false;
+        const defaultSubmitLabel = submit.textContent.trim();
+
+        function setSubmitting(isBusy) {
+            submitting = isBusy;
+            submit.disabled = isBusy;
+            submit.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+            submit.textContent = isBusy ? 'Saving...' : defaultSubmitLabel;
+        }
+
+        function show() {
+            modal.style.display = 'flex';
+            requestAnimationFrame(() => nameInput?.focus());
+        }
+
+        function hide() {
+            if (submitting) {
+                return;
+            }
+            modal.style.display = 'none';
+            form.reset();
+            setSubmitting(false);
+        }
 
         open.addEventListener('click', show);
         close.addEventListener('click', hide);
         cancel.addEventListener('click', hide);
         modal.addEventListener('click', function (e) { if (e.target === modal) hide(); });
-
-        form.addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const fd = new FormData(form);
-            try {
-                const res = await fetch('/api/devices/save', { method: 'POST', body: fd });
-                if (res.redirected || res.ok) {
-                    hide();
-                    // Subtle reload to pick up new device
-                    if (typeof window.refreshDashboard === 'function') {
-                        window.refreshDashboard();
-                    } else {
-                        location.reload();
-                    }
-                } else {
-                    const text = await res.text();
-                    alert('Save failed: ' + text);
-                }
-            } catch (err) {
-                alert('Network error: ' + err.message);
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.style.display !== 'none') {
+                hide();
             }
+        });
+
+        form.addEventListener('submit', function (e) {
+            if (submitting) {
+                e.preventDefault();
+                return;
+            }
+            setSubmitting(true);
+
+            // Preserve a usable UI if navigation is interrupted by the browser or network.
+            window.setTimeout(function () {
+                if (document.body.contains(form)) {
+                    setSubmitting(false);
+                }
+            }, 10000);
         });
     })();
 </script>
 {% endblock %}
 
 {% block extra_js %}
+<script>
+    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
+        sharedToast: true,
+        sharedLoading: true,
+        sharedRefresh: true
+    });
+</script>
 <script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v=2.16"></script>
 {% endblock %}

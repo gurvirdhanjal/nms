@@ -2,10 +2,13 @@
 Provides endpoints to trigger and monitor database maintenance tasks
 and manage device maintenance windows.
 """
+import logging
 from flask import Blueprint, jsonify, request, render_template
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from extensions import db
 from middleware.rbac import require_login, require_role
+
+logger = logging.getLogger(__name__)
 
 maintenance_bp = Blueprint('maintenance_bp', __name__, url_prefix='/api/maintenance')
 
@@ -70,8 +73,9 @@ def run_cleanup():
         
         return jsonify(results)
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -99,8 +103,9 @@ def run_aggregation():
         
     except ValueError as e:
         return jsonify({'error': f'Invalid date format: {e}'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -117,8 +122,9 @@ def run_all_maintenance():
         
         return jsonify(result)
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -140,8 +146,41 @@ def backfill_rollups():
             rebuild_daily_stats=rebuild_daily_stats,
         )
         return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# ============================================================
+# GET /api/admin/scheduler/status
+# ============================================================
+@maintenance_bp.route('/scheduler/status', methods=['GET'])
+@require_role('admin')
+def scheduler_status():
+    """
+    Return live scheduler job health — last_run, next_run, and status
+    for every registered rollup job.
+
+    Status values:
+      "ok"        — last_run within 2× the job interval
+      "late"      — last_run overdue (app is running but job missed its window)
+      "never_run" — job has not completed a single run since the app booted
+    """
+    from services.scheduler import get_scheduler_status
+    jobs = get_scheduler_status()
+    any_late = any(j['status'] == 'late' for j in jobs)
+    any_never = any(j['status'] == 'never_run' for j in jobs)
+    if any_late:
+        overall = 'degraded'
+    elif any_never:
+        overall = 'pending'  # normal on fresh boot before first scheduled window
+    else:
+        overall = 'ok'
+    return jsonify({
+        'overall': overall,
+        'checked_at': datetime.now(timezone.utc).isoformat(),
+        'jobs': jobs,
+    })
 
 
 # ============================================================
@@ -313,8 +352,9 @@ def get_maintenance_status():
 
         return jsonify(status)
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -343,8 +383,9 @@ def get_maintenance_devices():
 
         return jsonify({'devices': result})
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -360,8 +401,9 @@ def get_maintenance_windows():
         windows = maintenance_window_service.list_windows(include_inactive=include_inactive)
         
         return jsonify({'windows': [w.to_dict() for w in windows]})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception("Maintenance endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -410,9 +452,10 @@ def schedule_maintenance():
         return jsonify({'error': str(e)}), 400
     except LookupError as e:
         return jsonify({'error': str(e)}), 404
-    except Exception as e:
+    except Exception:
+        logger.exception("Maintenance endpoint error")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # ============================================================
@@ -434,9 +477,10 @@ def cancel_maintenance_window(window_id):
         })
     except LookupError as e:
         return jsonify({'error': str(e)}), 404
-    except Exception as e:
+    except Exception:
+        logger.exception("Maintenance endpoint error")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 
@@ -489,7 +533,7 @@ def toggle_maintenance():
         db.session.commit()
 
         action = 'enabled' if device.maintenance_mode else 'disabled'
-        print(f"[MAINTENANCE] {action} for {device.device_name} ({device.device_ip})")
+        logger.info("[MAINTENANCE] %s for %s (%s)", action, device.device_name, device.device_ip)
 
         return jsonify({
             'success': True,
@@ -498,7 +542,8 @@ def toggle_maintenance():
             'message': f"Maintenance mode {action} for {device.device_name}"
         })
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Maintenance endpoint error")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 

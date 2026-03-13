@@ -31,6 +31,22 @@ def _env_int(name, default, minimum=None, maximum=None):
     return value
 
 
+def _env_port_list(name, default):
+    raw_value = str(os.environ.get(name, default) or default)
+    ports = []
+    for token in raw_value.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            port = int(token)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= port <= 65535 and port not in ports:
+            ports.append(port)
+    return ports
+
+
 class Config:
     # Runtime environment
     APP_ENV = os.environ.get('APP_ENV', os.environ.get('FLASK_ENV', 'development')).lower()
@@ -129,7 +145,7 @@ class Config:
     # Session
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=5)
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_REFRESH_EACH_REQUEST = True
     
@@ -175,6 +191,26 @@ class Config:
     )
     TRACKING_AGENT_CHECKIN_WINDOW_SECONDS = int(
         os.environ.get('TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180)
+    )
+    TRACKING_AGENT_PORT = _env_int(
+        'TRACKING_AGENT_PORT',
+        os.environ.get('PORT', 5002),
+        minimum=1,
+        maximum=65535,
+    )
+    TRACKING_AGENT_PORTS = _env_port_list(
+        'TRACKING_AGENT_PORTS',
+        str(TRACKING_AGENT_PORT),
+    ) or [TRACKING_AGENT_PORT]
+    TRACKING_AGENT_PORT_CACHE_TTL_SECONDS = _env_int(
+        'TRACKING_AGENT_PORT_CACHE_TTL_SECONDS',
+        43200,
+        minimum=60,
+    )
+    TRACKING_DISCOVERY_CACHE_TTL_SECONDS = _env_int(
+        'TRACKING_DISCOVERY_CACHE_TTL_SECONDS',
+        120,
+        minimum=15,
     )
     TRACKING_WORKSTATION_STALE_MINUTES = int(
         os.environ.get('TRACKING_WORKSTATION_STALE_MINUTES', 15)

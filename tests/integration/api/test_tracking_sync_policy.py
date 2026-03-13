@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 import pytest
 from extensions import db
@@ -8,7 +9,7 @@ from models.restricted_site_policy import (
     RestrictedSiteEvent,
     RestrictedSiteAlertState,
 )
-from models.tracked_device import TrackedDevice
+from models.tracked_device import TrackedDevice, TrackingSample
 from config import Config
 
 pytestmark = pytest.mark.integration
@@ -133,3 +134,79 @@ def test_tracking_sync_persists_agent_policy_version(client):
     db.session.refresh(device)
     assert device.last_policy_version_seen == 'agent-v9'
     assert device.last_policy_sync_at is not None
+
+
+def test_tracking_sync_normalizes_legacy_service_payload(client):
+    device = _create_tracked_device(mac_address='AA:BB:CC:00:11:55')
+
+    response = client.post(
+        '/api/tracking/sync',
+        json={
+            'mac_address': device.mac_address,
+            'hostname': 'Legacy-Service-PC',
+            'current_stats': {
+                'activity': {
+                    'keyboard_active': True,
+                    'mouse_active': False,
+                    'idle_seconds': 9,
+                    'total_active_today': 5400,
+                    'keyboard_count': 11,
+                    'mouse_count': 6,
+                },
+                'system': {
+                    'cpu': 24.5,
+                    'memory': 58.0,
+                    'current_app': 'Code.exe',
+                },
+                'network': {
+                    'upload_speed_kbps': 32.0,
+                    'download_speed_kbps': 256.0,
+                },
+            },
+        },
+        headers={'X-API-Key': Config.API_KEY},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    db.session.refresh(device)
+
+    tracking_payload = json.loads(device.tracking_data)
+    assert device.metrics_available is True
+    assert device.availability_status == 'online'
+    assert tracking_payload['current_activity']['keyboard_active'] is True
+    assert tracking_payload['current_activity']['current_application'] == 'Code.exe'
+    assert tracking_payload['today_stats']['total_active_hours'] == pytest.approx(1.5)
+    assert tracking_payload['today_stats']['keyboard_events'] == 11
+    assert tracking_payload['system_metrics']['cpu_percent'] == pytest.approx(24.5)
+    assert tracking_payload['system_metrics']['network_speed']['download_speed_kbps'] == pytest.approx(256.0)
+    assert TrackingSample.query.filter_by(device_id=device.id).count() == 1
+
+
+def test_tracking_register_accepts_bound_agent_key_without_shared_api_key(client):
+    device = _create_tracked_device(mac_address='AA:BB:CC:00:11:66')
+
+    sync_response = client.post(
+        '/api/tracking/sync',
+        json={
+            'mac_address': device.mac_address,
+            'hostname': 'Bound-Agent-PC',
+        },
+        headers={'X-API-Key': Config.API_KEY},
+    )
+    assert sync_response.status_code == 200, sync_response.get_json()
+    binding = (sync_response.get_json() or {}).get('agent_binding') or {}
+    assert binding.get('key_id')
+    assert binding.get('agent_key')
+
+    register_response = client.get(
+        '/api/tracking/register',
+        headers={
+            'X-Agent-Key-Id': binding['key_id'],
+            'X-Agent-Key': binding['agent_key'],
+        },
+    )
+
+    assert register_response.status_code == 200, register_response.get_json()
+    payload = register_response.get_json()
+    assert payload['success'] is True
+    assert payload['status'] == 'active'

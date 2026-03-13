@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, render_template, abort
 from extensions import db
 from models.subnet import Subnet
 from models.site import Site
-from middleware.rbac import require_role
+from middleware.rbac import require_login, require_role
 import ipaddress
 
 subnets_bp = Blueprint('subnets', __name__)
@@ -16,9 +16,10 @@ def subnets_page():
     return render_template('subnets.html', sites=sites, subnets=subnets)
 
 @subnets_bp.route('/api/subnets', methods=['GET'])
+@require_login
 def get_subnets():
     """Returns a list of all subnets formatted for the UI."""
-    subnets = Subnet.query.order_by(Subnet.site_id.asc(), Subnet.cidr.asc()).all()
+    subnets = Subnet.query.order_by(Subnet.site_id.asc(), Subnet.cidr.asc()).all()  # FIXME: SCOPING — returns all subnets globally, not scoped to user's site
     return jsonify({
         'status': 'success',
         'subnets': [s.to_dict() for s in subnets]

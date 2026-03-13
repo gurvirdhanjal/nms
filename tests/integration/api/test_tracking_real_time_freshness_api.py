@@ -137,6 +137,80 @@ def test_real_time_api_returns_stale_state_with_persisted_snapshot(admin_client,
     assert payload['controls']['remote_view']['enabled'] is True
 
 
+def test_real_time_api_normalizes_legacy_service_snapshot(admin_client, monkeypatch):
+    now_utc = datetime.utcnow()
+    device = _create_device(
+        mac_suffix='C6',
+        last_sync_at=now_utc - timedelta(seconds=40),
+        tracking_data={
+            'activity': {
+                'keyboard_active': True,
+                'mouse_active': False,
+                'idle_seconds': 22,
+                'total_active_today': 3600,
+                'keyboard_count': 9,
+            },
+            'system': {
+                'cpu': 31.2,
+                'memory': 47.8,
+                'current_app': 'Code.exe',
+            },
+            'network': {
+                'upload_speed_kbps': 20.5,
+                'download_speed_kbps': 88.4,
+            },
+        },
+    )
+
+    def stale_probe(self, ip, profile='interactive'):
+        return {
+            'availability_status': 'online',
+            'probe_method': 'stats',
+            'probe_error_code': None,
+            'data': {},
+        }
+
+    monkeypatch.setattr(tracking_routes.NetworkScanner, 'check_tracking_service', stale_probe)
+
+    response = admin_client.get(f'/api/tracking/real-time/{device.mac_address}')
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert payload['freshness']['data_source'] == 'db_snapshot'
+    assert payload['tracking_data']['current_activity']['current_application'] == 'Code.exe'
+    assert payload['tracking_data']['today_stats']['keyboard_events'] == 9
+    assert payload['tracking_data']['system_metrics']['cpu_percent'] == pytest.approx(31.2)
+    assert payload['tracking_data']['system_metrics']['network_speed']['download_speed_kbps'] == pytest.approx(88.4)
+
+
+def test_real_time_api_prefer_cache_uses_persisted_snapshot_without_probe(admin_client, monkeypatch):
+    now_utc = datetime.utcnow()
+    device = _create_device(
+        mac_suffix='C7',
+        last_sync_at=now_utc - timedelta(minutes=8),
+        tracking_data={
+            'system_metrics': {'cpu_percent': 27, 'memory_percent': 49},
+            'current_activity': {'idle_seconds': 11},
+            'today_stats': {'keyboard_events': 5},
+        },
+    )
+    _add_sample(device.id, now_utc - timedelta(minutes=8))
+
+    def fail_probe(self, ip, profile='interactive'):
+        raise AssertionError('prefer_cache should serve persisted snapshot before live probing')
+
+    monkeypatch.setattr(tracking_routes.NetworkScanner, 'check_tracking_service', fail_probe)
+
+    response = admin_client.get(f'/api/tracking/real-time/{device.mac_address}?prefer_cache=1')
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert payload['cached'] is True
+    assert payload['freshness']['data_source'] == 'db_snapshot'
+    assert payload['tracking_data']['system_metrics']['cpu_percent'] == pytest.approx(27)
+    assert payload['tracking_data']['today_stats']['keyboard_events'] == 5
+
+
 def test_real_time_api_returns_offline_fallback_when_agent_is_down_but_recent_sync_exists(admin_client, monkeypatch):
     now_utc = datetime.utcnow()
     device = _create_device(

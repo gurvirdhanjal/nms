@@ -2,13 +2,86 @@ import schedule
 import time
 import threading
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from services.device_monitor import DeviceMonitor
 from services.operational_error_handling import log_operational_exception, summarize_exception
 import asyncio
 from extensions import db
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module-level job registry — stores last_run per job name.
+# Keyed by the canonical job name used in /api/admin/scheduler/status.
+# Written by _record_run(); read by the status endpoint.
+# ---------------------------------------------------------------------------
+_JOB_REGISTRY: dict[str, dict] = {}
+_JOB_REGISTRY_LOCK = threading.Lock()
+
+# Maps job method name → (display_name, interval_seconds)
+# Used for "status" classification in the health endpoint.
+JOB_META: dict[str, tuple[str, int]] = {
+    "run_server_health_hourly_rollup": ("server_health_hourly_rollup",  3600),
+    "run_tracking_hourly_rollup":      ("tracking_hourly_rollup",        3600),
+    "run_daily_device_stats_rollup":   ("daily_device_stats_rollup",    86400),
+    "run_server_health_daily_rollup":  ("server_health_daily_rollup",   86400),
+    "run_tracking_daily_rollup":       ("tracking_daily_rollup",        86400),
+    "run_metrics_retention":           ("metrics_retention",            86400),
+    "run_rollup_integrity_check":      ("rollup_integrity_check",       86400),
+    "run_tracking_history_integrity":  ("tracking_history_integrity",   86400),
+    "run_tracking_history_retention":  ("tracking_history_retention",   86400),
+    "enqueue_config_backup_tasks":     ("backup_device_configs",        86400),
+}
+
+
+def _record_run(job_key: str, success: bool) -> None:
+    """Record last_run timestamp and outcome for a job."""
+    with _JOB_REGISTRY_LOCK:
+        _JOB_REGISTRY[job_key] = {
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_success": success,
+        }
+
+
+def get_scheduler_status() -> list[dict]:
+    """
+    Return a list of job status dicts for the health endpoint.
+    Called from routes/maintenance.py — no app context needed.
+    """
+    now = datetime.now(timezone.utc)
+    result = []
+    with _JOB_REGISTRY_LOCK:
+        registry_snapshot = dict(_JOB_REGISTRY)
+
+    for method_name, (display_name, interval_seconds) in JOB_META.items():
+        entry = registry_snapshot.get(display_name)
+        if entry is None:
+            status = "never_run"
+            last_run = None
+            last_success = None
+            next_run = None
+        else:
+            last_run = entry["last_run"]
+            last_success = entry["last_success"]
+            last_run_dt = datetime.fromisoformat(last_run)
+            elapsed = (now - last_run_dt).total_seconds()
+            overdue_threshold = interval_seconds * 2
+            status = "ok" if elapsed <= overdue_threshold else "late"
+            next_run = (
+                last_run_dt.replace(tzinfo=timezone.utc)
+                + timedelta(seconds=interval_seconds)
+            ).isoformat()
+
+        result.append({
+            "name": display_name,
+            "interval_seconds": interval_seconds,
+            "last_run": last_run,
+            "next_run": next_run,
+            "last_success": last_success,
+            "status": status,
+        })
+    return result
+
 
 class MonitoringScheduler:
     def __init__(self, app):
@@ -61,7 +134,12 @@ class MonitoringScheduler:
         tracking_integrity_time = self.app.config.get('TRACKING_INTEGRITY_CHECK_SCHEDULE', '03:30')
         schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_integrity)
         schedule.every().day.at(tracking_integrity_time).do(self.run_tracking_history_retention)
-        
+
+        # Daily config backup — enqueue SSH capture tasks for all eligible devices
+        schedule.every().day.at(self.app.config.get('CONFIG_BACKUP_SCHEDULE', '02:00')).do(
+            self.enqueue_config_backup_tasks
+        )
+
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
         
@@ -197,14 +275,20 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_metrics_retention started at %s", datetime.utcnow())
                 result = maintenance_service.run_server_health_retention(
                     raw_days=self.app.config.get('SERVER_HEALTH_RAW_RETENTION_DAYS', 7),
                     hourly_days=self.app.config.get('SERVER_HEALTH_HOURLY_RETENTION_DAYS', 30),
                     daily_days=self.app.config.get('SERVER_HEALTH_DAILY_RETENTION_DAYS', 365),
                 )
-                print(f"Server health retention completed: success={result.get('success')}")
+                _record_run("metrics_retention", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_metrics_retention completed at %s — success=%s",
+                    datetime.utcnow(), result.get('success')
+                )
             except Exception as e:
-                print(f"Error running metrics retention: {e}")
+                _record_run("metrics_retention", False)
+                logger.error("[SCHEDULER] run_metrics_retention failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -214,14 +298,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_daily_device_stats_rollup started at %s", datetime.utcnow())
                 result = maintenance_service.aggregate_daily_stats()
-                print(
-                    "[REPORTING] daily device stats completed: "
-                    f"success={result.get('success')} date={result.get('target_date')} "
-                    f"devices={result.get('devices_aggregated', 0)}"
+                _record_run("daily_device_stats_rollup", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_daily_device_stats_rollup completed at %s — success=%s date=%s devices=%s",
+                    datetime.utcnow(), result.get('success'), result.get('target_date'), result.get('devices_aggregated', 0)
                 )
             except Exception as e:
-                print(f"Error running daily device stats rollup: {e}")
+                _record_run("daily_device_stats_rollup", False)
+                logger.error("[SCHEDULER] run_daily_device_stats_rollup failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -231,13 +317,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_server_health_hourly_rollup started at %s", datetime.utcnow())
                 result = maintenance_service.rollup_server_health_hourly()
-                print(
-                    "[ROLLUP] server health hourly completed: "
-                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                _record_run("server_health_hourly_rollup", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_server_health_hourly_rollup completed at %s — success=%s rolled=%s",
+                    datetime.utcnow(), result.get('success'), result.get('rolled_buckets', 0)
                 )
             except Exception as e:
-                print(f"Error running server health hourly rollup: {e}")
+                _record_run("server_health_hourly_rollup", False)
+                logger.error("[SCHEDULER] run_server_health_hourly_rollup failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -247,13 +336,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_server_health_daily_rollup started at %s", datetime.utcnow())
                 result = maintenance_service.rollup_server_health_daily()
-                print(
-                    "[ROLLUP] server health daily completed: "
-                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                _record_run("server_health_daily_rollup", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_server_health_daily_rollup completed at %s — success=%s rolled=%s",
+                    datetime.utcnow(), result.get('success'), result.get('rolled_buckets', 0)
                 )
             except Exception as e:
-                print(f"Error running server health daily rollup: {e}")
+                _record_run("server_health_daily_rollup", False)
+                logger.error("[SCHEDULER] run_server_health_daily_rollup failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -263,13 +355,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_tracking_hourly_rollup started at %s", datetime.utcnow())
                 result = maintenance_service.rollup_tracking_hourly()
-                print(
-                    "[ROLLUP] tracking hourly completed: "
-                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                _record_run("tracking_hourly_rollup", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_tracking_hourly_rollup completed at %s — success=%s rolled=%s",
+                    datetime.utcnow(), result.get('success'), result.get('rolled_buckets', 0)
                 )
             except Exception as e:
-                print(f"Error running tracking hourly rollup: {e}")
+                _record_run("tracking_hourly_rollup", False)
+                logger.error("[SCHEDULER] run_tracking_hourly_rollup failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -279,13 +374,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_tracking_daily_rollup started at %s", datetime.utcnow())
                 result = maintenance_service.rollup_tracking_daily()
-                print(
-                    "[ROLLUP] tracking daily completed: "
-                    f"success={result.get('success')} rolled={result.get('rolled_buckets', 0)}"
+                _record_run("tracking_daily_rollup", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_tracking_daily_rollup completed at %s — success=%s rolled=%s",
+                    datetime.utcnow(), result.get('success'), result.get('rolled_buckets', 0)
                 )
             except Exception as e:
-                print(f"Error running tracking daily rollup: {e}")
+                _record_run("tracking_daily_rollup", False)
+                logger.error("[SCHEDULER] run_tracking_daily_rollup failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -295,17 +393,19 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_rollup_integrity_check started at %s", datetime.utcnow())
                 result = maintenance_service.validate_and_repair_server_health_rollups(
                     lookback_days=self.app.config.get('SERVER_HEALTH_ROLLUP_INTEGRITY_LOOKBACK_DAYS', 45)
                 )
-                print(
-                    "[ROLLUP] Integrity check completed: "
-                    f"success={result.get('success')} "
-                    f"hourly_missing={result.get('hourly', {}).get('missing', 0)} "
-                    f"daily_missing={result.get('daily', {}).get('missing', 0)}"
+                _record_run("rollup_integrity_check", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_rollup_integrity_check completed at %s — success=%s hourly_missing=%s daily_missing=%s",
+                    datetime.utcnow(), result.get('success'),
+                    result.get('hourly', {}).get('missing', 0), result.get('daily', {}).get('missing', 0)
                 )
             except Exception as e:
-                print(f"Error running rollup integrity check: {e}")
+                _record_run("rollup_integrity_check", False)
+                logger.error("[SCHEDULER] run_rollup_integrity_check failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -315,13 +415,16 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_tracking_history_integrity started at %s", datetime.utcnow())
                 result = maintenance_service.run_tracking_history_integrity_check()
-                print(
-                    "[TRACKING] integrity check completed: "
-                    f"success={result.get('success')} checks={result.get('checks_created', 0)}"
+                _record_run("tracking_history_integrity", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_tracking_history_integrity completed at %s — success=%s checks=%s",
+                    datetime.utcnow(), result.get('success'), result.get('checks_created', 0)
                 )
             except Exception as e:
-                print(f"Error running tracking history integrity check: {e}")
+                _record_run("tracking_history_integrity", False)
+                logger.error("[SCHEDULER] run_tracking_history_integrity failed: %s", e)
             finally:
                 db.session.remove()
 
@@ -331,17 +434,72 @@ class MonitoringScheduler:
             try:
                 from services.maintenance_service import maintenance_service
 
+                logger.info("[SCHEDULER] run_tracking_history_retention started at %s", datetime.utcnow())
                 result = maintenance_service.run_tracking_history_retention(
                     raw_days=self.app.config.get('TRACKING_RAW_RETENTION_DAYS', 30),
                     hourly_days=self.app.config.get('TRACKING_HOURLY_RETENTION_DAYS', 365),
                     daily_days=self.app.config.get('TRACKING_DAILY_RETENTION_DAYS', 1095),
                 )
-                print(
-                    "[TRACKING] retention completed: "
-                    f"success={result.get('success')} deleted={result.get('deleted')}"
+                _record_run("tracking_history_retention", bool(result.get('success')))
+                logger.info(
+                    "[SCHEDULER] run_tracking_history_retention completed at %s — success=%s deleted=%s",
+                    datetime.utcnow(), result.get('success'), result.get('deleted')
                 )
             except Exception as e:
-                print(f"Error running tracking history retention: {e}")
+                _record_run("tracking_history_retention", False)
+                logger.error("[SCHEDULER] run_tracking_history_retention failed: %s", e)
+            finally:
+                db.session.remove()
+
+    def enqueue_config_backup_tasks(self):
+        """Enqueue config backup poll tasks for all monitored devices with an SSH profile.
+
+        RULE: Scheduler performs ZERO network I/O.
+        This method only INSERTs PollTask rows with status='pending'.
+        Actual SSH capture happens in workers/snmp_worker.py (_execute_config_backup).
+
+        ssh_profile_id is commented out of the Device ORM (column exists in DB).
+        We use raw SQL so we don't load all devices into Python just to filter.
+        """
+        with self.app.app_context():
+            try:
+                from models.poll_task import PollTask
+                from sqlalchemy import text
+
+                rows = db.session.execute(text(
+                    "SELECT device_id FROM device "
+                    "WHERE is_monitored = true AND ssh_profile_id IS NOT NULL"
+                )).fetchall()
+
+                device_ids = [row[0] for row in rows]
+                enqueued = 0
+                skipped = 0
+
+                for device_id in device_ids:
+                    task = PollTask.enqueue(
+                        device_id=device_id,
+                        task_type='config_backup',
+                        priority=9,  # Low — SSH is expensive; health tasks take precedence
+                    )
+                    if task:
+                        enqueued += 1
+                    else:
+                        skipped += 1
+
+                if enqueued > 0:
+                    db.session.commit()
+
+                n = len(device_ids)
+                _record_run("backup_device_configs", True)
+                logger.info(
+                    f"[scheduler] backup_device_configs: {n} devices, {enqueued} enqueued"
+                    + (f", {skipped} skipped (already pending)" if skipped else "")
+                )
+
+            except Exception as e:
+                _record_run("backup_device_configs", False)
+                db.session.rollback()
+                logger.error("[scheduler] backup_device_configs failed: %s", e)
             finally:
                 db.session.remove()
 

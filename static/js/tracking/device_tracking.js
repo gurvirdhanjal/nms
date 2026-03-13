@@ -7,6 +7,20 @@
     let lastRefreshAtMs = null;
     let refreshTicker = null;
     let activeQuickFilter = 'all';
+    let statusRefreshController = null;
+    let deleteInFlight = false;
+    let actionBannerTimer = null;
+    let listSyncFrame = null;
+    const surfaceFlags = window.__UI_SURFACE_FLAGS__ || {};
+    const toastApi = surfaceFlags.sharedToast !== false && window.UI?.Toast?.show
+        ? window.UI.Toast
+        : null;
+    const loadingApi = surfaceFlags.sharedLoading !== false && window.UI?.Loading
+        ? window.UI.Loading
+        : null;
+    const refreshApi = surfaceFlags.sharedRefresh !== false && window.UI?.Refresh?.createController
+        ? window.UI.Refresh
+        : null;
 
     document.addEventListener('DOMContentLoaded', initTrackingDevicePage);
 
@@ -16,9 +30,11 @@
         bindModalActions();
         bindFilterActions();
         bindScanActions();
-        updateTableHealthCounters();
-        applyDeviceFilters();
+        maybeOpenAddDeviceModalFromQuery();
+        maybeRunGoLiveFromQuery();
+        scheduleStoredListSync();
         startStoredStatusRefresh();
+        runPremiumEntrance();
     }
 
     function bindGlobalActions() {
@@ -31,9 +47,19 @@
             scanButton.addEventListener('click', scanNetworkDevices);
         }
 
+        const scanResultsRescanButton = document.getElementById('scanResultsRescanBtn');
+        if (scanResultsRescanButton) {
+            scanResultsRescanButton.addEventListener('click', scanNetworkDevices);
+        }
+
         const syncButton = document.getElementById('syncBtn');
         if (syncButton) {
             syncButton.addEventListener('click', syncTrackedDeviceIps);
+        }
+
+        const goLiveButton = document.getElementById('goLiveSyncBtn');
+        if (goLiveButton) {
+            goLiveButton.addEventListener('click', runGoLiveSync);
         }
 
         const manualRefreshButton = document.getElementById('trackingManualRefreshBtn');
@@ -112,6 +138,25 @@
         if (addDeviceModal) {
             addDeviceModal.addEventListener('hidden.bs.modal', clearDeviceForm);
         }
+
+        const confirmDeleteModal = document.getElementById('confirmDeleteModal');
+        if (confirmDeleteModal) {
+            confirmDeleteModal.addEventListener('hidden.bs.modal', () => {
+                deviceToDelete = null;
+                deleteInFlight = false;
+            });
+        }
+
+        const actionBannerCloseButton = document.getElementById('trackingDeviceActionBannerClose');
+        if (actionBannerCloseButton) {
+            actionBannerCloseButton.addEventListener('click', hideActionBanner);
+        }
+
+        document.addEventListener('hidden.bs.modal', () => {
+            if (!document.querySelector('.modal.show')) {
+                statusRefreshController?.flushDeferred();
+            }
+        });
     }
 
     function bindFilterActions() {
@@ -172,56 +217,108 @@
 
     function startStoredStatusRefresh() {
         updateRefreshTicker();
-        refreshStoredDeviceStatuses();
-        window.setInterval(refreshStoredDeviceStatuses, STATUS_REFRESH_INTERVAL_MS);
+        if (refreshApi) {
+            statusRefreshController = refreshApi.createController({
+                shouldDefer: () => Boolean(document.querySelector('.modal.show')),
+                resumeStaleMs: STATUS_REFRESH_INTERVAL_MS + 5000,
+                fetcher: () => requestJson('/api/tracking/live-summary'),
+                applyData: (response) => {
+                    if (!response.success || !Array.isArray(response.devices)) {
+                        return;
+                    }
+                    applyStoredDeviceSummary(response);
+                    lastRefreshAtMs = Date.now();
+                    updateRefreshTicker();
+                },
+                onStateChange: () => {
+                    updateRefreshTicker();
+                },
+                onError: (error) => {
+                    console.debug('Stored status refresh failed:', error?.message || error);
+                    const statusLabel = document.getElementById('trackingRefreshStatus');
+                    if (statusLabel) {
+                        statusLabel.textContent = 'Refresh issue';
+                    }
+                    if (toastApi) {
+                        toastApi.show('Unable to refresh stored device status.', 'warning', {
+                            durationMs: 2600
+                        });
+                    }
+                }
+            });
+        }
+        refreshStoredDeviceStatuses({ reason: 'initial' });
+        window.setInterval(() => refreshStoredDeviceStatuses({ reason: 'interval' }), STATUS_REFRESH_INTERVAL_MS);
         if (!refreshTicker) {
             refreshTicker = window.setInterval(updateRefreshTicker, 1000);
         }
     }
 
-    async function refreshStoredDeviceStatuses() {
-        try {
-            const response = await requestJson('/api/tracking/live-summary');
-            if (!response.success || !Array.isArray(response.devices)) {
-                return;
-            }
-
-            updateKpiCards(response);
-
-            const rows = document.querySelectorAll('#deviceList tr[data-device-row="true"][data-mac]');
-            if (!rows.length) {
-                return;
-            }
-
-            const rowMap = new Map();
-            rows.forEach(row => {
-                const mac = safeValue(row.getAttribute('data-mac'), '').toUpperCase();
-                if (mac) {
-                    rowMap.set(mac, row);
-                }
-            });
-
-            response.devices.forEach((device) => {
-                const macAddress = safeValue(device.mac_address, '').toUpperCase();
-                if (!macAddress) return;
-
-                const row = rowMap.get(macAddress);
-                if (!row) return;
-
-                applyStoredStatusToRow(row, device);
-            });
-
-            updateTableHealthCounters();
-            applyDeviceFilters();
-            lastRefreshAtMs = Date.now();
-            updateRefreshTicker();
-        } catch (error) {
-            console.debug('Stored status refresh failed:', error?.message || error);
-            const statusLabel = document.getElementById('trackingRefreshStatus');
-            if (statusLabel) {
-                statusLabel.textContent = 'Refresh issue';
-            }
+    function refreshStoredDeviceStatuses(options = {}) {
+        if (statusRefreshController) {
+            return statusRefreshController.refresh(options);
         }
+        return requestJson('/api/tracking/live-summary')
+            .then((response) => {
+                if (!response.success || !Array.isArray(response.devices)) {
+                    return null;
+                }
+                applyStoredDeviceSummary(response);
+                lastRefreshAtMs = Date.now();
+                updateRefreshTicker();
+                return response;
+            })
+            .catch((error) => {
+                console.debug('Stored status refresh failed:', error?.message || error);
+                return null;
+            });
+    }
+
+    function applyStoredDeviceSummary(response) {
+        updateKpiCards(response);
+
+        const rows = document.querySelectorAll('#deviceList tr[data-device-row="true"][data-mac]');
+        if (!rows.length) {
+            return;
+        }
+
+        const rowMap = new Map();
+        rows.forEach(row => {
+            const mac = safeValue(row.getAttribute('data-mac'), '').toUpperCase();
+            if (mac) {
+                rowMap.set(mac, row);
+            }
+        });
+
+        response.devices.forEach((device) => {
+            const macAddress = safeValue(device.mac_address, '').toUpperCase();
+            if (!macAddress) return;
+
+            const row = rowMap.get(macAddress);
+            if (!row) return;
+
+            applyStoredStatusToRow(row, device);
+        });
+
+        scheduleStoredListSync();
+    }
+
+    function scheduleStoredListSync() {
+        if (listSyncFrame) {
+            return;
+        }
+        listSyncFrame = window.requestAnimationFrame(() => {
+            listSyncFrame = null;
+            applyDeviceFilters();
+        });
+    }
+
+    function getStoredDeviceRows() {
+        const body = document.getElementById('deviceList');
+        if (!body) {
+            return [];
+        }
+        return Array.from(body.querySelectorAll('tr[data-device-row="true"]'));
     }
 
     function updateKpiCards(summaryResponse) {
@@ -257,7 +354,7 @@
             `${activeAgentCheckins} in ${syncWindow}s`
         );
 
-        const offlineCard = document.getElementById('trackingKpiOffline')?.closest('.tactical-stat-card');
+        const offlineCard = document.getElementById('trackingKpiOffline')?.closest('.ops-kpi-card');
         if (offlineCard) {
             offlineCard.classList.toggle('critical', offline > 0);
         }
@@ -368,6 +465,35 @@
         }
     }
 
+    function maybeOpenAddDeviceModalFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const shouldOpen = String(params.get('open_add_device') || '').trim().toLowerCase();
+        if (!['1', 'true', 'yes'].includes(shouldOpen)) {
+            return;
+        }
+        openAddDeviceModal();
+        params.delete('open_add_device');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, document.title, nextUrl);
+    }
+
+    function maybeRunGoLiveFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const shouldSync = String(params.get('go_live') || '').trim().toLowerCase();
+        if (!['1', 'true', 'yes'].includes(shouldSync)) {
+            return;
+        }
+
+        params.delete('go_live');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, document.title, nextUrl);
+        window.setTimeout(() => {
+            runGoLiveSync({ autoTriggered: true });
+        }, 0);
+    }
+
     function formatProbeTimestamp(rawTimestamp) {
         const parsed = parseUniversalDate(rawTimestamp);
         if (!parsed) {
@@ -425,6 +551,16 @@
         modal.show();
     }
 
+    function openScanResultsModal() {
+        const modalElement = document.getElementById('scanResultsModal');
+        if (!modalElement) {
+            return null;
+        }
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        modal.show();
+        return modal;
+    }
+
     function showDeleteConfirmation(deleteTarget, deviceName) {
         deviceToDelete = deleteTarget;
         const deleteDeviceName = document.getElementById('deleteDeviceName');
@@ -474,7 +610,7 @@
             payload.device_name = payload.hostname || 'Auto-Discovered Device';
         }
 
-        setButtonLoading(saveButton, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Saving...');
+        setButtonLoading(saveButton, 'Saving...');
 
         try {
             const response = await requestJson('/api/tracking/save-device', {
@@ -488,12 +624,15 @@
             }
 
             showNotification('Device saved successfully.', 'success');
+            if (response.device) {
+                upsertStoredDeviceRow(response.device);
+            }
             const modalElement = document.getElementById('addDeviceModal');
             const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
             if (modal) {
                 modal.hide();
             }
-            setTimeout(() => window.location.reload(), 900);
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
             showNotification(error.message || 'Save failed.', 'danger');
         } finally {
@@ -502,6 +641,10 @@
     }
 
     async function deleteTrackedDevice(deleteTarget) {
+        if (deleteInFlight) {
+            return;
+        }
+
         const payload = {};
         if (typeof deleteTarget === 'string') {
             payload.mac_address = deleteTarget;
@@ -515,12 +658,19 @@
         }
 
         if (!payload.device_id && !payload.mac_address) {
-            showNotification('Missing device identity for archive request.', 'warning');
+            showNotification('Missing device identity for delete request.', 'warning');
             return;
         }
 
         // Force a full purge instead of a soft archive per user request
         payload.purge = true;
+        deleteInFlight = true;
+        const confirmDeleteButton = document.getElementById('confirmDeleteBtn');
+        const originalDeleteLabel = confirmDeleteButton ? confirmDeleteButton.innerHTML : '';
+
+        if (confirmDeleteButton) {
+            setButtonLoading(confirmDeleteButton, 'Deleting...');
+        }
 
         try {
             const response = await requestJson('/api/tracking/delete-device', {
@@ -529,19 +679,32 @@
             });
 
             if (!response.success) {
-                showNotification(response.error || 'Archive failed.', 'danger');
+                showNotification(response.error || 'Delete failed.', 'danger');
                 return;
             }
 
-            showNotification(response.message || 'Device archived successfully.', 'success');
+            showActionBanner({
+                title: response.already_deleted ? 'Already deleted' : 'Device deleted',
+                message: response.message || 'Device deleted successfully.',
+                detail: response.already_deleted
+                    ? 'The selected device was already removed from stored tracking inventory.'
+                    : 'The selected device and its saved tracking history were removed successfully.',
+            });
+            removeStoredDeviceRow(payload.device_id, payload.mac_address);
             const modalElement = document.getElementById('confirmDeleteModal');
             const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
             if (modal) {
                 modal.hide();
             }
-            setTimeout(() => window.location.reload(), 800);
+            deviceToDelete = null;
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
-            showNotification(error.message || 'Archive failed.', 'danger');
+            showNotification(error.message || 'Delete failed.', 'danger');
+        } finally {
+            deleteInFlight = false;
+            if (confirmDeleteButton) {
+                resetButtonLoading(confirmDeleteButton, originalDeleteLabel || 'Delete Device');
+            }
         }
     }
 
@@ -600,10 +763,153 @@
         }
     }
 
-    function applyDeviceFilters() {
+    function removeStoredDeviceRow(deviceId, macAddress) {
+        const body = document.getElementById('deviceList');
+        if (!body) {
+            return;
+        }
+
+        let row = null;
+        if (Number.isInteger(deviceId) && deviceId > 0) {
+            row = body.querySelector(`#device-row-${deviceId}`);
+        }
+        if (!row && macAddress) {
+            row = body.querySelector(`tr[data-mac="${escapeSelectorValue(macAddress)}"]`);
+        }
+        if (row) {
+            row.classList.add('is-removing');
+            window.setTimeout(() => {
+                if (row.parentNode) {
+                    row.remove();
+                }
+                syncStoredDeviceEmptyState();
+                scheduleStoredListSync();
+            }, 170);
+            return;
+        }
+        syncStoredDeviceEmptyState();
+        scheduleStoredListSync();
+    }
+
+    function syncStoredDeviceEmptyState() {
+        const body = document.getElementById('deviceList');
+        if (!body) {
+            return;
+        }
+
+        const existingRows = body.querySelectorAll('tr[data-device-row="true"]');
+        let emptyRow = document.getElementById('deviceListEmptyRow');
+        if (existingRows.length > 0) {
+            if (emptyRow) {
+                emptyRow.remove();
+            }
+            return;
+        }
+
+        if (emptyRow) {
+            return;
+        }
+
+        emptyRow = document.createElement('tr');
+        emptyRow.id = 'deviceListEmptyRow';
+        emptyRow.innerHTML = `
+            <td colspan="5" class="text-center py-4">
+                <i data-lucide="laptop" class="text-muted mb-3 tracking-icon-lg"></i>
+                <h5>No Devices Configured</h5>
+                <p class="text-muted mb-2">Add your first employee endpoint, then use scan and sync to keep the list current.</p>
+                <button class="tactical-btn-outline open-add-device" type="button">
+                    <i data-lucide="plus"></i> Add Your First Device
+                </button>
+            </td>
+        `;
+        body.appendChild(emptyRow);
+        body.querySelector('.open-add-device')?.addEventListener('click', openAddDeviceModal);
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function upsertStoredDeviceRow(device) {
+        const body = document.getElementById('deviceList');
+        if (!body || !device) {
+            return;
+        }
+
+        const normalizedMac = safeValue(device.mac_address, '').trim();
+        const existingById = Number.isInteger(Number(device.id)) ? body.querySelector(`#device-row-${Number(device.id)}`) : null;
+        const existingByMac = normalizedMac
+            ? body.querySelector(`tr[data-device-row="true"][data-mac="${escapeSelectorValue(normalizedMac)}"]`)
+            : null;
+        const row = existingById || existingByMac || document.createElement('tr');
+        const availability = 'offline';
+
+        row.id = `device-row-${Number(device.id || 0)}`;
+        row.className = `ops-device-row status-${availability}`;
+        row.dataset.deviceRow = 'true';
+        row.dataset.deviceStatus = availability;
+        row.dataset.mac = normalizedMac;
+        row.dataset.unassigned = ((device.employee_name || '').trim() ? '0' : '1');
+        row.dataset.needsSync = ((device.ip_address || '').trim() ? '0' : '1');
+        row.dataset.searchIndex = `${safeValue(device.device_name, '')} ${safeValue(device.employee_name, '')} ${safeValue(device.hostname, '')} ${safeValue(device.ip_address, '')} ${normalizedMac} ${safeValue(device.site_id, '')} ${safeValue(device.department_id, '')}`.toLowerCase().trim();
+
+        row.innerHTML = `
+            <td class="ps-4 device-name-cell">
+                <strong class="ops-hostname">${escapeHtml(device.device_name || device.hostname || 'Unknown Device')}</strong>
+                <div class="ops-assignee device-mac">${escapeHtml(device.employee_name || 'Unassigned')}</div>
+            </td>
+            <td class="tracking-status-cell">
+                <span class="ops-status-badge status-badge ${availability}">${availability.toUpperCase()}</span>
+                <div class="tracking-status-meta text-muted small">Awaiting next refresh</div>
+            </td>
+            <td class="tracking-network-cell">
+                <div class="ops-network-line">IP <strong class="tracking-ip-value">${escapeHtml(device.ip_address || 'N/A')}</strong></div>
+                <div class="ops-network-line">MAC <strong class="tracking-mac-value">${escapeHtml(normalizedMac || 'N/A')}</strong></div>
+                <div class="ops-network-line tracking-scope-meta text-muted" style="font-size: 11px;">
+                    <span class="tracking-host-value">${escapeHtml(device.hostname || '')}</span>
+                </div>
+            </td>
+            <td>
+                <div class="ops-time-main">${device.last_seen ? escapeHtml(String(device.last_seen)) : 'Never'}</div>
+            </td>
+            <td class="text-end pe-4">
+                <div class="btn-group ops-actions justify-content-end align-items-center gap-2">
+                    <a href="/tracking/devices/${Number(device.id || 0)}" class="ops-btn ops-btn-live text-decoration-none" title="Live Tracking">LIVE</a>
+                    <button class="ops-btn ops-btn-icon edit-device" type="button" title="Edit Device">
+                        <i data-lucide="edit" class="tracking-icon-sm"></i>
+                    </button>
+                    <button class="ops-btn ops-btn-icon delete-device tracking-delete-btn" data-device-id="${Number(device.id || 0)}" data-mac="${escapeHtml(normalizedMac)}" data-device-name="${escapeHtml(device.device_name || device.hostname || 'Unknown Device')}" type="button" title="Delete Device">
+                        <i data-lucide="trash-2" class="tracking-icon-sm"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        const editButton = row.querySelector('.edit-device');
+        if (editButton) {
+            editButton.setAttribute('data-device', JSON.stringify(device));
+        }
+
+        if (!existingById && !existingByMac) {
+            const emptyRow = document.getElementById('deviceListEmptyRow');
+            if (emptyRow) {
+                emptyRow.remove();
+            }
+            row.classList.add('is-entering');
+            body.prepend(row);
+            window.requestAnimationFrame(() => {
+                row.classList.remove('is-entering');
+            });
+        }
+
+        scheduleStoredListSync();
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function applyDeviceFilters(rows = getStoredDeviceRows()) {
         const searchTerm = (document.getElementById('deviceSearchInput')?.value || '').trim().toLowerCase();
         const statusFilter = document.getElementById('deviceStatusFilter')?.value || 'all';
-        const rows = Array.from(document.querySelectorAll('#deviceList tr[data-device-row="true"]'));
 
         let visibleCount = 0;
         rows.forEach((row) => {
@@ -646,11 +952,10 @@
             filterEmptyState.classList.toggle('d-none', !showFilteredEmptyState);
         }
 
-        updateTableHealthCounters();
+        updateTableHealthCounters(rows);
     }
 
-    function updateTableHealthCounters() {
-        const rows = Array.from(document.querySelectorAll('#deviceList tr[data-device-row="true"]'));
+    function updateTableHealthCounters(rows = getStoredDeviceRows()) {
         if (!rows.length) {
             setElementText('managedCount', 0);
             setElementText('unassignedCount', 0);
@@ -663,6 +968,7 @@
         const needsAttention = rows.filter((row) => row.dataset.needsSync === '1').length;
 
         setElementText('managedCount', managedCount);
+        setElementText('tabCountAll', managedCount);
         setElementText('unassignedCount', unassignedCount);
         setElementText('needsAttentionCount', needsAttention);
 
@@ -705,9 +1011,15 @@
     }
 
     async function scanNetworkDevices(event) {
-        const button = event.currentTarget;
-        const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Scanning...');
+        const button = event?.currentTarget || document.getElementById('trackingScanBtn');
+        const originalLabel = button ? button.innerHTML : 'Scan Network';
+
+        openScanResultsModal();
+        showScanLoadingState();
+
+        if (button) {
+            setButtonLoading(button, 'Checking agents...');
+        }
 
         try {
             const response = await requestJson('/api/tracking/scan', {
@@ -725,23 +1037,21 @@
             if (Array.isArray(response.updated_ips) && response.updated_ips.length > 0) {
                 showNotification(`Updated IP addresses for ${response.updated_ips.length} device(s).`, 'success');
             }
-
-            if (Array.isArray(response.auto_saved_devices) && response.auto_saved_devices.length > 0) {
-                showNotification(`Auto-saved ${response.auto_saved_devices.length} new device(s) from scan.`, 'success');
-            }
-
-            refreshStoredDeviceStatuses();
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
+            showScanErrorState(error.message || 'Scan failed.');
             showNotification(error.message || 'Scan failed.', 'danger');
         } finally {
-            resetButtonLoading(button, originalLabel);
+            if (button) {
+                resetButtonLoading(button, originalLabel);
+            }
         }
     }
 
     async function syncTrackedDeviceIps(event) {
         const button = event.currentTarget;
         const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Syncing...');
+        setButtonLoading(button, 'Syncing...');
 
         try {
             const response = await requestJson('/api/tracking/sync-ips', {
@@ -766,12 +1076,11 @@
 
             if (updatedCount === 0 && autoSavedCount === 0) {
                 showNotification('All tracked devices are already up to date.', 'info');
-                refreshStoredDeviceStatuses();
+                await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
                 return;
             }
 
-            refreshStoredDeviceStatuses();
-            setTimeout(() => window.location.reload(), 1400);
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
             showNotification(error.message || 'Sync failed.', 'danger');
         } finally {
@@ -779,20 +1088,100 @@
         }
     }
 
+    async function runGoLiveSync(trigger = {}) {
+        const button = trigger && trigger.currentTarget
+            ? trigger.currentTarget
+            : document.getElementById('goLiveSyncBtn');
+        const originalLabel = button ? button.innerHTML : '';
+
+        if (button) {
+            setButtonLoading(button, 'Syncing live...');
+        }
+
+        try {
+            const response = await requestJson('/api/tracking/live-sync', {
+                method: 'POST',
+            });
+
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
+
+            const refreshedDevices = Number(response.refreshed_devices || 0);
+            showActionBanner({
+                title: 'Live sync complete',
+                message: response.message || 'Live sync completed.',
+                detail: refreshedDevices > 0
+                    ? `Refreshed ${refreshedDevices} tracked device snapshot${refreshedDevices === 1 ? '' : 's'} and updated the live status view.`
+                    : 'The live status view was refreshed using the latest available tracking snapshot cache.',
+            });
+        } catch (error) {
+            showNotification(error.message || 'Live sync failed.', 'danger');
+        } finally {
+            if (button) {
+                resetButtonLoading(button, originalLabel || 'Go Live');
+            }
+        }
+    }
+
     function renderScanSummary(response) {
-        setElementText('scanTrackingActiveCount', response.tracking_active || 0);
-        setElementText('scanPortOnlyCount', response.port_only || 0);
-        setElementText('scanNewDevicesCount', response.new_devices || 0);
-        const newDeviceCard = document.getElementById('scanNewDevicesCount')?.closest('.tactical-stat-card');
+        const trackingActive = Number(response.tracking_active || 0);
+        const portOnly = Number(response.port_only || 0);
+        const readyToAdd = Number(response.new_devices || 0);
+        const candidateHosts = Number(response.candidate_hosts || 0);
+        const inventoryHosts = Number(response.inventory_hosts || 0);
+
+        setElementText('scanTrackingActiveCount', trackingActive);
+        setElementText('scanPortOnlyCount', portOnly);
+        setElementText('scanNewDevicesCount', readyToAdd);
+        setElementText('scanTrackingActiveMeta', trackingActive > 0 ? 'Last scan' : 'No active agents');
+        setElementText('scanPortOnlyMeta', portOnly > 0 ? 'Port reachable only' : 'Agent verified');
+        setElementText('scanNewDevicesMeta', readyToAdd > 0 ? 'Not yet monitored' : 'No new candidates');
+        const newDeviceCard = document.getElementById('scanNewDevicesCount')?.closest('.ops-discovery-stat');
         if (newDeviceCard) {
-            newDeviceCard.classList.toggle('warning', Number(response.new_devices || 0) > 0);
+            newDeviceCard.classList.toggle('warning', readyToAdd > 0);
         }
 
         const banner = document.getElementById('scanResultsBanner');
+        const meta = document.getElementById('scanResultsMeta');
         if (banner) {
-            const totalFound = response.total_found || 0;
-            banner.textContent = `Found ${totalFound} device(s) with port 5002 open.`;
-            banner.classList.toggle('d-none', totalFound === 0);
+            if (candidateHosts === 0) {
+                banner.textContent = 'No online inventory candidates are currently available to probe.';
+            } else if (trackingActive > 0) {
+                banner.textContent = trackingActive === 1
+                    ? '1 active agent endpoint is ready for monitoring review.'
+                    : `${trackingActive} active agent endpoints are ready for monitoring review.`;
+            } else if (portOnly > 0) {
+                banner.textContent = 'No agent-active endpoints responded, but the configured tracking service port is reachable on other hosts.';
+            } else {
+                banner.textContent = 'No active tracking agents were detected on this scan.';
+            }
+        }
+        if (meta) {
+            if (candidateHosts === 0) {
+                meta.textContent = 'Tracking discovery now probes only known online inventory and already-tracked endpoints.';
+            } else if (readyToAdd > 0) {
+                meta.textContent = readyToAdd === 1
+                    ? `Checked ${candidateHosts} candidate host${candidateHosts === 1 ? '' : 's'} from ${inventoryHosts} online inventory target${inventoryHosts === 1 ? '' : 's'}. 1 endpoint is not yet in monitored inventory.`
+                    : `Checked ${candidateHosts} candidate hosts from ${inventoryHosts} online inventory targets. ${readyToAdd} endpoints are not yet in monitored inventory.`;
+            } else if (trackingActive > 0) {
+                meta.textContent = `Checked ${candidateHosts} candidate host${candidateHosts === 1 ? '' : 's'}. All detected agent-active endpoints are already present in monitored inventory.`;
+            } else if (portOnly > 0) {
+                meta.textContent = `${portOnly} host${portOnly === 1 ? '' : 's'} exposed a configured tracking service port but did not return full tracking identity after checking ${candidateHosts} known candidates.`;
+            } else {
+                meta.textContent = `No active agent responses were returned from ${candidateHosts} known candidates. Ensure service.py is running and reachable on one of the configured tracking agent ports, then scan again.`;
+            }
+        }
+        if (candidateHosts === 0) {
+            setScanEmptyState({
+                title: 'No online inventory candidates',
+                detail: 'The inventory does not currently show any online IPs to probe for the tracking agent.',
+            });
+        } else if (trackingActive === 0) {
+            setScanEmptyState({
+                title: portOnly > 0 ? 'No verified agent responses yet' : 'No active tracking agents found',
+                detail: portOnly > 0
+                    ? `${portOnly} host${portOnly === 1 ? '' : 's'} exposed a configured tracking agent port, but the agent did not return identity details.`
+                    : 'Start service.py on the target endpoint, then run Scan Network again.',
+            });
         }
     }
 
@@ -804,9 +1193,11 @@
             return;
         }
 
+        const agentReadyDevices = getAgentReadyScanDevices(devices);
+        body.querySelectorAll('tr:not([data-row-key])').forEach((row) => row.remove());
         const nextKeys = new Set();
 
-        devices.forEach((device) => {
+        agentReadyDevices.forEach((device) => {
             const rowKey = getScanRowKey(device);
             nextKeys.add(rowKey);
 
@@ -830,6 +1221,95 @@
         if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
     }
 
+    function showScanLoadingState() {
+        const tableWrap = document.getElementById('scanResultsTableWrap');
+        const emptyState = document.getElementById('scanResultsEmptyState');
+        const body = document.getElementById('scanResultsBody');
+        const banner = document.getElementById('scanResultsBanner');
+        const meta = document.getElementById('scanResultsMeta');
+        if (banner) {
+            banner.textContent = 'Checking known online inventory for endpoints with an active tracking agent...';
+        }
+        if (meta) {
+            meta.textContent = 'This probe is scoped to online inventory and already-tracked endpoints. The ICMP/classification engine is not changed.';
+        }
+        if (emptyState) {
+            emptyState.classList.add('d-none');
+        }
+        if (tableWrap) {
+            tableWrap.hidden = false;
+        }
+        if (body) {
+            if (loadingApi?.setTableState) {
+                loadingApi.setTableState(body, {
+                    state: 'loading',
+                    colspan: 5,
+                    title: 'Checking known inventory candidates',
+                    detail: 'Only devices with a live tracking agent response will appear in this list.',
+                });
+            } else {
+                body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Checking known inventory candidates...</td></tr>';
+            }
+        }
+    }
+
+    function showScanErrorState(message) {
+        const tableWrap = document.getElementById('scanResultsTableWrap');
+        const emptyState = document.getElementById('scanResultsEmptyState');
+        const body = document.getElementById('scanResultsBody');
+        const banner = document.getElementById('scanResultsBanner');
+        const meta = document.getElementById('scanResultsMeta');
+        if (banner) {
+            banner.textContent = 'Scan did not complete.';
+        }
+        if (meta) {
+            meta.textContent = message || 'Unable to check the network for agent-active endpoints.';
+        }
+        if (emptyState) {
+            emptyState.classList.add('d-none');
+        }
+        if (tableWrap) {
+            tableWrap.hidden = false;
+        }
+        if (body) {
+            if (loadingApi?.setTableState) {
+                loadingApi.setTableState(body, {
+                    state: 'error',
+                    colspan: 5,
+                    title: 'Unable to complete scan',
+                    detail: message || 'Retry the scan in a few seconds.',
+                });
+            } else {
+                body.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">${escapeHtml(message || 'Scan failed.')}</td></tr>`;
+            }
+        }
+    }
+
+    function setScanEmptyState(config = {}) {
+        setElementText('scanResultsEmptyTitle', config.title || 'No active tracking agents found');
+        setElementText('scanResultsEmptyDetail', config.detail || 'Run Scan Network again after the agent is started on the target endpoint.');
+    }
+
+    function getAgentReadyScanDevices(devices) {
+        return (Array.isArray(devices) ? devices : []).filter((device) => {
+            return safeValue(device?.status, '').toLowerCase() === 'tracking_active';
+        });
+    }
+
+    function decrementScanReadyCount() {
+        const current = Number(document.getElementById('scanNewDevicesCount')?.textContent || 0);
+        if (!Number.isFinite(current) || current <= 0) {
+            return;
+        }
+        const next = Math.max(0, current - 1);
+        setElementText('scanNewDevicesCount', next);
+        setElementText('scanNewDevicesMeta', next > 0 ? 'Not yet monitored' : 'All detected agents are already monitored');
+        const newDeviceCard = document.getElementById('scanNewDevicesCount')?.closest('.ops-discovery-stat');
+        if (newDeviceCard) {
+            newDeviceCard.classList.toggle('warning', next > 0);
+        }
+    }
+
     function createScanRow(rowKey) {
         const row = document.createElement('tr');
         row.dataset.rowKey = rowKey;
@@ -851,7 +1331,7 @@
         const status = safeValue(device.status, 'unknown');
         const ip = safeValue(device.ip, 'N/A');
         const macAddress = safeValue(device.mac_address, 'N/A');
-        const trackingText = device.tracking_data ? 'Active' : 'Inactive';
+        const trackingText = device.tracking_data ? 'Agent responding' : 'Identity verified';
 
         let statusClass = 'tactical-badge tactical-badge-warning status-badge';
         let statusLabel = 'UNKNOWN';
@@ -865,8 +1345,8 @@
 
         const isSaved = Boolean(device.is_saved);
         const actionHtml = isSaved
-            ? '<button class="btn btn-outline-secondary border-secondary text-light btn-sm" type="button" disabled>Already Saved</button>'
-            : `<button class="btn btn-outline-primary border-primary text-light btn-sm save-scanned-device" type="button" data-mac="${escapeHtml(macAddress)}" data-ip="${escapeHtml(ip)}" data-hostname="${escapeHtml(hostname)}"><i data-lucide="download" class="tracking-icon-sm me-1"></i> Save</button>`;
+            ? '<button class="btn btn-outline-secondary border-secondary text-light btn-sm" type="button" disabled>Already Monitored</button>'
+            : `<button class="btn btn-outline-primary border-primary text-light btn-sm save-scanned-device" type="button" data-mac="${escapeHtml(macAddress)}" data-ip="${escapeHtml(ip)}" data-hostname="${escapeHtml(hostname)}"><i data-lucide="plus" class="tracking-icon-sm me-1"></i> Add to Monitoring</button>`;
 
         row.querySelector('.scan-device-col').innerHTML = `<strong>${escapeHtml(hostname)}</strong><div class="device-mac mt-1">${escapeHtml(system)}</div>`;
         row.querySelector('.scan-status-col').innerHTML = `<span class="${statusClass}">${statusLabel}</span>`;
@@ -887,7 +1367,8 @@
         };
 
         const originalLabel = button.innerHTML;
-        setButtonLoading(button, '<i data-lucide="loader" class="fa-spin tracking-icon-sm tracking-loader-icon"></i> Saving...');
+        let savedSuccessfully = false;
+        setButtonLoading(button, 'Saving...');
 
         try {
             const response = await requestJson('/api/tracking/save-device', {
@@ -900,12 +1381,21 @@
                 return;
             }
 
-            showNotification('Scanned device saved successfully.', 'success');
-            setTimeout(() => window.location.reload(), 900);
+            showNotification('Device added to monitoring.', 'success');
+            if (response.device) {
+                upsertStoredDeviceRow(response.device);
+            }
+            savedSuccessfully = true;
+            button.disabled = true;
+            button.textContent = 'Already Monitored';
+            decrementScanReadyCount();
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
             showNotification(error.message || 'Save failed.', 'danger');
         } finally {
-            resetButtonLoading(button, originalLabel);
+            if (!savedSuccessfully) {
+                resetButtonLoading(button, originalLabel);
+            }
         }
     }
 
@@ -1022,6 +1512,14 @@
     }
 
     function showNotification(message, type) {
+        if (toastApi) {
+            toastApi.show(String(message || ''), type || 'info', {
+                durationMs: 5000,
+                container: '#trackingNotificationHost'
+            });
+            return;
+        }
+
         const host = document.getElementById('trackingNotificationHost') || document.body;
         const alertType = type || 'info';
 
@@ -1049,16 +1547,101 @@
         }, 5000);
     }
 
-    function setButtonLoading(button, loadingHtml) {
+    function showActionBanner(config = {}) {
+        const banner = document.getElementById('trackingDeviceActionBanner');
+        if (!banner) {
+            return;
+        }
+
+        const titleNode = document.getElementById('trackingDeviceActionBannerTitle');
+        const messageNode = document.getElementById('trackingDeviceActionBannerMessage');
+        const detailNode = document.getElementById('trackingDeviceActionBannerDetail');
+
+        if (titleNode) {
+            titleNode.textContent = config.title || 'Update complete';
+        }
+        if (messageNode) {
+            messageNode.textContent = config.message || '';
+        }
+        if (detailNode) {
+            detailNode.textContent = config.detail || '';
+            detailNode.classList.toggle('d-none', !config.detail);
+        }
+
+        banner.classList.remove('d-none');
+
+        window.clearTimeout(actionBannerTimer);
+        actionBannerTimer = window.setTimeout(hideActionBanner, 5200);
+    }
+
+    function hideActionBanner() {
+        const banner = document.getElementById('trackingDeviceActionBanner');
+        if (!banner) {
+            return;
+        }
+
+        banner.classList.add('d-none');
+        window.clearTimeout(actionBannerTimer);
+        actionBannerTimer = null;
+    }
+
+    function runPremiumEntrance() {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            return;
+        }
+
+        const targets = Array.from(document.querySelectorAll(
+            '.tracking-page-header, #device-kpi-row .ops-kpi-card, .tracking-section-devices .ops-stored-card, .tracking-section-discovery .ops-stored-card'
+        ));
+
+        targets.forEach((node, index) => {
+            if (!node || typeof node.animate !== 'function') {
+                return;
+            }
+
+            node.animate(
+                [
+                    { opacity: 0, transform: 'translateY(8px)' },
+                    { opacity: 1, transform: 'translateY(0)' },
+                ],
+                {
+                    duration: 220,
+                    delay: Math.min(index * 36, 180),
+                    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                    fill: 'both',
+                }
+            );
+        });
+    }
+
+    function setButtonLoading(button, loadingLabel) {
         if (!button) {
             return;
         }
+        if (loadingApi) {
+            loadingApi.setButtonBusy(button, {
+                busy: true,
+                labelBusy: loadingLabel || 'Working...',
+                labelIdle: button.dataset.uiIdleLabel || button.innerHTML,
+            });
+            return;
+        }
+        if (!button.dataset.uiIdleLabel) {
+            button.dataset.uiIdleLabel = button.innerHTML;
+        }
         button.disabled = true;
-        button.innerHTML = loadingHtml;
+        button.innerHTML = loadingLabel || 'Working...';
     }
 
     function resetButtonLoading(button, originalHtml) {
         if (!button) {
+            return;
+        }
+        if (loadingApi) {
+            loadingApi.setButtonBusy(button, {
+                busy: false,
+                labelIdle: originalHtml,
+            });
             return;
         }
         button.disabled = false;

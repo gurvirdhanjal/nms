@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from extensions import redis_client
 from extensions import db
 from models.dashboard import DashboardEvent
 from models.device import Device
@@ -12,6 +13,15 @@ from services.tracked_device_ip_change import apply_tracked_device_ip_change
 
 
 pytestmark = pytest.mark.integration
+
+
+def _clear_server_health_cache():
+    if redis_client is None:
+        return
+    try:
+        redis_client.delete('server:health:summary')
+    except Exception:
+        pass
 
 
 def test_linked_tracked_ip_change_updates_inventory_and_server_endpoints(admin_client):
@@ -86,6 +96,7 @@ def test_linked_tracked_ip_change_updates_inventory_and_server_endpoints(admin_c
     db.session.refresh(server)
     assert server.device_ip == '10.0.2.20'
     assert server.subnet_cidr == '10.0.2.0/24'
+    _clear_server_health_cache()
 
     health_response = admin_client.get('/api/server/health')
     assert health_response.status_code == 200

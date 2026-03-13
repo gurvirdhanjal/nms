@@ -43,6 +43,17 @@ class AlertManager:
         "health_disk_usage_pct": ("health_disk",),
     }
 
+    # Maps rules_json flat keys → (METRIC_CATALOG key, threshold field)
+    # Add entries here if more metrics are exposed to compliance profiles.
+    _RULES_JSON_MAP: dict[str, tuple[str, str]] = {
+        "cpu_warning":     ("cpu_usage_pct",    "warning"),
+        "cpu_critical":    ("cpu_usage_pct",    "critical"),
+        "memory_warning":  ("memory_usage_pct", "warning"),
+        "memory_critical": ("memory_usage_pct", "critical"),
+        "disk_warning":    ("disk_usage_pct",   "warning"),
+        "disk_critical":   ("disk_usage_pct",   "critical"),
+    }
+
     @classmethod
     def process_scan_result(cls, device, is_online, latency_ms, packet_loss_pct, commit=True):
         if getattr(device, "maintenance_mode", False):
@@ -52,7 +63,7 @@ class AlertManager:
             device.offline_strikes = 0
 
         is_server = str(device.device_type).lower() == "server"
-        should_monitor = device.is_monitored and is_server
+        should_monitor = device.is_monitored
 
         if should_monitor:
             status_key = (device.device_id, "status")
@@ -65,10 +76,10 @@ class AlertManager:
                         event_type="STATUS",
                         severity="CRITICAL",
                         metric="status",
-                        message=f"Server {device.device_name} ({device.device_ip}) is OFFLINE ({cls.STRIKES_REQUIRED} consecutive failures)",
+                        message=f"{'Server' if is_server else 'Device'} {device.device_name} ({device.device_ip}) is OFFLINE ({cls.STRIKES_REQUIRED} consecutive failures)",
                         value=0,
                         commit=commit,
-                        send_email=True,
+                        send_email=is_server,
                     )
             else:
                 if device.offline_strikes > 0:
@@ -100,7 +111,7 @@ class AlertManager:
                         message=f"Sustained high latency: {latency_ms:.1f}ms ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.LATENCY_THRESHOLD_MS}ms)",
                         value=latency_ms,
                         commit=commit,
-                        send_email=True,
+                        send_email=False,
                     )
             else:
                 if getattr(device, "latency_strikes", 0) > 0:
@@ -119,7 +130,7 @@ class AlertManager:
                         message=f"Sustained packet loss: {packet_loss_pct:.1f}% ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.PACKET_LOSS_THRESHOLD_PCT}%)",
                         value=packet_loss_pct,
                         commit=commit,
-                        send_email=True,
+                        send_email=False,
                     )
             else:
                 if getattr(device, "packet_loss_strikes", 0) > 0:
@@ -134,11 +145,49 @@ class AlertManager:
             cls._handle_icmp_recovery(device, "packet_loss", commit=commit)
 
     @classmethod
+    def _get_thresholds(cls, device) -> dict:
+        """
+        Return the effective thresholds for a device.
+
+        If the device has a compliance_profile_id, the profile's rules_json
+        overrides matching global threshold values.  Unknown keys in rules_json
+        are silently ignored so a badly formed profile never breaks alerting.
+
+        Falls back to global defaults if:
+          - no profile is assigned
+          - the profile row is missing
+          - any error occurs during profile loading
+        """
+        thresholds = get_merged_thresholds()
+        profile_id = getattr(device, 'compliance_profile_id', None)
+        if not profile_id:
+            return thresholds
+
+        try:
+            from models.compliance_profile import ComplianceProfile
+            profile = ComplianceProfile.query.get(profile_id)
+            if not profile or not isinstance(profile.rules_json, dict):
+                return thresholds
+
+            metrics = thresholds["metrics"]
+            for rule_key, value in profile.rules_json.items():
+                mapping = cls._RULES_JSON_MAP.get(rule_key)
+                if mapping is None or value is None:
+                    continue
+                metric_key, field = mapping
+                if metric_key in metrics:
+                    metrics[metric_key][field] = float(value)
+        except Exception:
+            pass  # Never let profile loading break alert evaluation
+
+        return thresholds
+
+    @classmethod
     def check_server_health(cls, device, log, commit=True):
         if getattr(device, "maintenance_mode", False) or log is None:
             return
 
-        thresholds = get_merged_thresholds()
+        thresholds = cls._get_thresholds(device)
         evaluations = evaluate_metrics_for_log(log, thresholds)
         evaluation_time = getattr(log, "timestamp", None) or datetime.utcnow()
 

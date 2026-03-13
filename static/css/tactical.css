@@ -283,6 +283,26 @@ body.tactical-theme {
     transform: translateY(-1px);
 }
 
+/* Stale data indicator — applied by dashboard/utils.js:checkStale() when data >5min old */
+.card-stale {
+    opacity: 0.72;
+    border-left: 2px solid var(--s-warn, var(--ui-warning, #f0a500));
+    position: relative;
+}
+
+.card-stale::after {
+    content: 'Stale';
+    position: absolute;
+    top: 0.4rem;
+    right: 0.6rem;
+    font-size: 0.6rem;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--s-warn, var(--ui-warning, #f0a500));
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
 .tactical-card .card-header {
     background: rgba(0, 0, 0, 0.3);
     border-bottom: 1px solid var(--tactical-border);
@@ -433,6 +453,19 @@ body.tactical-theme {
     box-shadow: var(--tactical-glow-md) var(--tactical-accent-glow);
     transform: translateY(-2px);
     color: var(--tactical-bg-darkest);
+}
+
+.tactical-btn-ghost {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: var(--tactical-text-secondary);
+}
+
+.tactical-btn-ghost:hover,
+.tactical-btn-ghost.active {
+    background: rgba(0, 212, 170, 0.12);
+    border-color: rgba(0, 212, 170, 0.42);
+    color: var(--tactical-text-primary);
 }
 
 .tactical-btn-secondary {
@@ -2592,6 +2625,156 @@ html {
     background: var(--e-bg-panel) !important;
     border-top: 1px solid var(--e-border) !important;
     color: var(--e-text-muted) !important;
+}
+
+/* ── 20. PHASE 2: DEEP POLISH REFINEMENTS ────────────────────
+   Status chips, role coding, and refined table interactions.
+   ──────────────────────────────────────────────────────────── */
+
+.dashboard-enterprise .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    font-family: var(--e-sans-font);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--e-border);
+    color: var(--e-text-secondary);
+}
+
+.dashboard-enterprise .status-chip[data-status="active"] {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.2);
+    background: rgba(74, 222, 128, 0.04);
+}
+
+.dashboard-enterprise .status-chip[data-status="disabled"] {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.2);
+    background: rgba(248, 113, 113, 0.04);
+}
+
+.dashboard-enterprise .status-chip[data-status="pending"] {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.2);
+    background: rgba(251, 191, 36, 0.04);
+}
+
+/* Specific Role Badge Coding */
+.dashboard-enterprise .role-badge-elite {
+    font-family: var(--e-mono-font);
+    font-size: 0.62rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 2px;
+    border: 1px solid transparent;
+}
+
+.dashboard-enterprise .role-badge-admin {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.dashboard-enterprise .role-badge-manager {
+    background: rgba(59, 130, 246, 0.1);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.dashboard-enterprise .role-badge-operator {
+    background: rgba(32, 201, 151, 0.1);
+    color: #5eead4;
+    border-color: rgba(32, 201, 151, 0.2);
+}
+
+.dashboard-enterprise .role-badge-viewer {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--e-text-muted);
+    border-color: var(--e-border);
+}
+
+/* Action Menu (Vertical Ellipsis) */
+.dashboard-enterprise .action-menu-trigger {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--e-text-muted);
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.dashboard-enterprise .action-menu-trigger:hover {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--e-text-primary);
+}
+
+/* Table Filter Suite */
+.dashboard-enterprise .table-filter-suite {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(9, 11, 16, 0.4);
+    border-bottom: 1px solid var(--e-border);
+    align-items: center;
+}
+
+.dashboard-enterprise .filter-input-wrap {
+    position: relative;
+    flex-grow: 1;
+}
+
+.dashboard-enterprise .filter-input-wrap i {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--e-text-muted);
+    font-size: 0.75rem;
+}
+
+.dashboard-enterprise .filter-input-wrap input {
+    padding-left: 2.2rem !important;
+    height: 32px;
+    font-size: 0.75rem;
+}
+
+.dashboard-enterprise .filter-select {
+    height: 32px;
+    background: var(--e-bg-panel);
+    border: 1px solid var(--e-border);
+    color: var(--e-text-secondary);
+    font-size: 0.72rem;
+    padding-inline: 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.dashboard-enterprise .filter-select:focus {
+    border-color: var(--e-border-strong);
+    outline: none;
+}
+
+/* Navigation Links */
+.dashboard-enterprise .entity-link {
+    color: var(--e-text-primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s ease;
+}
+
+.dashboard-enterprise .entity-link:hover {
+    border-bottom-color: var(--e-text-muted);
+}
+
+/* Table Font Reduction */
+.dashboard-enterprise .entity-table tbody td {
+    font-size: 0.72rem !important;
 }
 
 /* ── END OF ENTERPRISE OVERRIDE BLOCK ──────────────────────── */

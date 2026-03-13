@@ -117,6 +117,9 @@ def test_productivity_report_and_exports_include_freshness_fields(admin_client, 
     reader = csv.DictReader(io.StringIO(csv_text))
     rows = list(reader)
     assert reader.fieldnames is not None
+    assert 'Report Type' in reader.fieldnames
+    assert 'Period Start' in reader.fieldnames
+    assert 'Granularity' in reader.fieldnames
     assert 'Data Basis' in reader.fieldnames
     assert 'Freshness State' in reader.fieldnames
     assert 'Last Sample At' in reader.fieldnames
@@ -124,6 +127,7 @@ def test_productivity_report_and_exports_include_freshness_fields(admin_client, 
     assert 'Sample Count' in reader.fieldnames
     assert 'Report Eligible' in reader.fieldnames
     assert rows
+    assert rows[0]['Report Type'] == 'Productivity'
     assert rows[0]['Data Basis'] == 'persisted_samples'
     assert rows[0]['Report Eligible'] == 'Yes'
 
@@ -134,3 +138,36 @@ def test_productivity_report_and_exports_include_freshness_fields(admin_client, 
     summary_values = {(summary[f'A{row}'].value, summary[f'B{row}'].value) for row in range(1, summary.max_row + 1)}
     assert ('Data Basis', 'persisted_samples') in summary_values
     assert ('Fresh Devices', 1) in summary_values
+    assert ('Report Type', 'Productivity') in summary_values
+    assert 'Applications' in workbook.sheetnames
+    assert 'Activity Summary' in workbook.sheetnames
+
+
+def test_productivity_report_meta_omits_tracking_rollups_when_timescaledb_enabled(admin_client, app, monkeypatch):
+    from services.timescaledb_service import TimescaleDBService
+
+    app.config['ENABLE_PRODUCTIVITY_REPORT'] = True
+    end_utc = datetime.utcnow()
+    start_utc = end_utc - timedelta(days=2)
+    device = _create_report_device('D3')
+    _seed_tracking_window(device, start_utc, end_utc)
+    monkeypatch.setattr(TimescaleDBService, 'is_timescaledb_enabled', lambda: True)
+
+    response = admin_client.get(
+        f'/api/reports/productivity?start={start_utc.isoformat()}&end={end_utc.isoformat()}&device_ids={device.id}'
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    assert payload['meta']['source_tables'] == [
+        'tracking_samples',
+        'device_application_logs',
+        'device_activity_logs',
+    ]
+    assert payload['meta']['freshness_sources'] == [
+        'tracking_samples',
+        'device_application_logs',
+        'device_activity_logs',
+    ]
+    assert not any('tracking_hourly_rollups' in warning for warning in payload['meta']['completeness_warnings'])
+    assert not any('tracking_daily_rollups' in warning for warning in payload['meta']['completeness_warnings'])

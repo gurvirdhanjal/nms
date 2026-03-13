@@ -49,6 +49,9 @@ const SUBNET_DETAILS_CACHE_TTL_MS = 15000;
 const subnetDetailsCache = new Map();
 const AVAILABILITY_RANGE_STORAGE_KEY = 'tactical_dashboard_availability_range';
 let availabilityDetailRange = localStorage.getItem(AVAILABILITY_RANGE_STORAGE_KEY) || '24h';
+const dashboardLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false && window.UI?.Loading
+    ? window.UI.Loading
+    : null;
 
 // Init
 if (document.readyState === 'loading') {
@@ -113,8 +116,23 @@ function initDashboard() {
         const refreshBtn = document.getElementById('btn-refresh');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                refreshBtn.classList.add('rotating');
+                if (dashboardLoadingApi) {
+                    dashboardLoadingApi.setButtonBusy(refreshBtn, {
+                        busy: true,
+                        labelBusy: 'Refreshing...',
+                        labelIdle: '<i class="fas fa-sync-alt"></i> Refresh'
+                    });
+                } else {
+                    refreshBtn.classList.add('rotating');
+                }
                 refreshAll().finally(() => {
+                    if (dashboardLoadingApi) {
+                        dashboardLoadingApi.setButtonBusy(refreshBtn, {
+                            busy: false,
+                            labelIdle: '<i class="fas fa-sync-alt"></i> Refresh'
+                        });
+                        return;
+                    }
                     setTimeout(() => refreshBtn.classList.remove('rotating'), 500);
                 });
             });

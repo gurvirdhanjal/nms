@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMarkerDatasets, calculateSeriesStats } from '../servers/serverMetricsView.js';
+import {
+  buildMarkerDatasets,
+  buildTelemetryCacheKey,
+  buildTelemetryPrefetchOrder,
+  calculateSeriesStats,
+} from '../servers/serverMetricsView.js';
 
 
 describe('serverMetricsView utilities', () => {
@@ -27,5 +32,14 @@ describe('serverMetricsView utilities', () => {
     expect(datasets[1].label).toContain('Max');
     expect(datasets[0].data[1]).toBe(5);
     expect(datasets[1].data[2]).toBe(15);
+  });
+
+  it('builds stable telemetry cache keys', () => {
+    expect(buildTelemetryCacheKey(17, '6h')).toBe('17:6h');
+    expect(buildTelemetryCacheKey(17)).toBe('17:24h');
+  });
+
+  it('builds a prefetch order that excludes the active range', () => {
+    expect(buildTelemetryPrefetchOrder('24h')).toEqual(['15m', '1h', '6h', '7d']);
   });
 });

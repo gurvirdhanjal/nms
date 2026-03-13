@@ -11,14 +11,150 @@ from datetime import datetime, timezone
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 HEADER_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
 HEADER_FILL = PatternFill(start_color="1B2A4A", end_color="1B2A4A", fill_type="solid")
 HEADER_ALIGNMENT = Alignment(horizontal="center", vertical="center", wrap_text=True)
 HEADER_BORDER = Border(bottom=Side(border_style="thin", color="4A5568"))
 DATA_FONT = Font(name="Calibri", size=10)
+LABEL_FONT = Font(name="Calibri", bold=True, size=10)
+TITLE_FONT = Font(name="Calibri", bold=True, size=14, color="1B2A4A")
 ALT_ROW_FILL = PatternFill(start_color="F7FAFC", end_color="F7FAFC", fill_type="solid")
 _ILLEGAL_XLSX_CHARS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]")
+_INVALID_SHEET_CHARS_RE = re.compile(r"[:\\/?*\[\]]")
+_CONTEXT_HEADERS = [
+    "Report Type",
+    "Period Start",
+    "Period End",
+    "Generated At",
+    "Scope Type",
+    "Scope ID",
+    "Granularity",
+    "Freshness State",
+    "Data As Of",
+]
+
+_COLUMN_DISPLAY_NAMES = {
+    "avg_uptime": "Avg Uptime %",
+    "avg_latency": "Avg Latency (ms)",
+    "avg_latency_ms": "Avg Latency (ms)",
+    "avg_packet_loss": "Packet Loss %",
+    "avg_cpu": "Avg CPU %",
+    "max_cpu": "Max CPU %",
+    "avg_mem": "Avg Memory %",
+    "max_mem": "Max Memory %",
+    "avg_disk": "Avg Disk %",
+    "device_name": "Device",
+    "device_ip": "IP Address",
+    "device_type": "Type",
+    "created_at": "Created At",
+    "updated_at": "Updated At",
+    "last_seen": "Last Seen",
+    "is_acknowledged": "Acknowledged",
+    "freshness_state": "Freshness",
+    "coverage_pct": "Coverage %",
+    "sample_count": "Samples",
+    "report_eligible": "Report Eligible",
+    "last_sample_at": "Last Sample At",
+    "total_seconds": "Duration (sec)",
+    "page_count_total": "Page Count",
+}
+
+_REPORT_TITLE_MAP = {
+    "executive": "Executive Fleet Health",
+    "operational": "Operational Activity",
+    "device-health": "Device Health",
+    "productivity": "Employee Productivity",
+    "network": "Network Performance",
+    "alerts": "Alert History",
+    "maintenance-availability": "Maintenance & Availability",
+    "security-compliance": "Security & Compliance",
+    "inventory-assets": "Inventory & Assets",
+    "tracking-operations": "Tracking Operations",
+    "printer-operations": "Printer Operations",
+}
+
+_BRAND_FILL_DARK = PatternFill(start_color="1B2A4A", end_color="1B2A4A", fill_type="solid")
+_BRAND_FILL_MID = PatternFill(start_color="2D4A7A", end_color="2D4A7A", fill_type="solid")
+_BRAND_FILL_LIGHT = PatternFill(start_color="EEF2F7", end_color="EEF2F7", fill_type="solid")
+
+
+def _report_title(report_type: str) -> str:
+    return _REPORT_TITLE_MAP.get(report_type, report_type.replace("-", " ").title())
+
+
+def _brand_meta_text(report_data: dict, report_type: str):
+    period = report_data.get("period") or {}
+    meta = report_data.get("meta") or {}
+    # Use plain ASCII separator to avoid encoding issues when opening in Excel
+    title = f"Device Monitoring System  |  {_report_title(report_type)}"
+    period_label = f"{period.get('start', '')} to {period.get('end', '')}"
+    scope_id = meta.get("scope_id")
+    scope_label = (
+        f"{meta.get('scope_type', 'global')} : {scope_id}"
+        if scope_id
+        else meta.get("scope_type", "global")
+    )
+    freshness = meta.get("freshness_state", "") or "unknown"
+    generated_at = meta.get("generated_at") or _utc_label()
+    return title, period_label, scope_label, freshness, generated_at
+
+
+def _write_brand_header_csv(text_buf: io.StringIO, report_data: dict, report_type: str) -> None:
+    """Prepend APL TECHNO branded comment-header lines to the CSV string buffer."""
+    _, period_label, scope_label, freshness, generated_at = _brand_meta_text(report_data, report_type)
+    text_buf.write("# APL TECHNO \u2014 Network Monitoring System\n")
+    text_buf.write(f"# {_report_title(report_type)}\n")
+    text_buf.write(f"# Generated: {generated_at}  |  Period: {period_label}\n")
+    text_buf.write(f"# Scope: {scope_label}  |  Freshness: {freshness}\n")
+    text_buf.write("#\n")
+
+
+def _write_brand_header_xlsx(ws, report_data: dict, report_type: str, num_cols: int) -> None:
+    """Write APL TECHNO branding into worksheet rows 1-4.
+    The caller must append a blank row 5 as a visual separator before writing data rows."""
+    end_col = get_column_letter(max(num_cols, 2))
+    title, period_label, scope_label, freshness, generated_at = _brand_meta_text(report_data, report_type)
+
+    _META_FONT = Font(name="Calibri", size=10, color="333333")
+    _META_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+    # Row 1 — Company name (dark navy banner)
+    ws.merge_cells(f"A1:{end_col}1")
+    c = ws["A1"]
+    c.value = "APL TECHNO"
+    c.font = Font(name="Calibri", bold=True, size=16, color="FFFFFF")
+    c.fill = _BRAND_FILL_DARK
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[1].height = 30
+
+    # Row 2 — Report title (medium blue)
+    ws.merge_cells(f"A2:{end_col}2")
+    c = ws["A2"]
+    c.value = f"Device Monitoring System  |  {_report_title(report_type)}"
+    c.font = Font(name="Calibri", bold=True, size=12, color="FFFFFF")
+    c.fill = _BRAND_FILL_MID
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[2].height = 22
+
+    # Row 3 — Generated + Period (merged across all columns)
+    ws.merge_cells(f"A3:{end_col}3")
+    c = ws["A3"]
+    c.value = f"Generated: {generated_at}  |  Period: {period_label}"
+    c.font = _META_FONT
+    c.fill = _META_FILL
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[3].height = 18
+
+    # Row 4 — Scope + Freshness (merged across all columns)
+    ws.merge_cells(f"A4:{end_col}4")
+    c = ws["A4"]
+    c.value = f"Scope: {scope_label}  |  Freshness: {freshness}"
+    c.font = _META_FONT
+    c.fill = _META_FILL
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[4].height = 18
 
 
 def _utcnow() -> datetime:
@@ -26,7 +162,7 @@ def _utcnow() -> datetime:
 
 
 def _utc_label() -> str:
-    return _utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def _sanitize_export_value(value):
@@ -45,6 +181,377 @@ def _sanitize_export_value(value):
     if text.startswith(("=", "+", "-", "@")):
         return f"'{text}"
     return text
+
+
+def _parse_excel_datetime(value):
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text or len(text) < 10:
+        return None
+    candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _excel_cell_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (int, float, datetime)):
+        return _parse_excel_datetime(value) or value
+    parsed = _parse_excel_datetime(value)
+    if parsed is not None:
+        return parsed
+    return _sanitize_export_value(value)
+
+
+def _report_context(report_data, report_type):
+    period = report_data.get("period") or {}
+    meta = report_data.get("meta") or {}
+    return {
+        "Report Type": report_type.replace("-", " ").title(),
+        "Period Start": period.get("start", ""),
+        "Period End": period.get("end", ""),
+        "Generated At": meta.get("generated_at") or _utc_label(),
+        "Scope Type": meta.get("scope_type", ""),
+        "Scope ID": meta.get("scope_id", ""),
+        "Granularity": meta.get("granularity", ""),
+        "Freshness State": meta.get("freshness_state", ""),
+        "Data As Of": meta.get("data_as_of", ""),
+    }
+
+
+def _apply_export_context(report_data, report_type, headers, rows):
+    context = _report_context(report_data, report_type)
+    contextual_headers = list(_CONTEXT_HEADERS)
+    for header in headers:
+        if header not in contextual_headers:
+            contextual_headers.append(header)
+    contextual_rows = [{**context, **row} for row in rows]
+    return contextual_headers, contextual_rows
+
+
+def _section_sheet_name(section, existing_names):
+    base = str(section or "Data").replace("_", " ").strip().title() or "Data"
+    base = _INVALID_SHEET_CHARS_RE.sub("", base)[:31] or "Data"
+    if base not in existing_names:
+        return base
+
+    suffix = 2
+    while True:
+        candidate = f"{base[:28]}_{suffix}"
+        if candidate not in existing_names:
+            return candidate
+        suffix += 1
+
+
+def _group_rows_by_section(rows):
+    grouped = {}
+    ordered_sections = []
+    for row in rows:
+        section = row.get("Section") or "data"
+        if section not in grouped:
+            grouped[section] = []
+            ordered_sections.append(section)
+        grouped[section].append(row)
+    return ordered_sections, grouped
+
+
+def _sheet_title(ws, title, width=4):
+    end_col = get_column_letter(max(2, width))
+    ws.merge_cells(f"A1:{end_col}1")
+    cell = ws["A1"]
+    cell.value = title
+    cell.font = TITLE_FONT
+    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+
+def _apply_excel_number_format(cell, header):
+    value = cell.value
+    normalized = str(header or "").strip().lower()
+    if isinstance(value, datetime):
+        cell.number_format = "yyyy-mm-dd hh:mm:ss"
+        return
+    if isinstance(value, int):
+        cell.number_format = "#,##0"
+        return
+    if isinstance(value, float):
+        if any(token in normalized for token in ("%", "pct", "uptime", "util", "coverage")):
+            cell.number_format = "0.00"
+        elif any(token in normalized for token in ("latency", "loss", "score", "confidence")):
+            cell.number_format = "0.00"
+        elif "bps" in normalized:
+            cell.number_format = "#,##0.00"
+        else:
+            cell.number_format = "#,##0.00"
+
+
+def _style_sheet_headers(ws, headers, header_row=1):
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=col_idx, value=header)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = HEADER_ALIGNMENT
+        cell.border = HEADER_BORDER
+
+
+def _autosize_worksheet(ws, headers, row_count, start_row=1):
+    for col_idx, header in enumerate(headers, 1):
+        max_len = len(str(header or ""))
+        for row_idx in range(start_row + 1, min(start_row + row_count + 1, start_row + 201)):
+            value = ws.cell(row=row_idx, column=col_idx).value
+            if value is not None:
+                max_len = max(max_len, len(str(value)))
+        ws.column_dimensions[ws.cell(row=start_row, column=col_idx).column_letter].width = min(max_len + 3, 40)
+
+
+def _write_table_sheet(ws, headers, rows, start_row=1):
+    _style_sheet_headers(ws, headers, header_row=start_row)
+
+    for row_idx, row_data in enumerate(rows, start_row + 1):
+        for col_idx, header in enumerate(headers, 1):
+            value = _excel_cell_value(row_data.get(header, ""))
+            cell = ws.cell(
+                row=row_idx,
+                column=col_idx,
+                value=value,
+            )
+            cell.font = DATA_FONT
+            _apply_excel_number_format(cell, header)
+            if row_idx % 2 == 0:
+                cell.fill = ALT_ROW_FILL
+
+    ws.freeze_panes = f"A{start_row + 1}"
+    last_col = get_column_letter(len(headers))
+    last_row = max(start_row + len(rows), start_row)
+    ws.auto_filter.ref = f"A{start_row}:{last_col}{last_row}"
+    _autosize_worksheet(ws, headers, len(rows), start_row=start_row)
+
+
+def _write_kpi_sheet(ws, title, items):
+    _sheet_title(ws, title, width=4)
+    start_row = 3
+    for row_idx, (label, value) in enumerate(items, start=start_row):
+        label_cell = ws.cell(row=row_idx, column=1, value=label)
+        label_cell.font = LABEL_FONT
+        label_cell.alignment = Alignment(vertical="top")
+        value_cell = ws.cell(row=row_idx, column=2, value=_excel_cell_value(value))
+        value_cell.font = DATA_FONT
+        value_cell.alignment = Alignment(wrap_text=True, vertical="top")
+        _apply_excel_number_format(value_cell, label)
+    ws.column_dimensions["A"].width = 26
+    ws.column_dimensions["B"].width = 42
+
+
+def _summary_pairs(report_data, report_type, row_count):
+    period = report_data.get("period") or {}
+    meta = report_data.get("meta") or {}
+    pairs = [
+        ("Report Type", report_type.replace("-", " ").title()),
+        ("Period Start", period.get("start", "")),
+        ("Period End", period.get("end", "")),
+        ("Generated", meta.get("generated_at") or _utc_label()),
+        ("Rows", row_count),
+        ("Scope Type", meta.get("scope_type", "")),
+        ("Scope ID", meta.get("scope_id", "")),
+        ("Granularity", meta.get("granularity", "")),
+        ("Freshness State", meta.get("freshness_state", "")),
+        ("Data As Of", meta.get("data_as_of", "")),
+        ("Max Source Lag (s)", meta.get("max_source_lag_seconds", "")),
+        ("Source Tables", ", ".join(meta.get("source_tables") or [])),
+        ("Freshness Sources", ", ".join(meta.get("freshness_sources") or [])),
+    ]
+    return pairs
+
+
+def _write_titled_table_sheet(ws, title, headers, rows):
+    _sheet_title(ws, title, width=len(headers))
+    _write_table_sheet(ws, headers, rows, start_row=3)
+
+
+def _build_executive_excel_sheets(wb, report_data):
+    ws_overview = wb.create_sheet(title="Overview")
+    sla_metrics = report_data.get("sla_metrics") or {}
+    _write_kpi_sheet(
+        ws_overview,
+        "Executive Overview",
+        [
+            ("Uptime Score (%)", report_data.get("uptime_score")),
+            ("Avg Latency (ms)", report_data.get("avg_latency")),
+            ("Availability Basis", report_data.get("availability_basis")),
+            ("Total Devices", report_data.get("total_devices")),
+            ("MTTA (s)", sla_metrics.get("mtta_seconds")),
+            ("MTTA", sla_metrics.get("mtta_human")),
+        ],
+    )
+
+    ws_health = wb.create_sheet(title="Health Mix")
+    health_rows = [
+        {"Status": label, "Count": count}
+        for label, count in (report_data.get("health_distribution") or {}).items()
+    ]
+    _write_titled_table_sheet(ws_health, "Health Distribution", ["Status", "Count"], health_rows)
+
+    ws_devices = wb.create_sheet(title="Problem Devices")
+    device_rows = []
+    for item in (report_data.get("top_problematic") or []):
+        uptime = item.get("uptime") or 0
+        availability = "CRITICAL" if uptime < 95 else ("WARNING" if uptime < 99 else "OK")
+        device_rows.append({
+            "Device": item.get("name"),
+            "IP": item.get("ip"),
+            "Type": item.get("type"),
+            "Uptime %": uptime,
+            "Availability": availability,
+        })
+    _write_titled_table_sheet(
+        ws_devices,
+        "Problem Devices",
+        ["Device", "IP", "Type", "Uptime %", "Availability"],
+        device_rows,
+    )
+    # Colour-code the Availability column (col 5): CRITICAL=red, WARNING=amber, OK=green
+    _AVAIL_FONT_COLORS = {"CRITICAL": "FF3B5C", "WARNING": "FFAA00", "OK": "00AA66"}
+    avail_col_idx = 5
+    for r in range(4, 4 + len(device_rows)):
+        cell = ws_devices.cell(row=r, column=avail_col_idx)
+        color = _AVAIL_FONT_COLORS.get(str(cell.value or "").upper())
+        if color:
+            cell.font = Font(name="Calibri", size=10, bold=True, color=color)
+
+
+def _build_network_excel_sheets(wb, report_data):
+    ws_overview = wb.create_sheet(title="Overview")
+    mttr = report_data.get("mttr") or {}
+    interface_count = len(report_data.get("bandwidth") or {})
+    _write_kpi_sheet(
+        ws_overview,
+        "Network Overview",
+        [
+            ("Uptime Basis", report_data.get("uptime_basis")),
+            ("Tracked Interfaces", interface_count),
+            ("Uptime Rows", len(report_data.get("uptime_summary") or [])),
+            ("MTTR (s)", mttr.get("seconds")),
+            ("MTTR", mttr.get("human")),
+            ("Resolved Incidents", mttr.get("total_incidents")),
+        ],
+    )
+
+    ws_uptime = wb.create_sheet(title="Uptime Summary")
+    uptime_rows = [
+        {
+            "Device": item.get("device_name"),
+            "Avg Uptime %": item.get("avg_uptime"),
+            "Avg Latency (ms)": item.get("avg_latency_ms"),
+            "Avg Packet Loss %": item.get("avg_packet_loss"),
+        }
+        for item in (report_data.get("uptime_summary") or [])
+    ]
+    _write_titled_table_sheet(
+        ws_uptime,
+        "Uptime Summary",
+        ["Device", "Avg Uptime %", "Avg Latency (ms)", "Avg Packet Loss %"],
+        uptime_rows,
+    )
+
+    ws_bandwidth = wb.create_sheet(title="Bandwidth")
+    bandwidth_rows = []
+    for info in (report_data.get("bandwidth") or {}).values():
+        for point in info.get("points") or []:
+            bandwidth_rows.append(
+                {
+                    "Device": info.get("device_name"),
+                    "Interface": info.get("interface"),
+                    "Timestamp": point.get("ts"),
+                    "RX (bps)": point.get("rx_bps"),
+                    "TX (bps)": point.get("tx_bps"),
+                    "RX Util %": point.get("rx_util"),
+                    "TX Util %": point.get("tx_util"),
+                }
+            )
+    _write_titled_table_sheet(
+        ws_bandwidth,
+        "Bandwidth Timeline",
+        ["Device", "Interface", "Timestamp", "RX (bps)", "TX (bps)", "RX Util %", "TX Util %"],
+        bandwidth_rows,
+    )
+
+
+def _build_alerts_excel_sheets(wb, report_data):
+    ws_overview = wb.create_sheet(title="Overview")
+    alerts = report_data.get("alerts") or []
+    _write_kpi_sheet(
+        ws_overview,
+        "Alerts Overview",
+        [
+            ("Total Alerts", len(alerts)),
+            ("Acknowledged Alerts", sum(1 for item in alerts if item.get("is_acknowledged"))),
+            ("Resolved Alerts", sum(1 for item in alerts if item.get("resolved"))),
+            ("TTA (s)", (report_data.get("tta") or {}).get("seconds")),
+            ("TTA", (report_data.get("tta") or {}).get("human")),
+            ("TTR (s)", (report_data.get("ttr") or {}).get("seconds")),
+            ("TTR", (report_data.get("ttr") or {}).get("human")),
+        ],
+    )
+
+    ws_alerts = wb.create_sheet(title="Alerts")
+    alert_rows = [
+        {
+            "Timestamp": item.get("timestamp"),
+            "Device": item.get("device_name"),
+            "IP": item.get("device_ip"),
+            "Severity": item.get("severity"),
+            "Type": item.get("event_type"),
+            "Message": item.get("message"),
+            "Acknowledged": "Yes" if item.get("is_acknowledged") else "No",
+            "Resolved": "Yes" if item.get("resolved") else "No",
+            "Resolved At": item.get("resolved_at"),
+        }
+        for item in alerts
+    ]
+    _write_titled_table_sheet(
+        ws_alerts,
+        "Alert Detail",
+        ["Timestamp", "Device", "IP", "Severity", "Type", "Message", "Acknowledged", "Resolved", "Resolved At"],
+        alert_rows,
+    )
+
+    ws_severity = wb.create_sheet(title="Severity Mix")
+    severity_rows = [
+        {"Severity": severity, "Count": count}
+        for severity, count in (report_data.get("severity_breakdown") or {}).items()
+    ]
+    _write_titled_table_sheet(ws_severity, "Severity Breakdown", ["Severity", "Count"], severity_rows)
+
+    ws_trend = wb.create_sheet(title="Daily Trend")
+    trend_rows = []
+    for day, breakdown in (report_data.get("daily_trend") or {}).items():
+        for severity, count in (breakdown or {}).items():
+            trend_rows.append({"Date": day, "Severity": severity, "Count": count})
+    _write_titled_table_sheet(ws_trend, "Daily Trend", ["Date", "Severity", "Count"], trend_rows)
+
+    ws_top = wb.create_sheet(title="Top Devices")
+    top_rows = [
+        {
+            "Device": item.get("device_name"),
+            "IP": item.get("device_ip"),
+            "Alert Count": item.get("alert_count"),
+        }
+        for item in (report_data.get("top_alerted_devices") or [])
+    ]
+    _write_titled_table_sheet(ws_top, "Top Alerted Devices", ["Device", "IP", "Alert Count"], top_rows)
 
 
 def _flatten_report_rows(report_data, report_type):
@@ -210,11 +717,23 @@ def _flatten_productivity(data):
     for category, total_seconds in (data.get("category_totals") or {}).items():
         rows.append({"Section": "category_totals", "Category": category, "Value": total_seconds})
     for device_id, metrics in (data.get("activity_summary") or {}).items():
-        for metric_name, metric_value in metrics.items():
+        device_name = device_id
+        employee_name = ""
+        metric_items = metrics.items() if isinstance(metrics, dict) else []
+        if isinstance(metrics, dict):
+            device_name = metrics.get("device_name") or device_id
+            employee_name = metrics.get("employee_name") or ""
+            metric_items = [
+                (metric_name, metric_value)
+                for metric_name, metric_value in metrics.items()
+                if metric_name not in {"device_name", "employee_name"}
+            ]
+        for metric_name, metric_value in metric_items:
             rows.append(
                 {
                     "Section": "activity_summary",
-                    "Device": device_id,
+                    "Device": device_name,
+                    "Employee": employee_name,
                     "Metric": metric_name,
                     "Value": metric_value,
                 }
@@ -486,7 +1005,19 @@ def _flatten_inventory_assets(data):
 
 
 def _flatten_tracking_operations(data):
-    headers = ["Section", "Device", "Metric", "Value", "Application", "Category", "Timestamp", "Status"]
+    headers = [
+        "Section",
+        "Device",
+        "Metric",
+        "Value",
+        "Application",
+        "Category",
+        "Timestamp",
+        "Status",
+        "Last Sample At",
+        "Sample Count",
+        "Report Eligible",
+    ]
     rows = []
     for metric_name, metric_value in (data.get("summary") or {}).items():
         rows.append({"Section": "summary", "Metric": metric_name, "Value": metric_value})
@@ -498,6 +1029,9 @@ def _flatten_tracking_operations(data):
                 "Metric": "coverage_pct",
                 "Value": item.get("coverage_pct"),
                 "Status": item.get("freshness_state"),
+                "Last Sample At": item.get("last_sample_at"),
+                "Sample Count": item.get("sample_count"),
+                "Report Eligible": "Yes" if item.get("report_eligible") else "No",
             }
         )
     for item in data.get("top_applications") or []:
@@ -534,6 +1068,14 @@ def _flatten_tracking_operations(data):
                 "Device": item.get("device_name"),
                 "Metric": "degraded_events",
                 "Value": item.get("degraded_events"),
+            }
+        )
+        rows.append(
+            {
+                "Section": "availability_breakdown",
+                "Device": item.get("device_name"),
+                "Metric": "online_events",
+                "Value": item.get("online_events"),
             }
         )
     for severity, count in (data.get("integrity_breakdown") or {}).items():
@@ -583,12 +1125,19 @@ def _flatten_printer_operations(data):
 
 def export_to_csv(report_data, report_type):
     headers, rows = _flatten_report_rows(report_data, report_type)
+    display_headers = [_COLUMN_DISPLAY_NAMES.get(h, h) for h in headers]
     text_buf = io.StringIO()
-    writer = csv.DictWriter(text_buf, fieldnames=headers, extrasaction="ignore")
+    _write_brand_header_csv(text_buf, report_data, report_type)
+    writer = csv.DictWriter(text_buf, fieldnames=display_headers, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
-        writer.writerow({header: _sanitize_export_value(row.get(header, "")) for header in headers})
-    buf = io.BytesIO(text_buf.getvalue().encode("utf-8"))
+        display_row = {
+            _COLUMN_DISPLAY_NAMES.get(h, h): _sanitize_export_value(row.get(h, ""))
+            for h in headers
+        }
+        writer.writerow(display_row)
+    # Prepend UTF-8 BOM so Excel opens the file without encoding corruption
+    buf = io.BytesIO(b"\xef\xbb\xbf" + text_buf.getvalue().encode("utf-8"))
     buf.seek(0)
     return buf
 
@@ -599,17 +1148,10 @@ def export_to_excel(report_data, report_type):
 
     ws_summary = wb.active
     ws_summary.title = "Summary"
-    period = report_data.get("period", {})
-    ws_summary.append(["Report Type", report_type.replace("-", " ").title()])
-    ws_summary.append(["Period", f"{period.get('start', '')} to {period.get('end', '')}"])
-    ws_summary.append(["Generated", _utc_label()])
-    ws_summary.append(["Rows", len(rows)])
-    meta = report_data.get("meta") or {}
-    if meta:
-        ws_summary.append(["Scope Type", meta.get("scope_type", "")])
-        ws_summary.append(["Scope ID", meta.get("scope_id", "")])
-        ws_summary.append(["Freshness State", meta.get("freshness_state", "")])
-        ws_summary.append(["Data As Of", meta.get("data_as_of", "")])
+    _write_brand_header_xlsx(ws_summary, report_data, report_type, 2)
+    ws_summary.append([""])  # blank separator — row 5
+    for label, value in _summary_pairs(report_data, report_type, len(rows)):
+        ws_summary.append([label, _excel_cell_value(value)])
     if report_type == "productivity":
         freshness_summary = report_data.get("freshness_summary") or {}
         totals = freshness_summary.get("totals") or {}
@@ -617,39 +1159,53 @@ def export_to_excel(report_data, report_type):
         ws_summary.append(["Fresh Devices", totals.get("fresh_devices", 0)])
         ws_summary.append(["Stale Devices", totals.get("stale_devices", 0)])
         ws_summary.append(["Empty Devices", totals.get("empty_devices", 0)])
-    for row in ws_summary.iter_rows(min_row=1, max_row=ws_summary.max_row, max_col=2):
-        for cell in row:
-            cell.font = DATA_FONT
+    # Start styling from row 6 (rows 1-4 are brand header, row 5 is blank separator)
+    for row in ws_summary.iter_rows(min_row=6, max_row=ws_summary.max_row, max_col=2):
+        row[0].font = LABEL_FONT
+        row[1].font = DATA_FONT
+        row[0].alignment = Alignment(vertical="top")
+        row[1].alignment = Alignment(wrap_text=True, vertical="top")
+        _apply_excel_number_format(row[1], row[0].value)
     ws_summary.column_dimensions["A"].width = 24
     ws_summary.column_dimensions["B"].width = 60
 
+    custom_builders = {
+        "executive": _build_executive_excel_sheets,
+        "network": _build_network_excel_sheets,
+        "alerts": _build_alerts_excel_sheets,
+    }
+    builder = custom_builders.get(report_type)
+    if builder is not None:
+        builder(wb, report_data)
+
     ws_data = wb.create_sheet(title="Data")
-    for col_idx, header in enumerate(headers, 1):
-        cell = ws_data.cell(row=1, column=col_idx, value=header)
-        cell.font = HEADER_FONT
-        cell.fill = HEADER_FILL
-        cell.alignment = HEADER_ALIGNMENT
-        cell.border = HEADER_BORDER
+    _write_brand_header_xlsx(ws_data, report_data, report_type, len(headers))
+    ws_data.append([""])  # blank separator — row 5
+    _write_table_sheet(ws_data, headers, rows, start_row=6)
 
-    for row_idx, row_data in enumerate(rows, 2):
-        for col_idx, header in enumerate(headers, 1):
-            cell = ws_data.cell(
-                row=row_idx,
-                column=col_idx,
-                value=_sanitize_export_value(row_data.get(header, "")),
-            )
-            cell.font = DATA_FONT
-            if row_idx % 2 == 0:
-                cell.fill = ALT_ROW_FILL
+    if builder is None:
+        ordered_sections, grouped_rows = _group_rows_by_section(rows)
+        for section in ordered_sections:
+            sheet_name = _section_sheet_name(section, wb.sheetnames)
+            ws_section = wb.create_sheet(title=sheet_name)
+            section_rows = grouped_rows.get(section) or []
+            _write_brand_header_xlsx(ws_section, report_data, report_type, len(headers))
+            ws_section.append([""])  # blank separator — row 5
+            _write_table_sheet(ws_section, headers, section_rows, start_row=6)
 
-    for col_idx, header in enumerate(headers, 1):
-        max_len = len(header)
-        for row_idx in range(2, min(len(rows) + 2, 200)):
-            value = ws_data.cell(row=row_idx, column=col_idx).value
-            if value is not None:
-                max_len = max(max_len, len(str(value)))
-        ws_data.column_dimensions[ws_data.cell(row=1, column=col_idx).column_letter].width = min(max_len + 3, 40)
-    ws_data.freeze_panes = "A2"
+    warnings = (report_data.get("meta") or {}).get("completeness_warnings") or []
+    if warnings:
+        ws_warnings = wb.create_sheet(title=_section_sheet_name("Warnings", wb.sheetnames))
+        warning_headers = ["Report Type", "Generated At", "Warning"]
+        warning_rows = [
+            {
+                "Report Type": report_type.replace("-", " ").title(),
+                "Generated At": (report_data.get("meta") or {}).get("generated_at") or _utc_label(),
+                "Warning": warning,
+            }
+            for warning in warnings
+        ]
+        _write_titled_table_sheet(ws_warnings, "Completeness Warnings", warning_headers, warning_rows)
 
     buf = io.BytesIO()
     wb.save(buf)

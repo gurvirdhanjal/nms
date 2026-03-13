@@ -12,6 +12,8 @@ class User(db.Model):
     phone_number = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
+    last_login = db.Column(db.DateTime, nullable=True) # Last authentication timestamp
+    created_by = db.Column(db.String(80), nullable=True) # Identity of creator
 
     # LDAP integration
     auth_source = db.Column(db.String(20), default='local')     # 'local' | 'ldap'
