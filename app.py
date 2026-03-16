@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import threading
@@ -53,18 +54,27 @@ def create_app(test_config=None):
     # ---------------------------
     # Session configuration
     # ---------------------------
+    _timeout_min = int(os.environ.get('SESSION_TIMEOUT_MINUTES', '30'))
     app.config.update(
         SECRET_KEY=os.environ.get(
             'SECRET_KEY',
             'change-this-secret-key-in-production'
         ),
-        PERMANENT_SESSION_LIFETIME=timedelta(minutes=5),
+        SESSION_TIMEOUT_MINUTES=_timeout_min,
+        PERMANENT_SESSION_LIFETIME=timedelta(minutes=_timeout_min),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=False,   # True only if HTTPS
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_REFRESH_EACH_REQUEST=True,
         SESSION_PERMANENT=False
     )
+
+    try:
+        import reportlab  # noqa: F401
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            '[EXPORT] reportlab not installed — PDF exports will use low-quality fallback'
+        )
 
     # ---------------------------
     # Initialize extensions
@@ -294,6 +304,7 @@ def create_app(test_config=None):
     from routes.device_console import device_console_bp
     from routes.device_identity_admin import device_identity_admin_bp
     from routes.config_backup import config_backup_bp
+    from routes.compliance_profiles import compliance_profiles_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -323,6 +334,7 @@ def create_app(test_config=None):
         device_console_bp,
         device_identity_admin_bp,
         config_backup_bp,
+        compliance_profiles_bp,
     ]
 
     for bp in protected_blueprints:
