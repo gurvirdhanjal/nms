@@ -320,6 +320,7 @@ class DeviceActivityLog(db.Model):
     activity_type = db.Column(db.String(20), nullable=False)  # keyboard, mouse, scroll, idle, active
     event_count = db.Column(db.Integer, default=0)
     details = db.Column(db.Text)  # JSON details
+    current_application = db.Column(db.Text)  # active window/app name at sample time
     
     def to_dict(self):
         return {
