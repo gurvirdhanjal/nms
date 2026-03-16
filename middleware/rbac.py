@@ -148,6 +148,7 @@ ENDPOINT_PERMISSIONS = {
     "device_console_bp.add_device_website_policy": "devices.edit",
     "device_console_bp.remove_device_website_policy": "devices.edit",
     "device_console_bp.get_device_alerts": "tracking.history.view",
+    "device_console_bp.get_device_events": "tracking.history.view",
     "device_console_bp.acknowledge_device_alert": "devices.edit",
     "device_console_bp.device_policy_history_redirect": "tracking.history.view",
     

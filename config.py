@@ -212,6 +212,11 @@ class Config:
         120,
         minimum=15,
     )
+    TRACKING_IDENTITY_SCAN_FRESHNESS_MINUTES = _env_int(
+        'TRACKING_IDENTITY_SCAN_FRESHNESS_MINUTES',
+        15,
+        minimum=1,
+    )
     TRACKING_WORKSTATION_STALE_MINUTES = int(
         os.environ.get('TRACKING_WORKSTATION_STALE_MINUTES', 15)
     )
@@ -223,6 +228,32 @@ class Config:
 
     # Redis configuration
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    REDIS_MAX_CONNECTIONS = _env_int(
+        'REDIS_MAX_CONNECTIONS',
+        6,
+        minimum=1,
+    )
+    REDIS_BLOCKING_POOL_TIMEOUT_SECONDS = _env_int(
+        'REDIS_BLOCKING_POOL_TIMEOUT_SECONDS',
+        3,
+        minimum=1,
+    )
+    REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS = _env_int(
+        'REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS',
+        2,
+        minimum=1,
+    )
+    REDIS_SOCKET_TIMEOUT_SECONDS = _env_int(
+        'REDIS_SOCKET_TIMEOUT_SECONDS',
+        2,
+        minimum=1,
+    )
+    REDIS_HEALTH_CHECK_INTERVAL_SECONDS = _env_int(
+        'REDIS_HEALTH_CHECK_INTERVAL_SECONDS',
+        30,
+        minimum=5,
+    )
+    REDIS_SSE_ENABLED = os.environ.get('REDIS_SSE_ENABLED', 'true').lower() == 'true'
 
     # Enforce Postgres-only ingestion for agent metrics
     REQUIRE_POSTGRES_ONLY = os.environ.get('REQUIRE_POSTGRES_ONLY', 'false').lower() == 'true'

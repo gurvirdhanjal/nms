@@ -3,6 +3,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import redis
 import logging
+import os
 from config import Config
 
 _bcrypt_fallback_reason = None
@@ -50,24 +51,39 @@ event_manager = EventManager()
 # Global Redis Client
 # Graceful fallback: Test the connection on module load
 redis_client = None
+redis_pool = None
 
 try:
-    redis_client = redis.Redis.from_url(
+    redis_pool = redis.BlockingConnectionPool.from_url(
         Config.REDIS_URL,
-        socket_connect_timeout=2,
-        socket_timeout=2,
-        health_check_interval=30,
+        max_connections=Config.REDIS_MAX_CONNECTIONS,
+        timeout=Config.REDIS_BLOCKING_POOL_TIMEOUT_SECONDS,
+        socket_connect_timeout=Config.REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=Config.REDIS_SOCKET_TIMEOUT_SECONDS,
+        health_check_interval=Config.REDIS_HEALTH_CHECK_INTERVAL_SECONDS,
         retry_on_timeout=True,
-        decode_responses=True # We will store/read strings/JSON
+        socket_keepalive=True,
+        decode_responses=True,
+    )
+    redis_client = redis.Redis(
+        connection_pool=redis_pool,
+        client_name=f"nms:{os.getpid()}",
     )
     redis_client.ping()
-    logger.info("[Redis] Successfully connected to global Redis instance.")
-except redis.exceptions.ConnectionError:
+    logger.info(
+        "[Redis] Connected to Redis. max_connections=%s pool_timeout=%ss sse_enabled=%s",
+        Config.REDIS_MAX_CONNECTIONS,
+        Config.REDIS_BLOCKING_POOL_TIMEOUT_SECONDS,
+        Config.REDIS_SSE_ENABLED,
+    )
+except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, redis.exceptions.RedisError, OSError):
     logger.warning("[Redis] Connection failed or missing. Reverting to graceful multi-worker fallback modes.")
     redis_client = None
+    redis_pool = None
 except Exception as e:
     logger.warning(f"[Redis] Unexpected error during initialization: {e}")
     redis_client = None
+    redis_pool = None
 
 def is_redis_available():
     """Returns True if the global redis client is initialized and reachable."""

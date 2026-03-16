@@ -1,4 +1,4 @@
-import psutil
+﻿import psutil
 import platform
 import socket
 import time
@@ -13,6 +13,13 @@ import hashlib
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
+
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
 
 # ==========================
 # CONFIGURATION (defaults — overridden by config.json)
@@ -51,6 +58,11 @@ def load_config():
     if not os.path.exists(config_path):
         _CONFIG_SOURCE = "defaults"
         _CONFIG_LOAD_ERROR = None
+        
+        # In GUI-dupe, show window if URL is default
+        if HAS_TKINTER and (getattr(sys, 'frozen', False) or sys.stdin.isatty()):
+            if "127.0.0.1" in NMS_SERVER_URL:
+                show_config_gui()
         return  # Use defaults
 
     try:
@@ -73,6 +85,68 @@ def load_config():
             )
         except Exception:
             pass
+
+def show_config_gui():
+    """Display a Tkinter GUI to configure the Admin IP/URL."""
+    if not HAS_TKINTER:
+        print("[nms-agent] Tkinter not available, skipping GUI.")
+        return
+
+    global NMS_SERVER_URL
+    
+    # Extract current netloc or default for the field
+    try:
+        parsed = urlparse(NMS_SERVER_URL)
+        current_val = parsed.netloc or "127.0.0.1:5000"
+    except:
+        current_val = "127.0.0.1:5000"
+
+    root = tk.Tk()
+    root.title("Tactical Agent Setup")
+    root.geometry("400x200")
+    root.resizable(False, False)
+
+    # Center window
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width / 2) - (400 / 2)
+    y = (screen_height / 2) - (200 / 2)
+    root.geometry(f'+{int(x)}+{int(y)}')
+
+    tk.Label(root, text="Configure Admin Server", font=("Arial", 12, "bold"), pady=10).pack()
+    tk.Label(root, text="Enter Admin IP and Port (e.g., 192.168.1.50:5000):").pack()
+    
+    entry = tk.Entry(root, width=40)
+    entry.insert(0, current_val)
+    entry.pack(pady=10)
+
+    def on_save():
+        val = entry.get().strip()
+        if not val:
+            messagebox.showerror("Error", "Please enter a valid IP:Port")
+            return
+        
+        if not val.startswith("http"):
+            new_url = f"http://{val}/api/agent/metrics"
+        else:
+            new_url = val
+            if "/api/agent/metrics" not in new_url:
+                if new_url.endswith("/"):
+                    new_url += "api/agent/metrics"
+                else:
+                    new_url += "/api/agent/metrics"
+
+        global NMS_SERVER_URL
+        NMS_SERVER_URL = new_url
+        
+        if _persist_agent_token_to_config(AGENT_TOKEN or ""):
+            messagebox.showinfo("Success", f"Configuration saved to:\n{_resolve_config_path_for_write()}")
+            root.destroy()
+        else:
+            messagebox.showerror("Error", "Failed to save configuration file.")
+
+    tk.Button(root, text="Save & Start Agent", command=on_save, bg="#4CAF50", fg="white", padx=20).pack(pady=10)
+    root.mainloop()
 
 
 def _token_fingerprint(token):

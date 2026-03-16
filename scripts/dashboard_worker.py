@@ -19,6 +19,20 @@ logger = logging.getLogger('dashboard_worker')
 
 app = create_app()
 
+DEFAULT_SCOPE_FRAGMENT = 'admin__global'
+DEFAULT_TIME_RANGE = '24h'
+DEFAULT_ALERT_STATUS = 'active'
+DEFAULT_ALERT_LIMIT = '200'
+
+
+def _snapshot_cache_key(
+    scope_fragment: str = DEFAULT_SCOPE_FRAGMENT,
+    time_range: str = DEFAULT_TIME_RANGE,
+    alert_status: str = DEFAULT_ALERT_STATUS,
+    alert_limit: str = DEFAULT_ALERT_LIMIT,
+) -> str:
+    return f"full_snapshot_{scope_fragment}_{time_range}_{alert_status}_{alert_limit}"
+
 
 def compute_and_store_snapshot():
     """
@@ -48,7 +62,7 @@ def compute_and_store_snapshot():
                     # Dump it back to a compact raw string for the DB
                     raw_json_string = json.dumps(payload_dict)
 
-                    cache_key = 'full_snapshot_24h_active_200'
+                    cache_key = _snapshot_cache_key()
 
                     # Upsert into DashboardSnapshot table
                     snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()

@@ -72,3 +72,7 @@ client_id.txt
 service.lock
 service.log
 secure_employee_monitor.db
+.claude/
+.gstack/
+.vscode/
+.artifacts/

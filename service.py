@@ -484,6 +484,29 @@ def _collect_app_usage_seconds():
     return app_usage_seconds
 
 
+def _collect_app_sessions():
+    """
+    Return closed app sessions from SystemMonitor and clear the buffer.
+    Payload is capped at ~50 KB (serialised) — oldest entries dropped first
+    when the cap is exceeded (rapid app-switching edge case).
+    """
+    import json as _json
+    sessions = list(system_monitor._app_sessions)
+    system_monitor._app_sessions.clear()
+
+    # Enforce 50 KB payload cap — drop oldest if needed
+    MAX_BYTES = 50 * 1024
+    while sessions:
+        try:
+            if len(_json.dumps(sessions).encode()) <= MAX_BYTES:
+                break
+        except Exception:
+            break
+        sessions.pop(0)  # drop oldest
+
+    return sessions
+
+
 def _build_monitoring_stats_payload(*, include_security=False, include_legacy_aliases=True):
     current_time = time.time()
     activity_snapshot = get_activity_snapshot(current_time)
@@ -537,6 +560,7 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
             "characters_typed": typed_characters_count,
             "applications_used": list(system_monitor.app_usage.keys()),
             "app_usage_seconds": app_usage_seconds,
+            "app_sessions": _collect_app_sessions(),
         },
         "system_metrics": {
             "cpu_percent": cpu_percent,
@@ -843,6 +867,9 @@ class SystemMonitor:
         self.current_app = None
         self.app_start_time = None
         self.app_usage = {}
+        # True per-session list (one entry per app-switch); sent in sync payload
+        self._app_sessions = []
+        self._session_window = ""
     
     def get_active_application(self):
         """Get currently active application (Windows)"""
@@ -857,23 +884,40 @@ class SystemMonitor:
         except:
             return "Unknown"
     
+    def _get_window_title(self) -> str:
+        """Return the foreground window title (Windows only)."""
+        try:
+            import win32gui
+            return win32gui.GetWindowText(win32gui.GetForegroundWindow()) or ""
+        except Exception:
+            return ""
+
     def track_application_usage(self):
         """Track application usage"""
         current_app = self.get_active_application()
         current_time = time.time()
-        
+
         if current_app != self.current_app:
-            # Save previous app usage
+            # Close the previous session
             if self.current_app and self.app_start_time:
                 usage_time = current_time - self.app_start_time
                 if self.current_app in self.app_usage:
                     self.app_usage[self.current_app] += usage_time
                 else:
                     self.app_usage[self.current_app] = usage_time
-            
+                # Record true session (ignore sub-2s flickers)
+                dur = int(usage_time)
+                if dur > 2:
+                    self._app_sessions.append({
+                        "app": self.current_app,
+                        "window_title": self._session_window,
+                        "duration_s": dur,
+                    })
+
             # Start tracking new app
             self.current_app = current_app
             self.app_start_time = current_time
+            self._session_window = self._get_window_title()
     
     def save_application_usage(self):
         """Save application usage to database"""
@@ -898,6 +942,163 @@ class SystemMonitor:
                 print(f"Application usage save error: {e}")
 
 system_monitor = SystemMonitor()
+
+
+# ============================================================
+# TYPED TEXT POLICY SCANNER
+# ============================================================
+
+class TypedTextPolicyScanner:
+    """
+    Local on-device scanner for typed-text policy violations.
+    Only SHA-256 hashes of flagged snippets are sent to the server — raw text
+    is never transmitted.  Operates on text from the in-memory typed_text buffer.
+
+    Tier 1: Regex patterns (fast, no API cost, always runs).
+    Tier 2: Claude API (optional, opt-in via ENABLE_AI_KEYSTROKE_SCAN env var).
+    """
+
+    _PATTERNS = {
+        "credit_card":   r'\b(?:\d[ \-]?){13,16}\b',
+        "ssn":           r'\b\d{3}[- ]?\d{2}[- ]?\d{4}\b',
+        "password_hint": r'\bpassword\s*[=:]\s*\S+',
+    }
+    # Custom profanity patterns pushed from server policy (stored locally)
+    _profanity_words: list = []
+    # Rate-gate for AI calls: max 1 call per 5-min flush cycle
+    _last_ai_call_at: float = 0.0
+    _AI_COOLDOWN_S: float = 300.0
+
+    @classmethod
+    def _sha256(cls, text: str) -> str:
+        import hashlib
+        return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+    @classmethod
+    def _anonymise(cls, text: str) -> str:
+        """Replace common PII tokens before sending to Claude API.
+
+        Redacts: credit card numbers, SSNs, email addresses, phone numbers.
+        NOTE: Names and medical terms are NOT automatically redacted — ensure
+        ENABLE_AI_KEYSTROKE_SCAN is only enabled after a privacy review for
+        the organisation's jurisdiction (GDPR, HIPAA, etc.).
+        """
+        import re
+        text = re.sub(r'\b(?:\d[ \-]?){13,16}\b', '[CARD]', text)
+        text = re.sub(r'\b\d{3}[- ]?\d{2}[- ]?\d{4}\b', '[SSN]', text)
+        text = re.sub(r'[\w\.-]+@[\w\.-]+', '[EMAIL]', text)
+        # International and local phone number formats
+        text = re.sub(r'(?:\+?\d[\d \-\.\(\)]{7,14}\d)', '[PHONE]', text)
+        return text[:500]
+
+    @classmethod
+    def scan(cls, text_chunk: str) -> list:
+        """Return list of alert dicts for the given text chunk."""
+        import re
+        import os
+        from datetime import datetime, timezone
+
+        alerts = []
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for pattern_type, pattern in cls._PATTERNS.items():
+            try:
+                matches = re.findall(pattern, text_chunk, re.IGNORECASE)
+                for m in matches:
+                    alerts.append({
+                        "pattern_type":   pattern_type,
+                        "severity":       "high",
+                        "evidence_hash":  "sha256:" + cls._sha256(m),
+                        "detected_at":    now_iso,
+                        "ai_risk_level":  None,
+                        "ai_category":    None,
+                    })
+            except Exception:
+                pass
+
+        for word in (cls._profanity_words or []):
+            if word and word.lower() in text_chunk.lower():
+                alerts.append({
+                    "pattern_type":   "profanity",
+                    "severity":       "medium",
+                    "evidence_hash":  "sha256:" + cls._sha256(word),
+                    "detected_at":    now_iso,
+                    "ai_risk_level":  None,
+                    "ai_category":    None,
+                })
+
+        # Tier 2: Claude API (optional, rate-gated)
+        enable_ai = os.environ.get("ENABLE_AI_KEYSTROKE_SCAN", "").lower() in ("1", "true", "yes")
+        import time as _time
+        if enable_ai and (_time.time() - cls._last_ai_call_at) >= cls._AI_COOLDOWN_S:
+            try:
+                cls._last_ai_call_at = _time.time()
+                from anthropic import Anthropic
+                client = Anthropic()
+                snippet = cls._anonymise(text_chunk)
+                resp = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=64,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            "Corporate DLP check. Reply with JSON only: "
+                            "{\"risk_level\":\"high|medium|low\",\"category\":\"string\"}. "
+                            f"Text: {snippet}"
+                        ),
+                    }],
+                )
+                import json as _json
+                result = _json.loads(resp.content[0].text.strip())
+                risk = result.get("risk_level", "low")
+                cat  = result.get("category", "")
+                if risk in ("high", "medium"):
+                    alerts.append({
+                        "pattern_type":   "ai_anomaly",
+                        "severity":       risk,
+                        "evidence_hash":  "sha256:" + cls._sha256(text_chunk[:100]),
+                        "detected_at":    now_iso,
+                        "ai_risk_level":  risk,
+                        "ai_category":    cat,
+                    })
+            except Exception:
+                pass
+
+        return alerts
+
+
+# Buffer of pending alerts to send on next sync
+_typed_text_alerts: list = []
+_typed_text_alerts_lock = threading.Lock()
+
+
+def _scan_typed_text_buffer():
+    """
+    Called on each SNAPSHOT_INTERVAL_SECONDS flush.
+    Reads the typed_text deque, runs the scanner, appends to _typed_text_alerts.
+    """
+    global _typed_text_alerts
+    try:
+        with typed_text_lock:
+            chunk = "".join(list(typed_text))
+        if not chunk:
+            return
+        hits = TypedTextPolicyScanner.scan(chunk)
+        if hits:
+            with _typed_text_alerts_lock:
+                _typed_text_alerts.extend(hits)
+    except Exception:
+        pass
+
+
+def _collect_typed_text_alerts() -> list:
+    """Return and clear pending typed-text alerts."""
+    global _typed_text_alerts
+    with _typed_text_alerts_lock:
+        alerts = list(_typed_text_alerts)
+        _typed_text_alerts.clear()
+    return alerts
+
 
 # ============================================================
 # ENHANCED ACTIVITY TRACKING
@@ -955,6 +1156,7 @@ def update_enhanced_activity_times(delta=1.0):
         save_daily_summary_enhanced()
         system_monitor.save_application_usage()
         save_encrypted_typed_text()
+        _scan_typed_text_buffer()
 
 def save_enhanced_activity_snapshot():
     """Save enhanced activity snapshot"""
@@ -1784,11 +1986,13 @@ class AutoDiscoveryService:
                 'ip_candidates': ip_candidates,
                 'ip_source': ip_source,
                 'network_signature': network_signature,
+                'agent_port': AGENT_PORT,
                 'unique_client_id': get_persistent_client_id(),
                 'current_stats': build_live_stats_payload(),
                 'api_key': self.shared_api_key,
                 'restricted_sites_policy_version': restricted_site_monitor.get_policy_version() if restricted_site_monitor else '',
                 'restricted_site_events': pending_events,
+                'typed_text_alerts': _collect_typed_text_alerts(),
                 # Omitted `system_info` to dramatically shrink sync payloads per user feedback
             }
 
@@ -2961,6 +3165,7 @@ def get_identity():
             "hostname": get_exact_hostname(),
             "mac_address": get_mac_address(),
             "unique_client_id": get_persistent_client_id(),
+            "agent_port": AGENT_PORT,
             "os": f"{platform.system()} {platform.release()}",
             "agent_version": "2.2",
             "type": "Tactical Agent",

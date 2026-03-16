@@ -16,7 +16,7 @@ from app import create_app
 from config import Config
 from extensions import db, redis_client
 from models.tracked_device import TrackedDevice
-from services.tracking_agent_ports import remember_tracking_agent_port, resolve_tracking_agent_ports
+from services.tracking_agent_ports import preferred_tracking_agent_port, remember_tracking_agent_port, resolve_tracking_agent_ports
 from services.tracking_discovery_cache import remember_tracking_probe
 
 # Configure logging for the background worker
@@ -62,6 +62,57 @@ def _build_offline_result(error_code: str, method: str = 'none') -> dict:
         'metrics_available': False,
         'probe_error_code': error_code,
         'probe_method': method,
+    }
+
+
+def _load_tracking_snapshot(raw_text) -> dict:
+    try:
+        payload = json.loads(raw_text or '')
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _build_recent_sync_result(device, now_utc: datetime) -> dict | None:
+    checkin_window_seconds = max(
+        30,
+        int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180),
+    )
+    last_sync = getattr(device, 'last_agent_sync_at', None)
+    if not last_sync:
+        return None
+
+    if (now_utc - last_sync).total_seconds() > checkin_window_seconds:
+        return None
+
+    tracking_data = _load_tracking_snapshot(getattr(device, 'tracking_data', None))
+    metrics_available = bool(
+        getattr(device, 'metrics_available', False) or
+        tracking_data.get('system_metrics') or
+        tracking_data.get('today_stats') or
+        tracking_data.get('current_activity')
+    )
+
+    availability_status = str(getattr(device, 'availability_status', '') or '').strip().lower()
+    if availability_status not in ('online', 'degraded', 'offline'):
+        availability_status = 'online' if metrics_available else 'degraded'
+    if availability_status == 'offline' and last_sync:
+        availability_status = 'online' if metrics_available else 'degraded'
+
+    agent_port = None
+    ip_address = str(getattr(device, 'ip_address', None) or '').strip()
+    if ip_address:
+        agent_port = preferred_tracking_agent_port(ip_address)
+
+    return {
+        'status': availability_status,
+        'tracking_status': availability_status,
+        'availability_status': availability_status,
+        'tracking_data': tracking_data,
+        'metrics_available': metrics_available,
+        'probe_error_code': None if metrics_available else getattr(device, 'probe_error_code', None),
+        'probe_method': 'sync-cache',
+        'agent_port': agent_port,
     }
 
 
@@ -242,13 +293,19 @@ def tracking_sync_job():
         logger.info(f"Starting tracking sync cycle for {device_count} devices...")
         shared_api_key = Config.API_KEY
         results_map = {}
+        cycle_started_at = datetime.utcnow()
+        sync_cached_devices = 0
 
         # Concurrently ping devices
         with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_WORKERS) as executor:
-            future_to_device = {
-                executor.submit(probe_single_device, device.id, device.ip_address, shared_api_key): device.id
-                for device in devices
-            }
+            future_to_device = {}
+            for device in devices:
+                recent_sync_result = _build_recent_sync_result(device, cycle_started_at)
+                if recent_sync_result is not None:
+                    results_map[device.id] = (_normalize_probe_result(recent_sync_result), cycle_started_at)
+                    sync_cached_devices += 1
+                    continue
+                future_to_device[executor.submit(probe_single_device, device.id, device.ip_address, shared_api_key)] = device.id
 
             wait_timeout = max(5, int(len(future_to_device) * NETWORK_TIMEOUT_SECONDS * 2))
             try:
@@ -332,6 +389,9 @@ def tracking_sync_job():
                     })
 
                 updates += 1
+
+        if sync_cached_devices:
+            logger.info("Reused recent agent sync snapshots for %s devices before callback probe.", sync_cached_devices)
 
         # Commit all changes at once
         try:
