@@ -22,7 +22,7 @@ from flask import (
 from sqlalchemy import text
 
 from extensions import db
-from middleware.rbac import build_scope_context, require_login
+from middleware.rbac import build_scope_context
 from services.device_monitor import DeviceMonitor
 from services.report_export_job_service import (
     cleanup_export_jobs as _job_cleanup,
@@ -36,12 +36,6 @@ from services.report_meta import build_report_meta
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
 logger = logging.getLogger(__name__)
-
-
-@reports_bp.before_request
-@require_login
-def _reports_auth_guard():
-    return None
 
 
 _report_cache = {}
@@ -736,11 +730,11 @@ def _run_export_job_worker(
                 from services.export_service import export_report_buffer
 
                 timestamp = _utcnow().strftime('%Y%m%d_%H%M')
-                filename = f'{report_type}_report_{timestamp}.{export_format}'
+                filename = f'{report_type}_report_{timestamp}.pdf'
                 export_dir = os.path.join(app.instance_path, 'report_exports')
                 os.makedirs(export_dir, exist_ok=True)
                 file_path = os.path.join(export_dir, f'{job_id}_{filename}')
-                buf = export_report_buffer(payload, report_type, export_format)
+                buf = export_report_buffer(payload, report_type)
 
             with open(file_path, 'wb') as handle:
                 handle.write(buf.getvalue())
@@ -1175,9 +1169,7 @@ def export_report(report_type):
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
 
-    export_format = (request.args.get('format', 'csv') or 'csv').lower()
-    if export_format not in ('csv', 'xlsx', 'pdf'):
-        return _json_error('format must be csv, xlsx, or pdf')
+    export_format = 'pdf'  # PDF-only export
 
     try:
         _validate_report_type(report_type)
@@ -1201,18 +1193,12 @@ def export_report(report_type):
 
         timestamp = _utcnow().strftime('%Y%m%d_%H%M')
         filename = f'{report_type}_report_{timestamp}'
-        buf = export_report_buffer(payload, report_type, export_format)
-        if export_format == 'csv':
-            mimetype = 'text/csv'
-        elif export_format == 'xlsx':
-            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        else:
-            mimetype = 'application/pdf'
+        buf = export_report_buffer(payload, report_type)
         return send_file(
             buf,
-            mimetype=mimetype,
+            mimetype='application/pdf',
             as_attachment=True,
-            download_name=f'{filename}.{export_format}',
+            download_name=f'{filename}.pdf',
         )
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
@@ -1226,9 +1212,7 @@ def create_export_job(report_type):
         return _productivity_disabled_response()
 
     export_params = _collect_params_from_request()
-    export_format = str(export_params.get('format', 'xlsx')).lower()
-    if export_format not in ('csv', 'xlsx', 'pdf'):
-        return _json_error('format must be csv, xlsx, or pdf')
+    export_format = 'pdf'  # PDF-only export
 
     try:
         _validate_report_type(report_type)
@@ -1351,6 +1335,73 @@ def get_export_job_status(job_id):
     if job.get('status') == 'completed':
         payload['download_url'] = url_for('reports_bp.download_export_job', job_id=job_id)
     return jsonify(payload)
+
+
+_VALID_FLEET_PARAMS = frozenset(("server", "workstation"))
+
+
+def _parse_fleet_param() -> str | None:
+    """
+    Parse and validate the optional ?fleet= query param.
+    Returns None (both fleets), "server", or "workstation".
+    Raises ReportValidationError on invalid value.
+    """
+    fleet = request.args.get('fleet') or None
+    if fleet is not None and fleet not in _VALID_FLEET_PARAMS:
+        raise ReportValidationError(
+            f"Invalid fleet value '{fleet}'. Must be 'server' or 'workstation'.", 400
+        )
+    return fleet
+
+
+@reports_bp.route('/api/reports/enterprise-uptime', methods=['GET'])
+def enterprise_uptime_report():
+    """
+    JSON summary of enterprise uptime/downtime data.  Read-only.
+    Optional: ?fleet=server|workstation  filters to a single fleet.
+    """
+    try:
+        start_date, end_date = _parse_date_range(max_days=365)
+        fleet = _parse_fleet_param()
+    except ReportValidationError as exc:
+        return _json_error(str(exc), exc.status_code)
+    try:
+        from services.enterprise_report_service import build_enterprise_uptime_report
+        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet)
+        return jsonify(data)
+    except Exception as exc:
+        logger.exception("[EnterpriseUptime] JSON build failed: %s", exc)
+        return _json_error("Failed to build enterprise uptime report.", 500)
+
+
+@reports_bp.route('/api/reports/enterprise-uptime/pdf', methods=['GET'])
+def enterprise_uptime_pdf():
+    """
+    Download a colour-formatted enterprise uptime/downtime PDF report.
+    Optional: ?fleet=server|workstation  scopes PDF to a single fleet.
+    """
+    try:
+        start_date, end_date = _parse_date_range(max_days=365)
+        fleet = _parse_fleet_param()
+    except ReportValidationError as exc:
+        return _json_error(str(exc), exc.status_code)
+    try:
+        from services.enterprise_report_service import build_enterprise_uptime_report
+        from services.enterprise_pdf_service import generate_enterprise_pdf
+        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet)
+        buf = generate_enterprise_pdf(data, fleet=fleet or "all")
+        timestamp = _utcnow().strftime('%Y%m%d_%H%M')
+        label = fleet or "enterprise"
+        filename = f'{label}_uptime_report_{timestamp}.pdf'
+        return send_file(
+            buf,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as exc:
+        logger.exception("[EnterpriseUptime] PDF generation failed: %s", exc)
+        return _json_error("Failed to generate enterprise uptime PDF.", 500)
 
 
 @reports_bp.route('/api/reports/export-jobs/<job_id>/download', methods=['GET'])

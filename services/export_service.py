@@ -6,8 +6,11 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1275,14 +1278,38 @@ def _export_to_pdf_fallback(report_data, report_type):
 
 
 def export_to_pdf(report_data, report_type):
-    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not report_data:
+        report_data = {}
+
     try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import landscape, letter
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    except Exception:
+        from reportlab.lib import colors  # noqa: F401
+    except ImportError:
         return _export_to_pdf_fallback(report_data, report_type)
+
+    builder = _PDF_BUILDERS.get(report_type)
+    if builder:
+        try:
+            return builder(report_data, report_type)
+        except Exception:
+            logger.exception('[EXPORT] PDF builder failed for %s, using fallback', report_type)
+            return _export_to_pdf_fallback(report_data, report_type)
+
+    # Generic path for unmapped report types
+    try:
+        return _pdf_generic(report_data, report_type)
+    except Exception:
+        logger.exception('[EXPORT] ReportLab rendering failed for %s, using fallback', report_type)
+        return _export_to_pdf_fallback(report_data, report_type)
+
+
+def _pdf_generic(report_data, report_type):
+    """Generic PDF builder for report types without a dedicated builder."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    headers, rows = _flatten_report_rows(report_data, report_type)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(letter), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24)
@@ -1300,35 +1327,241 @@ def export_to_pdf(report_data, report_type):
         story.append(Paragraph(f"Freshness: {meta.get('freshness_state', '')}", styles["Normal"]))
     story.append(Spacer(1, 12))
 
-    table_rows = [headers]
-    for row in rows[:250]:
-        table_rows.append([str(_sanitize_export_value(row.get(header, ""))) for header in headers])
+    if not rows:
+        story.append(Paragraph("No data available for this period.", styles["Normal"]))
+    else:
+        table_rows = [headers]
+        for row in rows[:250]:
+            table_rows.append([str(_sanitize_export_value(row.get(header, ""))) for header in headers])
 
-    table = Table(table_rows, repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B2A4A")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E0")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")]),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ]
+        table = Table(table_rows, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B2A4A")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E0")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")]),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ]
+            )
         )
-    )
-    story.append(table)
+        story.append(table)
+
     doc.build(story)
     buf.seek(0)
     return buf
 
 
-def export_report_buffer(report_data, report_type, export_format):
-    export_format = str(export_format or "csv").strip().lower()
-    if export_format == "csv":
-        return export_to_csv(report_data, report_type)
-    if export_format == "xlsx":
-        return export_to_excel(report_data, report_type)
-    if export_format == "pdf":
-        return export_to_pdf(report_data, report_type)
-    raise ValueError(f"Unsupported export format: {export_format}")
+# ── Per-type PDF builders ────────────────────────────────────────────────────
+
+def _pdf_builder_base(report_data, report_type, title):
+    """Shared setup for branded PDF builders. Returns (doc, story, styles, buf)."""
+    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    from services.enterprise_pdf_service import (
+        base_table_style, section_heading, normal_paragraph, PageFooter,
+    )
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=28, rightMargin=28, topMargin=28, bottomMargin=36,
+    )
+    styles = getSampleStyleSheet()
+    gen_at = _utc_label()
+    period = report_data.get("period") or {}
+
+    story = [
+        section_heading(title, styles),
+        normal_paragraph(
+            f"Period: {period.get('start', 'N/A')} to {period.get('end', 'N/A')} &nbsp;|&nbsp; Generated: {gen_at}",
+            styles,
+        ),
+        Spacer(1, 10),
+    ]
+    footer = PageFooter(title, gen_at)
+    return doc, story, styles, buf, footer
+
+
+def _pdf_executive(report_data, report_type):
+    from reportlab.platypus import Spacer, Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Executive Summary Report")
+
+    # KPI summary
+    story.append(normal_paragraph(
+        f"Fleet Availability: <b>{report_data.get('uptime_score', '—')}%</b> &nbsp;|&nbsp; "
+        f"Total Devices: <b>{report_data.get('total_devices', '—')}</b> &nbsp;|&nbsp; "
+        f"Avg Latency: <b>{report_data.get('avg_latency', '—')}ms</b>",
+        styles,
+    ))
+    story.append(Spacer(1, 8))
+
+    # Problematic devices table
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_operational(report_data, report_type):
+    from reportlab.platypus import Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Operational Report")
+
+    # Audit log table
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_device_health(report_data, report_type):
+    from reportlab.platypus import Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Device Health Report")
+
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_alerts(report_data, report_type):
+    from reportlab.platypus import Spacer, Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Alert History Report")
+
+    # Severity breakdown
+    breakdown = report_data.get("severity_breakdown") or {}
+    if breakdown:
+        summary_parts = [f"{k}: {v}" for k, v in breakdown.items()]
+        story.append(normal_paragraph(f"Severity Breakdown: {', '.join(summary_parts)}", styles))
+        story.append(Spacer(1, 8))
+
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_network(report_data, report_type):
+    from reportlab.platypus import Spacer, Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Network Performance Report")
+
+    # MTTR summary
+    mttr = report_data.get("mttr") or {}
+    if mttr:
+        story.append(normal_paragraph(
+            f"Mean Time To Resolve: <b>{mttr.get('human', '—')}</b> &nbsp;|&nbsp; "
+            f"Resolved Incidents: <b>{mttr.get('total_incidents', 0)}</b>",
+            styles,
+        ))
+        story.append(Spacer(1, 8))
+
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_productivity(report_data, report_type):
+    from reportlab.platypus import Spacer, Table
+    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+
+    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Productivity Report")
+
+    # Category summary
+    cats = report_data.get("category_totals") or {}
+    if cats:
+        cat_parts = [f"{k}: {v}" for k, v in cats.items()]
+        story.append(normal_paragraph(f"Category Totals: {', '.join(cat_parts)}", styles))
+        story.append(Spacer(1, 8))
+
+    headers, rows = _flatten_report_rows(report_data, report_type)
+    if not rows:
+        story.append(normal_paragraph("No data available for this period.", styles))
+    else:
+        table_data = [headers]
+        for row in rows[:250]:
+            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(base_table_style())
+        story.append(table)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    return buf
+
+
+_PDF_BUILDERS = {
+    'executive': _pdf_executive,
+    'operational': _pdf_operational,
+    'device-health': _pdf_device_health,
+    'alerts': _pdf_alerts,
+    'network': _pdf_network,
+    'productivity': _pdf_productivity,
+}
+
+
+def export_report_buffer(report_data, report_type, export_format=None):
+    return export_to_pdf(report_data, report_type)

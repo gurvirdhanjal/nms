@@ -43,57 +43,57 @@ REPORT_DEFINITIONS = {
     "executive": {
         "source_tables": ["device", "daily_device_stats", "device_scan_history", "dashboard_events"],
         "freshness_sources": ["daily_device_stats", "device_scan_history", "dashboard_events"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "operational": {
         "source_tables": ["server_health_logs", "server_health_hourly_rollups", "server_health_daily_rollups", "dashboard_events", "device"],
         "freshness_sources": ["server_health_logs", "server_health_hourly_rollups", "server_health_daily_rollups", "dashboard_events"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "device-health": {
         "source_tables": ["server_health_logs", "server_health_hourly_rollups", "server_health_daily_rollups", "device"],
         "freshness_sources": ["server_health_logs", "server_health_hourly_rollups", "server_health_daily_rollups"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "productivity": {
         "source_tables": ["tracking_samples", "device_application_logs", "device_activity_logs", "tracking_hourly_rollups", "tracking_daily_rollups"],
         "freshness_sources": ["tracking_samples", "device_application_logs", "device_activity_logs", "tracking_hourly_rollups", "tracking_daily_rollups"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "network": {
         "source_tables": ["daily_device_stats", "device_interfaces", "interface_traffic_history", "dashboard_events", "device"],
         "freshness_sources": ["daily_device_stats", "interface_traffic_history", "dashboard_events"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "alerts": {
         "source_tables": ["dashboard_events", "device"],
         "freshness_sources": ["dashboard_events"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "maintenance-availability": {
         "source_tables": ["maintenance_window", "daily_device_stats", "device_scan_history", "tracked_device_availability_events", "device"],
         "freshness_sources": ["daily_device_stats", "device_scan_history", "tracked_device_availability_events", "maintenance_window"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "security-compliance": {
         "source_tables": ["dashboard_events", "audit_logs", "restricted_site_events", "tracking_history_integrity_audit", "server_metric_threshold_state"],
         "freshness_sources": ["dashboard_events", "audit_logs", "restricted_site_events", "tracking_history_integrity_audit", "server_metric_threshold_state"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "inventory-assets": {
         "source_tables": ["device", "tracked_devices", "device_identity_links", "device_identity_link_candidates", "sites", "departments", "subnets"],
         "freshness_sources": ["device", "tracked_devices", "device_identity_links", "device_identity_link_candidates", "sites", "departments", "subnets"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "tracking-operations": {
         "source_tables": ["tracked_devices", "tracking_samples", "device_activity_logs", "device_application_logs", "tracked_device_availability_events", "tracking_hourly_rollups", "tracking_daily_rollups", "tracking_history_integrity_audit"],
         "freshness_sources": ["tracking_samples", "device_activity_logs", "device_application_logs", "tracked_device_availability_events", "tracking_hourly_rollups", "tracking_daily_rollups", "tracking_history_integrity_audit"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
     "printer-operations": {
         "source_tables": ["printer_metrics", "print_job_audit", "device"],
         "freshness_sources": ["printer_metrics", "print_job_audit"],
-        "exportable_formats": ["csv", "xlsx", "pdf"],
+        "exportable_formats": ["pdf"],
     },
 }
 
@@ -105,7 +105,7 @@ def get_report_definition(report_type: str, granularity: str | None = None) -> d
             {
                 "source_tables": [],
                 "freshness_sources": [],
-                "exportable_formats": ["csv", "xlsx", "pdf"],
+                "exportable_formats": ["pdf"],
             },
         )
     )
@@ -617,7 +617,7 @@ def build_report_meta(
         "cache_ttl_seconds": int(cache_ttl_seconds or 0),
         "cache_age_seconds": round(float(cache_age_seconds or 0.0), 3),
         "row_count": int(row_count or 0),
-        "exportable_formats": report_definition.get("exportable_formats", ["csv", "xlsx", "pdf"]),
+        "exportable_formats": report_definition.get("exportable_formats", ["pdf"]),
         "completeness_warnings": warnings,
         "freshness_sources": list(freshness_sources),
     }

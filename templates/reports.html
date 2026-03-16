@@ -925,6 +925,20 @@
                 <i class="fas fa-bell me-2"></i> Alerts
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="workstationhealth-tab" data-bs-toggle="pill"
+                data-bs-target="#workstationhealth" type="button" role="tab"
+                onclick="lazyLoadWorkstationHealth()">
+                <i class="fas fa-desktop me-2"></i> Workstation Health
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="serverreports-tab" data-bs-toggle="pill"
+                data-bs-target="#serverreports" type="button" role="tab"
+                onclick="lazyLoadServerReports()">
+                <i class="fas fa-server me-2"></i> Server Reports
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="reportTabContent">
@@ -947,14 +961,9 @@
                         <button class="btn btn-sm btn-view-report" onclick="loadPreview('executive','execRange','execPreview')">
                             <i class="fas fa-table me-1"></i>View Report
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4" id="execContent">
@@ -1038,16 +1047,9 @@
                         <button class="btn btn-sm btn-view-report" onclick="loadPreview('operational','opsRange','opsPreview')">
                             <i class="fas fa-table me-1"></i>View Report
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('operational','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('operational','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('operational','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -1203,16 +1205,9 @@
                         <button class="btn btn-sm btn-view-report" onclick="loadPreview('device-health','dhRange','dhPreview')">
                             <i class="fas fa-table me-1"></i>View Report
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('device-health','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('device-health','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('device-health','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -1308,16 +1303,9 @@
                         <button class="btn btn-sm btn-primary" onclick="loadProductivityReport()">
                             <i class="fas fa-sync"></i>
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('productivity','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary"
-                                onclick="exportReport('productivity','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('productivity','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -1382,14 +1370,9 @@
                         <button class="btn btn-sm btn-view-report" onclick="loadPreview('network','netRange','netPreview')">
                             <i class="fas fa-table me-1"></i>View Report
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('network','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('network','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('network','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -1468,14 +1451,9 @@
                         <button class="btn btn-sm btn-view-report" onclick="loadPreview('alerts','alertRange','alertPreview',{severity:document.getElementById('alertSeverity')?.value||''})">
                             <i class="fas fa-table me-1"></i>View Report
                         </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','csv')">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','xlsx')">
-                                <i class="fas fa-file-excel"></i> XLSX
-                            </button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','pdf')">
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -1593,6 +1571,330 @@
             </div>
         </div>
 
+        <!-- ══════════════════════════════════════════════════════════════
+             Tab: WORKSTATION HEALTH  (service.py / tracking agent fleet)
+             ══════════════════════════════════════════════════════════════ -->
+        <div class="tab-pane fade" id="workstationhealth" role="tabpanel">
+            <!-- Header card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation &amp; Employee Device Fleet</h5>
+                    <div class="d-flex gap-2 align-items-center">
+                        <select class="form-select form-select-sm" id="wsRange" style="width:130px">
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                            <option value="90d">Last 90 Days</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary" onclick="loadWorkstationHealth(true)">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <a id="wsPdfBtn" href="#"
+                            class="btn btn-sm btn-outline-secondary" target="_blank">
+                            <i class="fas fa-file-pdf me-1"></i> Download PDF
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI row — 6 cards -->
+            <div class="row mb-3" id="wsKpiRow">
+                <div class="col-6 col-md-2">
+                    <div class="stat-card primary">
+                        <h3 id="wsTotalDevices">—</h3>
+                        <p><i class="fas fa-laptop me-1"></i> Tracked Devices</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card success">
+                        <h3 id="wsFleetUptime">—</h3>
+                        <p><i class="fas fa-check-circle me-1"></i> Fleet Avg Uptime</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card" style="background:var(--bs-teal,#0d9488);color:#fff">
+                        <h3 id="wsOnlineCount">—</h3>
+                        <p><i class="fas fa-circle me-1"></i> Online Now</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card" style="background:#6366f1;color:#fff">
+                        <h3 id="wsAgentSynced">—</h3>
+                        <p><i class="fas fa-sync-alt me-1"></i> Agent Synced (24h)</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card warning">
+                        <h3 id="wsWarningCount">—</h3>
+                        <p><i class="fas fa-exclamation-triangle me-1"></i> SLA Warning</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card danger">
+                        <h3 id="wsCriticalCount">—</h3>
+                        <p><i class="fas fa-times-circle me-1"></i> SLA Critical</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Behavioral KPI row -->
+            <div class="row mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#0e7490;color:#fff">
+                        <h3 id="wsAvgActiveHrs">—</h3>
+                        <p><i class="fas fa-clock me-1"></i> Avg Active Hrs/Day</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3" id="wsViolCard">
+                    <div class="stat-card" style="background:#16a34a;color:#fff">
+                        <h3 id="wsPolicyViolations">—</h3>
+                        <p><i class="fas fa-shield-alt me-1"></i> Policy Violations</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#7c3aed;color:#fff">
+                        <h3 id="wsAvgProd">—</h3>
+                        <p><i class="fas fa-chart-line me-1"></i> Avg Productivity</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#0369a1;color:#fff">
+                        <h3 id="wsAvgFocus">—</h3>
+                        <p><i class="fas fa-bullseye me-1"></i> Avg Focus Score</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SLA distribution + per-device table -->
+            <div class="row">
+                <!-- SLA summary -->
+                <div class="col-md-3 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header"><h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6></div>
+                        <div class="card-body p-2" id="wsSlaBreakdown">
+                            <div class="text-center py-3"><div class="spinner-border" role="status"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Device table — 12 columns -->
+                <div class="col-md-9 mb-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="fas fa-table me-1"></i> Per-Device Uptime</h6>
+                            <input type="text" id="wsSearchInput" class="form-control form-control-sm"
+                                placeholder="Search device / employee…" style="width:200px"
+                                oninput="filterWsTable()">
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height:460px;overflow-y:auto">
+                                <table class="table table-hover table-sm mb-0" id="wsDeviceTable">
+                                    <thead class="table-dark" style="position:sticky;top:0;z-index:1">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Employee</th>
+                                            <th>Dept</th>
+                                            <th>IP</th>
+                                            <th>Status</th>
+                                            <th class="text-end">Uptime %</th>
+                                            <th class="text-end">Downtime</th>
+                                            <th class="text-end">Incidents</th>
+                                            <th class="text-end">MTTR</th>
+                                            <th class="text-end">MTBF</th>
+                                            <th>Last Seen</th>
+                                            <th>SLA</th>
+                                            <th class="text-end">Keyboard</th>
+                                            <th class="text-end">Active Hrs</th>
+                                            <th>Top App</th>
+                                            <th class="text-end">Violations</th>
+                                            <th class="text-end">Prod.</th>
+                                            <th class="text-end">Focus</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="18" class="text-center text-muted p-4">
+                                            Click <strong>Workstation Health</strong> tab to load.
+                                        </td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             Tab: SERVER REPORTS  (server_agent.py / inventory devices)
+             ══════════════════════════════════════════════════════════════ -->
+        <div class="tab-pane fade" id="serverreports" role="tabpanel">
+            <!-- Header card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-server me-2"></i> Server &amp; Network Device Fleet</h5>
+                    <div class="d-flex gap-2 align-items-center">
+                        <select class="form-select form-select-sm" id="srvRange" style="width:130px">
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                            <option value="90d">Last 90 Days</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary" onclick="loadServerReports(true)">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <a id="srvPdfBtn" href="#"
+                            class="btn btn-sm btn-outline-secondary" target="_blank">
+                            <i class="fas fa-file-pdf me-1"></i> Download PDF
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI row — 6 cards -->
+            <div class="row mb-3">
+                <div class="col-6 col-md-2">
+                    <div class="stat-card primary">
+                        <h3 id="srvTotalDevices">—</h3>
+                        <p><i class="fas fa-server me-1"></i> Inventory Devices</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card success">
+                        <h3 id="srvFleetUptime">—</h3>
+                        <p><i class="fas fa-check-circle me-1"></i> Fleet Avg Uptime</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card warning">
+                        <h3 id="srvAvgCpu">—</h3>
+                        <p><i class="fas fa-microchip me-1"></i> Avg CPU</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card" style="background:#0ea5e9;color:#fff">
+                        <h3 id="srvAvgLatency">—</h3>
+                        <p><i class="fas fa-tachometer-alt me-1"></i> Fleet Avg Latency</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card" style="background:#8b5cf6;color:#fff">
+                        <h3 id="srvAvgPacketLoss">—</h3>
+                        <p><i class="fas fa-exclamation-circle me-1"></i> Avg Pkt Loss</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-card danger">
+                        <h3 id="srvCriticalCount">—</h3>
+                        <p><i class="fas fa-times-circle me-1"></i> SLA Critical</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI row 2 — fleet resource averages + agent coverage -->
+            <div class="row mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#0e7490;color:#fff">
+                        <h3 id="srvAvgMem">—</h3>
+                        <p><i class="fas fa-memory me-1"></i> Fleet Avg Memory</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#0369a1;color:#fff">
+                        <h3 id="srvAvgDisk">—</h3>
+                        <p><i class="fas fa-hdd me-1"></i> Fleet Avg Disk</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card" style="background:#6366f1;color:#fff">
+                        <h3 id="srvAgentCount">—</h3>
+                        <p><i class="fas fa-robot me-1"></i> Agent Coverage</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card warning">
+                        <h3 id="srvTotalAlerts">—</h3>
+                        <p><i class="fas fa-bell me-1"></i> Total Alerts</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top 5 consumers panel -->
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3 mb-md-0">
+                    <div class="card h-100">
+                        <div class="card-header"><h6 class="mb-0"><i class="fas fa-fire-alt me-1 text-danger"></i> Top 5 CPU Consumers</h6></div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0" id="srvTopCpuTable">
+                                <thead class="table-dark"><tr><th>Device</th><th class="text-end">Avg</th><th class="text-end">Peak</th><th>SLA</th></tr></thead>
+                                <tbody><tr><td colspan="4" class="text-center text-muted p-3">—</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header"><h6 class="mb-0"><i class="fas fa-memory me-1 text-warning"></i> Top 5 Memory Consumers</h6></div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0" id="srvTopMemTable">
+                                <thead class="table-dark"><tr><th>Device</th><th class="text-end">Avg</th><th class="text-end">Peak</th><th>SLA</th></tr></thead>
+                                <tbody><tr><td colspan="4" class="text-center text-muted p-3">—</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SLA + device table — 17 columns -->
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header"><h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6></div>
+                        <div class="card-body p-2" id="srvSlaBreakdown">
+                            <div class="text-center py-3"><div class="spinner-border" role="status"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-9 mb-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="fas fa-table me-1"></i> Per-Device Uptime &amp; Health</h6>
+                            <input type="text" id="srvSearchInput" class="form-control form-control-sm"
+                                placeholder="Search device / IP…" style="width:200px"
+                                oninput="filterSrvTable()">
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height:460px;overflow-y:auto">
+                                <table class="table table-hover table-sm mb-0" id="srvDeviceTable">
+                                    <thead class="table-dark" style="position:sticky;top:0;z-index:1">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>IP</th>
+                                            <th>Type</th>
+                                            <th>Src</th>
+                                            <th class="text-end">Uptime %</th>
+                                            <th class="text-end">Downtime</th>
+                                            <th class="text-end">Avg CPU</th>
+                                            <th class="text-end">Peak CPU</th>
+                                            <th class="text-end">Avg Mem</th>
+                                            <th class="text-end">Avg Disk</th>
+                                            <th class="text-end">Net I/O</th>
+                                            <th class="text-end">Latency</th>
+                                            <th class="text-end">Pkt Loss</th>
+                                            <th class="text-end">Load 1m</th>
+                                            <th class="text-end">Alerts</th>
+                                            <th class="text-end">Samples</th>
+                                            <th>SLA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="17" class="text-center text-muted p-4">
+                                            Click <strong>Server Reports</strong> tab to load.
+                                        </td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 {% endblock %}
@@ -1600,6 +1902,14 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Session keepalive — prevent timeout while user is viewing reports
+        const _keepalive = setInterval(async () => {
+            try {
+                const r = await fetch('/session-status', { credentials: 'same-origin' });
+                if (!r.ok) clearInterval(_keepalive);
+            } catch { clearInterval(_keepalive); }
+        }, 120000);
+
         // Initialization happens after function definitions below.
 
         function setTableStatusRow(tbody, colSpan, message, className = 'text-center text-muted p-4') {
@@ -1776,6 +2086,27 @@
         }
 
         // ==========================================
+        // Completeness Warnings
+        // ==========================================
+        function renderCompletenessWarnings(containerId, meta) {
+            const warnings = (meta || {}).completeness_warnings || [];
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            el.querySelectorAll('.completeness-warning').forEach(w => w.remove());
+            if (!warnings.length) return;
+            warnings.forEach(w => {
+                const div = document.createElement('div');
+                div.className = 'alert alert-warning alert-sm py-1 px-2 mb-2 completeness-warning';
+                div.style.fontSize = '0.75rem';
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-exclamation-triangle me-1';
+                div.appendChild(icon);
+                div.appendChild(document.createTextNode(w));
+                el.appendChild(div);
+            });
+        }
+
+        // ==========================================
         // Operational Report Logic
         // ==========================================
         function loadOperationalReport() {
@@ -1791,6 +2122,7 @@
 
             fetchReportJson(`/api/reports/operational?range=${encodeURIComponent(range)}`)
                 .then(data => {
+                    renderCompletenessWarnings('operational', data.meta);
                     // 1. Render Heatmap
                     renderHeatmap(data.heatmap, heatmapDiv, data.heatmap_granularity || 'raw');
 
@@ -2030,6 +2362,7 @@
 
             fetchReportJson(`/api/reports/executive?range=${encodeURIComponent(range)}`)
                 .then(data => {
+                    renderCompletenessWarnings('executive', data.meta);
                     // Render Statistics
                     contentDiv.innerHTML = `
                         <div class="row text-center">
@@ -2603,6 +2936,7 @@
 
             fetchReportJson(`/api/reports/device-health?range=${encodeURIComponent(range)}`)
                 .then(data => {
+                    renderCompletenessWarnings('devicehealth', data.meta);
                     // Summary table
                     const s = data.summary || [];
                     patchTableRows(tbody, s, {
@@ -2671,6 +3005,7 @@
 
             fetchReportJson(`/api/reports/productivity?range=${encodeURIComponent(range)}`)
                 .then(data => {
+                    renderCompletenessWarnings('productivity', data.meta);
                     // Category pie
                     const cats = data.category_totals || {};
                     const catColors = { 'Productivity': '#00ff88', 'Communication': '#3b82f6', 'Development': '#a855f7', 'Browser': '#ffaa00', 'Entertainment': '#ff3b5c', 'Other': '#6b7280' };
@@ -2717,6 +3052,7 @@
 
             fetchReportJson(`/api/reports/network?range=${encodeURIComponent(range)}`)
                 .then(data => {
+                    renderCompletenessWarnings('network', data.meta);
                     // KPI cards
                     const mttr = data.mttr || {};
                     const incidents = mttr.total_incidents || 0;
@@ -2836,6 +3172,7 @@
 
             fetchReportJson(url)
                 .then(data => {
+                    renderCompletenessWarnings('alerthistory', data.meta);
                     // KPIs
                     const totalAlerts = (data.alerts || []).length;
                     kpi.innerHTML = `
@@ -2938,6 +3275,7 @@
         }
 
         async function exportReport(type, format) {
+            format = 'pdf';  // PDF-only export
             const rangeMap = {
                 'device-health': 'dhRange',
                 'productivity': 'prodRange',
@@ -3090,6 +3428,8 @@
                 else if (target === 'network') loadNetworkReport();
                 else if (target === 'alerthistory') loadAlertReport();
                 else if (target === 'operational') loadOperationalReport();
+                else if (target === 'workstationhealth') loadWorkstationHealth();
+                else if (target === 'serverreports') loadServerReports();
             });
         });
 
@@ -3103,6 +3443,12 @@
         window.loadNetworkReport = loadNetworkReport;
         window.loadAlertReport = loadAlertReport;
         window.exportReport = exportReport;
+        window.loadWorkstationHealth = loadWorkstationHealth;
+        window.loadServerReports = loadServerReports;
+        window.lazyLoadWorkstationHealth = lazyLoadWorkstationHealth;
+        window.lazyLoadServerReports = lazyLoadServerReports;
+        window.filterWsTable = filterWsTable;
+        window.filterSrvTable = filterSrvTable;
         // Executive sort toggle (called from onclick attribute)
         window.toggleProblematicSort = toggleProblematicSort;
         // Alert table sort + filter (called from onclick/onchange attributes)
@@ -3131,6 +3477,428 @@
             loadRecentActivity();
         }
         loadExecutiveReport(); // Load default tab
+
+        // Range selectors for new tabs
+        document.getElementById('wsRange')?.addEventListener('change', () => loadWorkstationHealth(true));
+        document.getElementById('srvRange')?.addEventListener('change', () => loadServerReports(true));
     });
+
+    // ══════════════════════════════════════════════════════
+    // Enterprise Uptime — Shared helpers
+    // ══════════════════════════════════════════════════════
+
+    const _enterpriseCache = {};
+
+    function _rangeToDateParams(range) {
+        const now = new Date();
+        const end = now.toISOString().slice(0, 10);
+        let days = 30;
+        if (range === '7d') days = 7;
+        else if (range === '90d') days = 90;
+        const start = new Date(now - days * 86400000).toISOString().slice(0, 10);
+        return `start=${start}&end=${end}`;
+    }
+
+    async function _fetchEnterpriseData(range, fleet, forceRefresh = false) {
+        const cacheKey = `${range}:${fleet}`;
+        if (!forceRefresh && _enterpriseCache[cacheKey]) return _enterpriseCache[cacheKey];
+        const params = _rangeToDateParams(range);
+        const fleetParam = fleet ? `&fleet=${encodeURIComponent(fleet)}` : '';
+        const resp = await fetch(`/api/reports/enterprise-uptime?${params}${fleetParam}`, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error((err && err.error) || `Request failed (${resp.status})`);
+        }
+        const data = await resp.json();
+        _enterpriseCache[cacheKey] = data;
+        return data;
+    }
+
+    function _slaBadge(tier) {
+        const map = {
+            'Gold':    'success',
+            'Silver':  'info',
+            'Bronze':  'warning',
+            'Warning': 'orange',
+            'Critical':'danger',
+            'Unknown': 'secondary',
+        };
+        const cls = map[tier] || 'secondary';
+        const style = tier === 'Warning' ? 'background:#ea580c;color:#fff' : '';
+        return `<span class="badge bg-${cls}" style="${style}">${tier}</span>`;
+    }
+
+    function _fmtUptime(v) {
+        if (v == null) return '<span class="text-muted">—</span>';
+        const cls = v >= 99.9 ? 'text-success' : v >= 99 ? 'text-warning' : 'text-danger';
+        return `<strong class="${cls}">${v.toFixed(2)}%</strong>`;
+    }
+
+    function _fmtHours(v) {
+        if (v == null) return '—';
+        if (v < 1) return `${(v * 60).toFixed(0)} min`;
+        return `${v.toFixed(1)} h`;
+    }
+
+    function _fmtPct(v) { return v != null ? `${v.toFixed(1)}%` : '—'; }
+
+    function _fmtBps(v) {
+        if (v == null) return '—';
+        if (v >= 1e6) return (v / 1e6).toFixed(1) + ' Mbps';
+        if (v >= 1e3) return (v / 1e3).toFixed(0) + ' Kbps';
+        return Number(v).toFixed(0) + ' bps';
+    }
+
+    function _renderSlaBreakdown(el, sla) {
+        const tiers = ['Gold','Silver','Bronze','Warning','Critical','Unknown'];
+        const thresh = {'Gold':'≥99.9%','Silver':'≥99.5%','Bronze':'≥99%','Warning':'≥95%','Critical':'<95%','Unknown':'No Data'};
+        const total = Object.values(sla).reduce((a, b) => a + b, 0) || 1;
+        el.innerHTML = tiers.map(t => {
+            const count = sla[t] || 0;
+            const pct = Math.round(count / total * 100);
+            const colors = {Gold:'#16a34a',Silver:'#65a30d',Bronze:'#d97706',Warning:'#ea580c',Critical:'#dc2626',Unknown:'#6b7280'};
+            return `<div class="mb-2">
+                <div class="d-flex justify-content-between mb-1" style="font-size:0.72rem">
+                    <span style="color:${colors[t]};font-weight:700">${t}</span>
+                    <span class="text-muted">${thresh[t]} &bull; <strong style="color:#e2e8f0">${count}</strong></span>
+                </div>
+                <div class="progress" style="height:5px;background:rgba(255,255,255,0.08)">
+                    <div class="progress-bar" style="width:${pct}%;background:${colors[t]};border-radius:3px"></div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Workstation Health Tab
+    // ══════════════════════════════════════════════════════
+
+    let _wsAllRows = [];
+    let _wsLoaded = false;
+
+    function lazyLoadWorkstationHealth() {
+        if (!_wsLoaded) loadWorkstationHealth();
+    }
+
+    async function loadWorkstationHealth(forceRefresh = false) {
+        _wsLoaded = true;
+        const range = document.getElementById('wsRange')?.value || '30d';
+
+        // Update PDF link
+        const pdfBtn = document.getElementById('wsPdfBtn');
+        if (pdfBtn) pdfBtn.href = `/api/reports/enterprise-uptime/pdf?${_rangeToDateParams(range)}&fleet=workstation`;
+
+        // Show loading
+        const tbody = document.querySelector('#wsDeviceTable tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="18" class="text-center p-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading workstation data…</td></tr>`;
+
+        try {
+            const data = await _fetchEnterpriseData(range, 'workstation', forceRefresh);
+            const rows = data.tracked_rows || [];
+            _wsAllRows = rows;
+
+            // KPI cards
+            const sla = (data.summary || {}).sla_distribution || {};
+            const withData = rows.filter(r => r.uptime_pct != null);
+            const avg = withData.length ? (withData.reduce((a, r) => a + r.uptime_pct, 0) / withData.length).toFixed(2) + '%' : '—';
+
+            const onlineCount = rows.filter(r => (r.availability_status || '').toLowerCase() === 'online').length;
+
+            const now = Date.now();
+            const syncedCount = rows.filter(r => {
+                if (!r.last_agent_sync_at) return false;
+                const t = new Date(r.last_agent_sync_at.endsWith('Z') ? r.last_agent_sync_at : r.last_agent_sync_at + 'Z').getTime();
+                return (now - t) <= 86400000;
+            }).length;
+
+            document.getElementById('wsTotalDevices').textContent = rows.length;
+            document.getElementById('wsFleetUptime').textContent = avg;
+            const wsOnlineEl = document.getElementById('wsOnlineCount');
+            if (wsOnlineEl) wsOnlineEl.textContent = onlineCount;
+            const wsAgentEl = document.getElementById('wsAgentSynced');
+            if (wsAgentEl) wsAgentEl.textContent = syncedCount;
+            document.getElementById('wsWarningCount').textContent = sla['Warning'] || 0;
+            document.getElementById('wsCriticalCount').textContent = sla['Critical'] || 0;
+
+            // Behavioral KPI cards
+            const activeRows = rows.filter(r => r.avg_active_hours_day != null);
+            const avgActiveHrs = activeRows.length
+                ? (activeRows.reduce((a, r) => a + r.avg_active_hours_day, 0) / activeRows.length).toFixed(1) + ' h'
+                : '—';
+            const totalViol = rows.reduce((a, r) => a + (r.policy_violations || 0), 0);
+            const prodRows = rows.filter(r => r.productivity_score != null);
+            const avgProd = prodRows.length ? Math.round(prodRows.reduce((a, r) => a + r.productivity_score, 0) / prodRows.length) : null;
+            const focusRows = rows.filter(r => r.focus_score != null);
+            const avgFocus = focusRows.length ? Math.round(focusRows.reduce((a, r) => a + r.focus_score, 0) / focusRows.length) : null;
+
+            const wsAvgEl = document.getElementById('wsAvgActiveHrs');
+            if (wsAvgEl) wsAvgEl.textContent = avgActiveHrs;
+            const wsViolEl = document.getElementById('wsPolicyViolations');
+            if (wsViolEl) {
+                wsViolEl.textContent = totalViol;
+                const card = document.getElementById('wsViolCard');
+                if (card) {
+                    card.querySelector('.stat-card').style.background = totalViol > 0 ? '#dc2626' : '#16a34a';
+                }
+            }
+            const wsProdEl = document.getElementById('wsAvgProd');
+            if (wsProdEl) wsProdEl.textContent = avgProd != null ? avgProd : '—';
+            const wsFocusEl = document.getElementById('wsAvgFocus');
+            if (wsFocusEl) wsFocusEl.textContent = avgFocus != null ? avgFocus : '—';
+
+            // SLA breakdown
+            const slaEl = document.getElementById('wsSlaBreakdown');
+            if (slaEl) _renderSlaBreakdown(slaEl, sla);
+
+            // Table
+            _renderWsTable(rows);
+        } catch (err) {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="18" class="text-center text-danger p-4">${err.message || 'Failed to load workstation data.'}</td></tr>`;
+        }
+    }
+
+    function _statusBadge(status) {
+        const s = (status || 'unknown').toLowerCase();
+        const map = { online: 'success', offline: 'danger', degraded: 'warning', unknown: 'secondary' };
+        const cls = map[s] || 'secondary';
+        return `<span class="badge bg-${cls}">${s}</span>`;
+    }
+
+    function _fmtNum(v, suffix) {
+        if (v == null) return '<span class="text-muted">—</span>';
+        return `${Number(v).toFixed(1)}${suffix}`;
+    }
+
+    function _renderWsTable(rows) {
+        const tbody = document.querySelector('#wsDeviceTable tbody');
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="18" class="text-center text-muted p-4">No tracked devices found for this period.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(r => {
+            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+            const mttr = r.mttr_min != null ? `${Math.round(r.mttr_min)} min` : '—';
+            const mtbf = r.mtbf_hours != null ? `${r.mtbf_hours.toFixed(1)} h` : '—';
+            // Behavioral columns
+            const kb = r.total_keyboard_events != null ? Number(r.total_keyboard_events).toLocaleString() : '<span class="text-muted">—</span>';
+            const activeHrs = r.total_active_hours != null ? `${r.total_active_hours} h` : '<span class="text-muted">—</span>';
+            const topApp = r.top_app ? _esc(r.top_app.length > 15 ? r.top_app.slice(0, 15) + '…' : r.top_app) : '<span class="text-muted">—</span>';
+            const viol = r.policy_violations != null
+                ? (r.policy_violations > 0 ? `<span class="badge bg-danger">${r.policy_violations}</span>` : `<span class="badge bg-success">0</span>`)
+                : '<span class="text-muted">—</span>';
+            const prodColor = r.productivity_score == null ? '' : r.productivity_score >= 70 ? 'color:#16a34a' : r.productivity_score >= 40 ? 'color:#d97706' : 'color:#dc2626';
+            const focusColor = r.focus_score == null ? '' : r.focus_score >= 70 ? 'color:#16a34a' : r.focus_score >= 40 ? 'color:#d97706' : 'color:#dc2626';
+            const prod = r.productivity_score != null ? `<span style="font-weight:600;${prodColor}">${r.productivity_score}</span>` : '<span class="text-muted">—</span>';
+            const focus = r.focus_score != null ? `<span style="font-weight:600;${focusColor}">${r.focus_score}</span>` : '<span class="text-muted">—</span>';
+            return `<tr>
+                <td><span class="fw-semibold">${_esc(r.device_name || '—')}</span></td>
+                <td class="text-muted">${_esc(r.employee_name || '—')}</td>
+                <td class="text-muted" style="font-size:0.78rem">${_esc(r.department || '—')}</td>
+                <td><code style="font-size:0.75rem">${_esc(r.device_ip || '—')}</code></td>
+                <td>${_statusBadge(r.availability_status)}</td>
+                <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
+                <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
+                <td class="text-end">${r.incident_count ?? 0}</td>
+                <td class="text-end text-muted">${mttr}</td>
+                <td class="text-end text-muted">${mtbf}</td>
+                <td style="font-size:0.75rem;white-space:nowrap">${lastSeen}</td>
+                <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+                <td class="text-end" style="font-size:0.8rem">${kb}</td>
+                <td class="text-end" style="font-size:0.8rem">${activeHrs}</td>
+                <td style="font-size:0.78rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topApp}</td>
+                <td class="text-end">${viol}</td>
+                <td class="text-end" style="font-size:0.85rem">${prod}</td>
+                <td class="text-end" style="font-size:0.85rem">${focus}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filterWsTable() {
+        const q = (document.getElementById('wsSearchInput')?.value || '').toLowerCase();
+        const filtered = !q ? _wsAllRows : _wsAllRows.filter(r =>
+            (r.device_name || '').toLowerCase().includes(q) ||
+            (r.employee_name || '').toLowerCase().includes(q) ||
+            (r.device_ip || '').toLowerCase().includes(q) ||
+            (r.hostname || '').toLowerCase().includes(q)
+        );
+        _renderWsTable(filtered);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Server Reports Tab
+    // ══════════════════════════════════════════════════════
+
+    let _srvAllRows = [];
+    let _srvLoaded = false;
+
+    function lazyLoadServerReports() {
+        if (!_srvLoaded) loadServerReports();
+    }
+
+    async function loadServerReports(forceRefresh = false) {
+        _srvLoaded = true;
+        const range = document.getElementById('srvRange')?.value || '30d';
+
+        // Update PDF link
+        const pdfBtn = document.getElementById('srvPdfBtn');
+        if (pdfBtn) pdfBtn.href = `/api/reports/enterprise-uptime/pdf?${_rangeToDateParams(range)}&fleet=server`;
+
+        const tbody = document.querySelector('#srvDeviceTable tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="17" class="text-center p-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading server data…</td></tr>`;
+
+        try {
+            const data = await _fetchEnterpriseData(range, 'server', forceRefresh);
+            const rows = data.server_rows || [];
+            _srvAllRows = rows;
+
+            // KPI cards
+            const sla = (data.summary || {}).sla_distribution || {};
+            const withData = rows.filter(r => r.uptime_pct != null);
+            const avg = withData.length ? (withData.reduce((a, r) => a + r.uptime_pct, 0) / withData.length).toFixed(2) + '%' : '—';
+            const avgCpu = (() => {
+                const cpuRows = rows.filter(r => r.avg_cpu != null);
+                return cpuRows.length ? (cpuRows.reduce((a, r) => a + r.avg_cpu, 0) / cpuRows.length).toFixed(1) + '%' : '—';
+            })();
+            const avgLatency = (() => {
+                const latRows = rows.filter(r => r.avg_latency_ms != null);
+                return latRows.length ? (latRows.reduce((a, r) => a + r.avg_latency_ms, 0) / latRows.length).toFixed(1) + ' ms' : '—';
+            })();
+            const avgPktLoss = (() => {
+                const pktRows = rows.filter(r => r.avg_packet_loss_pct != null);
+                return pktRows.length ? (pktRows.reduce((a, r) => a + r.avg_packet_loss_pct, 0) / pktRows.length).toFixed(2) + '%' : '—';
+            })();
+
+            document.getElementById('srvTotalDevices').textContent = rows.length;
+            document.getElementById('srvFleetUptime').textContent = avg;
+            document.getElementById('srvAvgCpu').textContent = avgCpu;
+            const srvLatEl = document.getElementById('srvAvgLatency');
+            if (srvLatEl) srvLatEl.textContent = avgLatency;
+            const srvPktEl = document.getElementById('srvAvgPacketLoss');
+            if (srvPktEl) srvPktEl.textContent = avgPktLoss;
+            document.getElementById('srvCriticalCount').textContent = sla['Critical'] || 0;
+
+            // KPI row 2 — fleet resource averages
+            const summary = data.summary || {};
+            const srvMemEl = document.getElementById('srvAvgMem');
+            if (srvMemEl) srvMemEl.textContent = summary.fleet_avg_mem != null ? summary.fleet_avg_mem.toFixed(1) + '%' : '—';
+            const srvDiskEl = document.getElementById('srvAvgDisk');
+            if (srvDiskEl) srvDiskEl.textContent = summary.fleet_avg_disk != null ? summary.fleet_avg_disk.toFixed(1) + '%' : '—';
+            const srvAgentEl = document.getElementById('srvAgentCount');
+            if (srvAgentEl) srvAgentEl.textContent = rows.length > 0 ? `${summary.agent_deployed_count ?? 0}/${rows.length}` : '—';
+            const srvAlertsEl = document.getElementById('srvTotalAlerts');
+            if (srvAlertsEl) srvAlertsEl.textContent = rows.reduce((a, r) => a + (r.total_alerts || 0), 0);
+
+            // SLA breakdown
+            const slaEl = document.getElementById('srvSlaBreakdown');
+            if (slaEl) _renderSlaBreakdown(slaEl, sla);
+
+            // Table + top consumers
+            _renderSrvTable(rows);
+            _renderSrvTopConsumers(rows);
+        } catch (err) {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="17" class="text-center text-danger p-4">${err.message || 'Failed to load server data.'}</td></tr>`;
+        }
+    }
+
+    function _renderSrvTable(rows) {
+        const tbody = document.querySelector('#srvDeviceTable tbody');
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="17" class="text-center text-muted p-4">No inventory devices found for this period.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(r => {
+            const hasAgent = (r.sample_count || 0) > 0;
+            const srcBadge = hasAgent
+                ? '<span class="badge bg-success">agent</span>'
+                : '<span class="badge bg-secondary">icmp</span>';
+            const peakCpuColor = r.max_cpu != null
+                ? (r.max_cpu >= 90 ? 'text-danger' : r.max_cpu >= 75 ? 'text-warning' : '')
+                : '';
+            const netIO = (r.avg_net_in_bps != null || r.avg_net_out_bps != null)
+                ? `${_fmtBps(r.avg_net_in_bps)}&nbsp;/&nbsp;${_fmtBps(r.avg_net_out_bps)}`
+                : '—';
+            const alertsCell = (r.total_alerts || 0) > 0
+                ? `<span class="badge bg-danger">${r.total_alerts}</span>`
+                : '<span class="text-muted">0</span>';
+            return `<tr>
+                <td><span class="fw-semibold">${_esc(r.device_name || '—')}</span></td>
+                <td><code style="font-size:0.75rem">${_esc(r.device_ip || '—')}</code></td>
+                <td><span class="badge bg-secondary bg-opacity-50">${_esc(r.device_type || '—')}</span></td>
+                <td>${srcBadge}</td>
+                <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
+                <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
+                <td class="text-end">${_fmtPct(r.avg_cpu)}</td>
+                <td class="text-end ${peakCpuColor}">${_fmtPct(r.max_cpu)}</td>
+                <td class="text-end">${_fmtPct(r.avg_mem)}</td>
+                <td class="text-end">${_fmtPct(r.avg_disk)}</td>
+                <td class="text-end text-muted" style="white-space:nowrap">${netIO}</td>
+                <td class="text-end text-muted">${_fmtNum(r.avg_latency_ms, ' ms')}</td>
+                <td class="text-end text-muted">${_fmtNum(r.avg_packet_loss_pct, '%')}</td>
+                <td class="text-end text-muted">${r.avg_load_1m != null ? Number(r.avg_load_1m).toFixed(2) : '<span class="text-muted">—</span>'}</td>
+                <td class="text-end">${alertsCell}</td>
+                <td class="text-end text-muted">${r.sample_count ?? '—'}</td>
+                <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function _renderSrvTopConsumers(rows) {
+        const agentRows = rows.filter(r => (r.sample_count || 0) > 0);
+
+        const topCpu = [...agentRows]
+            .filter(r => r.avg_cpu != null)
+            .sort((a, b) => b.avg_cpu - a.avg_cpu)
+            .slice(0, 5);
+
+        const topMem = [...agentRows]
+            .filter(r => r.avg_mem != null)
+            .sort((a, b) => b.avg_mem - a.avg_mem)
+            .slice(0, 5);
+
+        const cpuTbody = document.querySelector('#srvTopCpuTable tbody');
+        if (cpuTbody) {
+            cpuTbody.innerHTML = topCpu.length
+                ? topCpu.map(r => `<tr>
+                    <td class="fw-semibold" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.device_name)}">${_esc(r.device_name || '—')}</td>
+                    <td class="text-end">${_fmtPct(r.avg_cpu)}</td>
+                    <td class="text-end ${r.max_cpu >= 90 ? 'text-danger' : r.max_cpu >= 75 ? 'text-warning' : ''}">${_fmtPct(r.max_cpu)}</td>
+                    <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+                  </tr>`).join('')
+                : '<tr><td colspan="4" class="text-center text-muted p-3">No agent data</td></tr>';
+        }
+
+        const memTbody = document.querySelector('#srvTopMemTable tbody');
+        if (memTbody) {
+            memTbody.innerHTML = topMem.length
+                ? topMem.map(r => `<tr>
+                    <td class="fw-semibold" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.device_name)}">${_esc(r.device_name || '—')}</td>
+                    <td class="text-end">${_fmtPct(r.avg_mem)}</td>
+                    <td class="text-end ${r.max_mem >= 90 ? 'text-danger' : r.max_mem >= 75 ? 'text-warning' : ''}">${_fmtPct(r.max_mem)}</td>
+                    <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+                  </tr>`).join('')
+                : '<tr><td colspan="4" class="text-center text-muted p-3">No agent data</td></tr>';
+        }
+    }
+
+    function filterSrvTable() {
+        const q = (document.getElementById('srvSearchInput')?.value || '').toLowerCase();
+        const filtered = !q ? _srvAllRows : _srvAllRows.filter(r =>
+            (r.device_name || '').toLowerCase().includes(q) ||
+            (r.device_ip || '').toLowerCase().includes(q) ||
+            (r.device_type || '').toLowerCase().includes(q)
+        );
+        _renderSrvTable(filtered);
+        _renderSrvTopConsumers(filtered);
+    }
+
+    function _esc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
 </script>
 {% endblock %}
