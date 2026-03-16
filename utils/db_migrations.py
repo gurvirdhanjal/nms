@@ -577,6 +577,21 @@ def _ensure_tracking_history_columns_and_indexes(inspector=None):
             if 'last_agent_sync_ip' not in tracked_cols:
                 statements.append("ALTER TABLE tracked_devices ADD COLUMN last_agent_sync_ip VARCHAR(45)")
 
+        if 'tracking_samples' in tables:
+            ts_cols = {col['name'] for col in inspector.get_columns('tracking_samples')}
+            if 'integrity_status' not in ts_cols:
+                statements.append(
+                    "ALTER TABLE tracking_samples ADD COLUMN integrity_status VARCHAR(20) NOT NULL DEFAULT 'verified'"
+                )
+            if 'integrity_notes' not in ts_cols:
+                statements.append("ALTER TABLE tracking_samples ADD COLUMN integrity_notes TEXT")
+            if 'received_minute_bucket' not in ts_cols:
+                statements.append("ALTER TABLE tracking_samples ADD COLUMN received_minute_bucket TIMESTAMP")
+            if 'payload_hash' not in ts_cols:
+                statements.append("ALTER TABLE tracking_samples ADD COLUMN payload_hash VARCHAR(64)")
+            if 'previous_sample_id' not in ts_cols:
+                statements.append("ALTER TABLE tracking_samples ADD COLUMN previous_sample_id INTEGER")
+
         for table_name in ('device_activity_logs', 'device_resource_logs', 'device_application_logs'):
             if table_name not in tables:
                 continue
@@ -910,6 +925,31 @@ def ensure_report_export_job_tables():
         print(f"[DB] Migration warning (report export jobs): {exc}")
 
 
+def _ensure_device_ip_nullable():
+    """
+    Drop the NOT NULL constraint on device.device_ip so that stale IP-scan-only
+    records can have their IP cleared when a MAC-identified device claims the address.
+    Safe to run multiple times — skipped when the column is already nullable.
+    PostgreSQL only; SQLite does not enforce NOT NULL in the same way.
+    """
+    try:
+        backend = db.engine.url.get_backend_name()
+        if backend != 'postgresql':
+            return
+        inspector = inspect(db.engine)
+        if 'device' not in inspector.get_table_names():
+            return
+        cols = {c['name']: c for c in inspector.get_columns('device')}
+        col = cols.get('device_ip')
+        if col is None or col.get('nullable'):
+            return  # already nullable or missing — nothing to do
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE device ALTER COLUMN device_ip DROP NOT NULL"))
+        print("[DB] device.device_ip is now nullable (stale IP-scan record support).")
+    except Exception as exc:
+        print(f"[DB] Migration warning (device_ip nullable): {exc}")
+
+
 def _widen_snmp_community_column():
     """
     Widen device.snmp_community from VARCHAR(100) to VARCHAR(200) to accommodate
@@ -991,6 +1031,94 @@ def _ensure_device_config_snapshot_table():
         print(f"[DB] Migration warning (device_config_snapshots): {exc}")
 
 
+def _ensure_activity_log_current_app_column(inspector=None):
+    """Add current_application column to device_activity_logs (Option A — avoids JSON parsing)."""
+    try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+        if 'device_activity_logs' not in inspector.get_table_names():
+            return
+        existing = {col['name'] for col in inspector.get_columns('device_activity_logs')}
+        if 'current_application' not in existing:
+            db.session.execute(text(
+                "ALTER TABLE device_activity_logs ADD COLUMN current_application TEXT"
+            ))
+            db.session.commit()
+            print("[DB] Added current_application column to device_activity_logs.")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (device_activity_logs.current_application): {exc}")
+
+
+def _ensure_behavioral_indexes():
+    """
+    Composite indexes for behavioral reporting and live-view queries.
+    All indexes use IF NOT EXISTS — safe to run on startup every time.
+    """
+    stmts = [
+        # Rollup tables — range queries by device + time bucket
+        ("CREATE INDEX IF NOT EXISTS ix_tracking_daily_rollups_device_day "
+         "ON tracking_daily_rollups (device_id, bucket_day)"),
+        ("CREATE INDEX IF NOT EXISTS ix_tracking_hourly_rollups_device_hour "
+         "ON tracking_hourly_rollups (device_id, bucket_hour)"),
+        # App + activity logs — used in behavioral metrics and focus score
+        ("CREATE INDEX IF NOT EXISTS ix_device_application_logs_device_ts "
+         "ON device_application_logs (device_id, timestamp)"),
+        ("CREATE INDEX IF NOT EXISTS ix_device_activity_logs_device_ts "
+         "ON device_activity_logs (device_id, timestamp)"),
+        # Restricted site events — queried by agent_key_id + time range
+        ("CREATE INDEX IF NOT EXISTS ix_restricted_site_events_agent_key_ts "
+         "ON restricted_site_events (agent_key_id, observed_at_utc)"),
+    ]
+    try:
+        inspector = inspect(db.engine)
+        tables = set(inspector.get_table_names())
+        table_map = {
+            "tracking_daily_rollups": stmts[0],
+            "tracking_hourly_rollups": stmts[1],
+            "device_application_logs": stmts[2],
+            "device_activity_logs": stmts[3],
+            "restricted_site_events": stmts[4],
+        }
+        applied = 0
+        for table, stmt in table_map.items():
+            if table in tables:
+                db.session.execute(text(stmt))
+                applied += 1
+        db.session.commit()
+        if applied:
+            print(f"[DB] Applied behavioral index guards ({applied} tables).")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (behavioral indexes): {exc}")
+
+
+def _ensure_typed_text_policy_alert_table():
+    """Create typed_text_policy_alerts table and its indexes if absent."""
+    try:
+        from models.typed_text_policy_alert import TypedTextPolicyAlert
+        TypedTextPolicyAlert.__table__.create(bind=db.engine, checkfirst=True)
+        db.session.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_typed_text_policy_alerts_device_ts "
+            "ON typed_text_policy_alerts (device_id, detected_at)"
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (typed_text_policy_alerts): {exc}")
+
+
+def _ensure_app_category_cache_table():
+    """Create app_category_cache table if absent."""
+    try:
+        from models.app_category_cache import AppCategoryCache
+        AppCategoryCache.__table__.create(bind=db.engine, checkfirst=True)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (app_category_cache): {exc}")
+
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -1011,8 +1139,13 @@ def ensure_server_health_columns():
     _ensure_scope_metadata_columns(inspector)
     _ensure_user_ldap_columns(inspector)
     _widen_snmp_community_column()
+    _ensure_device_ip_nullable()
     _ensure_compliance_profile_tables()
     _ensure_device_config_snapshot_table()
+    _ensure_activity_log_current_app_column(inspector)
+    _ensure_behavioral_indexes()
+    _ensure_typed_text_policy_alert_table()
+    _ensure_app_category_cache_table()
 
 
 def ensure_tracking_stabilization_columns():
