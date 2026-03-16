@@ -365,8 +365,43 @@ def ingest_tracking_sample(
         )
         logs_written += 1
 
+    # Populate current_application column on DeviceActivityLog if present
+    cur_app = current_activity.get("current_application") if current_activity else None
+    if cur_app:
+        try:
+            db.session.query(DeviceActivityLog).filter(
+                DeviceActivityLog.sample_id == sample.id,
+                DeviceActivityLog.activity_type == "status_update",
+            ).update({"current_application": cur_app}, synchronize_session=False)
+        except Exception:
+            pass  # column may not exist yet (migration pending)
+
     today_stats = payload.get("today_stats") if isinstance(payload.get("today_stats"), dict) else {}
-    if app_usage_seconds:
+
+    # Prefer structured app_sessions list (per app-switch, includes window_title)
+    # over legacy app_usage_seconds dict (cumulative totals, no window titles)
+    app_sessions = today_stats.get("app_sessions") if isinstance(today_stats.get("app_sessions"), list) else []
+    _apps_to_classify: set[str] = set()
+    if app_sessions:
+        for sess in app_sessions:
+            app_name = _clean_string(sess.get("app") or "")
+            if not app_name:
+                continue
+            db.session.add(
+                DeviceApplicationLog(
+                    device_id=device_id,
+                    sample_id=sample.id,
+                    timestamp=received_at_utc,
+                    application_name=app_name,
+                    window_title=(sess.get("window_title") or None),
+                    status="active",
+                    duration=int(sess.get("duration_s") or 0),
+                )
+            )
+            _apps_to_classify.add(app_name)
+            logs_written += 1
+    elif app_usage_seconds:
+        # Legacy path: cumulative app_usage_seconds dict (no window_title)
         for app_name, duration_seconds in sorted(app_usage_seconds.items()):
             db.session.add(
                 DeviceApplicationLog(
@@ -378,12 +413,14 @@ def ingest_tracking_sample(
                     duration=duration_seconds,
                 )
             )
+            _apps_to_classify.add(app_name)
             logs_written += 1
     else:
+        # Final fallback: applications_used list (no durations, no window titles)
         applications = today_stats.get("applications_used")
         if isinstance(applications, list):
             unique_apps: list[str] = []
-            seen = set()
+            seen: set = set()
             for app_name in applications:
                 normalized = _clean_string(app_name)
                 if normalized and normalized not in seen:
@@ -400,7 +437,17 @@ def ingest_tracking_sample(
                         duration=None,
                     )
                 )
+                _apps_to_classify.add(app_name)
                 logs_written += 1
+
+    # Populate AppCategoryCache for any new app names seen (best-effort; never blocks ingest)
+    if _apps_to_classify:
+        try:
+            from services.app_classifier import classify_app
+            for _app in _apps_to_classify:
+                classify_app(_app)
+        except Exception:
+            pass
 
     return IngestResult(
         sample_id=sample.id,
@@ -1342,6 +1389,7 @@ def run_tracking_retention(
         "tracking_samples": 0,
         "tracking_hourly_rollups": 0,
         "tracking_daily_rollups": 0,
+        "typed_text_policy_alerts": 0,
     }
 
     deleted["activity_logs"] = DeviceActivityLog.query.filter(
@@ -1362,6 +1410,16 @@ def run_tracking_retention(
     deleted["tracking_daily_rollups"] = TrackingDailyRollup.query.filter(
         TrackingDailyRollup.bucket_day < daily_cutoff
     ).delete(synchronize_session=False)
+
+    # Purge typed-text policy alerts older than raw_cutoff (same 30-day window)
+    try:
+        from models.typed_text_policy_alert import TypedTextPolicyAlert
+        deleted["typed_text_policy_alerts"] = TypedTextPolicyAlert.query.filter(
+            TypedTextPolicyAlert.detected_at < raw_cutoff
+        ).delete(synchronize_session=False)
+    except Exception:
+        pass  # table may not exist yet on older installs
+
     db.session.commit()
 
     return {

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, redirect, request, session, url_for
+from flask import Blueprint, current_app, jsonify, redirect, request, session, url_for
+from werkzeug.exceptions import HTTPException
 
 from extensions import db
 from middleware.rbac import create_audit_log, require_permission
@@ -12,6 +13,7 @@ from models.restricted_site_policy import (
     RestrictedSiteDomainMeta,
     RestrictedSiteEvent,
 )
+from models.tracked_device import TrackedDeviceAvailabilityEvent
 from services.device_console_service import (
     build_policy_payload,
     build_private_cache_headers,
@@ -100,6 +102,136 @@ def _severity_for_state(latest_event: RestrictedSiteEvent | None, dashboard_even
     if latest_event is not None:
         return normalize_violation_severity(getattr(latest_event, 'confidence', None))
     return normalize_violation_severity(getattr(dashboard_event, 'severity', None))
+
+
+def _console_event_level(value: object) -> str:
+    raw = str(value or '').strip().lower()
+    if raw in {'critical', 'high', 'offline'}:
+        return 'critical'
+    if raw in {'warning', 'medium', 'degraded'}:
+        return 'warning'
+    return 'info'
+
+
+def _availability_event_title(row: TrackedDeviceAvailabilityEvent) -> str:
+    status = str(getattr(row, 'status', 'offline') or 'offline').strip().lower()
+    event_type = str(getattr(row, 'event_type', 'status_change') or 'status_change').strip().lower()
+    if event_type == 'heartbeat' and status == 'online':
+        return 'Agent heartbeat recorded'
+    if status == 'online':
+        return 'Device reachable'
+    if status == 'degraded':
+        return 'Telemetry degraded'
+    return 'Device unreachable'
+
+
+def _availability_event_detail(row: TrackedDeviceAvailabilityEvent) -> str:
+    detail_parts: list[str] = []
+    source = str(getattr(row, 'source', '') or '').strip()
+    probe_method = str(getattr(row, 'probe_method', '') or '').strip()
+    probe_error_code = str(getattr(row, 'probe_error_code', '') or '').strip()
+
+    if source:
+        detail_parts.append(f"source={source}")
+    if probe_method:
+        detail_parts.append(f"probe={probe_method}")
+    if probe_error_code:
+        detail_parts.append(probe_error_code.replace('_', ' ').title())
+    if getattr(row, 'metrics_available', None) is False:
+        detail_parts.append('metrics unavailable')
+
+    if not detail_parts:
+        detail_parts.append('Persisted workstation availability event')
+    return ' | '.join(detail_parts)
+
+
+def _recent_device_events_payload(device_id: int, limit: int) -> tuple[list[dict], int | None]:
+    capped_limit = max(10, min(int(limit or 40), 80))
+    per_source_limit = max(12, min(40, capped_limit))
+    events: list[dict] = []
+
+    availability_rows = (
+        TrackedDeviceAvailabilityEvent.query.filter(TrackedDeviceAvailabilityEvent.device_id == int(device_id))
+        .order_by(TrackedDeviceAvailabilityEvent.observed_at.desc(), TrackedDeviceAvailabilityEvent.id.desc())
+        .limit(per_source_limit)
+        .all()
+    )
+    for row in availability_rows:
+        status = str(getattr(row, 'status', 'offline') or 'offline').strip().lower()
+        occurred_at = row.observed_at or row.created_at
+        events.append(
+            {
+                'id': f'availability:{row.id}',
+                'family': 'availability',
+                'report_family': 'tracking_availability',
+                'severity': _console_event_level(status),
+                'status': status,
+                'state_label': status.title(),
+                'title': _availability_event_title(row),
+                'detail': _availability_event_detail(row),
+                'timestamp': occurred_at.isoformat() if occurred_at else None,
+                'source': str(getattr(row, 'source', '') or '').strip() or None,
+            }
+        )
+
+    policy_rows = (
+        RestrictedSiteEvent.query.filter(RestrictedSiteEvent.device_id == int(device_id))
+        .order_by(RestrictedSiteEvent.observed_at_utc.desc(), RestrictedSiteEvent.id.desc())
+        .limit(per_source_limit)
+        .all()
+    )
+    for row in policy_rows:
+        severity_label = normalize_violation_severity(getattr(row, 'confidence', None))
+        detail_parts = [f"Rule: {row.matched_rule}"]
+        if row.source:
+            detail_parts.append(f"Source: {row.source}")
+        if row.process_name:
+            detail_parts.append(f"Process: {row.process_name}")
+        events.append(
+            {
+                'id': f'policy:{row.id}',
+                'family': 'policy',
+                'report_family': 'security',
+                'severity': _console_event_level(severity_label),
+                'status': 'recorded',
+                'state_label': 'Recorded',
+                'title': f"Restricted site blocked: {row.domain}",
+                'detail': ' | '.join(detail_parts),
+                'timestamp': row.observed_at_utc.isoformat() if row.observed_at_utc else None,
+                'source': str(row.source or '').strip() or None,
+            }
+        )
+
+    linked_inventory_device = DeviceLinkService.resolve_inventory_device_for_tracked_device(int(device_id))
+    linked_inventory_device_id = int(linked_inventory_device.device_id) if linked_inventory_device is not None else None
+    if linked_inventory_device_id is not None:
+        dashboard_rows = (
+            DashboardEvent.query.filter(DashboardEvent.device_id == linked_inventory_device_id)
+            .order_by(DashboardEvent.timestamp.desc())
+            .limit(per_source_limit)
+            .all()
+        )
+        for row in dashboard_rows:
+            status = _alert_status_from_dashboard_event(row)
+            title = str(row.metric_name or row.event_type or 'Dashboard Alert').strip() or 'Dashboard Alert'
+            detail = str(row.message or '').strip() or 'Persisted monitoring alert.'
+            events.append(
+                {
+                    'id': f'dashboard:{row.event_id}',
+                    'family': 'dashboard_alert',
+                    'report_family': 'alerts',
+                    'severity': _console_event_level(row.severity),
+                    'status': status,
+                    'state_label': status.title(),
+                    'title': title,
+                    'detail': detail,
+                    'timestamp': row.timestamp.isoformat() if row.timestamp else None,
+                    'source': str(row.event_type or '').strip() or None,
+                }
+            )
+
+    events.sort(key=lambda item: item.get('timestamp') or '', reverse=True)
+    return events[:capped_limit], linked_inventory_device_id
 
 
 @device_console_bp.route('/api/devices/<int:device_id>/website-policy', methods=['GET'])
@@ -363,6 +495,43 @@ def get_device_alerts(device_id: int):
         ),
     )
     return response
+
+
+@device_console_bp.route('/api/devices/<int:device_id>/events', methods=['GET'])
+@require_permission('tracking.history.view')
+def get_device_events(device_id: int):
+    try:
+        device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        requested_limit = request.args.get('limit', type=int) or 40
+        rows, linked_inventory_device_id = _recent_device_events_payload(int(device.id), requested_limit)
+        latest_signature = rows[0]['id'] if rows else 'none'
+        latest_timestamp = rows[0]['timestamp'] if rows else 'none'
+
+        response = jsonify(
+            {
+                'success': True,
+                'device_id': int(device.id),
+                'linked_inventory_device_id': linked_inventory_device_id,
+                'event_count': len(rows),
+                'events': rows,
+            }
+        )
+        _apply_headers(
+            response,
+            build_private_cache_headers(
+                key_seed=(
+                    f"device:{device.id}:events:{linked_inventory_device_id or 'unlinked'}:"
+                    f"{latest_signature}:{latest_timestamp}:{len(rows)}"
+                ),
+                ttl_seconds=15,
+            ),
+        )
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        current_app.logger.exception('Failed to load persisted device events for device_id=%s', device_id)
+        return jsonify({'success': False, 'error': 'Failed to load device events.'}), 500
 
 
 @device_console_bp.route('/api/devices/<int:device_id>/alerts/<event_id>/acknowledge', methods=['POST'])

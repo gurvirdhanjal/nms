@@ -6,7 +6,7 @@ class Device(db.Model):
     device_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_name = db.Column(db.String(100), nullable=False)
     device_type = db.Column(db.String(100), nullable=False)
-    device_ip = db.Column(db.String(50), nullable=False, index=True)
+    device_ip = db.Column(db.String(50), nullable=True, index=True)
     port = db.Column(db.String(50), nullable=True)
     rstplink = db.Column(db.String(100), nullable=True)
     macaddress = db.Column(db.String(50), nullable=True)
@@ -159,5 +159,6 @@ class Device(db.Model):
             'site_id': self.site_id,
             'department_id': self.department_id,
             'location': self.location,
+            'compliance_profile_id': self.compliance_profile_id,
             # device_password_hash intentionally excluded for security
         }

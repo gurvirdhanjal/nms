@@ -59,8 +59,7 @@ def invalidate_dashboard_namespace(namespace="dashboard", scope_fragments=None, 
                     if prefix != "*"
                     else f"{normalized_namespace}:*"
                 )
-                matched = redis_client.keys(pattern)
-                for item in matched or []:
+                for item in redis_client.scan_iter(match=pattern, count=200):
                     key_text = item.decode("utf-8") if isinstance(item, bytes) else str(item)
                     if key_matches(key_text):
                         redis_keys.append(key_text)

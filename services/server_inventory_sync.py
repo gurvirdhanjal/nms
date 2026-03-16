@@ -134,19 +134,42 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
         .first()
     )
     if collision is not None:
-        result["reason_code"] = "IP_COLLISION"
-        result["fatal"] = True
-        logger.warning(
-            "[InventorySync] skipped reason=%s tracked_device_id=%s device_id=%s collision_device_id=%s link_id=%s old_ip=%s new_ip=%s",
-            result["reason_code"],
-            tracked_device_id,
-            device.device_id,
-            collision.device_id,
-            link.id,
-            normalized_old_ip,
-            normalized_new_ip,
+        # A collision device with no real MAC and no active tracking binding is a
+        # weak IP-scan-only record that got superseded when the real device identified
+        # itself via MAC/UUID.  Clear its stale IP so the MAC-identified device can
+        # claim the address instead of hard-failing with 409.
+        collision_mac = _normalize_mac(getattr(collision, "macaddress", None))
+        collision_has_tracking = (
+            DeviceIdentityLink.query.filter_by(
+                device_id=int(collision.device_id), is_active=True
+            ).first()
+            is not None
         )
-        return result
+        if not collision_mac and not collision_has_tracking:
+            logger.warning(
+                "[InventorySync] clearing stale IP-scan collision device_id=%s ip=%s "
+                "to allow tracked_device_id=%s (device_id=%s) to claim it",
+                collision.device_id,
+                normalized_new_ip,
+                tracked_device_id,
+                device.device_id,
+            )
+            collision.device_ip = None
+            db.session.flush()
+        else:
+            result["reason_code"] = "IP_COLLISION"
+            result["fatal"] = True
+            logger.warning(
+                "[InventorySync] skipped reason=%s tracked_device_id=%s device_id=%s collision_device_id=%s link_id=%s old_ip=%s new_ip=%s",
+                result["reason_code"],
+                tracked_device_id,
+                device.device_id,
+                collision.device_id,
+                link.id,
+                normalized_old_ip,
+                normalized_new_ip,
+            )
+            return result
 
     previous_device_ip = current_device_ip
     device.device_ip = normalized_new_ip

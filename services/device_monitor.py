@@ -88,7 +88,7 @@ class DeviceMonitor:
         
         # Get active device data (IDs and IPs)
         devices_query = db.session.query(Device.device_id, Device.device_ip, Device.device_name, Device.maintenance_mode).all()
-        active_devices = [d for d in devices_query if not getattr(d, 'maintenance_mode', False)]
+        active_devices = [d for d in devices_query if not getattr(d, 'maintenance_mode', False) and d.device_ip]
         
         print(f"Monitoring {len(active_devices)} stored devices...")
         

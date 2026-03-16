@@ -178,8 +178,21 @@ class AutoDiscoveryService:
         finally:
             loop.close()
 
+        # Re-read ARP after pings so devices that just responded are now in the
+        # ARP cache.  Only refresh entries that were missing pre-scan.
+        live_ips = {ip for ip, is_online in results if is_online}
+        missing_mac_ips = [ip for ip in live_ips if not arp_cache.get(ip)]
+        if missing_mac_ips:
+            fresh_cache = _read_arp_cache()
+            for ip in missing_mac_ips:
+                if fresh_cache.get(ip):
+                    arp_cache[ip] = fresh_cache[ip]
+
         new_count = 0
         updated_count = 0
+
+        from models.device import Device
+        from sqlalchemy import func as _func
 
         for ip, is_online in results:
             if not is_online:
@@ -189,7 +202,31 @@ class AutoDiscoveryService:
 
             mac = arp_cache.get(ip)
 
-            # Track consecutive detections
+            # Fast-path: known device (MAC already in DB) at a new IP.
+            # Update immediately — don't wait for auto_add_after_n.
+            if mac:
+                mac_upper = mac.upper().replace("-", ":")
+                existing = Device.query.filter(
+                    _func.upper(Device.macaddress) == mac_upper
+                ).first()
+                if existing and existing.device_ip != ip:
+                    device, action, _ = upsert_device_from_identity(
+                        ip=ip,
+                        mac=mac,
+                        hostname=None,
+                        manufacturer=None,
+                        device_type="unknown",
+                        is_monitored=existing.is_monitored,
+                        is_active=True,
+                    )
+                    if action == "updated":
+                        updated_count += 1
+                    elif action == "created":
+                        new_count += 1
+                    _pending_devices.pop(ip, None)
+                    continue
+
+            # Unknown or unresolvable MAC — use normal pending threshold
             if ip not in _pending_devices:
                 _pending_devices[ip] = {"count": 1, "mac": mac}
                 continue

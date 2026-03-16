@@ -364,12 +364,16 @@ def device_management():
             if dtype in ("", "unknown", "network device"):
                 unclassified_count += 1
 
+        from models.compliance_profile import ComplianceProfile
+        compliance_profiles = ComplianceProfile.query.order_by(ComplianceProfile.name).all()
+
         return render_template(
             'devices.html',
             devices=devices,
             device=device,
             prefill_data=prefill_data,
             unclassified_count=unclassified_count,
+            compliance_profiles=compliance_profiles,
             subnets=[
                 row[0]
                 for row in db.session.query(Device.subnet_cidr)
@@ -533,6 +537,10 @@ def save_device():
         device_username = request.form.get('device_username', '').strip() or None
         device_password_raw = request.form.get('device_password', '').strip()
 
+        # Compliance profile
+        _cp_raw = request.form.get('compliance_profile_id') or None
+        compliance_profile_id = int(_cp_raw) if _cp_raw else None
+
         # Legacy fields mapping
         port = request.form.get('port', str(snmp_port))
         rstplink = request.form.get('rstplink')
@@ -603,7 +611,8 @@ def save_device():
                 device.manufacturer = manufacturer
                 device.is_monitored = is_monitored
                 device.subnet_cidr = compute_subnet_cidr(device_ip)
-                
+                device.compliance_profile_id = compliance_profile_id
+
                 # Credentials
                 device.device_username = device_username
                 # Only update password hash if a new password was provided
@@ -647,14 +656,15 @@ def save_device():
                     wmi_domain=wmi_domain,
                     
                     maintenance_mode=maintenance_mode,
-                    
+                    compliance_profile_id=compliance_profile_id,
+
                     port=port,
                     rstplink=rstplink,
                     macaddress=mac_address,
                     hostname=hostname,
                     manufacturer=manufacturer,
                     is_monitored=is_monitored,
-                    
+
                     # Credentials
                     device_username=device_username,
                     device_password_hash=generate_password_hash(
