@@ -1,0 +1,210 @@
+{# ==========================================
+   UI COMPONENTS LIBRARY
+   Standardized layout macros for NMS Theme
+   Usage: {% from "components/ui_components.html" import ui_page_header, ... %}
+   ========================================== #}
+
+{# 1. Page Header #}
+{% macro ui_page_header(title, description, action_text='', action_id='') %}
+<div class="sm:flex sm:items-center sm:justify-between mb-8">
+    <div>
+        <h1 class="text-2xl font-bold text-slate-100 tracking-tight">{{ title }}</h1>
+        <p class="mt-2 text-sm text-slate-400">{{ description }}</p>
+    </div>
+    <div class="mt-4 sm:mt-0 flex items-center space-x-3">
+        {% if caller %}
+            {{ caller() }}
+        {% endif %}
+        {% if action_text and action_id %}
+        <button onclick="window.UI.SlideOver.open('{{ action_id }}')" class="inline-flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-all duration-200">
+            <i class="fas fa-plus mr-2 text-blue-100"></i>
+            {{ action_text }}
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+
+{# 2. Search Bar #}
+{% macro ui_search_bar(placeholder='Search...', input_id='searchInput') %}
+<div class="ui-fade-up mb-6 flex flex-col sm:flex-row gap-4 justify-between items-center rounded-xl bg-slate-800/50 p-4 border border-slate-700/50 backdrop-blur-sm shadow-sm">
+    <div class="relative flex-1 w-full max-w-md">
+        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <i class="fas fa-search text-slate-400"></i>
+        </div>
+        <input type="text" id="{{ input_id }}" class="block w-full rounded-lg border-0 py-2.5 pl-10 bg-slate-900/50 text-slate-200 ring-1 ring-inset ring-slate-700/50 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 placeholder:text-slate-500 transition-all duration-200" placeholder="{{ placeholder }}">
+    </div>
+    <div class="flex items-center space-x-3 w-full sm:w-auto">
+        {# Add custom filters here using caller if needed later #}
+    </div>
+</div>
+{% endmacro %}
+
+
+{# 3. Table Container #}
+{% macro ui_table_container() %}
+<div class="ui-fade-up ui-fade-up-delay-150 bg-slate-800/50 backdrop-blur-sm shadow-xl sm:rounded-2xl border border-slate-700/50 overflow-hidden">
+    {{ caller() }}
+</div>
+{% endmacro %}
+
+
+{# 3b. Generic Card Container #}
+{% macro ui_card(title='', subtitle='', classes='') %}
+<div class="ui-fade-up bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden {{ classes }}">
+    {% if title or subtitle %}
+    <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4">
+        {% if title %}
+        <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300">{{ title|safe }}</h3>
+        {% endif %}
+        {% if subtitle %}
+        <p class="mt-2 text-xs text-slate-500">{{ subtitle }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div class="p-5">
+        {{ caller() }}
+    </div>
+</div>
+{% endmacro %}
+
+
+{# 4. Badge component #}
+{% macro ui_badge(text, type='info', classes='') %}
+{% set bg = '' %}
+{% set text_color = '' %}
+{% set ring = '' %}
+{% set icon = '' %}
+
+{% if type == 'success' %}
+    {% set bg = 'bg-emerald-500/10' %}
+    {% set text_color = 'text-emerald-400' %}
+    {% set ring = 'ring-emerald-500/20' %}
+    {% set icon = 'fa-check' %}
+{% elif type == 'danger' or type == 'offline' %}
+    {% set bg = 'bg-red-500/10' %}
+    {% set text_color = 'text-red-400' %}
+    {% set ring = 'ring-red-500/20' %}
+    {% set icon = 'fa-xmark' %}
+{% elif type == 'warning' %}
+    {% set bg = 'bg-amber-500/10' %}
+    {% set text_color = 'text-amber-400' %}
+    {% set ring = 'ring-amber-500/20' %}
+    {% set icon = 'fa-exclamation' %}
+{% elif type == 'info' %}
+    {% set bg = 'bg-blue-500/10' %}
+    {% set text_color = 'text-blue-400' %}
+    {% set ring = 'ring-blue-500/20' %}
+    {% set icon = 'fa-info' %}
+{% else %} {# neutral #}
+    {% set bg = 'bg-slate-500/10' %}
+    {% set text_color = 'text-slate-400' %}
+    {% set ring = 'ring-slate-500/20' %}
+{% endif %}
+
+<span class="inline-flex items-center gap-x-1.5 rounded-md px-2 py-1 text-xs font-medium {{ bg }} {{ text_color }} ring-1 ring-inset {{ ring }} {{ classes }}">
+    {% if icon %}
+    <i class="fas {{ icon }} text-[10px]"></i>
+    {% endif %}
+    {{ text }}
+</span>
+{% endmacro %}
+
+
+{# 5. Empty State #}
+{% macro ui_empty_state(title, description, icon='fa-folder-open') %}
+<div class="text-center py-16 px-6 sm:py-24">
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800 mb-6 ring-1 ring-slate-700 shadow-inner">
+        <i class="fas {{ icon }} text-2xl text-slate-400"></i>
+    </div>
+    <h3 class="text-base font-semibold text-slate-100">{{ title }}</h3>
+    <p class="mt-2 text-sm text-slate-400 max-w-sm mx-auto">{{ description }}</p>
+</div>
+{% endmacro %}
+
+
+{# 5b. Operational Region State #}
+{% macro ui_operational_state(title, description='', state='loading', compact=False) %}
+<div class="ui-region-state{% if compact %} compact{% endif %}{% if state == 'error' %} error{% elif state == 'empty' %} warning{% endif %}">
+    <div class="ui-region-state-title">{{ title }}</div>
+    {% if description %}
+    <div class="ui-region-state-detail">{{ description }}</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{# 6. Table Loading Skeleton #}
+{% macro ui_table_loading(colspan=5, rows=3) %}
+<tbody id="table-skeleton" class="hidden animate-pulse">
+    {% for i in range(rows) %}
+    <tr class="border-b border-slate-700/50">
+        <td class="px-6 py-4 whitespace-nowrap" colspan="{{ colspan }}">
+            <div class="flex items-center space-x-4">
+                <div class="h-4 bg-slate-700/50 rounded w-1/4"></div>
+                <div class="h-4 bg-slate-700/50 rounded w-1/4"></div>
+                <div class="h-4 bg-slate-700/50 rounded w-1/4"></div>
+                <div class="h-4 bg-slate-700/50 rounded w-1/4"></div>
+            </div>
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
+{% endmacro %}
+
+
+{# 6b. Operational Table Status Row #}
+{% macro ui_table_status_row(colspan=5, title='Loading data', description='', state='loading') %}
+<tr class="ui-status-row">
+    <td colspan="{{ colspan }}">
+        <div class="ui-status-card {% if state == 'error' %}error{% elif state == 'empty' %}warning{% else %}loading{% endif %} is-centered">
+            <div class="ui-status-title">{{ title }}</div>
+            {% if description %}
+            <div class="ui-status-detail">{{ description }}</div>
+            {% endif %}
+        </div>
+    </td>
+</tr>
+{% endmacro %}
+
+
+{# 7. Slide Over Shell #}
+{% macro ui_slide_over(panel_id, title, title_id='slide-over-title') %}
+<div id="{{ panel_id }}" class="relative z-50 hidden" aria-labelledby="{{ title_id }}" role="dialog" aria-modal="true">
+    {# Background backdrop #}
+    <div data-role="backdrop" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity opacity-0 ease-in-out duration-500" onclick="window.UI.SlideOver.close('{{ panel_id }}')"></div>
+
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute inset-0 overflow-hidden">
+            <div class="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
+                
+                {# Panel container #}
+                <div data-role="slider" class="pointer-events-auto w-screen max-w-md transform transition ease-in-out duration-500 sm:duration-700 translate-x-full">
+                    <div class="flex h-full flex-col bg-slate-800 shadow-2xl ring-1 ring-white/10">
+                        {# Header #}
+                        <div class="px-6 py-6 border-b border-slate-700/50 bg-slate-900/50">
+                            <div class="flex items-start justify-between">
+                                <h2 class="text-base font-semibold leading-6 text-white" id="{{ title_id }}">{{ title }}</h2>
+                                <div class="ml-3 flex h-7 items-center">
+                                    <button type="button" onclick="window.UI.SlideOver.close('{{ panel_id }}')" class="relative rounded-md text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 transition-colors">
+                                        <span class="absolute -inset-2.5"></span>
+                                        <span class="sr-only">Close panel</span>
+                                        <i class="fas fa-times h-6 w-6 text-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {# Content body (rendered via caller) #}
+                        <div class="relative flex-1 px-6 py-6 sm:px-8 overflow-y-auto">
+                            {{ caller() }}
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

@@ -1859,6 +1859,10 @@
                         class="sidebar-link {% if request.endpoint and 'user_management' in request.endpoint %}active{% endif %}">
                         <i data-lucide="users-cog"></i><span class="link-text">User Management</span>
                     </a>
+                    <a href="{{ url_for('compliance_profiles_bp.compliance_profiles_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'compliance_profiles_bp' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="shield-check"></i><span class="link-text">Compliance</span>
+                    </a>
                     {% endif %}
                 </nav>
 
@@ -2138,7 +2142,7 @@
                 }
                 if (timeEl) {
                     timeEl.textContent = now.toLocaleTimeString('en-US', {
-                        hour12: false, hour: '2-digit', minute: '2-digit', second: undefined
+                        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
                     });
                 }
             }

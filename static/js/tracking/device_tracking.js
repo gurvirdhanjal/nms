@@ -389,8 +389,10 @@
             : availabilityRaw === 'degraded'
                 ? 'degraded'
                 : 'offline';
+        const identitySource = safeValue(device.identity_source, row.dataset.identitySource || 'legacy_confirmed');
 
         row.dataset.deviceStatus = availabilityStatus;
+        row.dataset.identitySource = identitySource;
         const ipAddress = safeValue(device.ip_address, '').trim();
         const hostName = safeValue(device.hostname, '').trim();
         row.dataset.needsSync = (!ipAddress || availabilityStatus === 'offline') ? '1' : '0';
@@ -463,6 +465,47 @@
             statusMeta.textContent = metaText;
             statusMeta.title = reason;
         }
+
+        applyIdentitySourceToRow(row, identitySource);
+    }
+
+    function getIdentitySourceLabel(source) {
+        return source === 'scanner_inventory' ? 'Scanner Confirmed' : 'Legacy Confirmed';
+    }
+
+    function getIdentityBadgeClass(source) {
+        return source === 'scanner_inventory'
+            ? 'tracking-identity-badge tracking-identity-badge-scanner'
+            : 'tracking-identity-badge tracking-identity-badge-legacy';
+    }
+
+    function applyIdentitySourceToRow(row, source) {
+        if (!row) {
+            return;
+        }
+        const normalizedSource = safeValue(source, 'legacy_confirmed');
+        row.dataset.identitySource = normalizedSource;
+
+        const cell = row.querySelector('.device-name-cell');
+        if (!cell) {
+            return;
+        }
+
+        let meta = cell.querySelector('.tracking-identity-meta');
+        if (!meta) {
+            meta = document.createElement('div');
+            meta.className = 'tracking-identity-meta';
+            cell.appendChild(meta);
+        }
+
+        let badge = meta.querySelector('.tracking-identity-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            meta.appendChild(badge);
+        }
+
+        badge.className = getIdentityBadgeClass(normalizedSource);
+        badge.textContent = getIdentitySourceLabel(normalizedSource);
     }
 
     function maybeOpenAddDeviceModalFromQuery() {
@@ -842,12 +885,14 @@
             : null;
         const row = existingById || existingByMac || document.createElement('tr');
         const availability = 'offline';
+        const identitySource = safeValue(device.identity_source, 'legacy_confirmed');
 
         row.id = `device-row-${Number(device.id || 0)}`;
         row.className = `ops-device-row status-${availability}`;
         row.dataset.deviceRow = 'true';
         row.dataset.deviceStatus = availability;
         row.dataset.mac = normalizedMac;
+        row.dataset.identitySource = identitySource;
         row.dataset.unassigned = ((device.employee_name || '').trim() ? '0' : '1');
         row.dataset.needsSync = ((device.ip_address || '').trim() ? '0' : '1');
         row.dataset.searchIndex = `${safeValue(device.device_name, '')} ${safeValue(device.employee_name, '')} ${safeValue(device.hostname, '')} ${safeValue(device.ip_address, '')} ${normalizedMac} ${safeValue(device.site_id, '')} ${safeValue(device.department_id, '')}`.toLowerCase().trim();
@@ -856,6 +901,9 @@
             <td class="ps-4 device-name-cell">
                 <strong class="ops-hostname">${escapeHtml(device.device_name || device.hostname || 'Unknown Device')}</strong>
                 <div class="ops-assignee device-mac">${escapeHtml(device.employee_name || 'Unassigned')}</div>
+                <div class="tracking-identity-meta">
+                    <span class="${getIdentityBadgeClass(identitySource)}">${escapeHtml(getIdentitySourceLabel(identitySource))}</span>
+                </div>
             </td>
             <td class="tracking-status-cell">
                 <span class="ops-status-badge status-badge ${availability}">${availability.toUpperCase()}</span>
@@ -1330,7 +1378,8 @@
         const system = safeValue(device.system, 'Unknown');
         const status = safeValue(device.status, 'unknown');
         const ip = safeValue(device.ip, 'N/A');
-        const macAddress = safeValue(device.mac_address, 'N/A');
+        const macAddress = safeValue(device.authoritative_mac || device.mac_address, 'N/A');
+        const reportedMac = safeValue(device.reported_agent_mac, '').trim();
         const trackingText = device.tracking_data ? 'Agent responding' : 'Identity verified';
 
         let statusClass = 'tactical-badge tactical-badge-warning status-badge';
@@ -1350,7 +1399,7 @@
 
         row.querySelector('.scan-device-col').innerHTML = `<strong>${escapeHtml(hostname)}</strong><div class="device-mac mt-1">${escapeHtml(system)}</div>`;
         row.querySelector('.scan-status-col').innerHTML = `<span class="${statusClass}">${statusLabel}</span>`;
-        row.querySelector('.scan-network-col').innerHTML = `<strong class="tracking-scan-label">IP:</strong> <span class="text-success">${escapeHtml(ip)}</span><br><strong class="tracking-scan-label">MAC:</strong> ${escapeHtml(macAddress)}`;
+        row.querySelector('.scan-network-col').innerHTML = `<strong class="tracking-scan-label">IP:</strong> <span class="text-success">${escapeHtml(ip)}</span><br><strong class="tracking-scan-label">MAC:</strong> ${escapeHtml(macAddress)}${reportedMac && reportedMac !== macAddress ? `<div class="tracking-scan-mac-note">Using scanner MAC for identity. Agent reported ${escapeHtml(reportedMac)}.</div>` : ''}`;
         row.querySelector('.scan-tracking-col').innerHTML = `<strong class="tracking-scan-state">${trackingText}</strong>`;
         row.querySelector('.scan-action-col').innerHTML = actionHtml;
     }

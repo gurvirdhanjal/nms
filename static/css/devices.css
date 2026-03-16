@@ -1,0 +1,391 @@
+/* Device Management page styles — extracted from templates/devices.html */
+
+.devices-page {
+    --d-border: rgba(148, 163, 184, 0.2);
+    --d-border-soft: rgba(148, 163, 184, 0.14);
+    --d-text-main: #e6edf5;
+    --d-text-muted: #8a97a6;
+}
+
+.devices-page .lucide {
+    width: 15px;
+    height: 15px;
+    stroke-width: 1.9;
+    vertical-align: text-bottom;
+}
+
+.devices-page .page-header h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 1.04rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--d-text-main);
+}
+
+.devices-page .page-header .lead {
+    margin: 0.32rem 0 0;
+    color: var(--d-text-muted);
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.devices-page .card {
+    border-radius: 6px;
+    border-color: var(--d-border);
+    background: rgba(16, 19, 27, 0.86);
+}
+
+.devices-page .card-header {
+    padding: 0.58rem 0.78rem;
+    border-bottom-color: var(--d-border-soft);
+}
+
+.devices-page .card-body {
+    padding: 0.7rem 0.78rem;
+}
+
+.devices-page .devices-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.72rem;
+    flex-wrap: wrap;
+}
+
+.devices-page .devices-title {
+    display: flex;
+    align-items: center;
+    gap: 0.48rem;
+    margin: 0;
+    font-size: 0.8rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #c3cfdb;
+}
+
+.devices-page .devices-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.devices-page .toolbar-select {
+    max-width: 135px;
+}
+
+.devices-page .toolbar-select.subnet {
+    max-width: 165px;
+}
+
+.devices-page .toolbar-search {
+    min-width: 220px;
+    max-width: 360px;
+}
+
+.devices-page .devices-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+}
+
+.devices-page .btn {
+    font-size: 0.73rem;
+    letter-spacing: 0.03em;
+}
+
+.devices-page .btn .lucide {
+    margin-right: 0.3rem;
+}
+
+.devices-page .btn.icon-only .lucide {
+    margin-right: 0;
+}
+
+.devices-page .form-control,
+.devices-page .form-select,
+.devices-page .input-group-text {
+    font-size: 0.74rem;
+}
+
+.devices-page .table-responsive {
+    border: 1px solid var(--d-border);
+    border-radius: 6px;
+    max-height: 70vh;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+.devices-page .devices-table {
+    margin-bottom: 0;
+}
+
+.devices-page .devices-table thead th {
+    padding: 0.46rem 0.52rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.085em;
+    color: #b8c6d5;
+    white-space: nowrap;
+}
+
+.devices-page .devices-table tbody td {
+    padding: 0.44rem 0.52rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+    line-height: 1.2;
+}
+
+.devices-page .devices-table tbody tr {
+    border-color: rgba(148, 163, 184, 0.1);
+}
+
+.devices-page .device-name-cell strong {
+    display: inline-block;
+    color: var(--d-text-main);
+    font-size: 0.78rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.devices-page .device-mac {
+    margin-top: 0.16rem;
+    font-size: 0.66rem;
+    color: var(--d-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.devices-page .device-type-select {
+    min-width: 126px;
+    max-width: 140px;
+}
+
+.devices-page .btn-group.device-actions .btn {
+    padding: 0.22rem 0.38rem;
+}
+
+.devices-page .btn-group.device-actions .lucide {
+    width: 14px;
+    height: 14px;
+}
+
+.devices-page .alert-info {
+    margin-bottom: 0.6rem;
+    padding: 0.42rem 0.58rem;
+    background: rgba(95, 151, 194, 0.08);
+    border: 1px solid rgba(95, 151, 194, 0.18);
+    border-left: 3px solid rgba(95, 151, 194, 0.4);
+    border-radius: 4px;
+    color: #c3cfdb;
+    font-size: 0.73rem;
+}
+
+.devices-page #bulkActions {
+    font-size: 0.73rem;
+}
+
+.devices-page .bulk-actions-layout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.devices-page .devices-table-shell {
+    max-height: calc(100vh - 280px);
+    min-height: 300px;
+}
+
+.devices-page .select-column {
+    width: 40px;
+}
+
+.devices-page .devices-hidden {
+    display: none;
+}
+
+.devices-page .devices-row-hidden {
+    display: none;
+}
+
+.devices-page .empty-state-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--d-text-muted);
+}
+
+.devices-page .monitoring-fields-hidden {
+    display: none;
+}
+
+.devices-page .devices-notification-host {
+    position: fixed;
+    top: calc(52px + 1rem);
+    /* Avoid header overlap */
+    right: 1rem;
+    z-index: 1085;
+    max-width: 460px;
+    width: min(460px, calc(100vw - 2rem));
+}
+
+.devices-page .devices-notification {
+    box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.35);
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.devices-page .selection-hint {
+    margin-left: 0.5rem;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8a97a6;
+}
+
+.devices-page .selection-progress {
+    margin-left: 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    color: #b8c6d5;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+.devices-page .devices-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.devices-page .devices-pagination .pagination {
+    margin-bottom: 0;
+}
+
+.devices-page .devices-pagination .page-link {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+}
+
+.devices-page .per-page-form {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.devices-page .per-page-form label {
+    font-size: 0.68rem;
+    color: var(--d-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0;
+}
+
+.devices-page .empty-state {
+    text-align: center;
+    padding: 2.1rem 1rem;
+}
+
+.devices-page .empty-state .lucide {
+    width: 44px;
+    height: 44px;
+    color: #8a97a6;
+    opacity: 0.42;
+}
+
+.devices-page .empty-state h5 {
+    margin-top: 0.7rem;
+    color: var(--d-text-main);
+    font-size: 0.95rem;
+}
+
+.devices-page .empty-state p {
+    color: var(--d-text-muted);
+    font-size: 0.77rem;
+}
+
+.devices-page .device-details-container .detail-item {
+    padding: 0.72rem;
+    border-left: 3px solid rgba(148, 163, 184, 0.36);
+    background: rgba(148, 163, 184, 0.05);
+    margin-bottom: 0.7rem;
+    border-radius: 4px;
+}
+
+.devices-page .device-details-container .detail-label {
+    display: flex;
+    align-items: center;
+    gap: 0.34rem;
+    color: var(--d-text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.2rem;
+}
+
+.devices-page .device-details-container .detail-value {
+    color: var(--d-text-main);
+    font-size: 0.84rem;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+.devices-page .credential-section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.34rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--d-text-muted);
+}
+
+.devices-page .credential-divider {
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+.devices-page .icon-spin {
+    animation: devices-icon-spin 1s linear infinite;
+}
+
+@keyframes devices-icon-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 992px) {
+    .devices-page .devices-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .devices-page .devices-actions {
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 768px) {
+    .devices-page .toolbar-search {
+        min-width: 100%;
+        max-width: 100%;
+    }
+
+    .devices-page .toolbar-select,
+    .devices-page .toolbar-select.subnet {
+        max-width: none;
+        min-width: 120px;
+        flex: 1;
+    }
+}

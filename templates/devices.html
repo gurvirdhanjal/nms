@@ -1,399 +1,9 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Device Management - Device Monitoring{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
-<style>
-    .devices-page {
-        --d-border: rgba(148, 163, 184, 0.2);
-        --d-border-soft: rgba(148, 163, 184, 0.14);
-        --d-text-main: #e6edf5;
-        --d-text-muted: #8a97a6;
-    }
-
-    .devices-page .lucide {
-        width: 15px;
-        height: 15px;
-        stroke-width: 1.9;
-        vertical-align: text-bottom;
-    }
-
-    .devices-page .page-header h1 {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        margin: 0;
-        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 1.04rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.09em;
-        color: var(--d-text-main);
-    }
-
-    .devices-page .page-header .lead {
-        margin: 0.32rem 0 0;
-        color: var(--d-text-muted);
-        font-size: 0.69rem;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-    }
-
-    .devices-page .card {
-        border-radius: 6px;
-        border-color: var(--d-border);
-        background: rgba(16, 19, 27, 0.86);
-    }
-
-    .devices-page .card-header {
-        padding: 0.58rem 0.78rem;
-        border-bottom-color: var(--d-border-soft);
-    }
-
-    .devices-page .card-body {
-        padding: 0.7rem 0.78rem;
-    }
-
-    .devices-page .devices-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.72rem;
-        flex-wrap: wrap;
-    }
-
-    .devices-page .devices-title {
-        display: flex;
-        align-items: center;
-        gap: 0.48rem;
-        margin: 0;
-        font-size: 0.8rem;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        color: #c3cfdb;
-    }
-
-    .devices-page .devices-filters {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-        flex: 1;
-    }
-
-    .devices-page .toolbar-select {
-        max-width: 135px;
-    }
-
-    .devices-page .toolbar-select.subnet {
-        max-width: 165px;
-    }
-
-    .devices-page .toolbar-search {
-        min-width: 220px;
-        max-width: 360px;
-    }
-
-    .devices-page .devices-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.38rem;
-    }
-
-    .devices-page .btn {
-        font-size: 0.73rem;
-        letter-spacing: 0.03em;
-    }
-
-    .devices-page .btn .lucide {
-        margin-right: 0.3rem;
-    }
-
-    .devices-page .btn.icon-only .lucide {
-        margin-right: 0;
-    }
-
-    .devices-page .form-control,
-    .devices-page .form-select,
-    .devices-page .input-group-text {
-        font-size: 0.74rem;
-    }
-
-    .devices-page .table-responsive {
-        border: 1px solid var(--d-border);
-        border-radius: 6px;
-        max-height: 70vh;
-        overflow-x: auto;
-        overflow-y: auto;
-    }
-
-    .devices-page .devices-table {
-        margin-bottom: 0;
-    }
-
-    .devices-page .devices-table thead th {
-        padding: 0.46rem 0.52rem;
-        font-size: 0.6rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.085em;
-        color: #b8c6d5;
-        white-space: nowrap;
-    }
-
-    .devices-page .devices-table tbody td {
-        padding: 0.44rem 0.52rem;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
-        font-variant-numeric: tabular-nums;
-        vertical-align: middle;
-        line-height: 1.2;
-    }
-
-    .devices-page .devices-table tbody tr {
-        border-color: rgba(148, 163, 184, 0.1);
-    }
-
-    .devices-page .device-name-cell strong {
-        display: inline-block;
-        color: var(--d-text-main);
-        font-size: 0.78rem;
-        font-family: 'IBM Plex Sans', sans-serif;
-    }
-
-    .devices-page .device-mac {
-        margin-top: 0.16rem;
-        font-size: 0.66rem;
-        color: var(--d-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-
-    .devices-page .device-type-select {
-        min-width: 126px;
-        max-width: 140px;
-    }
-
-    .devices-page .btn-group.device-actions .btn {
-        padding: 0.22rem 0.38rem;
-    }
-
-    .devices-page .btn-group.device-actions .lucide {
-        width: 14px;
-        height: 14px;
-    }
-
-    .devices-page .alert-info {
-        margin-bottom: 0.6rem;
-        padding: 0.42rem 0.58rem;
-        background: rgba(95, 151, 194, 0.08);
-        border: 1px solid rgba(95, 151, 194, 0.18);
-        border-left: 3px solid rgba(95, 151, 194, 0.4);
-        border-radius: 4px;
-        color: #c3cfdb;
-        font-size: 0.73rem;
-    }
-
-    .devices-page #bulkActions {
-        font-size: 0.73rem;
-    }
-
-    .devices-page .bulk-actions-layout {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-    }
-
-    .devices-page .devices-table-shell {
-        max-height: calc(100vh - 280px);
-        min-height: 300px;
-    }
-
-    .devices-page .select-column {
-        width: 40px;
-    }
-
-    .devices-page .devices-hidden {
-        display: none;
-    }
-
-    .devices-page .devices-row-hidden {
-        display: none;
-    }
-
-    .devices-page .empty-state-icon {
-        width: 48px;
-        height: 48px;
-        color: var(--d-text-muted);
-    }
-
-    .devices-page .monitoring-fields-hidden {
-        display: none;
-    }
-
-    .devices-page .devices-notification-host {
-        position: fixed;
-        top: calc(52px + 1rem);
-        /* Avoid header overlap */
-        right: 1rem;
-        z-index: 1085;
-        max-width: 460px;
-        width: min(460px, calc(100vw - 2rem));
-    }
-
-    .devices-page .devices-notification {
-        box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.35);
-        border-color: rgba(148, 163, 184, 0.25);
-    }
-
-    .devices-page .selection-hint {
-        margin-left: 0.5rem;
-        font-size: 0.66rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #8a97a6;
-    }
-
-    .devices-page .selection-progress {
-        margin-left: 0.45rem;
-        font-size: 0.68rem;
-        letter-spacing: 0.03em;
-        color: #b8c6d5;
-        text-transform: none;
-        white-space: nowrap;
-    }
-
-    .devices-page .devices-pagination {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-    }
-
-    .devices-page .devices-pagination .pagination {
-        margin-bottom: 0;
-    }
-
-    .devices-page .devices-pagination .page-link {
-        padding: 0.2rem 0.5rem;
-        font-size: 0.7rem;
-    }
-
-    .devices-page .per-page-form {
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-    }
-
-    .devices-page .per-page-form label {
-        font-size: 0.68rem;
-        color: var(--d-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        margin: 0;
-    }
-
-    .devices-page .empty-state {
-        text-align: center;
-        padding: 2.1rem 1rem;
-    }
-
-    .devices-page .empty-state .lucide {
-        width: 44px;
-        height: 44px;
-        color: #8a97a6;
-        opacity: 0.42;
-    }
-
-    .devices-page .empty-state h5 {
-        margin-top: 0.7rem;
-        color: var(--d-text-main);
-        font-size: 0.95rem;
-    }
-
-    .devices-page .empty-state p {
-        color: var(--d-text-muted);
-        font-size: 0.77rem;
-    }
-
-    .devices-page .device-details-container .detail-item {
-        padding: 0.72rem;
-        border-left: 3px solid rgba(148, 163, 184, 0.36);
-        background: rgba(148, 163, 184, 0.05);
-        margin-bottom: 0.7rem;
-        border-radius: 4px;
-    }
-
-    .devices-page .device-details-container .detail-label {
-        display: flex;
-        align-items: center;
-        gap: 0.34rem;
-        color: var(--d-text-muted);
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        margin-bottom: 0.2rem;
-    }
-
-    .devices-page .device-details-container .detail-value {
-        color: var(--d-text-main);
-        font-size: 0.84rem;
-        font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .devices-page .credential-section-label {
-        display: flex;
-        align-items: center;
-        gap: 0.34rem;
-        font-size: 0.7rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--d-text-muted);
-    }
-
-    .devices-page .credential-divider {
-        border-color: rgba(148, 163, 184, 0.2);
-    }
-
-    .devices-page .icon-spin {
-        animation: devices-icon-spin 1s linear infinite;
-    }
-
-    @keyframes devices-icon-spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    @media (max-width: 992px) {
-        .devices-page .devices-toolbar {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .devices-page .devices-actions {
-            justify-content: flex-end;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .devices-page .toolbar-search {
-            min-width: 100%;
-            max-width: 100%;
-        }
-
-        .devices-page .toolbar-select,
-        .devices-page .toolbar-select.subnet {
-            max-width: none;
-            min-width: 120px;
-            flex: 1;
-        }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/devices.css') }}">
 {% endblock %}
 {% block content %}
 <div class="devices-page">
@@ -407,6 +17,25 @@
 
     <div class="row mt-3">
         <div class="col-md-12">
+            <!-- Page-level tab nav -->
+            <ul class="nav nav-tabs mb-0" id="deviceMgmtTabs" role="tablist"
+                style="border-bottom:1px solid rgba(148,163,184,.18);margin-bottom:0!important;">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#devicesPane"
+                            type="button" role="tab" aria-controls="devicesPane" aria-selected="true">
+                        <i class="fas fa-server me-1"></i> Devices
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#compliancePane"
+                            type="button" role="tab" id="complianceTabBtn"
+                            aria-controls="compliancePane" aria-selected="false">
+                        <i class="fas fa-shield-halved me-1"></i> Compliance Profiles
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content">
+            <div class="tab-pane show active" id="devicesPane" role="tabpanel">
             <div class="card">
                 <div class="card-header">
                     <div class="devices-toolbar">
@@ -585,6 +214,123 @@
                     </div>
                 </div>
             </div>
+            </div><!-- /devicesPane -->
+
+            <div class="tab-pane fade" id="compliancePane" role="tabpanel" style="padding-top:1rem;">
+              <div class="card" style="background:var(--e-bg-panel,#1a1f2b);border:1px solid rgba(148,163,184,.16);">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     style="border-color:rgba(148,163,184,.12);padding:.55rem .78rem;">
+                    <span style="font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;">
+                        Compliance Profiles
+                    </span>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="openComplianceCreateModal()">
+                        <i class="fas fa-plus me-1"></i> New Profile
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div id="compliancePaneLoading" class="text-center text-muted py-4 small">
+                        <i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;
+                    </div>
+                    <div id="compliancePaneContent" class="accordion accordion-flush d-none"></div>
+                    <div id="compliancePaneEmpty" class="text-center text-muted py-4 small d-none">
+                        No compliance profiles yet. Create one to get started.
+                    </div>
+                </div>
+              </div>
+            </div><!-- /compliancePane -->
+
+            </div><!-- /tab-content -->
+        </div>
+
+        <!-- Compliance Profile Create/Edit Modal -->
+        <div class="modal fade" id="complianceProfileModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content bg-dark text-white border-secondary">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title" id="complianceProfileModalTitle"><i class="fas fa-shield-halved me-1"></i> Compliance Profile</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="cpModalProfileId">
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Profile Name <span class="text-danger">*</span></label>
+                            <input type="text" id="cpModalName" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                   placeholder="e.g. Workstation Standard" maxlength="120">
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label small text-muted">Description</label>
+                            <input type="text" id="cpModalDescription" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                   placeholder="Optional description" maxlength="255">
+                        </div>
+                        <p class="small text-muted text-uppercase fw-semibold" style="letter-spacing:.08em;font-size:.67rem;">
+                            Thresholds <span class="fw-normal text-secondary">(leave blank to use global defaults)</span>
+                        </p>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">CPU Warning %</label>
+                                <input type="number" id="cpModalCpuWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 75">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">CPU Critical %</label>
+                                <input type="number" id="cpModalCpuCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 90">
+                            </div>
+                            <div class="col-md-4"></div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Memory Warning %</label>
+                                <input type="number" id="cpModalMemWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 80">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Memory Critical %</label>
+                                <input type="number" id="cpModalMemCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 95">
+                            </div>
+                            <div class="col-md-4"></div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Disk Warning %</label>
+                                <input type="number" id="cpModalDiskWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 80">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Disk Critical %</label>
+                                <input type="number" id="cpModalDiskCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                       min="0" max="100" step="1" placeholder="e.g. 90">
+                            </div>
+                        </div>
+                        <div id="cpModalError" class="alert alert-danger py-2 mt-3 d-none small"></div>
+                    </div>
+                    <div class="modal-footer border-secondary">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="cpModalSaveBtn" onclick="saveComplianceProfile()">
+                            <i class="fas fa-save me-1"></i> Save Profile
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compliance Profile Delete Confirm Modal -->
+        <div class="modal fade" id="complianceDeleteModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content bg-dark text-white border-danger">
+                    <div class="modal-header border-danger">
+                        <h6 class="modal-title text-danger"><i class="fas fa-triangle-exclamation me-1"></i> Delete Profile</h6>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body small">
+                        <p>Delete profile <strong id="cpDeleteName"></strong>?</p>
+                        <p class="text-muted mb-0">Assigned devices will be unlinked but not deleted.</p>
+                    </div>
+                    <div class="modal-footer border-secondary">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger btn-sm" id="cpDeleteConfirmBtn" onclick="executeComplianceDelete()">
+                            <i class="fas fa-trash me-1"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Device Modal -->
@@ -689,14 +435,14 @@
                                                 placeholder="Optional notes..."></textarea>
                                         </div>
 
-                                        <!-- Site & Department Assignment -->
+                                        <!-- Organization & Compliance Assignment -->
                                         <div class="col-12 mt-2">
                                             <hr class="my-2 credential-divider">
                                             <h6 class="credential-section-label mb-1">
-                                                <i data-lucide="building-2"></i> Site &amp; Department
+                                                <i data-lucide="building-2"></i> Organization &amp; Compliance
                                             </h6>
                                             <p class="text-muted small mb-2">
-                                                Assign this device to a site and department for organizational scoping.
+                                                Assign this device to a site, department, and compliance policy profile.
                                             </p>
                                         </div>
                                         <div class="col-md-6">
@@ -713,6 +459,20 @@
                                                 onchange="onDeviceDepartmentChange()">
                                                 <option value="">-- No Department --</option>
                                             </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label d-flex align-items-center gap-1">
+                                                <i data-lucide="shield-check" style="width:13px;height:13px;"></i>
+                                                Compliance Profile
+                                            </label>
+                                            <select class="form-select bg-dark text-light border-secondary"
+                                                name="compliance_profile_id" id="compliance_profile_id">
+                                                <option value="">— None (global thresholds) —</option>
+                                                {% for cp in compliance_profiles %}
+                                                <option value="{{ cp.id }}">{{ cp.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="form-text text-muted">Override alert thresholds for this device.</div>
                                         </div>
 
                                         <!-- Device Credentials -->
@@ -929,10 +689,10 @@
                                         <div class="form-text text-muted">Suppress alerts for this device.</div>
                                     </div>
 
-                                    <div class="alert alert-dark border-secondary">
-                                        <small><i data-lucide="info"></i> Advanced operational settings like "Alert
-                                            Thresholds" and "Auto-Discovery Neighbors" can be configured after
-                                            creation.</small>
+                                    <div class="mt-3" style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.18);border-left:3px solid rgba(0,212,170,.35);border-radius:4px;padding:.42rem .62rem;font-size:0.72rem;color:#c3cfdb;">
+                                        <i data-lucide="info" style="width:13px;height:13px;vertical-align:text-bottom;margin-right:.3rem;"></i>
+                                        Per-device alert thresholds and discovery neighbors are available on the
+                                        <strong>Device Details</strong> page after saving.
                                     </div>
                                 </div>
 
@@ -1164,7 +924,7 @@
                                 return `
                                  <td>
                                      <div class="form-check">
-                                         <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" onchange="handleDeviceSelection(this)" ${isChecked}>
+                                         <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" ${isChecked}>
                                      </div>
                                  </td>
                                  <td class="device-name-cell">
@@ -1186,10 +946,10 @@
                                 <td>
                                     <div class="btn-group btn-group-sm device-actions">
                                         ${serverMonitorActionHtml}
-                                        <button type="button" class="btn btn-outline-warning" onclick="editDevice(${d.device_id})" title="Edit Device">
+                                        <button type="button" class="btn btn-outline-warning" data-action="edit" data-device-id="${d.device_id}" title="Edit Device">
                                             <i data-lucide="pencil"></i>
                                         </button>
-                                        <button class="btn btn-outline-danger" onclick="deleteDevice(${d.device_id})" title="Delete">
+                                        <button type="button" class="btn btn-outline-danger" data-action="delete" data-device-id="${d.device_id}" title="Delete">
                                             <i data-lucide="trash-2"></i>
                                         </button>
                                     </div>
@@ -1200,7 +960,8 @@
                     }
 
                     if (typeof rebuildDeviceRowsCache === 'function') rebuildDeviceRowsCache();
-                    if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+                    if (window.lucide && tbody) window.lucide.createIcons({ root: tbody });
+                    else if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
                     if (typeof updateBulkUI === 'function') updateBulkUI();
 
                     // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
@@ -1265,9 +1026,9 @@
         });
 
 
-        function hydrateLucideIcons() {
+        function hydrateLucideIcons(root) {
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
+                window.lucide.createIcons(root ? { root } : undefined);
             }
         }
 
@@ -1764,7 +1525,24 @@
                 });
             }
 
-            // Dynamic checkboxes use handleDeviceSelection(this) in HTML
+            // Delegated listener for table action buttons and checkboxes
+            const tbody = document.getElementById('devices-table-body');
+            if (tbody) {
+                tbody.addEventListener('click', function (e) {
+                    const btn = e.target.closest('[data-action]');
+                    if (btn) {
+                        const action = btn.dataset.action;
+                        const id = parseInt(btn.dataset.deviceId, 10);
+                        if (!id) return;
+                        if (action === 'edit') editDevice(id);
+                        else if (action === 'delete') deleteDevice(id);
+                        return;
+                    }
+                    if (e.target.matches('.device-checkbox')) {
+                        handleDeviceSelection(e.target);
+                    }
+                });
+            }
 
             // fetchDevices handles this now
             updateDeviceTotalCount();
@@ -1836,11 +1614,7 @@
                         if (siteSelect) siteSelect.value = d.site_id || '';
 
                         if (d.site_id && typeof onDeviceSiteChange === 'function') {
-                            onDeviceSiteChange();
-                            setTimeout(() => {
-                                const deptSelect = document.getElementById('device_department_id');
-                                if (deptSelect) deptSelect.value = d.department_id || '';
-                            }, 300);
+                            onDeviceSiteChange(d.department_id || '');
                         } else {
                             const deptSelect = document.getElementById('device_department_id');
                             if (deptSelect) deptSelect.value = d.department_id || '';
@@ -1867,6 +1641,7 @@
                         _set('agent_interval', d.agent_interval || '300');
                         _set('agent_os_type', d.agent_os_type || 'windows');
                         _set('agent_token', d.agent_token || '');
+                        _set('compliance_profile_id', d.compliance_profile_id || '');
 
                         toggleMonitoringFields();
                         toggleSnmpVersion();
@@ -1876,6 +1651,9 @@
                         const bsModal = new bootstrap.Modal(deviceModalEl);
                         // Flag to tell the show.bs.modal listener NOT to reset the form
                         window._editingDevice = true;
+                        // Always reset to Identity tab so edit opens in a consistent state
+                        const identityTabBtn = document.getElementById('tab-identity-btn');
+                        if (identityTabBtn) new bootstrap.Tab(identityTabBtn).show();
                         bsModal.show();
                     } else {
                         console.error("Edit device payload missing success or device:", data);
@@ -2519,6 +2297,293 @@
         }
 
         // Load on page init as well
+        document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
+
+        // ── Compliance Profiles Pane ────────────────────────────────────────────
+        (function () {
+            'use strict';
+
+            var _cpPaneLoaded = false;
+            var _cpProfileModal = null;
+            var _cpDeleteModal = null;
+            var _cpDeleteTargetId = null;
+
+            function escHtml(v) {
+                return String(v == null ? '' : v)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function getModal(id) {
+                var el = document.getElementById(id);
+                if (!el || !window.bootstrap) { return null; }
+                return bootstrap.Modal.getOrCreateInstance(el);
+            }
+
+            // Wire tab activation for lazy load
+            document.addEventListener('DOMContentLoaded', function () {
+                var tabBtn = document.getElementById('complianceTabBtn');
+                if (tabBtn) {
+                    tabBtn.addEventListener('shown.bs.tab', function () {
+                        if (!_cpPaneLoaded) { loadCompliancePane(); }
+                    });
+                }
+            });
+
+            function loadCompliancePane() {
+                fetch('/api/compliance-profiles', { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(renderComplianceProfiles)
+                    .catch(function () {
+                        var el = document.getElementById('compliancePaneLoading');
+                        if (el) { el.textContent = 'Failed to load compliance profiles.'; }
+                    });
+            }
+
+            function renderComplianceProfiles(profiles) {
+                var loading = document.getElementById('compliancePaneLoading');
+                var content = document.getElementById('compliancePaneContent');
+                var empty   = document.getElementById('compliancePaneEmpty');
+                if (loading) { loading.classList.add('d-none'); }
+                _cpPaneLoaded = true;
+                if (!profiles || !profiles.length) {
+                    if (empty) { empty.classList.remove('d-none'); }
+                    return;
+                }
+                if (content) { content.classList.remove('d-none'); }
+                if (empty)   { empty.classList.add('d-none'); }
+
+                content.innerHTML = profiles.map(function (p) {
+                    var chips = buildThresholdChips(p.rules_json || {});
+                    var cnt   = p.device_count || 0;
+                    var countBadge = '<span class="badge bg-primary ms-1" style="font-size:.6rem;vertical-align:middle;">'
+                        + cnt + '&nbsp;device' + (cnt !== 1 ? 's' : '') + '</span>';
+                    var descHtml = p.description
+                        ? '<span class="text-muted ms-2" style="font-size:.78rem;">' + escHtml(p.description) + '</span>'
+                        : '';
+                    return '<div class="accordion-item" style="background:transparent;border-color:rgba(148,163,184,.12);">'
+                        + '<h2 class="accordion-header">'
+                        + '<button class="accordion-button collapsed" type="button"'
+                        + ' style="background:rgba(148,163,184,.04);color:#e6edf5;flex-direction:column;align-items:flex-start;"'
+                        + ' data-bs-toggle="collapse" data-bs-target="#profileCollapse' + p.id + '"'
+                        + ' data-profile-id="' + p.id + '">'
+                        + '<div class="d-flex w-100 align-items-center mb-1">'
+                        + '<span class="fw-semibold" style="font-size:.86rem;">' + escHtml(p.name) + '</span>'
+                        + countBadge + descHtml
+                        + '</div>'
+                        + '<div class="d-flex align-items-center gap-1 flex-wrap">'
+                        + (chips || '<span class="badge bg-secondary" style="font-size:.6rem;">Global defaults</span>')
+                        + '</div>'
+                        + '</button>'
+                        + '</h2>'
+                        + '<div id="profileCollapse' + p.id + '" class="accordion-collapse collapse"'
+                        + ' data-loaded="0">'
+                        + '<div class="accordion-body pt-2 pb-3">'
+                        + '<div class="d-flex gap-2 mb-2">'
+                        + '<button class="btn btn-sm btn-outline-secondary"'
+                        + ' onclick=\'openComplianceEditModal(' + JSON.stringify(p) + ')\'>'
+                        + '<i class="fas fa-pen-to-square me-1"></i>Edit</button>'
+                        + '<button class="btn btn-sm btn-outline-danger"'
+                        + ' onclick="confirmDeleteComplianceProfile(' + p.id + ',\'' + escHtml(p.name) + '\')">'
+                        + '<i class="fas fa-trash me-1"></i>Delete</button>'
+                        + '</div>'
+                        + '<div id="profileDeviceList' + p.id + '" class="text-muted small">'
+                        + '<i class="fas fa-spinner fa-spin me-1"></i>Loading devices&hellip;</div>'
+                        + '</div></div>'
+                        + '</div>';
+                }).join('');
+
+                // Wire lazy device load on accordion expand
+                content.addEventListener('show.bs.collapse', function (e) {
+                    var pane = e.target;
+                    if (pane.dataset.loaded === '1') { return; }
+                    pane.dataset.loaded = '1';
+                    var profileId = pane.id.replace('profileCollapse', '');
+                    loadProfileDevices(profileId);
+                });
+            }
+
+            function loadProfileDevices(profileId) {
+                var el = document.getElementById('profileDeviceList' + profileId);
+                if (!el) { return; }
+                fetch('/api/compliance-profiles/' + profileId + '/devices', { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (devices) {
+                        if (!devices.length) {
+                            el.textContent = 'No devices assigned to this profile.';
+                            return;
+                        }
+                        var rows = devices.map(function (d) {
+                            return '<tr>'
+                                + '<td class="py-1 pe-3">' + escHtml(d.device_name) + '</td>'
+                                + '<td class="py-1 pe-3 text-muted">' + escHtml(d.device_ip) + '</td>'
+                                + '<td class="py-1 text-muted">' + escHtml(d.device_type || '\u2014') + '</td>'
+                                + '</tr>';
+                        }).join('');
+                        el.innerHTML = '<table class="table table-sm table-borderless text-white mb-0">'
+                            + '<thead><tr>'
+                            + '<th class="text-muted py-1 pe-3" style="font-size:.65rem;">Name</th>'
+                            + '<th class="text-muted py-1 pe-3" style="font-size:.65rem;">IP</th>'
+                            + '<th class="text-muted py-1" style="font-size:.65rem;">Type</th>'
+                            + '</tr></thead><tbody>' + rows + '</tbody></table>';
+                    })
+                    .catch(function () { el.textContent = 'Failed to load devices.'; });
+            }
+
+            function buildThresholdChips(rules) {
+                var map = {
+                    cpu_warning:    'CPU W', cpu_critical:    'CPU C',
+                    memory_warning: 'MEM W', memory_critical: 'MEM C',
+                    disk_warning:   'DISK W', disk_critical:  'DISK C',
+                };
+                return Object.keys(map).filter(function (k) { return rules[k] != null; })
+                    .map(function (k) {
+                        var cls = k.endsWith('_critical') ? 'bg-danger' : 'bg-warning text-dark';
+                        return '<span class="badge ' + cls + ' me-1" style="font-size:.6rem;">'
+                            + map[k] + '&nbsp;' + rules[k] + '%</span>';
+                    }).join('');
+            }
+
+            // ── Modal helpers ───────────────────────────────────────────────────
+
+            function clearCpForm() {
+                ['cpModalProfileId', 'cpModalName', 'cpModalDescription',
+                 'cpModalCpuWarning', 'cpModalCpuCritical',
+                 'cpModalMemWarning', 'cpModalMemCritical',
+                 'cpModalDiskWarning', 'cpModalDiskCritical'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) { el.value = ''; }
+                });
+                var err = document.getElementById('cpModalError');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+            }
+
+            window.openComplianceCreateModal = function () {
+                clearCpForm();
+                var title = document.getElementById('complianceProfileModalTitle');
+                if (title) { title.innerHTML = '<i class="fas fa-plus me-1"></i> New Compliance Profile'; }
+                _cpProfileModal = getModal('complianceProfileModal');
+                if (_cpProfileModal) { _cpProfileModal.show(); }
+            };
+
+            window.openComplianceEditModal = function (profile) {
+                clearCpForm();
+                var title = document.getElementById('complianceProfileModalTitle');
+                if (title) { title.innerHTML = '<i class="fas fa-pen-to-square me-1"></i> Edit Profile'; }
+                document.getElementById('cpModalProfileId').value = profile.id || '';
+                document.getElementById('cpModalName').value = profile.name || '';
+                document.getElementById('cpModalDescription').value = profile.description || '';
+                var rules = profile.rules_json || {};
+                var fieldMap = {
+                    cpu_warning: 'cpModalCpuWarning', cpu_critical: 'cpModalCpuCritical',
+                    memory_warning: 'cpModalMemWarning', memory_critical: 'cpModalMemCritical',
+                    disk_warning: 'cpModalDiskWarning', disk_critical: 'cpModalDiskCritical',
+                };
+                Object.keys(fieldMap).forEach(function (key) {
+                    var el = document.getElementById(fieldMap[key]);
+                    if (el && rules[key] != null) { el.value = rules[key]; }
+                });
+                _cpProfileModal = getModal('complianceProfileModal');
+                if (_cpProfileModal) { _cpProfileModal.show(); }
+            };
+
+            window.saveComplianceProfile = function () {
+                var profileId = (document.getElementById('cpModalProfileId').value || '').trim();
+                var name = (document.getElementById('cpModalName').value || '').trim();
+                var errEl = document.getElementById('cpModalError');
+                if (!name) {
+                    if (errEl) { errEl.textContent = 'Profile name is required.'; errEl.classList.remove('d-none'); }
+                    return;
+                }
+                if (errEl) { errEl.classList.add('d-none'); }
+
+                var rules = {};
+                var fieldMap = {
+                    cpu_warning: 'cpModalCpuWarning', cpu_critical: 'cpModalCpuCritical',
+                    memory_warning: 'cpModalMemWarning', memory_critical: 'cpModalMemCritical',
+                    disk_warning: 'cpModalDiskWarning', disk_critical: 'cpModalDiskCritical',
+                };
+                Object.keys(fieldMap).forEach(function (key) {
+                    var val = (document.getElementById(fieldMap[key]).value || '').trim();
+                    if (val !== '') { rules[key] = parseFloat(val); }
+                });
+
+                var url    = profileId ? '/api/compliance-profiles/' + profileId : '/api/compliance-profiles';
+                var method = profileId ? 'PUT' : 'POST';
+                var saveBtn = document.getElementById('cpModalSaveBtn');
+                if (saveBtn) { saveBtn.disabled = true; }
+
+                fetch(url, {
+                    method: method,
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        description: (document.getElementById('cpModalDescription').value || '').trim(),
+                        rules_json: rules,
+                    }),
+                })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                .then(function (res) {
+                    if (!res.ok) {
+                        if (errEl) { errEl.textContent = res.data.error || 'Save failed.'; errEl.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (_cpProfileModal) { _cpProfileModal.hide(); }
+                    _cpPaneLoaded = false;
+                    var content = document.getElementById('compliancePaneContent');
+                    var loading = document.getElementById('compliancePaneLoading');
+                    if (content) { content.classList.add('d-none'); content.innerHTML = ''; }
+                    if (loading) { loading.classList.remove('d-none'); loading.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;'; }
+                    loadCompliancePane();
+                })
+                .catch(function () {
+                    if (errEl) { errEl.textContent = 'Network error. Try again.'; errEl.classList.remove('d-none'); }
+                })
+                .finally(function () {
+                    if (saveBtn) { saveBtn.disabled = false; }
+                });
+            };
+
+            window.confirmDeleteComplianceProfile = function (profileId, profileName) {
+                _cpDeleteTargetId = profileId;
+                var nameEl = document.getElementById('cpDeleteName');
+                if (nameEl) { nameEl.textContent = profileName; }
+                _cpDeleteModal = getModal('complianceDeleteModal');
+                if (_cpDeleteModal) { _cpDeleteModal.show(); }
+            };
+
+            window.executeComplianceDelete = function () {
+                if (!_cpDeleteTargetId) { return; }
+                var btn = document.getElementById('cpDeleteConfirmBtn');
+                if (btn) { btn.disabled = true; }
+
+                fetch('/api/compliance-profiles/' + _cpDeleteTargetId, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' },
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) { alert(data.error || 'Delete failed.'); return; }
+                    if (_cpDeleteModal) { _cpDeleteModal.hide(); }
+                    _cpPaneLoaded = false;
+                    var content = document.getElementById('compliancePaneContent');
+                    var loading = document.getElementById('compliancePaneLoading');
+                    if (content) { content.classList.add('d-none'); content.innerHTML = ''; }
+                    if (loading) { loading.classList.remove('d-none'); loading.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;'; }
+                    loadCompliancePane();
+                })
+                .catch(function () { alert('Network error. Try again.'); })
+                .finally(function () {
+                    if (btn) { btn.disabled = false; }
+                    _cpDeleteTargetId = null;
+                });
+            };
+        }());
+        // ── End Compliance Profiles Pane ────────────────────────────────────────
+
         document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
     </script>
     {% endblock %}

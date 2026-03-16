@@ -57,25 +57,12 @@
                                         data-bs-toggle="dropdown" aria-expanded="false" style="border: none;">
                                         <i class="fas fa-ellipsis-h"></i> MORE
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-dark"
-                                        style="background: var(--mo-surface); border-color: var(--mo-border);">
-                                        <li><button id="deviceRestartBtn" class="dropdown-item" type="button"><i
-                                                    class="fas fa-power-off text-muted"></i> Restart Agent</button></li>
-                                        <li><button id="deviceMessageBtn" class="dropdown-item" type="button"><i
-                                                    class="fas fa-comment-dots text-muted"></i> Send Message</button>
-                                        </li>
-                                        <li>
-                                            <hr class="dropdown-divider" style="border-color: var(--mo-border);">
-                                        </li>
-                                        <li><a class="dropdown-item"
-                                                href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}"><i
-                                                    class="fas fa-chart-area text-muted"></i> Reports</a></li>
-                                        <li><a class="dropdown-item"
-                                                href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"><i
-                                                    class="fas fa-history text-muted"></i> History</a></li>
-                                        <li><a class="dropdown-item"
-                                                href="{{ url_for('tracking_bp.device_tracking') }}"><i
-                                                    class="fas fa-arrow-left text-muted"></i> Back to Fleet</a></li>
+                                    <ul class="dropdown-menu dropdown-menu-dark">
+                                        <li><a class="dropdown-item" href="{{ url_for('devices_bp.device_details_page', device_id=device.id) }}"><i class="fas fa-info-circle me-2 text-info"></i>Device Details</a></li>
+                                        <li><a class="dropdown-item" href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}"><i class="fas fa-history me-2 text-secondary"></i>View History</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><button class="dropdown-item" id="dropdownRunIntegrity" type="button"><i class="fas fa-shield-halved me-2 text-warning"></i>Run Integrity Check</button></li>
+                                        <li><button class="dropdown-item text-danger" id="dropdownArchiveDevice" type="button"><i class="fas fa-box-archive me-2"></i>Archive Device</button></li>
                                     </ul>
                                 </div>
 
@@ -95,50 +82,60 @@
                         <!-- Brutalist Stat Grid -->
                         <div class="row g-4 pt-4" style="border-top: 1px solid var(--mo-border);">
                             <div class="col-md-2">
-                                <div class="text-uppercase fw-bold mb-1"
-                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">IP Address
-                                </div>
-                                <div id="metaIp" class="font-monospace fs-4 text-white lh-1">{{ display_ip or 'N/A' }}
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="text-uppercase fw-bold mb-1"
-                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Latency
-                                </div>
-                                <div class="font-monospace fs-4 lh-1" style="color: var(--mo-teal);"><span
-                                        id="metaLatency">--</span> <span class="fs-6"
-                                        style="color: var(--mo-muted);">ms</span></div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="text-uppercase fw-bold mb-1"
-                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Uptime
-                                    (Today)</div>
-                                <div class="font-monospace fs-4 text-white lh-1"><span id="metaTotalUptime">N/A</span>
+                                <div class="kpi-stat-wrap" data-kpi-key="ip" title="Click to copy IP address" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                                    <div class="text-uppercase fw-bold mb-1"
+                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">IP Address
+                                    </div>
+                                    <div id="metaIp" class="font-monospace fs-4 text-white lh-1">{{ display_ip or 'N/A' }}
+                                    </div>
                                 </div>
                             </div>
                             <div class="col-md-2">
-                                <div class="text-uppercase fw-bold mb-1"
-                                    style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Agent Status
+                                <div class="kpi-stat-wrap" data-kpi-key="latency" title="Click for latency history" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                                    <div class="text-uppercase fw-bold mb-1"
+                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Latency
+                                    </div>
+                                    <div class="font-monospace fs-4 lh-1" style="color: var(--mo-teal);"><span
+                                            id="metaLatency">--</span> <span class="fs-6"
+                                            style="color: var(--mo-muted);">ms</span></div>
                                 </div>
-                                <div id="metaAgentState" class="font-monospace fs-4 text-white lh-1">Never Seen</div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="kpi-stat-wrap" id="uptimeKpiWrap" data-kpi-key="uptime" title="Click for uptime breakdown">
+                                    <div class="text-uppercase fw-bold mb-1"
+                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Uptime
+                                        (Today)</div>
+                                    <div class="font-monospace fs-4 text-white lh-1"><span id="metaTotalUptime">N/A</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="kpi-stat-wrap" data-kpi-key="agent" title="Click for agent details" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                                    <div class="text-uppercase fw-bold mb-1"
+                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Agent Status
+                                    </div>
+                                    <div id="metaAgentState" class="font-monospace fs-4 text-white lh-1">Never Seen</div>
+                                </div>
                             </div>
 
                             <!-- Security Posture with Context Gauge -->
                             <div class="col-md-4">
-                                <div class="d-flex justify-content-between align-items-end mb-2">
-                                    <div class="text-uppercase fw-bold"
-                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Security
-                                        Posture</div>
-                                    <div class="font-monospace fs-4 lh-1" style="color: var(--mo-amber);"><span
-                                            id="metaSecurityScore">--</span><span class="fs-6"
-                                            style="color: var(--mo-muted);">/100</span></div>
-                                </div>
-                                <div
-                                    style="height: 6px; width: 100%; background: var(--mo-bg-void); border-radius: 3px; overflow: hidden;">
-                                    <div id="metaSecurityGauge"
-                                        style="height: 100%; background: var(--mo-amber); width: 0%; transition: width 0.5s ease; position: relative;">
-                                        <div
-                                            style="position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2));">
+                                <div class="kpi-stat-wrap" data-kpi-key="security" title="Click for security breakdown" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                                    <div class="d-flex justify-content-between align-items-end mb-2">
+                                        <div class="text-uppercase fw-bold"
+                                            style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Security
+                                            Posture</div>
+                                        <div class="font-monospace fs-4 lh-1" style="color: var(--mo-amber);"><span
+                                                id="metaSecurityScore">--</span><span class="fs-6"
+                                                style="color: var(--mo-muted);">/100</span></div>
+                                    </div>
+                                    <div
+                                        style="height: 6px; width: 100%; background: var(--mo-bg-void); border-radius: 3px; overflow: hidden;">
+                                        <div id="metaSecurityGauge"
+                                            style="height: 100%; background: var(--mo-amber); width: 0%; transition: width 0.5s ease; position: relative;">
+                                            <div
+                                                style="position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2));">
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -234,8 +231,8 @@
             <section class="device-tab-panel active" data-panel="overview">
                 <div class="row g-2">
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">CPU</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="cpu" tabindex="0" role="button" aria-label="CPU usage, click for trend">
+                            <div class="stat-label">CPU <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewCpu">--</div>
                             <div class="kpi-trend-row">
                                 <span id="overviewCpuTrend">-</span>
@@ -245,8 +242,8 @@
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">RAM</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="ram" tabindex="0" role="button" aria-label="RAM usage, click for trend">
+                            <div class="stat-label">RAM <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewRam">--</div>
                             <div class="kpi-trend-row">
                                 <span id="overviewRamTrend">-</span>
@@ -256,31 +253,31 @@
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">Disk</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="disk" tabindex="0" role="button" aria-label="Disk usage, click for details">
+                            <div class="stat-label">Disk <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewDisk">--</div>
-                            <span class="metric-sub">Awaiting telemetry</span>
+                            <span class="metric-sub" id="diskMetricSub">Awaiting telemetry</span>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">Upload</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="upload" tabindex="0" role="button" aria-label="Upload rate, click for network history">
+                            <div class="stat-label">Upload <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewUpload">--</div>
-                            <span class="metric-sub">Awaiting telemetry</span>
+                            <span class="metric-sub" id="uploadMetricSub">Awaiting telemetry</span>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">Download</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="download" tabindex="0" role="button" aria-label="Download rate, click for network history">
+                            <div class="stat-label">Download <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewDownload">--</div>
-                            <span class="metric-sub">Awaiting telemetry</span>
+                            <span class="metric-sub" id="downloadMetricSub">Awaiting telemetry</span>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-6">
-                        <div class="enterprise-kpi metric-kpi-card">
-                            <div class="stat-label">Idle</div>
+                        <div class="enterprise-kpi metric-kpi-card kpi-clickable" data-kpi-key="idle" tabindex="0" role="button" aria-label="Idle time, click for activity breakdown">
+                            <div class="stat-label">Idle <i class="fas fa-chevron-down kpi-expand-icon"></i></div>
                             <div class="stat-value" id="overviewIdle">--</div>
-                            <span class="metric-sub">Awaiting telemetry</span>
+                            <span class="metric-sub" id="idleMetricSub">Awaiting telemetry</span>
                         </div>
                     </div>
                 </div>
@@ -376,10 +373,56 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Behavioral intelligence row (loaded once on tab show) -->
+                <div class="row g-2 mt-1" id="behavioralRow" style="display:none!important">
+                    <!-- Productivity & Focus score KPI cards -->
+                    <div class="col-6 col-lg-3">
+                        <div class="device-info-card text-center">
+                            <h6 class="text-muted small mb-1">Productivity Score</h6>
+                            <div id="prodScoreValue" class="fs-2 fw-bold">--</div>
+                            <div class="small text-muted">/ 100 (today)</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="device-info-card text-center">
+                            <h6 class="text-muted small mb-1">Focus Score</h6>
+                            <div id="focusScoreValue" class="fs-2 fw-bold">--</div>
+                            <div class="small text-muted">/ 100 (today)</div>
+                        </div>
+                    </div>
+                    <!-- Hourly activity chart -->
+                    <div class="col-lg-8">
+                        <div class="device-info-card">
+                            <h6><i class="fas fa-chart-bar me-1" style="color:#00ff88"></i> Hourly Activity — Last 24h</h6>
+                            <div style="position:relative;height:140px">
+                                <canvas id="activityHourlyChart"></canvas>
+                                <div id="hourlyChartEmpty" class="text-center text-muted small py-4" style="display:none">No hourly rollup data yet</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- App usage donut -->
+                    <div class="col-lg-4">
+                        <div class="device-info-card">
+                            <h6><i class="fas fa-pie-chart me-1" style="color:#00ff88"></i> App Usage Today</h6>
+                            <div style="position:relative;height:140px">
+                                <canvas id="appUsageDonut"></canvas>
+                                <div id="appDonutEmpty" class="text-center text-muted small py-4" style="display:none">No app data yet</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Policy violations panel -->
+                    <div class="col-12">
+                        <div class="device-info-card" id="policyViolationsPanel">
+                            <h6><i class="fas fa-shield-alt me-1" style="color:#f87171"></i> Recent Policy Violations <span id="violBadge" class="badge bg-secondary ms-1">0</span></h6>
+                            <div id="violationsList" class="small text-muted">No violations in the selected window.</div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section class="device-tab-panel" data-panel="processes">
-                <div class="table-responsive">
+                <div class="table-responsive device-table-scroll">
                     <table class="tactical-table">
                         <thead>
                             <tr>
@@ -413,7 +456,7 @@
                     <div class="col-lg-7">
                         <div class="device-info-card">
                             <h6>Top Network Consumers</h6>
-                            <div id="networkConsumersList" class="device-list-plain text-muted small">Awaiting telemetry
+                            <div id="networkConsumersList" class="device-list-plain text-muted small device-list-scroll">Awaiting telemetry
                                 data.</div>
                         </div>
                     </div>
@@ -721,7 +764,7 @@
             </section>
 
             <section class="device-tab-panel" data-panel="alerts">
-                <div class="row g-4">
+                <div class="row g-3">
                     <div class="col-lg-4">
                         <div class="alerts-risk-card">
                             <div class="panel-eyebrow">Risk Score</div>
@@ -740,42 +783,60 @@
                         </div>
                     </div>
                     <div class="col-lg-8">
-                        <div class="alerts-list-card">
-                            <h6 class="panel-eyebrow">Policy Alerts</h6>
-                            <div id="policyViolationList" class="policy-alert-list">Awaiting policy checks.</div>
+                        <div class="alerts-feed-grid">
+                            <div class="alerts-list-card">
+                                <h6 class="panel-eyebrow">Policy Alerts</h6>
+                                <div id="policyViolationList" class="policy-alert-list console-scroll-surface">Awaiting policy checks.</div>
+                            </div>
+                            <div class="alerts-list-card">
+                                <div class="policy-timeline-header">
+                                    <h6 class="panel-eyebrow m-0">Recent Logged Events</h6>
+                                    <span class="policy-panel-caption">Reports + alerts feed</span>
+                                </div>
+                                <div id="alertsFeedList" class="console-event-feed console-scroll-surface">Awaiting logged events.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
             <section class="device-tab-panel" data-panel="history">
-                <div class="device-info-card history-card">
-                    <h6>History Snapshot (7d)</h6>
-                    <div class="history-kpi-grid mt-2">
-                        <div class="history-kpi-item">
-                            <span class="meta-label">Reachability</span>
-                            <strong id="historyReachability">N/A</strong>
-                        </div>
-                        <div class="history-kpi-item">
-                            <span class="meta-label">Confidence</span>
-                            <strong id="historyConfidence">N/A</strong>
-                        </div>
-                        <div class="history-kpi-item">
-                            <span class="meta-label">Samples</span>
-                            <strong id="historySamples">0</strong>
+                <div class="row g-3">
+                    <div class="col-xl-5">
+                        <div class="device-info-card history-card">
+                            <h6>History Snapshot (7d)</h6>
+                            <div class="history-kpi-grid mt-2">
+                                <div class="history-kpi-item">
+                                    <span class="meta-label">Reachability</span>
+                                    <strong id="historyReachability">N/A</strong>
+                                </div>
+                                <div class="history-kpi-item">
+                                    <span class="meta-label">Confidence</span>
+                                    <strong id="historyConfidence">N/A</strong>
+                                </div>
+                                <div class="history-kpi-item">
+                                    <span class="meta-label">Samples</span>
+                                    <strong id="historySamples">0</strong>
+                                </div>
+                            </div>
+                            <div class="device-info-row mt-2"><span>Current Status</span><strong
+                                    id="historyCurrentStatus">Unknown</strong></div>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <a class="mo-btn mo-btn-ghost"
+                                    href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}">
+                                    <i class="fas fa-history"></i> Full History
+                                </a>
+                            </div>
                         </div>
                     </div>
-                    <div class="device-info-row mt-2"><span>Current Status</span><strong
-                            id="historyCurrentStatus">Unknown</strong></div>
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        <a class="mo-btn mo-btn-ghost"
-                            href="{{ url_for('tracking_bp.device_history', device_id=device.id) }}">
-                            <i class="fas fa-history"></i> Full History
-                        </a>
-                        <a class="mo-btn mo-btn-ghost"
-                            href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}">
-                            <i class="fas fa-chart-area"></i> Availability Reports
-                        </a>
+                    <div class="col-xl-7">
+                        <div class="alerts-list-card history-events-card">
+                            <div class="policy-timeline-header">
+                                <h6 class="panel-eyebrow m-0">Recent Logged Events</h6>
+                                <span class="policy-panel-caption">Availability, security, and linked alerts</span>
+                            </div>
+                            <div id="historyEventList" class="console-event-feed console-scroll-surface console-scroll-surface-tall">Awaiting event history.</div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -835,7 +896,10 @@
                 </div>
                 <div class="modal-body">
                     <div class="remote-view-frame">
+                        <!-- Front buffer: visible image -->
                         <img id="remoteViewImage" src="" alt="Remote view screenshot" decoding="async" draggable="false">
+                        <!-- Back buffer: preloads next frame before swap (eliminates flicker) -->
+                        <img id="remoteViewImageBack" src="" alt="" aria-hidden="true" decoding="async" draggable="false" class="remote-view-back-buffer">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -944,11 +1008,29 @@
             </div>
         </div>
     </div>
+
+    <!-- KPI Breakdown Modal (uptime, latency, security, etc.) -->
+    <div class="modal fade" id="kpiBreakdownModal" tabindex="-1" aria-labelledby="kpiBreakdownModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="kpiBreakdownModalLabel">Breakdown</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="kpiBreakdownModalBody">
+                    <div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=9">
 {% endblock %}
 
 {% block extra_js %}
@@ -983,5 +1065,5 @@
 <script src="{{ url_for('static', filename='js/tracking/console/ackFallbackStore.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/console/apiNormalizer.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/device_console_ui_adapter.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}?v=9"></script>
 {% endblock %}

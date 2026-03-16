@@ -69,6 +69,7 @@
             files: false,
             websitePolicy: false,
             alerts: false,
+            behavioral: false,
         },
         tabCounters: {
             processes: 0,
@@ -82,6 +83,11 @@
             alerts: [],
             hasHydratedAlerts: false,
             lastFetchedAt: 0,
+        },
+        events: {
+            rows: [],
+            loadedAt: 0,
+            loading: false,
         },
         websitePolicy: {
             loading: false,
@@ -239,6 +245,8 @@
         dom.alertsRiskValue = document.getElementById('alertsRiskValue');
         dom.alertsRiskContext = document.getElementById('alertsRiskContext');
         dom.alertsRiskContextText = document.getElementById('alertsRiskContextText');
+        dom.alertsFeedList = document.getElementById('alertsFeedList');
+        dom.historyEventList = document.getElementById('historyEventList');
         dom.surveillanceStateBadge = document.getElementById('survTabStateBadge');
         dom.surveillanceStateText = document.getElementById('survTabStateText');
         dom.cameraCapabilityBadge = document.getElementById('survCameraCapabilityBadge');
@@ -288,6 +296,22 @@
             void refreshRemoteViewSnapshot(true);
         });
         dom.remoteViewFullscreenBtn?.addEventListener('click', openRemoteViewFullscreen);
+
+        // MORE dropdown actions
+        document.getElementById('dropdownRunIntegrity')?.addEventListener('click', handleRunIntegrityFromDropdown);
+        document.getElementById('dropdownArchiveDevice')?.addEventListener('click', handleIsolateAction);
+
+        // KPI clickable: header stat wrappers + overview cards
+        document.querySelectorAll('.kpi-stat-wrap, .kpi-clickable').forEach((el) => {
+            el.addEventListener('click', handleKpiBreakdownClick);
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleKpiBreakdownClick.call(el, e);
+                }
+            });
+        });
+
         dom.policyAddSiteBtn?.addEventListener('click', () => showModal('policyAddSite'));
         dom.policyRemoveSiteBtn?.addEventListener('click', openPolicyRemoveModal);
         dom.policyViewFullLogsBtn?.addEventListener('click', openPolicyLogsModal);
@@ -297,6 +321,8 @@
         dom.policyRecentViolationsList?.addEventListener('click', handleRetryActions);
         dom.policyViolationList?.addEventListener('click', handleAlertActionClick);
         dom.policyViolationList?.addEventListener('click', handleRetryActions);
+        dom.alertsFeedList?.addEventListener('click', handleRetryActions);
+        dom.historyEventList?.addEventListener('click', handleRetryActions);
         dom.errorBanner?.addEventListener('click', handleRetryActions);
         dom.filesRefreshBtn?.addEventListener('click', () => {
             void loadFilesTabData(true);
@@ -653,7 +679,7 @@
         applyMicVolumeSetting();
         setAgentAwaitingVisibility(!initialSyncIso);
         renderPolicyViolations([]);
-        renderAlertFeedTimeline([]);
+        renderRecentEvents([]);
         setTabCounter('processes', 0);
         setTabCounter('alerts', 0);
         setTabCounter('websitePolicy', 0);
@@ -1179,7 +1205,6 @@
 
     function renderAlerts(status, cpu, ram, disk, idleSeconds, probeErrorCode) {
         const riskNode = document.getElementById('alertsRiskScore');
-        const feedNode = document.getElementById('alertsFeedList');
         if (!riskNode) return { level: 'LOW', securityScore: 92, riskScore: 20 };
 
         const alerts = [];
@@ -1229,29 +1254,6 @@
         else if (risk === 'MEDIUM') riskNode.classList.add('risk-medium');
         else riskNode.classList.add('risk-low');
         setRiskTelemetryContext(context, status === 'offline' || status === 'degraded' || risk !== 'LOW' ? 'degraded' : 'healthy');
-        const timeLabel = formatClockTime(new Date());
-        const timelineRows = alerts.map((line, index) => ({
-            id: `telemetry:${timeLabel}:${index}`,
-            time: timeLabel,
-            text: line,
-        }));
-        timelineRows.forEach((event) => eventFeedStore?.push?.(event));
-        const persisted = eventFeedStore?.list?.() || [];
-        const feedRows = timelineRows.length ? timelineRows : persisted.slice(0, 8);
-        if (feedNode && !feedRows.length) {
-            feedNode.innerHTML = '<div class="policy-violation-empty">No alerts detected</div>';
-        } else if (feedNode) {
-            patchKeyedChildren(
-                feedNode,
-                feedRows,
-                (entry) => `${entry.id}:${entry.time}`,
-                'div',
-                (row, entry) => {
-                    row.className = 'device-event-row';
-                    row.innerHTML = `<span>${escapeHtml(String(entry.time || '--:--'))}</span><strong>${escapeHtml(String(entry.text || 'Event'))}</strong>`;
-                }
-            );
-        }
         setTabCounter('alerts', Math.max(alerts.length, state.policy.activeViolationCount));
 
         return { level: risk, securityScore, riskScore };
@@ -1326,6 +1328,11 @@
                     </div>
                 `;
             }
+        }
+        try {
+            await loadRecentEvents(forceReload);
+        } catch (_error) {
+            // Event feed falls back to its existing rows or inline error state.
         }
     }
 
@@ -1450,6 +1457,7 @@
                 ackFallbackStore?.markAcked?.(eventId);
                 invalidateDeviceConsoleCaches();
                 await refreshPolicyViolations(true);
+                await loadRecentEvents(true);
                 showInfo('Policy updated');
             } catch (error) {
                 ackFallbackStore?.markAcked?.(eventId);
@@ -1500,39 +1508,17 @@
         if (retryAlertsButton) {
             event.preventDefault();
             void loadAlertsTabData(true);
+            return;
+        }
+        const retryEventsButton = event?.target?.closest('[data-action-retry-events]');
+        if (retryEventsButton) {
+            event.preventDefault();
+            void loadRecentEvents(true);
         }
     }
 
     function renderAlertFeedTimeline(alerts) {
-        const container = document.getElementById('alertsFeedList');
-        if (!container) return;
-
-        const apiEvents = (Array.isArray(alerts) ? alerts : []).slice(0, 8).map((alert, index) => ({
-            id: `alert:${alert.eventId || index}`,
-            time: formatClockTime(alert.time || alert.timestamp || alert.observed_at_utc),
-            text: `${alert.domain || alert.site || 'unknown'} (${normalizeViolationSeverity(alert.severity)})`,
-        }));
-
-        const persisted = eventFeedStore?.list?.() || [];
-        const rows = apiEvents.length ? apiEvents : persisted.slice(0, 8);
-        if (!rows.length) {
-            container.innerHTML = '<div class="policy-violation-empty">No alerts detected</div>';
-            return;
-        }
-
-        patchKeyedChildren(
-            container,
-            rows,
-            (row) => String(row.id || row.time || row.text),
-            'div',
-            (node, row) => {
-                node.className = 'device-event-row';
-                node.innerHTML = `
-                    <span>${escapeHtml(String(row.time || '--:--'))}</span>
-                    <strong>${escapeHtml(String(row.text || 'Event'))}</strong>
-                `;
-            }
-        );
+        renderRecentEvents(state.events.rows);
     }
 
     function formatNullableValue(value) {
@@ -1768,6 +1754,7 @@
         state.modals.policyAddSite = createModal('policyAddSiteModal');
         state.modals.policyRemoveSite = createModal('policyRemoveSiteModal');
         state.modals.policyLogs = createModal('policyLogsModal');
+        state.modals.kpiBreakdown = createModal('kpiBreakdownModal');
         bindRemoteViewModalLifecycle();
     }
 
@@ -1817,6 +1804,7 @@
         if (normalized === 'history' && !state.lazyLoaded.history) {
             await loadHistorySnapshot();
             state.lazyLoaded.history = true;
+            await loadRecentEvents(false);
             return;
         }
         if (normalized === 'files') {
@@ -1832,6 +1820,177 @@
         if (normalized === 'alerts') {
             await loadAlertsTabData(false);
             state.lazyLoaded.alerts = true;
+            return;
+        }
+        if (normalized === 'history') {
+            await loadRecentEvents(false);
+        }
+        if (normalized === 'activity' && !state.lazyLoaded.behavioral) {
+            await _loadBehavioralSummary();
+            state.lazyLoaded.behavioral = true;
+        }
+    }
+
+    // ── Behavioral summary (hourly chart + app donut + violations) ─────────────
+
+    let _hourlyChart = null;
+    let _appDonut = null;
+
+    async function _loadBehavioralSummary() {
+        const row = document.getElementById('behavioralRow');
+        if (!row) return;
+
+        try {
+            const resp = await fetch(`/api/tracking/workstation/${encodeURIComponent(deviceId)}/behavioral-summary`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.success) return;
+
+            row.style.removeProperty('display');
+
+            _renderHourlyChart(data.hourly_activity || []);
+            _renderAppDonut(data.top_apps || []);
+            _renderViolationsPanel(data.recent_violations || []);
+            _renderScoreKpis(data.productivity_score, data.focus_score);
+        } catch (_) {
+            // best-effort — behavioral summary is non-critical
+        }
+    }
+
+    function _renderHourlyChart(points) {
+        const canvas = document.getElementById('activityHourlyChart');
+        const empty = document.getElementById('hourlyChartEmpty');
+        if (!canvas) return;
+        if (typeof Chart === 'undefined') {
+            if (empty) { empty.textContent = 'Chart library unavailable.'; empty.style.display = ''; }
+            canvas.style.display = 'none';
+            return;
+        }
+        if (!points.length) {
+            canvas.style.display = 'none';
+            if (empty) empty.style.display = '';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        canvas.style.display = '';
+        if (_hourlyChart) _hourlyChart.destroy();
+        _hourlyChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: points.map(p => p.hour),
+                datasets: [
+                    {
+                        label: 'Keyboard',
+                        data: points.map(p => p.keyboard),
+                        backgroundColor: 'rgba(0,255,136,0.7)',
+                        borderRadius: 2,
+                    },
+                    {
+                        label: 'Mouse',
+                        data: points.map(p => p.mouse),
+                        backgroundColor: 'rgba(56,189,248,0.7)',
+                        borderRadius: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } },
+                scales: {
+                    x: { stacked: true, ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { stacked: true, ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                },
+            },
+        });
+    }
+
+    function _renderAppDonut(apps) {
+        const canvas = document.getElementById('appUsageDonut');
+        const empty = document.getElementById('appDonutEmpty');
+        if (!canvas) return;
+        if (typeof Chart === 'undefined') {
+            if (empty) { empty.textContent = 'Chart library unavailable.'; empty.style.display = ''; }
+            canvas.style.display = 'none';
+            return;
+        }
+        if (!apps.length) {
+            canvas.style.display = 'none';
+            if (empty) empty.style.display = '';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        canvas.style.display = '';
+        if (_appDonut) _appDonut.destroy();
+        const COLORS = ['#00ff88','#38bdf8','#a78bfa','#fb923c','#f472b6','#6b7280'];
+        _appDonut = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: apps.map(a => a.app),
+                datasets: [{
+                    data: apps.map(a => a.duration_s),
+                    backgroundColor: apps.map((_, i) => COLORS[i % COLORS.length]),
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#9ca3af', font: { size: 10 }, boxWidth: 10 } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const a = apps[ctx.dataIndex];
+                                return ` ${a.app}: ${a.pct}%`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function _renderViolationsPanel(violations) {
+        const list = document.getElementById('violationsList');
+        const badge = document.getElementById('violBadge');
+        if (!list) return;
+        if (badge) {
+            badge.textContent = violations.length;
+            badge.className = violations.length > 0 ? 'badge bg-danger ms-1' : 'badge bg-success ms-1';
+        }
+        if (!violations.length) {
+            list.innerHTML = '<span class="text-muted">No violations in the selected window.</span>';
+            return;
+        }
+        list.innerHTML = violations.map(v => {
+            const t = v.at ? new Date(v.at.endsWith('Z') ? v.at : v.at + 'Z').toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+            const confCls = (v.confidence || '').toUpperCase() === 'HIGH' ? 'danger' : 'warning';
+            return `<div class="d-flex gap-2 align-items-center py-1 border-bottom border-secondary">
+                <span class="badge bg-secondary" style="font-size:0.72rem">${escapeHtml(v.source || '?')}</span>
+                <span class="badge bg-${confCls}" style="font-size:0.72rem">${escapeHtml(v.confidence || '?')}</span>
+                <span class="text-danger fw-semibold" style="font-size:0.8rem">${escapeHtml(v.domain || '—')}</span>
+                <span class="text-muted ms-auto" style="font-size:0.72rem;white-space:nowrap">${t}</span>
+            </div>`;
+        }).join('');
+    }
+
+    function _renderScoreKpis(prodScore, focusScore) {
+        function _scoreColor(v) {
+            if (v == null) return '#6b7280';
+            if (v >= 70) return '#00ff88';
+            if (v >= 40) return '#f59e0b';
+            return '#f87171';
+        }
+        const prodEl = document.getElementById('prodScoreValue');
+        if (prodEl) {
+            prodEl.textContent = prodScore != null ? prodScore : '--';
+            prodEl.style.color = _scoreColor(prodScore);
+        }
+        const focusEl = document.getElementById('focusScoreValue');
+        if (focusEl) {
+            focusEl.textContent = focusScore != null ? focusScore : '--';
+            focusEl.style.color = _scoreColor(focusScore);
         }
     }
 
@@ -2772,6 +2931,7 @@
         responseCache.invalidateMany([
             cacheKey('website-policy'),
             cacheKey('alerts'),
+            cacheKey('events'),
             cacheKey('device-summary'),
             cacheKey('risk-score'),
             cacheKey('policy-counter'),
@@ -2813,6 +2973,20 @@
             });
         }
         responseCache?.set(key, ensureObject(envelope.payload), 10000);
+        return envelope;
+    }
+
+    async function fetchEventsEnvelope(forceReload) {
+        const key = cacheKey('events');
+        if (!forceReload && responseCache && responseCache.has(key)) {
+            return { payload: ensureObject(responseCache.get(key)) };
+        }
+        const envelope = await requestJson(`/api/devices/${encodeURIComponent(deviceId)}/events?limit=36`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        responseCache?.set(key, ensureObject(envelope.payload), 15000);
         return envelope;
     }
 
@@ -2884,6 +3058,140 @@
             riskScore: Math.max(0, Math.floor(toNumber(source.risk_score, 0))),
             riskLevel: String(source.risk_level || 'low').toLowerCase(),
         };
+    }
+
+    function normalizeConsoleEventsPayload(payload) {
+        const source = ensureObject(payload);
+        const rows = (Array.isArray(source.events) ? source.events : [])
+            .map((event, index) => {
+                const family = String(event?.family || 'availability').trim().toLowerCase() || 'availability';
+                const reportFamily = String(event?.report_family || family).trim().toLowerCase() || family;
+                const severity = String(event?.severity || 'info').trim().toLowerCase() || 'info';
+                const status = String(event?.status || 'recorded').trim().toLowerCase() || 'recorded';
+                return {
+                    id: String(event?.id || `event:${index}`),
+                    family,
+                    reportFamily,
+                    severity,
+                    status,
+                    stateLabel: String(event?.state_label || titleCase(status)).trim() || 'Recorded',
+                    title: String(event?.title || 'Logged event').trim() || 'Logged event',
+                    detail: String(event?.detail || event?.message || '').trim(),
+                    timestamp: String(event?.timestamp || '').trim(),
+                    source: String(event?.source || '').trim(),
+                };
+            })
+            .sort((left, right) => String(right.timestamp || '').localeCompare(String(left.timestamp || '')));
+
+        return {
+            eventCount: Math.max(0, Math.floor(toNumber(source.event_count, rows.length))),
+            rows,
+        };
+    }
+
+    function renderConsoleEventFeed(container, rows, options) {
+        if (!container) {
+            return;
+        }
+        const opts = options || {};
+        const sourceRows = Array.isArray(rows) ? rows.slice(0, Math.max(1, Number(opts.limit || 10))) : [];
+        if (!sourceRows.length) {
+            container.innerHTML = `<div class="console-event-empty">${escapeHtml(String(opts.emptyMessage || 'No logged events found.'))}</div>`;
+            return;
+        }
+
+        patchKeyedChildren(
+            container,
+            sourceRows,
+            (row) => String(row.id || row.timestamp || row.title),
+            'article',
+            (node, row) => {
+                const severity = String(row.severity || 'info').trim().toLowerCase() || 'info';
+                const family = String(row.reportFamily || row.family || 'tracking').trim().toLowerCase() || 'tracking';
+                const timeLabel = formatHumanTimestamp(row.timestamp) || '--';
+                const source = String(row.source || '').trim();
+                node.className = `console-event-item severity-${severity}`;
+                node.innerHTML = `
+                    <div class="console-event-head">
+                        <div class="console-event-copy">
+                            <span class="console-event-family family-${escapeHtml(family)}">${escapeHtml(titleCase(family.replace(/_/g, ' ')))}</span>
+                            <strong class="console-event-title">${escapeHtml(String(row.title || 'Logged event'))}</strong>
+                        </div>
+                        <time class="console-event-time" datetime="${escapeHtml(String(row.timestamp || ''))}">${escapeHtml(timeLabel)}</time>
+                    </div>
+                    ${row.detail ? `<div class="console-event-detail">${escapeHtml(String(row.detail || ''))}</div>` : ''}
+                    <div class="console-event-meta">
+                        <span class="console-event-meta-item severity-${escapeHtml(severity)}">${escapeHtml(titleCase(severity))}</span>
+                        <span class="console-event-meta-item">${escapeHtml(String(row.stateLabel || 'Recorded'))}</span>
+                        ${source ? `<span class="console-event-meta-item">${escapeHtml(source)}</span>` : ''}
+                    </div>
+                `;
+            }
+        );
+    }
+
+    function renderRecentEvents(rows) {
+        const sourceRows = Array.isArray(rows) ? rows : [];
+        renderConsoleEventFeed(dom.alertsFeedList, sourceRows, {
+            limit: 12,
+            emptyMessage: 'No persisted events recorded for this device yet.',
+        });
+        renderConsoleEventFeed(dom.historyEventList, sourceRows, {
+            limit: 14,
+            emptyMessage: 'No recent reportable events available yet.',
+        });
+    }
+
+    function renderRecentEventsLoading(message) {
+        const detail = String(message || 'Loading recent logged events...');
+        [dom.alertsFeedList, dom.historyEventList].forEach((node) => {
+            if (!node) return;
+            node.innerHTML = `<div class="console-event-empty is-loading">${escapeHtml(detail)}</div>`;
+        });
+    }
+
+    function renderRecentEventsError(message) {
+        const detail = String(message || 'Recent events failed to load.');
+        const markup = `
+            <div class="console-event-error">
+                <strong>Event log unavailable</strong>
+                <span>${escapeHtml(detail)}</span>
+                <button type="button" class="mo-btn mo-btn-ghost mo-btn-sm" data-action-retry-events="1">Retry</button>
+            </div>
+        `;
+        [dom.alertsFeedList, dom.historyEventList].forEach((node) => {
+            if (!node) return;
+            node.innerHTML = markup;
+        });
+    }
+
+    async function loadRecentEvents(forceReload) {
+        if (state.events.loading && !forceReload) {
+            return { rows: state.events.rows.slice() };
+        }
+        if (!state.events.rows.length || forceReload) {
+            renderRecentEventsLoading('Loading recent logged events...');
+        }
+
+        state.events.loading = true;
+        try {
+            const { payload } = await fetchEventsEnvelope(Boolean(forceReload));
+            const normalized = normalizeConsoleEventsPayload(payload);
+            state.events.rows = normalized.rows;
+            state.events.loadedAt = Date.now();
+            renderRecentEvents(normalized.rows);
+            return normalized;
+        } catch (error) {
+            if (state.events.rows.length) {
+                renderRecentEvents(state.events.rows);
+                showToast(error?.message || 'Recent events failed to load.', 'warning');
+            } else {
+                renderRecentEventsError(error?.message || 'Recent events failed to load.');
+            }
+            throw error;
+        } finally {
+            state.events.loading = false;
+        }
     }
 
     async function loadWebsitePolicyData(forceReload) {
@@ -3203,6 +3511,7 @@
                 invalidateDeviceConsoleCaches();
                 await loadWebsitePolicyData(true);
                 await refreshPolicyViolations(true);
+                await loadRecentEvents(true);
                 showInfo('Domain added to policy');
             } finally {
                 setButtonBusy(dom.policyAddSiteConfirmBtn, false);
@@ -3254,6 +3563,7 @@
                 invalidateDeviceConsoleCaches();
                 await loadWebsitePolicyData(true);
                 await refreshPolicyViolations(true);
+                await loadRecentEvents(true);
                 showInfo('Policy updated');
             } finally {
                 setButtonBusy(dom.policyRemoveSiteBtn, false);
@@ -4066,16 +4376,7 @@
                 node.innerHTML = `<span>N/A</span><strong>${escapeHtml(row.text)}</strong>`;
             }
         );
-        patchKeyedChildren(
-            document.getElementById('alertsFeedList'),
-            [{ id: 'awaiting', text: feedMessage }],
-            (row) => row.id,
-            'div',
-            (node, row) => {
-                node.className = 'device-info-row';
-                node.innerHTML = `<span>-</span><strong>${escapeHtml(row.text)}</strong>`;
-            }
-        );
+        renderRecentEventsLoading(feedMessage);
         document.getElementById('processEmptyState')?.classList.remove('d-none');
 
         setText('chartCpuMeta', 'Awaiting telemetry');
@@ -4394,4 +4695,234 @@
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
+
+    // ── KPI Breakdown Modal ────────────────────────────────────────────────
+
+    function handleKpiBreakdownClick(e) {
+        const target = e.currentTarget || this;
+        const kpiKey = target?.dataset?.kpiKey;
+        if (!kpiKey) return;
+        openKpiBreakdown(kpiKey, target);
+    }
+
+    function openKpiBreakdown(kpiKey, sourceEl) {
+        const modal = state.modals.kpiBreakdown;
+        if (!modal) return;
+        const titleEl = document.getElementById('kpiBreakdownModalLabel');
+        const bodyEl = document.getElementById('kpiBreakdownModalBody');
+        if (!bodyEl) return;
+
+        // For IP: copy-to-clipboard shortcut, no modal needed
+        if (kpiKey === 'ip') {
+            const ip = document.getElementById('metaIp')?.textContent?.trim();
+            if (ip && ip !== 'N/A' && navigator.clipboard) {
+                navigator.clipboard.writeText(ip).then(() => {
+                    if (sourceEl) {
+                        sourceEl.classList.add('kpi-updating');
+                        setTimeout(() => sourceEl.classList.remove('kpi-updating'), 400);
+                    }
+                }).catch(() => {});
+            }
+            return;
+        }
+
+        modal.show();
+
+        const labels = {
+            cpu: 'CPU Usage', ram: 'RAM Usage', disk: 'Disk Usage',
+            upload: 'Upload Rate', download: 'Download Rate', idle: 'Idle Time',
+            latency: 'Latency History', uptime: 'Uptime Breakdown',
+            agent: 'Agent Details', security: 'Security Posture',
+        };
+        if (titleEl) titleEl.textContent = labels[kpiKey] || kpiKey.toUpperCase();
+
+        bodyEl.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>';
+
+        renderKpiBreakdownContent(kpiKey, bodyEl);
+    }
+
+    async function renderKpiBreakdownContent(kpiKey, bodyEl) {
+        try {
+            if (kpiKey === 'uptime') {
+                await renderUptimeBreakdown(bodyEl);
+            } else if (kpiKey === 'latency') {
+                renderSeriesBreakdown(bodyEl, 'latency', 'Latency (ms)', state.series?.latency);
+            } else if (kpiKey === 'cpu') {
+                renderSeriesBreakdown(bodyEl, 'cpu', 'CPU (%)', state.series?.cpu);
+            } else if (kpiKey === 'ram') {
+                renderSeriesBreakdown(bodyEl, 'ram', 'RAM (%)', state.series?.ram);
+            } else if (kpiKey === 'disk') {
+                renderSeriesBreakdown(bodyEl, 'disk', 'Disk (%)', state.series?.disk);
+            } else if (kpiKey === 'upload') {
+                renderSeriesBreakdown(bodyEl, 'upload', 'Upload (KB/s)', state.series?.netUp);
+            } else if (kpiKey === 'download') {
+                renderSeriesBreakdown(bodyEl, 'download', 'Download (KB/s)', state.series?.netDown);
+            } else if (kpiKey === 'idle') {
+                renderIdleBreakdown(bodyEl);
+            } else if (kpiKey === 'agent') {
+                renderAgentBreakdown(bodyEl);
+            } else if (kpiKey === 'security') {
+                renderSecurityBreakdown(bodyEl);
+            } else {
+                bodyEl.innerHTML = '<p class="text-muted">No breakdown available for this metric.</p>';
+            }
+        } catch (err) {
+            bodyEl.innerHTML = `<p class="text-danger small">Failed to load breakdown: ${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    async function renderUptimeBreakdown(bodyEl) {
+        const resp = await fetch(`/api/tracking/workstation/${deviceId}/overview`, { credentials: 'same-origin' });
+        const data = resp.ok ? (await resp.json()).data || {} : {};
+        const pct = data.reachability_pct != null ? `${Math.round(data.reachability_pct)}%` : 'N/A';
+        const totalUptime = document.getElementById('metaTotalUptime')?.textContent?.trim() || 'N/A';
+        const lastSeen = document.getElementById('metaLastSeen')?.textContent?.trim() || 'N/A';
+        bodyEl.innerHTML = `
+            <div class="row g-3">
+                <div class="col-4 text-center">
+                    <div class="fs-2 fw-bold" style="color:var(--mo-teal,#00d4aa)">${escapeHtml(pct)}</div>
+                    <div class="text-muted small">Reachability (7d)</div>
+                </div>
+                <div class="col-4 text-center">
+                    <div class="fs-2 fw-bold text-white">${escapeHtml(totalUptime)}</div>
+                    <div class="text-muted small">Uptime Today</div>
+                </div>
+                <div class="col-4 text-center">
+                    <div class="fs-5 fw-bold text-white">${escapeHtml(lastSeen)}</div>
+                    <div class="text-muted small">Last Seen</div>
+                </div>
+            </div>
+            ${data.degraded_impact_pct != null ? `
+            <hr class="border-secondary mt-3">
+            <div class="row g-2 text-center mt-1">
+                <div class="col-6">
+                    <span class="text-warning fw-bold">${Math.round(data.degraded_impact_pct)}%</span>
+                    <span class="text-muted small ms-1">Degraded Impact</span>
+                </div>
+                <div class="col-6">
+                    <span style="color:var(--mo-teal,#00d4aa)" class="fw-bold">${data.data_confidence_pct != null ? Math.round(data.data_confidence_pct) + '%' : 'N/A'}</span>
+                    <span class="text-muted small ms-1">Data Confidence</span>
+                </div>
+            </div>` : ''}
+            <p class="text-muted small mt-3 mb-0">
+                For full availability timeline, open <a href="/tracking/history/${deviceId}" class="text-info">Device History</a>.
+            </p>`;
+    }
+
+    function renderSeriesBreakdown(bodyEl, _key, label, series) {
+        const values = Array.isArray(series) ? series.filter((v) => v != null && Number.isFinite(v)) : [];
+        if (!values.length) {
+            bodyEl.innerHTML = `<p class="text-muted">No ${escapeHtml(label)} data in current window yet.</p>`;
+            return;
+        }
+        const current = values[values.length - 1];
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        bodyEl.innerHTML = `
+            <div class="row g-3 text-center">
+                <div class="col-3">
+                    <div class="fs-3 fw-bold" style="color:var(--mo-teal,#00d4aa)">${current.toFixed(1)}</div>
+                    <div class="text-muted small">Current</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-3 fw-bold text-white">${avg.toFixed(1)}</div>
+                    <div class="text-muted small">Average</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-3 fw-bold text-success">${min.toFixed(1)}</div>
+                    <div class="text-muted small">Min</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-3 fw-bold text-danger">${max.toFixed(1)}</div>
+                    <div class="text-muted small">Max</div>
+                </div>
+            </div>
+            <p class="text-muted small mt-3 mb-0">Based on last ${values.length} samples in this polling window.</p>`;
+    }
+
+    function renderIdleBreakdown(bodyEl) {
+        const idle = document.getElementById('overviewIdle')?.textContent?.trim() || '--';
+        const activeTime = document.getElementById('overviewActiveTime')?.textContent?.trim() || '--';
+        const totalTime = document.getElementById('overviewTotalTime')?.textContent?.trim() || '--';
+        bodyEl.innerHTML = `
+            <div class="row g-3 text-center">
+                <div class="col-4">
+                    <div class="fs-3 fw-bold text-warning">${escapeHtml(idle)}</div>
+                    <div class="text-muted small">Current Idle</div>
+                </div>
+                <div class="col-4">
+                    <div class="fs-3 fw-bold text-white">${escapeHtml(activeTime)}</div>
+                    <div class="text-muted small">Active Today</div>
+                </div>
+                <div class="col-4">
+                    <div class="fs-3 fw-bold text-white">${escapeHtml(totalTime)}</div>
+                    <div class="text-muted small">Total Session</div>
+                </div>
+            </div>`;
+    }
+
+    function renderAgentBreakdown(bodyEl) {
+        const version = document.getElementById('metaAgentVersion')?.textContent?.trim() || 'Unknown';
+        const health = document.getElementById('metaAgentHealth')?.textContent?.trim() || 'Unknown';
+        const lastSeen = document.getElementById('metaLastSeen')?.textContent?.trim() || 'N/A';
+        const system = document.getElementById('metaSystem')?.textContent?.trim() || 'Unknown';
+        bodyEl.innerHTML = `
+            <table class="table table-sm table-borderless text-white">
+                <tbody>
+                    <tr><td class="text-muted" style="width:40%">Agent Version</td><td class="font-monospace">${escapeHtml(version)}</td></tr>
+                    <tr><td class="text-muted">Health</td><td>${escapeHtml(health)}</td></tr>
+                    <tr><td class="text-muted">Last Seen</td><td>${escapeHtml(lastSeen)}</td></tr>
+                    <tr><td class="text-muted">System</td><td>${escapeHtml(system)}</td></tr>
+                </tbody>
+            </table>`;
+    }
+
+    function renderSecurityBreakdown(bodyEl) {
+        const score = document.getElementById('metaSecurityScore')?.textContent?.trim() || '--';
+        const risk = document.getElementById('headerRiskBadge')?.textContent?.trim() || 'Unknown';
+        const policy = document.getElementById('headerPolicyBadge')?.textContent?.trim() || 'Unknown';
+        const violationCount = state.tabCounters?.policy ?? 0;
+        bodyEl.innerHTML = `
+            <div class="row g-3 text-center mb-3">
+                <div class="col-4">
+                    <div class="fs-2 fw-bold" style="color:var(--mo-amber,#ffaa00)">${escapeHtml(score)}<span class="fs-6 text-muted">/100</span></div>
+                    <div class="text-muted small">Security Score</div>
+                </div>
+                <div class="col-4">
+                    <div class="fs-4 fw-bold text-white">${escapeHtml(risk)}</div>
+                    <div class="text-muted small">Risk Level</div>
+                </div>
+                <div class="col-4">
+                    <div class="fs-4 fw-bold text-white">${violationCount}</div>
+                    <div class="text-muted small">Policy Violations</div>
+                </div>
+            </div>
+            <p class="text-muted small mb-0">Policy status: <strong class="text-white">${escapeHtml(policy)}</strong>. Open the Website Policy tab for full details.</p>`;
+    }
+
+    // ── Run Integrity from MORE dropdown ──────────────────────────────────
+
+    async function handleRunIntegrityFromDropdown() {
+        const bodyEl = document.getElementById('kpiBreakdownModalBody');
+        const titleEl = document.getElementById('kpiBreakdownModalLabel');
+        if (titleEl) titleEl.textContent = 'Integrity Check';
+        if (bodyEl) bodyEl.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Running integrity check…</div>';
+        state.modals.kpiBreakdown?.show();
+        try {
+            const resp = await fetch(`/api/tracking/history/${deviceId}/run-integrity`, {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
+            const data = resp.ok ? await resp.json() : { success: false };
+            if (bodyEl) {
+                bodyEl.innerHTML = data.success
+                    ? '<div class="alert alert-success mb-0"><i class="fas fa-check-circle me-2"></i>Integrity check completed. Open the History tab for results.</div>'
+                    : `<div class="alert alert-danger mb-0">Integrity check failed: ${escapeHtml(data.error || 'Unknown error')}</div>`;
+            }
+        } catch (err) {
+            if (bodyEl) bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Request failed: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
 })();

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Too Many Requests — NMS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/tactical.css') }}?v=4" rel="stylesheet">
+    <script>
+        (function () {
+            const saved = localStorage.getItem('nms-ui-theme');
+            document.documentElement.setAttribute('data-theme', saved || 'dark');
+        })();
+    </script>
+    <style>
+        body {
+            background: var(--ui-bg);
+            color: var(--ui-text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+
+        .error-card {
+            background: var(--ui-surface-2);
+            border: 1px solid var(--ui-warning);
+            border-radius: 8px;
+            padding: 2.5rem 3rem;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 0 32px rgba(255, 170, 0, 0.12);
+        }
+
+        .error-icon {
+            font-size: 3rem;
+            color: var(--ui-warning);
+            margin-bottom: 1rem;
+        }
+
+        .error-code {
+            font-family: 'Orbitron', monospace;
+            font-size: 4rem;
+            font-weight: 700;
+            color: var(--ui-warning);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--ui-text);
+            margin-bottom: 0.75rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .error-desc {
+            color: var(--ui-text-muted);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 1.75rem;
+        }
+
+        .countdown-badge {
+            display: inline-block;
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid rgba(255, 170, 0, 0.3);
+            border-radius: 4px;
+            padding: 0.35rem 0.85rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--ui-warning);
+            margin-bottom: 1.75rem;
+        }
+
+        .btn-retry {
+            background: var(--ui-warning);
+            color: #0a0a0f;
+            border: none;
+            border-radius: 4px;
+            padding: 0.55rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: opacity 0.15s;
+        }
+
+        .btn-retry:hover {
+            opacity: 0.85;
+            color: #0a0a0f;
+        }
+
+        .btn-retry:disabled,
+        .btn-retry.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <div class="error-icon"><i class="fas fa-shield-alt"></i></div>
+        <div class="error-code">429</div>
+        <div class="error-title">Too Many Requests</div>
+        <p class="error-desc">
+            Too many login attempts from your IP address.<br>
+            Please wait before trying again.
+        </p>
+        <div class="countdown-badge">
+            <i class="fas fa-clock me-1"></i>
+            Retry in <span id="countdown">60</span>s
+        </div>
+        <br>
+        <a href="{{ url_for('auth_bp.login') }}" class="btn-retry disabled" id="retry-btn">
+            <i class="fas fa-arrow-left me-1"></i> Back to Login
+        </a>
+    </div>
+
+    <script>
+        (function () {
+            const retryAfterHeader = {{ retry_after | tojson }};
+            let seconds = retryAfterHeader > 0 ? Math.ceil(retryAfterHeader) : 60;
+
+            const countdownEl = document.getElementById('countdown');
+            const retryBtn = document.getElementById('retry-btn');
+
+            function tick() {
+                countdownEl.textContent = seconds;
+                if (seconds <= 0) {
+                    countdownEl.textContent = '0';
+                    retryBtn.classList.remove('disabled');
+                    retryBtn.textContent = 'Back to Login';
+                    return;
+                }
+                seconds--;
+                setTimeout(tick, 1000);
+            }
+
+            tick();
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Not Found — NMS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/tactical.css') }}?v=4" rel="stylesheet">
+    <script>
+        (function () {
+            const saved = localStorage.getItem('nms-ui-theme');
+            document.documentElement.setAttribute('data-theme', saved || 'dark');
+        })();
+    </script>
+    <style>
+        body {
+            background: var(--ui-bg);
+            color: var(--ui-text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'IBM Plex Sans', sans-serif;
+        }
+
+        .error-card {
+            background: var(--ui-surface-2);
+            border: 1px solid var(--ui-accent, #00d4aa);
+            border-radius: 8px;
+            padding: 2.5rem 3rem;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 0 32px rgba(0, 212, 170, 0.10);
+        }
+
+        .error-icon {
+            font-size: 3rem;
+            color: var(--ui-accent, #00d4aa);
+            margin-bottom: 1rem;
+        }
+
+        .error-code {
+            font-family: 'Orbitron', monospace;
+            font-size: 4rem;
+            font-weight: 700;
+            color: var(--ui-accent, #00d4aa);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--ui-text);
+            margin-bottom: 0.75rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .error-desc {
+            color: var(--ui-text-muted);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 1.75rem;
+        }
+
+        .btn-action {
+            background: var(--ui-accent, #00d4aa);
+            color: #0a0a0f;
+            border: none;
+            border-radius: 4px;
+            padding: 0.55rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: opacity 0.15s;
+            margin: 0 0.25rem;
+        }
+
+        .btn-action:hover {
+            opacity: 0.85;
+            color: #0a0a0f;
+        }
+
+        .btn-action-ghost {
+            background: transparent;
+            color: var(--ui-text-muted);
+            border: 1px solid var(--ui-border, rgba(255,255,255,0.1));
+            border-radius: 4px;
+            padding: 0.55rem 1.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: opacity 0.15s;
+            margin: 0 0.25rem;
+        }
+
+        .btn-action-ghost:hover {
+            opacity: 0.75;
+            color: var(--ui-text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <div class="error-icon"><i class="fas fa-compass"></i></div>
+        <div class="error-code">404</div>
+        <div class="error-title">Page Not Found</div>
+        <p class="error-desc">
+            The page you're looking for doesn't exist<br>or has been moved.
+        </p>
+        <a href="/" class="btn-action">
+            <i class="fas fa-home me-1"></i> Dashboard
+        </a>
+        <a href="javascript:history.back()" class="btn-action-ghost">
+            <i class="fas fa-arrow-left me-1"></i> Go Back
+        </a>
+    </div>
+</body>
+</html>

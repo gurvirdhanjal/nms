@@ -163,15 +163,22 @@
                         <tbody id="deviceList">
                             {% for device in saved_devices %}
                             {% set device_status = check_device_status(device) %}
+                            {% set identity_source = identity_sources.get(device.id, 'legacy_confirmed') %}
                             <tr id="device-row-{{ device.id }}" class="ops-device-row status-{{ device_status }}"
                                 data-device-row="true" data-device-status="{{ device_status }}"
                                 data-mac="{{ device.mac_address }}"
+                                data-identity-source="{{ identity_source }}"
                                 data-unassigned="{{ 1 if not (device.employee_name or '')|trim else 0 }}"
                                 data-needs-sync="{{ 1 if (not device.ip_address) or device_status == 'offline' else 0 }}"
                                 data-search-index="{{ ((device.device_name or '') ~ ' ' ~ (device.employee_name or '') ~ ' ' ~ (device.hostname or '') ~ ' ' ~ (device.ip_address or '') ~ ' ' ~ (device.mac_address or '') ~ ' ' ~ (device.site_id or '') ~ ' ' ~ (device.department_id or ''))|lower }}">
                                 <td class="ps-4 device-name-cell">
                                     <strong class="ops-hostname">{{ device.device_name or device.hostname }}</strong>
                                     <div class="ops-assignee device-mac">{{ device.employee_name or 'Unassigned' }}</div>
+                                    <div class="tracking-identity-meta">
+                                        <span class="tracking-identity-badge {{ 'tracking-identity-badge-scanner' if identity_source == 'scanner_inventory' else 'tracking-identity-badge-legacy' }}">
+                                            {{ 'Scanner Confirmed' if identity_source == 'scanner_inventory' else 'Legacy Confirmed' }}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="tracking-status-cell">
                                     <span class="ops-status-badge status-badge {{ device_status }}">{{ device_status|upper }}</span>
@@ -492,7 +499,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=18">
 {% endblock %}
 
 {% block extra_js %}
@@ -503,5 +510,5 @@
         sharedRefresh: true
     });
 </script>
-<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v=11"></script>
 {% endblock %}

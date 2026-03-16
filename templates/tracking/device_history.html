@@ -152,6 +152,7 @@
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#applicationsTab" type="button" role="tab">Applications</button></li>
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#integrityTab" type="button" role="tab">Integrity</button></li>
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#policyTab" type="button" role="tab">Policy</button></li>
+                    {% if linked_device_id %}<li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#configTab" type="button" role="tab">Config</button></li>{% endif %}
                 </ul>
             </div>
             <div class="card-body history-main-body">
@@ -223,6 +224,34 @@
                             </table>
                         </div>
                     </div>
+                    {% if linked_device_id %}<div class="tab-pane fade" id="configTab" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="history-meta text-uppercase" style="letter-spacing:.1em;">Configuration Snapshots</span>
+                            {% if is_admin %}
+                            <button id="configCaptureNowBtn" type="button" class="tactical-btn-outline history-inline-btn">
+                                <i class="fas fa-download me-1"></i> Capture Now
+                            </button>
+                            {% endif %}
+                        </div>
+                        <div id="configLoadingState" class="history-meta py-3 text-center d-none">
+                            <i class="fas fa-spinner fa-spin me-2"></i>Loading snapshots...
+                        </div>
+                        <div id="configErrorState" class="alert alert-danger py-2 d-none history-error-alert" role="alert">
+                            <span id="configErrorText"></span>
+                        </div>
+                        <div id="configEmptyState" class="history-meta py-3 text-center d-none">
+                            No configuration snapshots found for this device.
+                        </div>
+                        <div id="configTableWrap" class="table-responsive d-none">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead><tr>
+                                    <th>Captured At</th><th>Source</th><th>Captured By</th>
+                                    <th>Changed</th><th>Hash</th><th>Actions</th>
+                                </tr></thead>
+                                <tbody id="configSnapshotBody"></tbody>
+                            </table>
+                        </div>
+                    </div>{% endif %}
                 </div>
             </div>
         </div>
@@ -238,9 +267,6 @@
                 <button id="actionRunIntegrity" class="tactical-btn-outline history-action-btn">
                     <i class="fas fa-shield-halved"></i> Run Integrity Check
                 </button>
-                <a href="{{ url_for('tracking_bp.workstation_monitor', device_id=device.id) }}" class="tactical-btn-outline history-action-btn">
-                    <i class="fas fa-desktop"></i> Open Monitor
-                </a>
                 <a href="{{ url_for('tracking_bp.tracked_device_live', device_id=device.id) }}" class="tactical-btn-outline history-action-btn">
                     <i class="fas fa-satellite-dish"></i> Open Live View
                 </a>
@@ -255,6 +281,26 @@
     </div>
 </div>
 </div>
+{% if linked_device_id %}<!-- Config Diff Modal -->
+<div class="modal fade" id="configDiffModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content tactical-modal">
+            <div class="modal-header">
+                <h5 class="modal-title" id="configDiffModalTitle">Config Diff</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="configDiffModalBody">
+                <div class="text-center py-4 history-meta">
+                    <i class="fas fa-spinner fa-spin me-2"></i>Loading diff...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="tactical-btn-outline history-inline-btn" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -269,8 +315,11 @@
         deviceId: {{ device.id }},
         defaultDays: {{ days or 7 }},
         archiveEndpoint: "{{ url_for('tracking_bp.api_delete_device') }}",
-        initialFocus: {{ (request.args.get('focus') or '')|tojson }}
+        initialFocus: {{ (request.args.get('focus') or '')|tojson }},
+        linkedDeviceId: {{ linked_device_id | tojson }},
+        isAdmin: {{ is_admin | tojson }}
     };
 </script>
 <script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v=20260227e"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_config_history.js') }}?v=20260313a"></script>
 {% endblock %}

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Department Profile - {{ department.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-enterprise {
+        --e-bg-panel: rgba(16, 19, 27, 0.92);
+        --e-border: rgba(148, 163, 184, 0.16);
+        --e-border-strong: rgba(148, 163, 184, 0.32);
+        --e-text-primary: #e6edf5;
+        --e-text-secondary: #c3cfdb;
+        --e-text-muted: #8a97a6;
+        --e-mono-font: 'IBM Plex Mono', monospace;
+        --e-sans-font: 'IBM Plex Sans', sans-serif;
+    }
+
+    .profile-card {
+        background: var(--e-bg-panel);
+        border: 1px solid var(--e-border);
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+
+    .profile-header {
+        border-bottom: 1px solid var(--e-border-strong);
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .profile-label {
+        font-family: var(--e-sans-font);
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--e-text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .profile-value {
+        font-family: var(--e-sans-font);
+        font-size: 0.9rem;
+        color: var(--e-text-primary);
+    }
+
+    .profile-value-mono {
+        font-family: var(--e-mono-font);
+        font-size: 0.85rem;
+        color: var(--e-text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 dashboard-enterprise">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1" style="font-size: 0.7rem;">
+                    <li class="breadcrumb-item"><a href="/departments"
+                            class="text-muted text-decoration-none">DEPARTMENTS</a></li>
+                    <li class="breadcrumb-item active text-primary" aria-current="page">PROFILE</li>
+                </ol>
+            </nav>
+            <h2 class="mb-0">Department: <span class="text-primary">{{ department.name }}</span></h2>
+        </div>
+        <div>
+            <button class="tactical-btn-outline active" onclick="history.back()">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="profile-card">
+                <div class="profile-header">
+                    <div class="profile-label">Unit Identification</div>
+                    <div class="profile-value-mono text-muted">ID: #{{ department.id }}</div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="profile-label">Unit Name</div>
+                    <div class="profile-value fw-bold" style="font-size: 1.1rem;">{{ department.name }}</div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="profile-label">Operational Site Mapping</div>
+                    <div class="profile-value">
+                        {% if department.site %}
+                        <a href="/sites/{{ department.site.id }}/dashboard" class="entity-link">
+                            <i class="fas fa-map-marker-alt me-1"></i> {{ department.site.site_name }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted">UNMAPPED_NODE</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="profile-label">Strategic Description</div>
+                    <div class="profile-value text-muted" style="font-size: 0.8rem; line-height: 1.5;">
+                        {{ department.description or 'No operational documentation provided for this unit.' }}
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-top border-secondary">
+                    <div class="profile-label">Audit Attribution</div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span style="font-size: 0.7rem; color: var(--e-text-muted);">Created By:</span>
+                        <span class="profile-value-mono" style="font-size: 0.7rem;">{{ department.created_by or
+                            'SYSTEM_INIT' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="row g-4">
+                <div class="col-12">
+                    <div class="profile-card">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0"
+                                style="font-family: var(--e-sans-font); font-weight: 700; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                Mapped Assets</h5>
+                            <span class="badge rounded-pill bg-dark border border-secondary">{{
+                                department.devices.count() }} Devices</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover entity-table" style="font-size: 0.72rem;">
+                                <thead>
+                                    <tr>
+                                        <th>IDENTIFIER</th>
+                                        <th>PRIMARY_IP</th>
+                                        <th>HEALTH_STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for device in department.devices %}
+                                    <tr>
+                                        <td>{{ device.device_name }}</td>
+                                        <td class="profile-value-mono">{{ device.device_ip }}</td>
+                                        <td>
+                                            {% if device.is_active %}<span class="text-success">🟢 ACTIVE</span>{% else
+                                            %}<span class="text-danger">🔴 OFFLINE</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No assets currently mapped
+                                            to this unit.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

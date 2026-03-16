@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header, ui_table_container, ui_badge, ui_empty_state %}
+
+{% block title %}Compliance Profiles{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: rgba(16, 19, 27, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 6px;
+        padding: 1rem;
+    }
+    .metric-card .stat-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .metric-card .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #e6edf5;
+        line-height: 1.1;
+    }
+    .threshold-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem 1rem;
+    }
+    .threshold-group-label {
+        grid-column: span 2;
+        font-size: 0.64rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding-top: 0.5rem;
+    }
+    .cp-field-label {
+        display: block;
+        margin-bottom: 0.3rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #94a3b8;
+    }
+    .cp-rule-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        border-radius: 3px;
+        padding: 0.14rem 0.42rem;
+        font-size: 0.59rem;
+        font-family: monospace;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border: 1px solid;
+        margin: 0.1rem 0.1rem 0 0;
+    }
+    .cp-rule-chip.warning {
+        color: #f2c06e;
+        border-color: rgba(255, 165, 0, 0.28);
+        background: rgba(255, 165, 0, 0.08);
+    }
+    .cp-rule-chip.critical {
+        color: #f5a0a8;
+        border-color: rgba(255, 59, 92, 0.28);
+        background: rgba(255, 59, 92, 0.08);
+    }
+    .cp-rule-chip.default {
+        color: #8a97a6;
+        border-color: rgba(148, 163, 184, 0.20);
+        background: rgba(148, 163, 184, 0.06);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-section">
+    <div class="page-container">
+
+        {% call ui_page_header('Compliance Profiles', 'Define per-device CPU, RAM, and disk alert thresholds.') %}
+            <button type="button"
+                    class="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 transition-colors"
+                    onclick="openProfileModal()">
+                <i class="fas fa-plus mr-2"></i> New Profile
+            </button>
+        {% endcall %}
+
+        <!-- Metric Strip -->
+        <div class="metric-strip ui-fade-up">
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-shield-halved text-blue-400"></i> Total Profiles</div>
+                <div class="stat-value" id="metaTotalProfiles">{{ profiles|length }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="stat-label"><i class="fas fa-server text-slate-400"></i> Devices Assigned</div>
+                <div class="stat-value" id="metaAssignedDevices">—</div>
+            </div>
+            <div class="metric-card" style="border-left:3px solid rgba(148,163,184,.3);">
+                <div class="stat-label"><i class="fas fa-sliders text-slate-400"></i> Global Defaults <span style="font-size:.58rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b;">(applied when no profile assigned)</span></div>
+                <div style="margin-top:.45rem;display:flex;flex-wrap:wrap;gap:.25rem;">
+                    <span class="cp-rule-chip warning" title="CPU Warning threshold">CPU W {{ global_defaults.cpu_warning|int }}%</span>
+                    <span class="cp-rule-chip critical" title="CPU Critical threshold">CPU C {{ global_defaults.cpu_critical|int }}%</span>
+                    <span class="cp-rule-chip warning" title="Memory Warning threshold">MEM W {{ global_defaults.mem_warning|int }}%</span>
+                    <span class="cp-rule-chip critical" title="Memory Critical threshold">MEM C {{ global_defaults.mem_critical|int }}%</span>
+                    <span class="cp-rule-chip warning" title="Disk Warning threshold">DISK W {{ global_defaults.disk_warning|int }}%</span>
+                    <span class="cp-rule-chip critical" title="Disk Critical threshold">DISK C {{ global_defaults.disk_critical|int }}%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="page-body">
+            {% call ui_table_container() %}
+                {% if profiles %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50" id="profilesTable">
+                        <thead class="bg-slate-900/50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Name</th>
+                                <th class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Description</th>
+                                <th class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Thresholds</th>
+                                <th class="px-3 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-28">Created</th>
+                                <th class="relative py-3 pl-3 pr-4 sm:pr-6 w-20"><span class="sr-only">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700/50 bg-slate-800/20" id="profilesTbody">
+                            {% for p in profiles %}
+                            <tr class="hover:bg-slate-700/30 transition-colors profile-row"
+                                data-id="{{ p.id }}"
+                                data-name="{{ p.name | e }}"
+                                data-description="{{ p.description or '' | e }}"
+                                data-rules='{{ p.rules_json | tojson }}'>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-sm font-medium text-slate-200">{{ p.name }}</td>
+                                <td class="px-3 py-3.5 text-sm text-slate-400 max-w-xs truncate">{{ p.description or '—' }}</td>
+                                <td class="px-3 py-3.5 text-sm">
+                                    {% set r = p.rules_json or {} %}
+                                    {% if r %}
+                                        {% if r.get('cpu_warning') is not none %}<span class="cp-rule-chip warning">CPU W {{ r.get('cpu_warning') }}%</span>{% endif %}
+                                        {% if r.get('cpu_critical') is not none %}<span class="cp-rule-chip critical">CPU C {{ r.get('cpu_critical') }}%</span>{% endif %}
+                                        {% if r.get('memory_warning') is not none %}<span class="cp-rule-chip warning">MEM W {{ r.get('memory_warning') }}%</span>{% endif %}
+                                        {% if r.get('memory_critical') is not none %}<span class="cp-rule-chip critical">MEM C {{ r.get('memory_critical') }}%</span>{% endif %}
+                                        {% if r.get('disk_warning') is not none %}<span class="cp-rule-chip warning">DISK W {{ r.get('disk_warning') }}%</span>{% endif %}
+                                        {% if r.get('disk_critical') is not none %}<span class="cp-rule-chip critical">DISK C {{ r.get('disk_critical') }}%</span>{% endif %}
+                                    {% else %}
+                                        <span class="cp-rule-chip default">Global defaults</span>
+                                    {% endif %}
+                                </td>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-xs text-slate-500">{{ p.created_at.strftime('%b %d, %Y') if p.created_at else '—' }}</td>
+                                <td class="whitespace-nowrap px-3 py-3.5 text-right text-sm font-medium">
+                                    <button class="text-blue-400 hover:text-blue-300 transition-colors mr-3"
+                                            onclick="editProfile(this)" title="Edit">
+                                        <i class="fas fa-pen-to-square"></i>
+                                    </button>
+                                    <button class="text-red-400 hover:text-red-300 transition-colors"
+                                            onclick="confirmDeleteProfile({{ p.id }}, '{{ p.name | e }}')" title="Delete">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                {{ ui_empty_state('No compliance profiles yet.', 'Create a profile to assign custom alert thresholds to devices.', 'fas fa-shield-halved') }}
+                {% endif %}
+            {% endcall %}
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Create / Edit Modal ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
+            <div class="modal-header" style="border-color:rgba(148,163,184,.14);">
+                <h5 class="modal-title text-sm font-semibold tracking-wide uppercase text-slate-200" id="profileModalTitle">New Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="profileId">
+                <div class="mb-4">
+                    <label class="cp-field-label" for="profileName">Profile Name *</label>
+                    <input type="text" id="profileName" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="e.g. High-Performance Servers">
+                    <div id="profileNameError" class="text-red-400 text-xs mt-1 d-none"></div>
+                </div>
+                <div class="mb-4">
+                    <label class="cp-field-label" for="profileDescription">Description</label>
+                    <input type="text" id="profileDescription" class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Optional description">
+                </div>
+
+                <!-- Threshold Grid -->
+                <div class="mb-2">
+                    <span class="cp-field-label">Alert Thresholds <span style="font-size:.62rem;color:#64748b;font-weight:400;text-transform:none;letter-spacing:0;">(leave blank to use global default)</span></span>
+                </div>
+                <!-- Global defaults reference (DB-backed via server_threshold_configs) -->
+                <div style="background:rgba(148,163,184,.05);border:1px solid rgba(148,163,184,.14);border-radius:4px;padding:.38rem .6rem;margin-bottom:.75rem;font-size:.66rem;color:#64748b;">
+                    <span style="font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8a97a6;margin-right:.4rem;">Global defaults:</span>
+                    <span class="cp-rule-chip warning">CPU W {{ global_defaults.cpu_warning|int }}%</span>
+                    <span class="cp-rule-chip critical">CPU C {{ global_defaults.cpu_critical|int }}%</span>
+                    <span class="cp-rule-chip warning">MEM W {{ global_defaults.mem_warning|int }}%</span>
+                    <span class="cp-rule-chip critical">MEM C {{ global_defaults.mem_critical|int }}%</span>
+                    <span class="cp-rule-chip warning">DISK W {{ global_defaults.disk_warning|int }}%</span>
+                    <span class="cp-rule-chip critical">DISK C {{ global_defaults.disk_critical|int }}%</span>
+                </div>
+                <div class="threshold-grid">
+                    <div class="threshold-group-label"><i class="fas fa-microchip me-1"></i> CPU</div>
+                    <div>
+                        <label class="cp-field-label" for="ruleCpuWarning">Warning %</label>
+                        <input type="number" id="ruleCpuWarning" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.cpu_warning|int }}%">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleCpuCritical">Critical %</label>
+                        <input type="number" id="ruleCpuCritical" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.cpu_critical|int }}%">
+                    </div>
+
+                    <div class="threshold-group-label"><i class="fas fa-memory me-1"></i> Memory</div>
+                    <div>
+                        <label class="cp-field-label" for="ruleMemWarning">Warning %</label>
+                        <input type="number" id="ruleMemWarning" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.mem_warning|int }}%">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleMemCritical">Critical %</label>
+                        <input type="number" id="ruleMemCritical" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.mem_critical|int }}%">
+                    </div>
+
+                    <div class="threshold-group-label"><i class="fas fa-hard-drive me-1"></i> Disk</div>
+                    <div>
+                        <label class="cp-field-label" for="ruleDiskWarning">Warning %</label>
+                        <input type="number" id="ruleDiskWarning" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.disk_warning|int }}%">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleDiskCritical">Critical %</label>
+                        <input type="number" id="ruleDiskCritical" min="0" max="100" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: {{ global_defaults.disk_critical|int }}%">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-color:rgba(148,163,184,.14);">
+                <button type="button" class="rounded-md px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white transition-colors ring-1 ring-inset ring-slate-600 hover:ring-slate-500" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="profileSaveBtn" class="rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 transition-colors" onclick="saveProfile()">Save Profile</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Delete Confirm Modal ────────────────────────────────────────────────── -->
+<div class="modal fade" id="deleteProfileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
+            <div class="modal-header" style="border-color:rgba(148,163,184,.14);">
+                <h5 class="modal-title text-sm font-semibold tracking-wide uppercase text-red-400">Delete Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-sm text-slate-300">Delete profile <strong id="deleteProfileName" class="text-white"></strong>?</p>
+                <p class="text-xs text-slate-500 mt-2">Any devices assigned to this profile will revert to global alert thresholds.</p>
+            </div>
+            <div class="modal-footer" style="border-color:rgba(148,163,184,.14);">
+                <button type="button" class="rounded-md px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white transition-colors ring-1 ring-inset ring-slate-600" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="deleteProfileConfirmBtn"
+                        class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 transition-colors"
+                        onclick="executeDeleteProfile()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    var profileModal = null;
+    var deleteModal = null;
+    var pendingDeleteId = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        profileModal = new bootstrap.Modal(document.getElementById('profileModal'));
+        deleteModal  = new bootstrap.Modal(document.getElementById('deleteProfileModal'));
+        loadAssignedCount();
+    });
+
+    // ── Assigned device count (best-effort) ──────────────────────────────────
+
+    function loadAssignedCount() {
+        fetch('/api/compliance-profiles/assigned-count', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data && data.count != null) {
+                    document.getElementById('metaAssignedDevices').textContent = data.count;
+                }
+            })
+            .catch(function () {});
+    }
+
+    // ── Open modal ───────────────────────────────────────────────────────────
+
+    window.openProfileModal = function () {
+        clearForm();
+        document.getElementById('profileModalTitle').textContent = 'New Profile';
+        profileModal.show();
+    };
+
+    window.editProfile = function (btn) {
+        var row = btn.closest('tr');
+        if (!row) { return; }
+        clearForm();
+        document.getElementById('profileModalTitle').textContent = 'Edit Profile';
+        document.getElementById('profileId').value = row.dataset.id;
+        document.getElementById('profileName').value = row.dataset.name || '';
+        document.getElementById('profileDescription').value = row.dataset.description || '';
+
+        var rules = {};
+        try { rules = JSON.parse(row.dataset.rules || '{}'); } catch (e) {}
+        setField('ruleCpuWarning',   rules.cpu_warning);
+        setField('ruleCpuCritical',  rules.cpu_critical);
+        setField('ruleMemWarning',   rules.memory_warning);
+        setField('ruleMemCritical',  rules.memory_critical);
+        setField('ruleDiskWarning',  rules.disk_warning);
+        setField('ruleDiskCritical', rules.disk_critical);
+
+        profileModal.show();
+    };
+
+    function setField(id, value) {
+        var el = document.getElementById(id);
+        if (el) { el.value = (value != null) ? value : ''; }
+    }
+
+    // ── Save (create or update) ──────────────────────────────────────────────
+
+    window.saveProfile = function () {
+        var nameEl = document.getElementById('profileName');
+        var errEl  = document.getElementById('profileNameError');
+        var name   = (nameEl.value || '').trim();
+        errEl.classList.add('d-none');
+        errEl.textContent = '';
+
+        if (!name) {
+            errEl.textContent = 'Profile name is required.';
+            errEl.classList.remove('d-none');
+            nameEl.focus();
+            return;
+        }
+
+        var profileId = (document.getElementById('profileId').value || '').trim();
+        var url    = profileId ? '/api/compliance-profiles/' + profileId : '/api/compliance-profiles';
+        var method = profileId ? 'PUT' : 'POST';
+
+        var rules = {};
+        function addRule(key, fieldId) {
+            var v = document.getElementById(fieldId).value.trim();
+            if (v !== '') { rules[key] = parseFloat(v); }
+        }
+        addRule('cpu_warning',    'ruleCpuWarning');
+        addRule('cpu_critical',   'ruleCpuCritical');
+        addRule('memory_warning', 'ruleMemWarning');
+        addRule('memory_critical','ruleMemCritical');
+        addRule('disk_warning',   'ruleDiskWarning');
+        addRule('disk_critical',  'ruleDiskCritical');
+
+        var btn = document.getElementById('profileSaveBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+
+        fetch(url, {
+            method: method,
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                description: (document.getElementById('profileDescription').value || '').trim(),
+                rules_json: rules,
+            }),
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            if (!res.ok || !res.data.success) {
+                errEl.textContent = res.data.error || 'Failed to save profile.';
+                errEl.classList.remove('d-none');
+                return;
+            }
+            profileModal.hide();
+            window.location.reload();
+        })
+        .catch(function () {
+            errEl.textContent = 'Network error. Please try again.';
+            errEl.classList.remove('d-none');
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Save Profile';
+        });
+    };
+
+    // ── Delete ───────────────────────────────────────────────────────────────
+
+    window.confirmDeleteProfile = function (id, name) {
+        pendingDeleteId = id;
+        document.getElementById('deleteProfileName').textContent = name;
+        deleteModal.show();
+    };
+
+    window.executeDeleteProfile = function () {
+        if (!pendingDeleteId) { return; }
+        var btn = document.getElementById('deleteProfileConfirmBtn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+
+        fetch('/api/compliance-profiles/' + pendingDeleteId, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                deleteModal.hide();
+                window.location.reload();
+            }
+        })
+        .catch(function () {})
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+        });
+    };
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function clearForm() {
+        ['profileId', 'profileName', 'profileDescription',
+         'ruleCpuWarning', 'ruleCpuCritical',
+         'ruleMemWarning', 'ruleMemCritical',
+         'ruleDiskWarning', 'ruleDiskCritical'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) { el.value = ''; }
+        });
+        var errEl = document.getElementById('profileNameError');
+        if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+    }
+
+}());
+</script>
+{% endblock %}

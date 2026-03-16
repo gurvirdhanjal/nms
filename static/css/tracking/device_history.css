@@ -462,3 +462,112 @@
         justify-content: flex-start;
     }
 }
+
+/* ── Config History Tab ────────────────────────────────────────── */
+
+#device-history-page .config-source-badge-manual {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 212, 170, 0.28);
+    background: rgba(0, 212, 170, 0.08);
+    color: var(--mo-teal, #00d4aa);
+    font-family: monospace;
+    font-size: 0.59rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.44rem;
+}
+
+#device-history-page .config-source-badge-scheduled {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px solid rgba(148, 163, 184, 0.20);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--e-text-muted, #8a97a6);
+    font-family: monospace;
+    font-size: 0.59rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.44rem;
+}
+
+#device-history-page .config-changed-badge-yes {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 165, 0, 0.30);
+    background: rgba(255, 165, 0, 0.10);
+    color: #f2c06e;
+    font-family: monospace;
+    font-size: 0.59rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.44rem;
+}
+
+#device-history-page .config-changed-badge-no {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px solid var(--s-healthy-bd, rgba(32, 201, 151, 0.24));
+    background: var(--s-healthy-bg, rgba(32, 201, 151, 0.10));
+    color: #7acfb8;
+    font-family: monospace;
+    font-size: 0.59rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.44rem;
+}
+
+#device-history-page .config-hash-mono {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--e-text-muted, #8a97a6);
+    letter-spacing: 0.04em;
+}
+
+/* ── Diff pre block ────────────────────────────────────────────── */
+
+.config-diff-pre {
+    background: rgba(10, 12, 18, 0.95);
+    border: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.75rem 0;
+    white-space: pre;
+    color: var(--e-text-secondary, #c3cfdb);
+}
+
+.config-diff-pre .diff-line {
+    display: block;
+    padding: 0 1rem;
+    min-width: max-content;
+}
+
+.config-diff-pre .diff-line-added {
+    color: #7ecfb3;
+    background: rgba(0, 212, 170, 0.08);
+}
+
+.config-diff-pre .diff-line-removed {
+    color: #f5a0a8;
+    background: rgba(255, 59, 92, 0.08);
+}
+
+.config-diff-pre .diff-line-header {
+    color: var(--e-text-muted, #8a97a6);
+    font-style: italic;
+    font-size: 0.72rem;
+}

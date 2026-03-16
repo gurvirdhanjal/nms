@@ -3711,6 +3711,12 @@
                         <label>Description</label>
                         <input type="text" name="description" id="dash-device-desc" placeholder="Optional notes">
                     </div>
+                    <div style="grid-column:span 2;">
+                        <label>Compliance Profile</label>
+                        <select name="compliance_profile_id" id="dash-compliance-profile">
+                            <option value="">— None (global defaults) —</option>
+                        </select>
+                    </div>
                 </div>
                 <!-- Credentials -->
                 <div class="dash-cred-divider"><i class="fas fa-key" style="margin-right:0.3rem;"></i> Credentials</div>
@@ -3759,7 +3765,28 @@
             submit.textContent = isBusy ? 'Saving...' : defaultSubmitLabel;
         }
 
+        // Lazy-load compliance profiles into the dropdown (once per page load)
+        let profilesLoaded = false;
+        function loadComplianceProfiles() {
+            if (profilesLoaded) { return; }
+            const sel = document.getElementById('dash-compliance-profile');
+            if (!sel) { return; }
+            fetch('/api/compliance-profiles', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (profiles) {
+                    profiles.forEach(function (p) {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = p.name;
+                        sel.appendChild(opt);
+                    });
+                    profilesLoaded = true;
+                })
+                .catch(function () {});
+        }
+
         function show() {
+            loadComplianceProfiles();
             modal.style.display = 'flex';
             requestAnimationFrame(() => nameInput?.focus());
         }
