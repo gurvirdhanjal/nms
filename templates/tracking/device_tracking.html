@@ -122,7 +122,10 @@
                                 <i data-lucide="search" class="tracking-icon-sm"></i>
                             </span>
                             <input type="text" class="form-control ops-search-input shadow-none" id="deviceSearchInput"
-                                placeholder="Search devices...">
+                                placeholder="Search by name, IP, MAC, employee...">
+                            <button type="button" class="ops-search-clear" id="deviceSearchClear" aria-label="Clear search">
+                                <i data-lucide="x" style="width:14px;height:14px"></i>
+                            </button>
                         </div>
                     </div>
                     <div class="col-lg-5 col-md-4 tracking-filter-tabs-col">
@@ -140,6 +143,7 @@
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-3 d-flex justify-content-end align-items-center gap-3 tracking-filter-status-col">
+                        <span class="tracking-results-count" id="trackingResultsCount"></span>
                         <select class="form-select ops-select shadow-none" id="deviceStatusFilter">
                             <option value="all">All Status</option>
                             <option value="online">Online</option>
@@ -499,7 +503,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=19">
 {% endblock %}
 
 {% block extra_js %}

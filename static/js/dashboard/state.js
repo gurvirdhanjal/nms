@@ -27,6 +27,12 @@ const listeners = [];
 const STORAGE_KEY = 'tactical_dashboard_state';
 const CACHE_EXPIRY_MS = 1000 * 60 * 60; // 1 hour
 
+let _saveCacheTimer = null;
+function scheduleSave() {
+    if (_saveCacheTimer) clearTimeout(_saveCacheTimer);
+    _saveCacheTimer = window.setTimeout(saveToCache, 2000);
+}
+
 export function getState() {
     return { ...dashboardState };
 }
@@ -36,7 +42,7 @@ export function updateState(key, data) {
         dashboardState[key] = data;
         dashboardState.lastUpdated = new Date();
         notifyListeners();
-        saveToCache();
+        scheduleSave();
     } else {
         console.warn(`Attempted to update invalid state key: ${key}`);
     }
@@ -56,7 +62,7 @@ export function updateStateBatch(updates) {
     if (!changed) return;
     dashboardState.lastUpdated = new Date();
     notifyListeners();
-    saveToCache();
+    scheduleSave();
 }
 
 function saveToCache() {
@@ -228,5 +234,5 @@ export function mergeRealtimeUpdate(eventType, payload) {
 
     // dashboardState.lastUpdated = new Date(); // Don't update timestamp on realtime events (causes clock-like ticking)
     notifyListeners();
-    saveToCache();
+    scheduleSave();
 }

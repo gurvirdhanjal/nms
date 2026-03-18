@@ -253,6 +253,53 @@ class ReportingService:
             uptime_score = round((total_online_scans / total_scans) * 100.0, 2) if total_scans else 0.0
             avg_latency = round(raw_ping_stats.avg_latency, 2) if raw_ping_stats and raw_ping_stats.avg_latency is not None else 0.0
 
+        # --- Prev-period uptime for trend badge ---
+        # prev_end = start_date - 1 day to avoid double-counting boundary
+        period_delta = end_date - start_date
+        prev_start = start_date - period_delta
+        prev_end = start_date - timedelta(days=1)
+
+        prev_stats = (
+            db.session.query(func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"))
+            .filter(
+                DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                DailyDeviceStats.date >= prev_start.date(),
+                DailyDeviceStats.date <= prev_end.date(),
+            )
+            .first()
+        )
+        prev_uptime_score = round(prev_stats.avg_uptime, 2) if prev_stats and prev_stats.avg_uptime is not None else None
+
+        if prev_uptime_score is None:
+            prev_raw_rows = self._raw_scan_uptime_rows(start_date=prev_start, end_date=prev_end)
+            prev_total = sum(int(r.total_scans or 0) for r in prev_raw_rows)
+            prev_online = sum(int(r.online_scans or 0) for r in prev_raw_rows)
+            prev_uptime_score = round((prev_online / prev_total) * 100.0, 2) if prev_total else None
+
+        # --- Data health fields ---
+        oldest_scan = (
+            db.session.query(func.min(DeviceScanHistory.scan_timestamp))
+            .filter(DeviceScanHistory.device_ip.in_(db.session.query(inventory_ips.c.device_ip)))
+            .scalar()
+        )
+        if oldest_scan:
+            delta = end_date.replace(tzinfo=None) - oldest_scan.replace(tzinfo=None)
+            scan_history_days = max(0, int(delta.total_seconds() / 86400))
+        else:
+            scan_history_days = 0
+
+        daily_stats_coverage = (
+            db.session.query(func.count(func.distinct(DailyDeviceStats.date)))
+            .filter(
+                DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                DailyDeviceStats.date >= start_date.date(),
+                DailyDeviceStats.date <= end_date.date(),
+            )
+            .scalar()
+        ) or 0
+
+        trend_window_days = max(1, int((end_date - start_date).total_seconds() / 86400))
+
         latest_scans_subq = (
             db.session.query(
                 DeviceScanHistory.device_ip,
@@ -296,7 +343,7 @@ class ReportingService:
             )
             .first()
         )
-        mtta_seconds = round(sla_stats.avg_ack_seconds) if sla_stats and sla_stats.avg_ack_seconds else 0
+        mtta_seconds = round(sla_stats.avg_ack_seconds) if sla_stats and sla_stats.avg_ack_seconds else None
 
         problematic_devices = (
             db.session.query(
@@ -332,10 +379,16 @@ class ReportingService:
             "uptime_score": uptime_score,
             "avg_latency": avg_latency,
             "availability_basis": availability_basis,
+            "prev_uptime_score": prev_uptime_score,
+            "data_health": {
+                "scan_history_days": scan_history_days,
+                "daily_stats_coverage": daily_stats_coverage,
+                "trend_window_days": trend_window_days,
+            },
             "health_distribution": health_counts,
             "sla_metrics": {
                 "mtta_seconds": mtta_seconds,
-                "mtta_human": str(timedelta(seconds=mtta_seconds)),
+                "mtta_human": str(timedelta(seconds=mtta_seconds)) if mtta_seconds is not None else None,
             },
             "top_problematic": [
                 {
@@ -523,11 +576,18 @@ class ReportingService:
             time_series, summary = self._health_from_raw(device_ids, start_date, end_date)
             granularity = "raw"
         elif span <= timedelta(days=30):
+            # Fallback order for <=30d is intentional:
+            # 1. hourly rollups (preferred — pre-aggregated, fast)
+            # 2. raw scan history (fallback when rollups missing)
+            # 3. daily rollups (final fallback post-startup-backfill)
             time_series, summary = self._health_from_hourly(device_ids, start_date, end_date)
             granularity = "hourly"
             if self._is_health_payload_empty(time_series, summary):
                 time_series, summary = self._health_from_raw(device_ids, start_date, end_date)
                 granularity = "raw"
+            if self._is_health_payload_empty(time_series, summary):
+                time_series, summary = self._health_from_daily(device_ids, start_date, end_date)
+                granularity = "daily"
         else:
             time_series, summary = self._health_from_daily(device_ids, start_date, end_date)
             granularity = "daily"
@@ -537,11 +597,23 @@ class ReportingService:
             if self._is_health_payload_empty(time_series, summary):
                 time_series, summary = self._health_from_raw(device_ids, start_date, end_date)
                 granularity = "raw"
+
+        total_samples = sum(len(v) for v in time_series.values()) if time_series else 0
+        # Window-aware sparse threshold: < 20% of expected hourly sample count = sparse
+        expected_samples = max(1, int((end_date - start_date).total_seconds() / 3600))
+        data_note = None
+        if total_samples == 0:
+            data_note = "no_data"
+        elif total_samples < expected_samples * 0.2:
+            data_note = "sparse"
+
         return {
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
             "granularity": granularity,
             "time_series": time_series,
             "summary": summary,
+            "total_samples": total_samples,
+            "data_note": data_note,
         }
 
     def _health_from_raw(self, device_ids, start_dt, end_dt):
@@ -1135,7 +1207,7 @@ class ReportingService:
             )
             .first()
         )
-        mttr_seconds = round(mttr.avg_resolve_seconds) if mttr and mttr.avg_resolve_seconds else 0
+        mttr_seconds = round(mttr.avg_resolve_seconds) if mttr and mttr.avg_resolve_seconds else None
 
         return {
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
@@ -1144,7 +1216,7 @@ class ReportingService:
             "uptime_summary": uptime_summary,
             "mttr": {
                 "seconds": mttr_seconds,
-                "human": str(timedelta(seconds=mttr_seconds)),
+                "human": str(timedelta(seconds=mttr_seconds)) if mttr_seconds is not None else None,
                 "total_incidents": int(mttr.total_incidents or 0) if mttr else 0,
             },
         }
@@ -1208,8 +1280,8 @@ class ReportingService:
             .filter(DashboardEvent.resolved.is_(True), DashboardEvent.resolved_at.isnot(None))
             .first()
         )
-        tta_seconds = round(tta.avg_tta) if tta and tta.avg_tta else 0
-        ttr_seconds = round(ttr.avg_ttr) if ttr and ttr.avg_ttr else 0
+        tta_seconds = round(tta.avg_tta) if tta and tta.avg_tta else None
+        ttr_seconds = round(ttr.avg_ttr) if ttr and ttr.avg_ttr else None
 
         top_devices = [
             {
@@ -1248,8 +1320,8 @@ class ReportingService:
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
             "alerts": alert_list,
             "daily_trend": daily_trend,
-            "tta": {"seconds": tta_seconds, "human": str(timedelta(seconds=tta_seconds))},
-            "ttr": {"seconds": ttr_seconds, "human": str(timedelta(seconds=ttr_seconds))},
+            "tta": {"seconds": tta_seconds, "human": str(timedelta(seconds=tta_seconds)) if tta_seconds is not None else None},
+            "ttr": {"seconds": ttr_seconds, "human": str(timedelta(seconds=ttr_seconds)) if ttr_seconds is not None else None},
             "top_alerted_devices": top_devices,
             "severity_breakdown": severity_breakdown,
         }

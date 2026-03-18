@@ -1,0 +1,123 @@
+/* ============================================================
+   Reports Module CSS — Enterprise NMS Design
+   Loaded by templates/reports.html
+   ============================================================ */
+
+/* --- Trend Badges --- */
+.trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    vertical-align: middle;
+    cursor: default;
+    white-space: nowrap;
+}
+.trend-up   { background: var(--s-healthy-bg); color: var(--s-healthy); border: 1px solid var(--s-healthy-bd); }
+.trend-down { background: var(--s-critical-bg); color: var(--s-critical); border: 1px solid var(--s-critical-bd); }
+.trend-flat { background: rgba(147, 160, 174, 0.15); color: #93a0ae; border: 1px solid rgba(147, 160, 174, 0.3); }
+
+/* --- Data Source Badges --- */
+.data-source-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.02em;
+    background: rgba(147, 160, 174, 0.2);
+    color: #93a0ae;
+    border: 1px solid rgba(147, 160, 174, 0.3);
+    cursor: default;
+}
+.data-source-badge.rollup { background: var(--s-healthy-bg); color: var(--s-healthy); border-color: var(--s-healthy-bd); }
+.data-source-badge.raw    { background: var(--s-warning-bg); color: var(--s-warning); border-color: var(--s-warning-bd); }
+.data-source-badge.live   { background: var(--s-healthy-bg); color: var(--s-healthy); border-color: var(--s-healthy-bd); }
+
+/* --- Threshold-colored Table Cells --- */
+.cell-ok   { color: var(--s-healthy) !important; font-weight: 700; }
+.cell-warn { color: var(--s-warning) !important; font-weight: 700; }
+.cell-crit { color: var(--s-critical) !important; font-weight: 700; }
+
+/* --- Latency Histogram --- */
+.latency-hist-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 64px;
+    padding: 0 2px;
+}
+.latency-hist-bar {
+    flex: 1;
+    border-radius: 3px 3px 0 0;
+    min-height: 4px;
+    transition: opacity 0.2s;
+    cursor: default;
+}
+.latency-hist-bar:hover { opacity: 0.75; }
+.latency-hist-label {
+    font-size: 0.62rem;
+    color: #93a0ae;
+    text-align: center;
+}
+
+/* --- Unresolved Alert Age Panel --- */
+.unresolved-age-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.78rem;
+    gap: 8px;
+}
+.unresolved-age-row:last-child { border-bottom: none; }
+.age-pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+.age-fresh  { background: var(--s-healthy-bg); color: var(--s-healthy); }
+.age-medium { background: var(--s-warning-bg); color: var(--s-warning); }
+.age-old    { background: var(--s-critical-bg); color: var(--s-critical); }
+
+/* --- Context Notice (SNMP paused / no data) --- */
+.context-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 170, 0, 0.25);
+    background: rgba(255, 170, 0, 0.06);
+    color: #93a0ae;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.context-notice .context-icon { color: var(--s-warning); flex-shrink: 0; margin-top: 1px; }
+
+/* --- SLA / Fleet Health Tier Bar --- */
+.sla-tier-bar-wrap {
+    display: flex;
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.05);
+}
+.sla-tier-segment {
+    transition: width 0.4s ease;
+    min-width: 0;
+}
+
+/* --- Data Health Banner --- */
+#execDataHealthCard { font-size: 0.78rem; }
+#execDataHealthCard.border-success { border-left: 3px solid var(--s-healthy) !important; }
+#execDataHealthCard.border-warning { border-left: 3px solid var(--s-warning) !important; }

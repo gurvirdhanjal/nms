@@ -20,6 +20,7 @@ import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
 import { enforceSnapshotMeta } from './rbacGuard.js';
 import { renderScopeSummary } from './scopeSummary.js';
 import { renderAvailabilityHeatmap, renderAvailabilityRows } from './modals/availabilityDetail.js';
+import { initQuickAddDevice } from './modals/quickAddDevice.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -80,7 +81,8 @@ function initDashboard() {
         initConnectionIndicator();
         initRealtimeTransport();
 
-        // 2. Initialize Discovery UI
+        // 2. Initialize modals and Discovery UI
+        initQuickAddDevice();
         initDiscovery();
         renderScopeSummary(document.getElementById('dashboardScopeSummary'), window.__RBAC_CONTEXT__ || {});
 

@@ -159,14 +159,38 @@
         });
     }
 
+    function checkTabOverflow() {
+        const tabsCol = document.querySelector('.tracking-filter-tabs-col');
+        const tabsWrap = document.querySelector('.ops-filter-tabs');
+        if (tabsCol && tabsWrap) {
+            tabsCol.classList.toggle('has-overflow', tabsWrap.scrollWidth > tabsWrap.clientWidth);
+        }
+    }
+
     function bindFilterActions() {
         const searchInput = document.getElementById('deviceSearchInput');
+        const searchClear = document.getElementById('deviceSearchClear');
         const statusFilter = document.getElementById('deviceStatusFilter');
         const chipButtons = document.querySelectorAll('[data-chip-filter]');
 
         if (searchInput) {
-            searchInput.addEventListener('input', applyDeviceFilters);
+            searchInput.addEventListener('input', () => {
+                if (searchClear) searchClear.classList.toggle('visible', searchInput.value.length > 0);
+                applyDeviceFilters();
+            });
         }
+
+        if (searchClear && searchInput) {
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                searchClear.classList.remove('visible');
+                searchInput.focus();
+                applyDeviceFilters();
+            });
+        }
+
+        checkTabOverflow();
+        window.addEventListener('resize', checkTabOverflow);
 
         if (statusFilter) {
             statusFilter.addEventListener('change', () => {
@@ -992,6 +1016,12 @@
         const visibleCountElement = document.getElementById('deviceVisibleCount');
         if (visibleCountElement) {
             visibleCountElement.textContent = String(rows.length ? visibleCount : 0);
+        }
+
+        const resultsCount = document.getElementById('trackingResultsCount');
+        if (resultsCount) {
+            const total = rows.length;
+            resultsCount.textContent = visibleCount < total ? `${visibleCount}/${total}` : `${total}`;
         }
 
         const filterEmptyState = document.getElementById('deviceFilterEmptyState');

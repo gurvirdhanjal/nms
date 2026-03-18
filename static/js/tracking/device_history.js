@@ -487,27 +487,52 @@
 
     function renderPolicyRows(rows) {
         const body = document.getElementById('policyBody');
-        if (!body) {
-            return;
-        }
-        body.innerHTML = '';
+        if (!body) return;
         if (!Array.isArray(rows) || rows.length === 0) {
-            body.innerHTML = '<tr><td colspan=\"5\" class=\"text-center text-muted py-3\">No policy events yet.</td></tr>';
+            body.innerHTML = '<div class="history-policy-empty">No policy events yet.</div>';
             return;
         }
 
-        rows.slice(0, 100).forEach((row) => {
+        body.innerHTML = rows.slice(0, 100).map((row) => {
+            const domain = String(row.domain || row.site || row.site_visited || 'Unknown').trim() || 'Unknown';
+            const action = String(row.action || 'Blocked').trim();
+            const source = String(row.source || 'policy-monitor').trim();
+            const severity = normalizePolicySeverity(row.severity || row.confidence);
+            const status = normalizePolicyStatus(row.status);
             const timeText = formatTime(row.time || row.timestamp || row.observed_at_utc, null);
-            const tr = document.createElement('tr');
-            tr.innerHTML = [
-                `<td>${escapeHtml(timeText)}</td>`,
-                `<td>${escapeHtml(row.user || 'unknown')}</td>`,
-                `<td>${escapeHtml(row.domain || row.site || row.site_visited || 'unknown')}</td>`,
-                `<td>${escapeHtml(String(row.severity || 'Medium'))}</td>`,
-                `<td>${escapeHtml(row.action || 'Blocked')}</td>`,
-            ].join('');
-            body.appendChild(tr);
-        });
+            const user = String(row.user || '').trim();
+            return `
+                <article class="history-policy-card">
+                    <div class="history-policy-header">
+                        <strong class="history-policy-domain">${escapeHtml(domain)}</strong>
+                        <span class="history-policy-time">${escapeHtml(timeText)}</span>
+                    </div>
+                    ${user ? `<div class="history-policy-user"><i class="fas fa-user-circle"></i> ${escapeHtml(user)}</div>` : ''}
+                    <div class="history-policy-tags">
+                        <span class="history-policy-badge history-badge-sev-${severity.toLowerCase()}">${escapeHtml(severity)}</span>
+                        <span class="history-policy-badge history-badge-status-${status}">${escapeHtml(titleCase(status))}</span>
+                        <span class="history-policy-badge history-badge-source">${escapeHtml(source.replace(/[_\s]+/g, '-').toUpperCase())}</span>
+                    </div>
+                    <div class="history-policy-blocked">
+                        <i class="fas fa-ban"></i>
+                        <span>${escapeHtml(action.toLowerCase() === 'blocked' ? 'Blocked by policy' : `${action} by policy`)}</span>
+                    </div>
+                </article>`;
+        }).join('');
+    }
+
+    function normalizePolicySeverity(raw) {
+        const v = String(raw || '').toLowerCase();
+        if (v === 'high' || v === 'critical') return 'HIGH';
+        if (v === 'medium' || v === 'moderate') return 'MEDIUM';
+        return 'LOW';
+    }
+
+    function normalizePolicyStatus(raw) {
+        const v = String(raw || '').toLowerCase();
+        if (v === 'acknowledged') return 'acknowledged';
+        if (v === 'resolved') return 'resolved';
+        return 'active';
     }
 
     function buildTimeCell(row, utcKey, epochKey, fallbackKey, clusterMap) {

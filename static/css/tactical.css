@@ -144,6 +144,68 @@
 
     --font-sans: 'IBM Plex Sans', sans-serif;
     --font-mono: 'IBM Plex Mono', 'Geist Mono', 'DM Mono', monospace;
+
+    /* ============================================================
+       ENTERPRISE DESIGN SYSTEM v5.0 — Global Tokens
+       Source of truth: docs/FRONTEND.md
+       ============================================================ */
+
+    /* ── Status Colors (theme-independent) ── */
+    --s-critical:    #dc3545;
+    --s-warning:     #ffc107;
+    --s-degraded:    #fd7e14;
+    --s-healthy:     #20c997;
+    --s-offline:     #6c757d;
+    --s-unknown:     #adb5bd;
+
+    /* ── Status Backgrounds (muted, for badges/rows) ── */
+    --s-critical-bg: rgba(220, 53, 69, 0.12);
+    --s-critical-bd: rgba(220, 53, 69, 0.30);
+    --s-warning-bg:  rgba(255, 193, 7, 0.10);
+    --s-warning-bd:  rgba(255, 193, 7, 0.28);
+    --s-healthy-bg:  rgba(32, 201, 151, 0.10);
+    --s-healthy-bd:  rgba(32, 201, 151, 0.24);
+    --s-offline-bg:  rgba(108, 117, 125, 0.12);
+    --s-offline-bd:  rgba(108, 117, 125, 0.28);
+
+    /* ── Surfaces (dark mode defaults, light overrides in base.html) ── */
+    --e-bg-base:       #070a10;
+    --e-bg-panel:      rgba(16, 19, 27, 0.92);
+    --e-bg-panel-soft: rgba(16, 19, 27, 0.72);
+    --e-bg-row-alt:    rgba(255, 255, 255, 0.018);
+    --e-bg-row-hover:  rgba(148, 163, 184, 0.10);
+
+    /* ── Borders ── */
+    --e-border:        rgba(148, 163, 184, 0.16);
+    --e-border-strong: rgba(148, 163, 184, 0.32);
+    --e-border-panel:  rgba(148, 163, 184, 0.20);
+
+    /* ── Typography Colors ── */
+    --e-text-primary:   #e6edf5;
+    --e-text-secondary: #c3cfdb;
+    --e-text-muted:     #8a97a6;
+    --e-text-dim:       #5e6b78;
+
+    /* ── Spacing Scale ── */
+    --e-space-1: 0.4rem;
+    --e-space-2: 0.62rem;
+    --e-space-3: 0.82rem;
+    --e-space-4: 1.15rem;
+    --e-space-5: 1.55rem;
+
+    /* ── Typography Scale ── */
+    --t-kpi-value:    1.2rem;
+    --t-kpi-label:    0.63rem;
+    --t-table-header: 0.62rem;
+    --t-body:         0.82rem;
+    --t-mono:         'IBM Plex Mono', monospace;
+    --t-sans:         'IBM Plex Sans', sans-serif;
+
+    /* ── Animation Durations ── */
+    --a-micro:      130ms;
+    --a-transition: 180ms;
+    --a-panel:      300ms;
+    --a-max:        400ms;
 }
 
 /* ============================================================
@@ -451,7 +513,7 @@ body.tactical-theme {
 .tactical-btn-primary:hover {
     background: var(--tactical-accent);
     box-shadow: var(--tactical-glow-md) var(--tactical-accent-glow);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     color: var(--tactical-bg-darkest);
 }
 
@@ -833,19 +895,6 @@ body.tactical-theme {
     height: 6px;
     border-radius: 50%;
     background-color: currentColor;
-    animation: pulse-mo 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-mo {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: .5;
-    }
 }
 
 .tactical-badge-success {
@@ -1032,17 +1081,6 @@ body.tactical-theme {
     right: 0;
     bottom: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    animation: tactical-shimmer 2s infinite;
-}
-
-@keyframes tactical-shimmer {
-    0% {
-        transform: translateX(-100%);
-    }
-
-    100% {
-        transform: translateX(100%);
-    }
 }
 
 .tactical-progress-bar.success {
@@ -1174,20 +1212,6 @@ body.tactical-theme {
     }
 }
 
-@keyframes tactical-blink {
-
-    0%,
-    50%,
-    100% {
-        opacity: 1;
-    }
-
-    25%,
-    75% {
-        opacity: 0.5;
-    }
-}
-
 .tactical-scan-effect::after {
     content: '';
     position: absolute;
@@ -1219,20 +1243,6 @@ body.tactical-theme {
 /* ============================================================
    GLOBAL STATUS PULSE (Refined)
    ============================================================ */
-@keyframes heartbeat {
-
-    0%,
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-
-    50% {
-        transform: scale(1.3);
-        opacity: 0.7;
-    }
-}
-
 .status-indicator {
     display: inline-flex;
     align-items: center;
@@ -1242,22 +1252,18 @@ body.tactical-theme {
     border-radius: 50%;
 }
 
-.status-online {
-    background-color: #28a745;
-    box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
-    animation: heartbeat 2s infinite ease-in-out;
+.status-indicator.status-online {
+    background-color: var(--s-healthy);
 }
 
-.status-online i,
-.status-offline i,
-.status-checking i {
+.status-indicator.status-online i,
+.status-indicator.status-offline i,
+.status-indicator.status-checking i {
     display: none;
 }
 
-.status-offline {
-    background-color: #dc3545;
-    box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
-    animation: heartbeat 3s infinite ease-in-out;
+.status-indicator.status-offline {
+    background-color: var(--s-critical);
 }
 
 .metric-status {
@@ -1273,36 +1279,33 @@ body.tactical-theme {
 }
 
 .metric-status.status-healthy {
-    color: var(--tactical-success);
-    border-color: rgba(0, 255, 136, 0.4);
-    background: rgba(0, 255, 136, 0.12);
+    color: var(--s-healthy);
+    border-color: var(--s-healthy-bd);
+    background: var(--s-healthy-bg);
 }
 
 .metric-status.status-warning {
-    color: var(--tactical-warning);
-    border-color: rgba(255, 170, 0, 0.5);
-    background: rgba(255, 170, 0, 0.12);
+    color: var(--s-warning);
+    border-color: var(--s-warning-bd);
+    background: var(--s-warning-bg);
 }
 
 .metric-status.status-critical {
-    color: var(--tactical-danger);
-    border-color: rgba(255, 59, 92, 0.5);
-    background: rgba(255, 59, 92, 0.12);
+    color: var(--s-critical);
+    border-color: var(--s-critical-bd);
+    background: var(--s-critical-bg);
 }
 
-.status-maintenance {
-    background-color: #ffc107;
-    box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
-    animation: heartbeat 2.5s infinite ease-in-out;
+.status-indicator.status-maintenance {
+    background-color: var(--s-warning);
 }
 
-.status-unknown {
-    background-color: #6c757d;
-    box-shadow: 0 0 10px rgba(108, 117, 125, 0.5);
+.status-indicator.status-unknown {
+    background-color: var(--s-offline);
 }
 
-.status-checking {
-    background-color: #6c757d;
+.status-indicator.status-checking {
+    background-color: var(--s-offline);
     width: 10px;
     height: 10px;
 }
@@ -2163,10 +2166,10 @@ html {
 
 /* Specific infinite offenders — zero them out explicitly */
 .dashboard-enterprise .tactical-status::before,
-.dashboard-enterprise .status-online,
-.dashboard-enterprise .status-offline,
-.dashboard-enterprise .status-maintenance,
-.dashboard-enterprise .status-checking,
+.dashboard-enterprise .status-indicator.status-online,
+.dashboard-enterprise .status-indicator.status-offline,
+.dashboard-enterprise .status-indicator.status-maintenance,
+.dashboard-enterprise .status-indicator.status-checking,
 .dashboard-enterprise .tactical-progress-bar::after,
 .dashboard-enterprise .tactical-scan-effect::after {
     animation: none !important;
@@ -2192,9 +2195,9 @@ html {
 .dashboard-enterprise .tactical-select:focus,
 .dashboard-enterprise .tactical-clock,
 .dashboard-enterprise .tactical-clock:hover,
-.dashboard-enterprise .status-online,
-.dashboard-enterprise .status-offline,
-.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .status-indicator.status-online,
+.dashboard-enterprise .status-indicator.status-offline,
+.dashboard-enterprise .status-indicator.status-maintenance,
 .dashboard-enterprise .alerts-container,
 .dashboard-enterprise .breakdown-panel,
 .dashboard-enterprise .breakdown-subcard {
@@ -2474,11 +2477,11 @@ html {
    Replace animated status indicators with static dots.
    Size and color only — no glow, no shadow, no animation.
    ──────────────────────────────────────────────────────────── */
-.dashboard-enterprise .status-online,
-.dashboard-enterprise .status-offline,
-.dashboard-enterprise .status-maintenance,
-.dashboard-enterprise .status-unknown,
-.dashboard-enterprise .status-checking,
+.dashboard-enterprise .status-indicator.status-online,
+.dashboard-enterprise .status-indicator.status-offline,
+.dashboard-enterprise .status-indicator.status-maintenance,
+.dashboard-enterprise .status-indicator.status-unknown,
+.dashboard-enterprise .status-indicator.status-checking,
 .dashboard-enterprise .status-indicator {
     animation: none !important;
     box-shadow: none !important;
@@ -2487,21 +2490,21 @@ html {
     border-radius: 50% !important;
 }
 
-.dashboard-enterprise .status-online {
+.dashboard-enterprise .status-indicator.status-online {
     background: var(--s-healthy) !important;
 }
 
-.dashboard-enterprise .status-offline {
+.dashboard-enterprise .status-indicator.status-offline {
     background: var(--s-offline) !important;
     opacity: 1 !important;
 }
 
-.dashboard-enterprise .status-maintenance {
+.dashboard-enterprise .status-indicator.status-maintenance {
     background: var(--s-warning) !important;
 }
 
-.dashboard-enterprise .status-unknown,
-.dashboard-enterprise .status-checking {
+.dashboard-enterprise .status-indicator.status-unknown,
+.dashboard-enterprise .status-indicator.status-checking {
     background: var(--s-unknown) !important;
 }
 
@@ -2778,3 +2781,663 @@ html {
 }
 
 /* ── END OF ENTERPRISE OVERRIDE BLOCK ──────────────────────── */
+/* -- Dashboard: Network Intelligence / Availability Modal ------- */
+#device-breakdown {
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-10px);
+    margin-top: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition: max-height 360ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 260ms ease,
+        transform 320ms ease,
+        margin-top 260ms ease;
+}
+
+#device-breakdown.is-active {
+    max-height: 2800px;
+    opacity: 1;
+    transform: translateY(0);
+    margin-top: 0.65rem;
+    pointer-events: auto;
+}
+
+#device-breakdown::before {
+    content: '';
+    display: block;
+    height: 1px;
+    margin-bottom: 0.72rem;
+    background: linear-gradient(90deg,
+            rgba(148, 163, 184, 0.05),
+            rgba(148, 163, 184, 0.5),
+            rgba(148, 163, 184, 0.05));
+    opacity: 0;
+    transform: scaleX(0.96);
+    transition: opacity 220ms ease, transform 260ms ease;
+}
+
+#device-breakdown.is-active::before {
+    opacity: 1;
+    transform: scaleX(1);
+}
+
+#device-breakdown .breakdown-panel {
+    background: var(--e-bg-panel);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
+}
+
+/* v5.0: focus pulse removed � state changes are instant */
+.device-kpi-card,
+.server-kpi-card {
+    cursor: pointer;
+}
+
+.device-kpi-card.breakdown-active {
+    border-color: rgba(173, 186, 201, 0.62) !important;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+    transform: translateY(-1px);
+}
+
+.device-kpi-card.breakdown-active .kpi-view-icon {
+    color: rgba(214, 223, 232, 0.9);
+}
+
+.breakdown-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.36rem;
+    font-size: 0.72rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.breakdown-collapse-btn i {
+    font-size: 0.68rem;
+}
+
+#availability-modal .modal-dialog {
+    max-width: min(1320px, calc(100vw - 1rem));
+}
+
+#availability-modal .modal-content {
+    background:
+        radial-gradient(circle at top right, rgba(23, 59, 107, 0.22), transparent 38%),
+        linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(11, 15, 24, 0.98));
+    border: 1px solid rgba(96, 118, 154, 0.34);
+    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
+}
+
+#availability-modal .modal-header {
+    padding: 0.82rem 1rem 0.36rem;
+    border-bottom: 1px solid rgba(96, 118, 154, 0.18) !important;
+}
+
+#availability-modal .modal-body {
+    padding: 0.55rem 1rem 1rem;
+}
+
+#availability-modal .breakdown-subcard {
+    overflow: hidden;
+}
+
+#availability-modal .breakdown-subcard .card-header {
+    padding: 0.58rem 0.82rem;
+    background: linear-gradient(90deg, rgba(0, 224, 196, 0.05), transparent 62%);
+    border-bottom: 1px solid rgba(96, 118, 154, 0.18);
+}
+
+#availability-modal .breakdown-subcard .card-body {
+    padding: 0.78rem 0.82rem;
+}
+
+#availability-modal .breakdown-subcard .card-body.p-0 {
+    padding: 0 !important;
+}
+
+#availability-modal .availability-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.72rem;
+}
+
+#availability-modal .availability-range-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.22rem;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 118, 154, 0.22);
+    background: rgba(12, 18, 28, 0.82);
+}
+
+#availability-modal .availability-range-btn {
+    border: 0;
+    background: transparent;
+    color: #8ea0b6;
+    padding: 0.34rem 0.68rem;
+    border-radius: 999px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+#availability-modal .availability-range-btn:hover {
+    color: #eef5ff;
+    background: rgba(96, 118, 154, 0.12);
+}
+
+#availability-modal .availability-range-btn.is-active {
+    color: #eef5ff;
+    background: linear-gradient(180deg, rgba(0, 224, 196, 0.24), rgba(27, 108, 132, 0.18));
+    box-shadow: inset 0 0 0 1px rgba(84, 236, 214, 0.16);
+}
+
+#availability-modal .availability-range-meta {
+    font-size: 0.68rem;
+    color: #90a1b7;
+    letter-spacing: 0.03em;
+}
+
+#availability-modal .availability-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.48rem;
+    margin-bottom: 0.72rem;
+}
+
+#availability-modal .availability-summary-kpi,
+#availability-modal .availability-summary-empty {
+    min-height: 64px;
+    padding: 0.56rem 0.66rem;
+    border-radius: 8px;
+    border: 1px solid rgba(96, 118, 154, 0.22);
+    background: linear-gradient(180deg, rgba(17, 24, 36, 0.9), rgba(11, 16, 26, 0.84));
+}
+
+#availability-modal .availability-summary-empty {
+    display: flex;
+    align-items: center;
+    color: var(--e-text-muted);
+    font-size: 0.76rem;
+}
+
+#availability-modal .availability-summary-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6f8198;
+}
+
+#availability-modal .availability-summary-value {
+    margin-top: 0.28rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.02rem;
+    line-height: 1;
+    color: #eef5ff;
+}
+
+#availability-modal .availability-summary-meta {
+    margin-top: 0.28rem;
+    font-size: 0.68rem;
+    color: #90a1b7;
+    line-height: 1.35;
+}
+
+#availability-modal .availability-heatmap-shell {
+    padding: 0.62rem;
+    border-radius: 10px;
+    border: 1px solid rgba(96, 118, 154, 0.2);
+    background: linear-gradient(180deg, rgba(9, 14, 22, 0.92), rgba(10, 14, 22, 0.68));
+    overflow-x: auto;
+}
+
+#availability-modal .availability-heatmap-axis,
+#availability-modal .availability-heatmap {
+    display: grid;
+    gap: 4px;
+}
+
+#availability-modal .availability-heatmap-axis {
+    margin-bottom: 4px;
+}
+
+#availability-modal .availability-axis-label {
+    min-height: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.56rem;
+    line-height: 1;
+    text-align: center;
+    color: #607286;
+    letter-spacing: 0.05em;
+}
+
+#availability-modal .availability-axis-label.is-major {
+    color: #a8b7ca;
+}
+
+#availability-modal .availability-axis-label.is-minor {
+    opacity: 0.48;
+}
+
+#availability-modal .availability-cell {
+    position: relative;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(118, 136, 166, 0.18);
+    background: rgba(18, 24, 32, 0.75);
+    overflow: hidden;
+    box-shadow: none;
+    transition: border-color 120ms ease, filter 120ms ease;
+}
+
+#availability-modal .availability-cell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 48%, transparent 100%);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+#availability-modal .availability-cell:hover {
+    transform: none;
+    filter: brightness(1.06);
+    border-color: rgba(200, 214, 235, 0.42);
+}
+
+#availability-modal .availability-cell.avail-excellent,
+#availability-modal .legend-swatch.avail-excellent {
+    background: linear-gradient(180deg, rgba(24, 212, 176, 0.86), rgba(12, 108, 100, 0.76));
+    border-color: rgba(91, 241, 209, 0.38);
+}
+
+#availability-modal .availability-cell.avail-good,
+#availability-modal .legend-swatch.avail-good {
+    background: linear-gradient(180deg, rgba(74, 140, 255, 0.84), rgba(40, 74, 168, 0.76));
+    border-color: rgba(133, 178, 255, 0.36);
+}
+
+#availability-modal .availability-cell.avail-warning,
+#availability-modal .legend-swatch.avail-warning {
+    background: linear-gradient(180deg, rgba(242, 181, 76, 0.84), rgba(154, 94, 27, 0.76));
+    border-color: rgba(255, 213, 132, 0.38);
+}
+
+#availability-modal .availability-cell.avail-bad,
+#availability-modal .legend-swatch.avail-bad {
+    background: linear-gradient(180deg, rgba(237, 90, 111, 0.86), rgba(136, 39, 57, 0.8));
+    border-color: rgba(255, 154, 168, 0.4);
+}
+
+#availability-modal .availability-cell.avail-unknown,
+#availability-modal .legend-swatch.avail-unknown {
+    background: repeating-linear-gradient(45deg,
+            rgba(108, 122, 144, 0.26),
+            rgba(108, 122, 144, 0.26) 4px,
+            rgba(35, 43, 55, 0.78) 4px,
+            rgba(35, 43, 55, 0.78) 8px);
+    border-color: rgba(126, 141, 164, 0.28);
+}
+
+#availability-modal .availability-cell.avail-unknown::after,
+#availability-modal .legend-swatch.avail-unknown::after {
+    display: none;
+}
+
+#availability-modal .availability-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.44rem;
+}
+
+#availability-modal .availability-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.3rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 118, 154, 0.18);
+    background: rgba(14, 20, 31, 0.72);
+    font-size: 0.67rem;
+    line-height: 1;
+    color: #9cafc4;
+}
+
+#availability-modal .availability-legend .legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    position: relative;
+    overflow: hidden;
+}
+
+#availability-modal .availability-table-wrap {
+    max-height: 272px;
+    overflow: auto;
+}
+
+#availability-modal .tactical-table th {
+    padding: 0.56rem 0.72rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    color: #7fd7d5;
+}
+
+#availability-modal .tactical-table td {
+    padding: 0.7rem 0.72rem;
+    font-size: 0.82rem;
+    vertical-align: middle;
+}
+
+#availability-modal .availability-device-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #eef5ff;
+}
+
+#availability-modal .availability-device-meta {
+    margin-top: 0.18rem;
+    font-size: 0.63rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6f8198;
+}
+
+#availability-modal .availability-inline-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 0.28rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(96, 118, 154, 0.2);
+    background: rgba(18, 25, 39, 0.84);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.73rem;
+    line-height: 1;
+    color: #d7e5f7;
+}
+
+#availability-modal .availability-inline-pill-ip {
+    justify-content: flex-start;
+    min-width: 0;
+    color: #63e0d2;
+}
+
+#availability-modal .availability-inline-pill-count {
+    color: #cdd8e5;
+}
+
+#availability-modal .availability-inline-pill.tone-excellent {
+    color: #aaf5df;
+    border-color: rgba(24, 212, 176, 0.26);
+    background: rgba(17, 101, 89, 0.3);
+}
+
+#availability-modal .availability-inline-pill.tone-good {
+    color: #bfd8ff;
+    border-color: rgba(74, 140, 255, 0.26);
+    background: rgba(34, 70, 146, 0.26);
+}
+
+#availability-modal .availability-inline-pill.tone-warning {
+    color: #ffe0a6;
+    border-color: rgba(242, 181, 76, 0.28);
+    background: rgba(116, 70, 23, 0.3);
+}
+
+#availability-modal .availability-inline-pill.tone-bad {
+    color: #ffc0cb;
+    border-color: rgba(237, 90, 111, 0.3);
+    background: rgba(110, 32, 46, 0.34);
+}
+
+@media (max-width: 1199px) {
+    #availability-modal .availability-range-meta {
+        width: 100%;
+    }
+}
+
+@media (max-width: 767px) {
+    #availability-modal .modal-header {
+        padding-inline: 0.82rem;
+    }
+
+    #availability-modal .modal-body {
+        padding-inline: 0.82rem;
+    }
+
+    #availability-modal .availability-summary-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #availability-modal .availability-controls {
+        align-items: flex-start;
+    }
+}
+
+/* Dense layout + enhanced tables for expanded breakdown row */
+#device-breakdown .expanded-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+#device-breakdown .breakdown-panel {
+    padding: 0.56rem 0.62rem 0.64rem;
+    /* v5.0: no backdrop-filter blur */
+
+}
+
+#device-breakdown .breakdown-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 0.56rem;
+}
+
+#device-breakdown .breakdown-left,
+#device-breakdown .breakdown-right {
+    gap: 0.56rem;
+}
+
+#device-breakdown .breakdown-subcard .card-header {
+    min-height: 30px;
+    padding: 0.36rem 0.56rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.07em;
+}
+
+#device-breakdown .breakdown-subcard .card-body {
+    padding: 0.44rem 0.56rem;
+}
+
+#device-breakdown .breakdown-subcard .card-body.p-0 {
+    padding: 0 !important;
+}
+
+#device-breakdown .breakdown-section-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.1rem 0.06rem 0.04rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    margin-bottom: 0.12rem;
+}
+
+#device-breakdown .breakdown-section-heading h6 {
+    margin: 0;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #d7e1ec;
+}
+
+#device-breakdown .breakdown-section-heading span {
+    font-size: 0.58rem;
+    color: #98a7b6;
+    white-space: nowrap;
+}
+
+#device-breakdown .enterprise-section-sub {
+    font-size: 0.64rem;
+}
+
+#device-breakdown .tabs {
+    gap: 0.22rem;
+}
+
+#device-breakdown .tabs button {
+    padding: 0.14rem 0.42rem;
+    font-size: 0.56rem;
+    letter-spacing: 0.09em;
+}
+
+#device-breakdown .table-responsive {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 8px;
+    background: rgba(11, 15, 21, 0.5);
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+#device-breakdown .table-responsive::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+#device-breakdown .table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+    border-radius: 3px;
+}
+
+#device-breakdown .breakdown-left .table-responsive {
+    max-height: 322px;
+}
+
+#device-breakdown .breakdown-right .table-responsive {
+    max-height: 220px;
+}
+
+#device-breakdown .service-impact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 0.56rem;
+}
+
+#device-breakdown .service-impact-row .table-responsive {
+    max-height: 220px;
+}
+
+#device-breakdown .tactical-table {
+    font-size: 0.74rem;
+}
+
+#device-breakdown .tactical-table thead th {
+    padding: 0.34rem 0.52rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.075em;
+    font-weight: 700;
+    color: #b9c8d8;
+    background: rgba(14, 19, 27, 0.98);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+#device-breakdown .tactical-table tbody tr {
+    background: rgba(255, 255, 255, 0.012);
+    transition: background-color 120ms ease;
+}
+
+#device-breakdown .tactical-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+#device-breakdown .tactical-table tbody tr:hover {
+    background: rgba(148, 163, 184, 0.11);
+}
+
+#device-breakdown .tactical-table tbody td {
+    padding: 0.36rem 0.52rem;
+    line-height: 1.22;
+    color: #c6d1dc;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+#device-breakdown .tactical-table tbody td:first-child {
+    font-weight: 600;
+    color: #e2eaf2;
+}
+
+#device-breakdown .tactical-table td,
+#device-breakdown .tactical-table th {
+    font-variant-numeric: tabular-nums;
+}
+
+#device-breakdown #table-inventory th:first-child,
+#device-breakdown #table-inventory td:first-child {
+    width: 34px !important;
+    text-align: center;
+    padding-left: 0.38rem;
+    padding-right: 0.38rem;
+}
+
+#device-breakdown .tactical-input,
+#device-breakdown .tactical-select {
+    min-height: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+    padding: 0.18rem 0.42rem;
+    border-radius: 6px;
+}
+
+@media (max-width: 992px) {
+    #device-breakdown .breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #device-breakdown .service-impact-row {
+        grid-template-columns: 1fr;
+    }
+
+    #device-breakdown .breakdown-section-heading {
+        flex-wrap: wrap;
+        gap: 0.22rem;
+    }
+
+    #device-breakdown .breakdown-section-heading span {
+        white-space: normal;
+    }
+
+    #device-breakdown .breakdown-left .table-responsive,
+    #device-breakdown .breakdown-right .table-responsive {
+        max-height: none;
+    }
+
+    #device-breakdown .service-impact-row .table-responsive {
+        max-height: none;
+    }
+}
+
+/* ── Dashboard utility classes ─────────────────────────────── */
+.dash-grid-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 0.7rem;
+}
+
+.dash-col-span-2 {
+    grid-column: span 2;
+}
+

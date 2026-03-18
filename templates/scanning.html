@@ -330,20 +330,19 @@
 
                     <div class="row">
                         <div class="col-md-12">
-                            <!-- Bulk Actions Area (Hidden by default) -->
-                            <div id="bulkActions" style="display: none;"
-                                class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
-                                <div>
-                                    <span class="text-white me-2"><i data-lucide="check-square"></i> <span
-                                            id="selectedCount">0</span> devices selected</span>
+                            <!-- Bulk Actions Bar -->
+                            <div id="bulkActions" class="scan-bulk-bar" style="display: none;">
+                                <div class="bulk-selected-label">
+                                    <i data-lucide="check-square" style="width:14px;height:14px;"></i>
+                                    <span class="bulk-count" id="selectedCount">0</span>
+                                    <span>devices selected</span>
                                 </div>
-                                <div>
-                                    <button class="btn btn-outline-secondary btn-sm me-1"
-                                        onclick="clearBulkSelection()">
-                                        <i data-lucide="x-circle"></i> Clear
+                                <div class="bulk-actions-group">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="clearBulkSelection()" style="font-size:0.73rem; padding:0.28rem 0.65rem;">
+                                        <i data-lucide="x" style="width:12px;height:12px;"></i> Clear
                                     </button>
-                                    <button class="btn btn-success btn-sm" id="bulkAddBtn">
-                                        <i data-lucide="plus-circle"></i> Add Selected to Inventory
+                                    <button class="btn btn-sm" id="bulkAddBtn" style="font-size:0.73rem; padding:0.28rem 0.75rem; background:rgba(0,201,141,0.15); border:1px solid rgba(0,201,141,0.35); color:#00c98d;">
+                                        <i data-lucide="plus-circle" style="width:12px;height:12px;"></i> Add to Inventory
                                     </button>
                                 </div>
                             </div>

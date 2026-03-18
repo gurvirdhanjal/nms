@@ -43,10 +43,10 @@
 
         function levelIcon(level) {
             const normalized = String(level || 'info').toLowerCase();
-            if (normalized === 'success') return 'check';
-            if (normalized === 'warning') return '!';
-            if (normalized === 'danger' || normalized === 'error') return 'x';
-            return 'i';
+            if (normalized === 'success') return '✓';
+            if (normalized === 'warning') return '⚠';
+            if (normalized === 'danger' || normalized === 'error') return '✕';
+            return 'ℹ';
         }
 
         function closeToast(toast) {

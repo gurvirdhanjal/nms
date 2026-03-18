@@ -721,6 +721,10 @@ def build_enterprise_uptime_report(
     worst_five = sorted(rows_with_data, key=lambda r: r["uptime_pct"])[:5]
     best_three = sorted(rows_with_data, key=lambda r: r["uptime_pct"], reverse=True)[:3]
 
+    logger.info("[EnterpriseReport] Built report: fleet=%s, servers=%d, tracked=%d, tier=%s",
+                fleet, len(server_rows), len(tracked_rows),
+                sla_tier(fleet_avg) if fleet_avg is not None else "N/A")
+
     return {
         "period": {
             "start": start_dt.isoformat(),

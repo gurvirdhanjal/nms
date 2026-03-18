@@ -4,7 +4,7 @@
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_history.css') }}?v=20260227e">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_history.css') }}?v=20260317a">
 {% endblock %}
 
 {% block content %}
@@ -215,13 +215,8 @@
                         <button id="integrityLoadMore" class="tactical-btn-outline history-inline-btn">Load More</button>
                     </div>
                     <div class="tab-pane fade" id="policyTab" role="tabpanel">
-                        <div class="table-responsive">
-                            <table class="table table-sm tactical-table history-table">
-                                <thead>
-                                    <tr><th>Time</th><th>User</th><th>Domain</th><th>Severity</th><th>Action</th></tr>
-                                </thead>
-                                <tbody id="policyBody"><tr><td colspan="5" class="text-center text-muted py-3">No policy events yet.</td></tr></tbody>
-                            </table>
+                        <div id="policyBody" class="history-policy-list">
+                            <div class="history-policy-empty">No policy events yet.</div>
                         </div>
                     </div>
                     {% if linked_device_id %}<div class="tab-pane fade" id="configTab" role="tabpanel">
@@ -320,6 +315,6 @@
         isAdmin: {{ is_admin | tojson }}
     };
 </script>
-<script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v=20260227e"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v=20260317a"></script>
 <script src="{{ url_for('static', filename='js/tracking/device_config_history.js') }}?v=20260313a"></script>
 {% endblock %}

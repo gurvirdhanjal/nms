@@ -155,7 +155,37 @@ class MonitoringScheduler:
         # Run an immediate reconciliation pass in background for tracking status freshness.
         t_recon = threading.Thread(target=self.run_tracking_reconciliation, daemon=True)
         t_recon.start()
-        
+
+        # One-shot startup backfill: populate daily_device_stats from existing scan history
+        # if the table has no recent data. Uses a recency guard to avoid stampede on
+        # multi-worker setups (Gunicorn workers each spawn this thread independently).
+        _app_ref = self.app  # capture before thread start
+
+        def _backfill_needed():
+            from datetime import date, timedelta as _td
+            from models.dashboard import DailyDeviceStats
+            cutoff = date.today() - _td(days=1)
+            return db.session.query(DailyDeviceStats).filter(
+                DailyDeviceStats.date >= cutoff
+            ).limit(1).count() == 0
+
+        def run_startup_backfill():
+            import time as _time
+            _time.sleep(5)  # wait for DB pool to settle
+            try:
+                with _app_ref.app_context():
+                    if not _backfill_needed():
+                        logger.info("Startup backfill skipped — recent daily_device_stats exist")
+                        return
+                    from services.maintenance_service import MaintenanceService
+                    result = MaintenanceService().backfill_daily_stats(days=90)
+                    logger.info("Startup backfill complete: %s", result)
+            except Exception:
+                logger.exception("Startup backfill failed (non-fatal)")
+
+        t_backfill = threading.Thread(target=run_startup_backfill, daemon=True, name="startup-backfill")
+        t_backfill.start()
+
         print("Scheduled monitoring started (initial scan triggered)...")
     
     def stop_scheduled_monitoring(self):

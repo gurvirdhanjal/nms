@@ -869,6 +869,7 @@
         cursor: default;
     }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -945,6 +946,10 @@
 
         <!-- Tab 1: Executive Fleet Health -->
         <div class="tab-pane fade show active" id="executive" role="tabpanel">
+            <!-- Data Health Banner -->
+            <div class="card mb-3" id="execDataHealthCard" style="display:none">
+                <div class="card-body py-2 px-3" id="execDataHealthContent"></div>
+            </div>
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-globe"></i> Fleet Overview</h5>
@@ -972,6 +977,18 @@
                         <div class="spinner-border text-primary" role="status"></div>
                         <p class="mt-2 text-muted">Generating Executive Summary...</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- SLA / Fleet Health Tier Distribution Bar -->
+            <div class="card mb-4" id="execSlaTierCard" style="display:none">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i> Fleet Health Breakdown</h5>
+                    <small class="text-muted" id="execSlaTierLabel"></small>
+                </div>
+                <div class="card-body py-2">
+                    <div class="sla-tier-bar-wrap" id="execSlaTierBar"></div>
+                    <div id="execSlaTierLegend" class="d-flex flex-wrap gap-3 mt-2"></div>
                 </div>
             </div>
 
@@ -1217,8 +1234,9 @@
                             <p class="mt-2 text-muted">Loading Device Health...</p>
                         </div>
                     </div>
+                    <div id="dhDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem"></div>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="card h-100">
                                 <div class="card-header">
                                     <h6><i class="fas fa-microchip"></i> CPU Usage</h6>
@@ -1228,13 +1246,23 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="card h-100">
                                 <div class="card-header">
                                     <h6><i class="fas fa-memory"></i> Memory Usage</h6>
                                 </div>
                                 <div class="card-body chart-pane-250">
                                     <canvas id="dhMemChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6><i class="fas fa-hdd"></i> Disk Usage</h6>
+                                </div>
+                                <div class="card-body chart-pane-250">
+                                    <canvas id="dhDiskChart"></canvas>
                                 </div>
                             </div>
                         </div>
@@ -1380,6 +1408,28 @@
                         <div class="text-center py-4">
                             <div class="spinner-border text-primary" role="status"></div>
                             <p class="mt-2 text-muted">Loading Network Data...</p>
+                        </div>
+                    </div>
+                    <!-- Latency histogram + interface context -->
+                    <div class="row mb-3" id="netHistRow" style="display:none">
+                        <div class="col-md-5">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6><i class="fas fa-chart-bar me-1"></i> Latency Distribution</h6>
+                                </div>
+                                <div class="card-body py-2">
+                                    <div class="latency-hist-wrap" id="latencyHistBars"></div>
+                                    <div class="d-flex justify-content-between px-1 mt-1" id="latencyHistLabels"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6><i class="fas fa-info-circle me-1"></i> Interface Context</h6>
+                                </div>
+                                <div class="card-body" id="netIfaceContext"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
@@ -1553,6 +1603,21 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Unresolved Alert Age Panel -->
+                    <div class="row mt-3" id="alertAgeRow" style="display:none">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-clock me-1"></i> Unresolved Alerts
+                                        <span class="badge bg-danger ms-2" id="unresolvedCount">0</span>
+                                    </h6>
+                                    <small class="text-muted">Oldest unresolved, by age</small>
+                                </div>
+                                <div class="card-body p-0" id="alertAgeList"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <!-- Alerts Report Preview Panel -->
@@ -1595,6 +1660,8 @@
                     </div>
                 </div>
             </div>
+
+            <div id="wsDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem"></div>
 
             <!-- KPI row — 6 cards -->
             <div class="row mb-3" id="wsKpiRow">
@@ -1745,6 +1812,8 @@
                     </div>
                 </div>
             </div>
+
+            <div id="srvDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem"></div>
 
             <!-- KPI row — 6 cards -->
             <div class="row mb-3">
@@ -1993,6 +2062,268 @@
             const ttlSeconds = Number(payload?.meta?.cache_ttl_seconds || 30);
             return Math.max(ttlSeconds, 5) * 1000;
         }
+
+        // ============================================================
+        //  UTILITY: Data source badge
+        // ============================================================
+        function _dataSourceBadge(basis) {
+            const map = {
+                daily_device_stats: ['rollup', 'Daily Rollup'],
+                device_scan_history: ['raw', 'Raw Scans'],
+                raw:    ['raw', 'Raw Scans'],
+                hourly: ['rollup', 'Hourly Rollup'],
+                daily:  ['rollup', 'Daily Rollup'],
+                live:   ['live', 'Live'],
+            };
+            const [cls, label] = map[basis] || ['', basis || '—'];
+            return `<span class="data-source-badge ${cls}">${label}</span>`;
+        }
+
+        // ============================================================
+        //  UTILITY: Trend badge (with tooltip + noise suppression)
+        // ============================================================
+        function _trendBadge(current, previous, suffix, higherIsBetter = true, windowDays = 30) {
+            if (current == null || previous == null || previous === 0) return '';
+            const deltaPct = ((current - previous) / previous) * 100;
+            if (Math.abs(deltaPct) < 0.1) return ''; // suppress floating-point noise
+            const isUp = deltaPct > 0;
+            const isGood = higherIsBetter ? isUp : !isUp;
+            const cls = isGood ? 'trend-up' : 'trend-down';
+            const arrow = isUp ? '▲' : '▼';
+            const title = `${current}${suffix} now vs ${previous}${suffix} prior ${windowDays}d`;
+            return `<span class="trend-badge ${cls}" data-bs-toggle="tooltip" title="${title}">${arrow} ${Math.abs(deltaPct).toFixed(1)}%</span>`;
+        }
+
+        // ============================================================
+        //  UTILITY: Apply threshold color classes to table column
+        // ============================================================
+        function _applyTableThresholds(tbody, colIndex, thresholds) {
+            if (!tbody) return;
+            Array.from(tbody.rows).forEach(row => {
+                if (!row.cells || row.cells.length <= colIndex) return;
+                const cell = row.cells[colIndex];
+                if (!cell) return;
+                const val = parseFloat(cell.textContent);
+                if (isNaN(val)) return;
+                cell.classList.remove('cell-ok', 'cell-warn', 'cell-crit');
+                if (val >= thresholds.crit) cell.classList.add('cell-crit');
+                else if (val >= thresholds.warn) cell.classList.add('cell-warn');
+                else cell.classList.add('cell-ok');
+            });
+        }
+
+        // ============================================================
+        //  UTILITY: Chart.js inline threshold line plugin factory
+        // ============================================================
+        function _thresholdLinePluginFactory(warnY, critY) {
+            return {
+                id: 'thresholdLines_' + warnY + '_' + critY,
+                afterDraw(chart) {
+                    if (!chart.scales || !chart.scales.y) return;
+                    const ctx = chart.ctx;
+                    const yAxis = chart.scales.y;
+                    const left = chart.chartArea.left;
+                    const right = chart.chartArea.right;
+                    [[warnY, '#ffaa00'], [critY, '#ff3b5c']].forEach(([y, color]) => {
+                        const px = yAxis.getPixelForValue(y);
+                        if (px < chart.chartArea.top || px > chart.chartArea.bottom) return;
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([4, 4]);
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 1;
+                        ctx.globalAlpha = 0.6;
+                        ctx.moveTo(left, px);
+                        ctx.lineTo(right, px);
+                        ctx.stroke();
+                        ctx.restore();
+                    });
+                }
+            };
+        }
+        const _cpuMemThreshPlugin = _thresholdLinePluginFactory(75, 90);
+        const _diskThreshPlugin   = _thresholdLinePluginFactory(80, 90);
+
+        // ============================================================
+        //  UTILITY: Fleet health bar (Executive tab)
+        // ============================================================
+        function _renderFleetHealthBar(dist) {
+            const barEl    = document.getElementById('execSlaTierBar');
+            const legendEl = document.getElementById('execSlaTierLegend');
+            const cardEl   = document.getElementById('execSlaTierCard');
+            if (!dist || !barEl || !legendEl || !cardEl) return;
+
+            const tiers = [
+                { key: 'Healthy',  color: '#00d4aa', label: 'Healthy' },
+                { key: 'Warning',  color: '#ffaa00', label: 'Warning' },
+                { key: 'Critical', color: '#ff3b5c', label: 'Critical' },
+            ];
+            const total = tiers.reduce((s, t) => s + (dist[t.key] || 0), 0);
+            if (total === 0) { cardEl.style.display = 'none'; return; }
+
+            barEl.innerHTML = tiers.map(t => {
+                const pct = ((dist[t.key] || 0) / total * 100).toFixed(1);
+                return `<div class="sla-tier-segment" style="width:${pct}%;background:${t.color}" title="${t.label}: ${dist[t.key] || 0} (${pct}%)"></div>`;
+            }).join('');
+
+            legendEl.innerHTML = tiers.map(t =>
+                `<span class="d-flex align-items-center gap-1" style="font-size:0.78rem">
+                    <span style="width:10px;height:10px;border-radius:2px;background:${t.color};display:inline-block"></span>
+                    <span>${t.label}: <b>${dist[t.key] || 0}</b></span>
+                </span>`
+            ).join('');
+
+            cardEl.style.display = '';
+        }
+
+        // ============================================================
+        //  UTILITY: Data health banner (Executive tab)
+        // ============================================================
+        function _renderDataHealthBanner(data) {
+            const card    = document.getElementById('execDataHealthCard');
+            const content = document.getElementById('execDataHealthContent');
+            if (!card || !content) return;
+
+            const dh = data.data_health || {};
+            const scanDays   = dh.scan_history_days || 0;
+            const statsDays  = dh.daily_stats_coverage || 0;
+            const windowDays = dh.trend_window_days || 30;
+            const trendAvail = data.prev_uptime_score != null;
+            const needDays   = windowDays * 2;
+
+            let trendStatus, cardBorder;
+            if (trendAvail) {
+                trendStatus = `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Active</span>`;
+                cardBorder  = 'border-success';
+            } else if (scanDays >= needDays) {
+                trendStatus = `<span class="text-warning"><i class="fas fa-exclamation-circle me-1"></i>Pending rollup
+                    <a href="#" class="ms-2" style="font-size:0.72rem" onclick="triggerRollup(event)">Run now →</a></span>`;
+                cardBorder  = 'border-warning';
+            } else {
+                trendStatus = `<span class="text-muted"><i class="fas fa-clock me-1"></i>Need ${needDays}d (have ${scanDays}d)</span>`;
+                cardBorder  = '';
+            }
+
+            content.innerHTML = `
+                <div class="d-flex gap-4 align-items-center flex-wrap">
+                    <span><i class="fas fa-database me-1 text-muted"></i><b>Scan history:</b> ${scanDays}d</span>
+                    <span><i class="fas fa-calendar-check me-1 text-muted"></i><b>Daily rollups:</b> ${statsDays}/${windowDays} days</span>
+                    <span><i class="fas fa-chart-line me-1 text-muted"></i><b>Trend badge:</b> ${trendStatus}</span>
+                </div>`;
+            card.className = `card mb-3${cardBorder ? ' border ' + cardBorder : ''}`;
+            card.style.display = '';
+        }
+
+        let _rollupInFlight = false;  // prevents duplicate POSTs on rapid clicks
+        function triggerRollup(e, reloadFn) {
+            e.preventDefault();
+            if (_rollupInFlight) return;
+            _rollupInFlight = true;
+            const reload = typeof reloadFn === 'function' ? reloadFn : loadExecutiveReport;
+            fetch('/api/maintenance/backfill-rollups', { method: 'POST' })
+                .then(() => reload())
+                .catch(err => console.error('Backfill failed:', err))
+                .finally(() => { _rollupInFlight = false; });
+        }
+
+        // ============================================================
+        //  UTILITY: Latency distribution histogram (Network tab)
+        // ============================================================
+        function _renderLatencyHistogram(uptime) {
+            const rowEl   = document.getElementById('netHistRow');
+            const barsEl  = document.getElementById('latencyHistBars');
+            const labsEl  = document.getElementById('latencyHistLabels');
+            if (!rowEl || !barsEl || !labsEl) return;
+
+            const bucketDefs = [
+                { label: '<10',    max: 10 },
+                { label: '10-25',  max: 25 },
+                { label: '25-50',  max: 50 },
+                { label: '50-100', max: 100 },
+                { label: '100-200',max: 200 },
+                { label: '200+',   max: Infinity },
+            ];
+            const colors = ['#00d4aa','#00d4aa','#00d4aa','#ffaa00','#ff3b5c','#ff3b5c'];
+            const counts = new Array(bucketDefs.length).fill(0);
+
+            (uptime || []).forEach(row => {
+                const val = parseFloat(row.avg_latency_ms);
+                if (!Number.isFinite(val) || val < 0) return;
+                const idx = bucketDefs.findIndex(b => val < b.max);
+                if (idx >= 0) counts[idx]++;
+            });
+
+            const maxCount = Math.max(...counts, 1);
+            if (counts.every(c => c === 0)) { rowEl.style.display = 'none'; return; }
+
+            barsEl.innerHTML = counts.map((c, i) =>
+                `<div class="latency-hist-bar" style="height:${Math.max(4, Math.round((c / maxCount) * 56))}px;background:${colors[i]}" title="${bucketDefs[i].label}ms: ${c} device(s)"></div>`
+            ).join('');
+            labsEl.innerHTML = bucketDefs.map(b => `<span class="latency-hist-label">${b.label}</span>`).join('');
+            rowEl.style.display = '';
+        }
+
+        // ============================================================
+        //  UTILITY: Interface context notice (Network tab)
+        // ============================================================
+        function _renderNetIfaceContext(bandwidth) {
+            const el = document.getElementById('netIfaceContext');
+            if (!el) return;
+            const count = Object.keys(bandwidth || {}).length;
+            if (count === 0) {
+                el.innerHTML = `<div class="context-notice">
+                    <span class="context-icon"><i class="fas fa-pause-circle"></i></span>
+                    <span>SNMP interface polling is paused — no managed switches configured. Active interface bandwidth data is unavailable. Enable SNMP on a managed switch to populate this view.</span>
+                </div>`;
+            } else {
+                el.innerHTML = `<p class="mb-0 text-muted" style="font-size:0.82rem"><i class="fas fa-ethernet me-1 text-success"></i> <b>${count}</b> active interface(s) reporting bandwidth data.</p>`;
+            }
+        }
+
+        // ============================================================
+        //  UTILITY: Unresolved alert age panel (Alerts tab)
+        // ============================================================
+        function _renderUnresolvedAgePanel(alerts) {
+            const rowEl   = document.getElementById('alertAgeRow');
+            const listEl  = document.getElementById('alertAgeList');
+            const countEl = document.getElementById('unresolvedCount');
+            if (!rowEl || !listEl || !countEl) return;
+
+            const now = Date.now();
+            const unresolved = [];
+            (alerts || []).forEach(a => {
+                if (a.resolved) return;
+                const ts = parseReportDate(a.timestamp);
+                if (!ts) return; // skip unparseable timestamps — do NOT treat as fresh
+                unresolved.push({ ...a, _ageMs: now - ts.getTime() });
+            });
+            unresolved.sort((a, b) => b._ageMs - a._ageMs);
+
+            countEl.textContent = unresolved.length;
+            if (unresolved.length === 0) { rowEl.style.display = 'none'; return; }
+
+            const h2  = 2  * 3600 * 1000;
+            const h24 = 24 * 3600 * 1000;
+            listEl.innerHTML = unresolved.slice(0, 20).map(a => {
+                const ageCls = a._ageMs < h2 ? 'age-fresh' : a._ageMs < h24 ? 'age-medium' : 'age-old';
+                const ageLabel = a._ageMs < h2
+                    ? Math.round(a._ageMs / 60000) + 'm'
+                    : a._ageMs < h24
+                        ? Math.round(a._ageMs / 3600000) + 'h'
+                        : Math.round(a._ageMs / 86400000) + 'd';
+                const sev = (a.severity || '').toUpperCase();
+                const sevColor = sev === 'CRITICAL' ? '#ff3b5c' : sev === 'WARNING' ? '#ffaa00' : '#93a0ae';
+                return `<div class="unresolved-age-row">
+                    <span class="text-truncate" style="max-width:200px;font-size:0.78rem">${_esc(a.device_name || 'Unknown')}</span>
+                    <span class="text-truncate flex-grow-1 text-muted" style="font-size:0.74rem">${_esc(a.message || '')}</span>
+                    <span style="color:${sevColor};font-size:0.72rem;font-weight:600;flex-shrink:0">${sev}</span>
+                    <span class="age-pill ${ageCls}" style="flex-shrink:0">${ageLabel}</span>
+                </div>`;
+            }).join('');
+            rowEl.style.display = '';
+        }
+
+        // ============================================================
 
         function parseReportDate(value) {
             if (!value) return null;
@@ -2364,10 +2695,24 @@
                 .then(data => {
                     renderCompletenessWarnings('executive', data.meta);
                     // Render Statistics
+                    const mtta = data.sla_metrics || {};
+                    const mttaDisplay = mtta.mtta_human != null
+                        ? mtta.mtta_human.split(',')[0]
+                        : '<span style="font-size:1rem;font-weight:400" class="text-muted">N/A</span>';
+                    const mttaSubnote = mtta.mtta_seconds == null
+                        ? '<p class="text-muted mb-0" style="font-size:0.65rem">No acknowledged alerts</p>'
+                        : '';
+                    const trendHtml = _trendBadge(
+                        data.uptime_score,
+                        data.prev_uptime_score,
+                        '%',
+                        true,
+                        data.data_health?.trend_window_days ?? 30
+                    );
                     contentDiv.innerHTML = `
                         <div class="row text-center">
                             <div class="col-md-3 border-end border-secondary">
-                                <h2 class="display-4 fw-bold ${data.uptime_score >= 99 ? 'text-success' : 'text-warning'}">${data.uptime_score}%</h2>
+                                <h2 class="display-4 fw-bold ${data.uptime_score >= 99 ? 'text-success' : 'text-warning'}">${data.uptime_score}% ${trendHtml}</h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">Fleet Availability</p>
                             </div>
                             <div class="col-md-3 border-end border-secondary">
@@ -2378,20 +2723,22 @@
                                 <h2 class="display-4 fw-bold text-info">${data.avg_latency}<span class="fs-6">ms</span></h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">Avg Latency</p>
                             </div>
-                             <div class="col-md-3">
-                                <h2 class="display-4 fw-bold text-warning mtta-value">
-                                    ${data.sla_metrics.mtta_human.split(',')[0]}
-                                </h2>
+                            <div class="col-md-3">
+                                <h2 class="display-4 fw-bold text-warning mtta-value">${mttaDisplay}</h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">MTTA (Avg)</p>
+                                ${mttaSubnote}
                             </div>
                         </div>
                         <div class="text-end mt-3">
-                            <small class="text-muted">Availability Source: ${data.availability_basis === 'device_scan_history' ? 'raw scan history fallback' : 'daily rollups'}</small>
+                            <small class="text-muted">Availability Source:</small> ${_dataSourceBadge(data.availability_basis)}
                         </div>
                     `;
+                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
                     // Render Pie Chart
                     renderHealthChart(data.health_distribution);
+                    _renderFleetHealthBar(data.health_distribution);
+                    _renderDataHealthBanner(data);
 
                     // Render Table — reset sort to worst-first, then render
                     _problematicDevices = data.top_problematic || [];
@@ -2926,7 +3273,7 @@
         // ==========================================
         // Device Health Report
         // ==========================================
-        let dhCpuChart = null, dhMemChart = null;
+        let dhCpuChart = null, dhMemChart = null, dhDiskChart = null;
         function loadDeviceHealthReport() {
             const range = document.getElementById('dhRange').value;
             const summaryCards = document.getElementById('dhSummaryCards');
@@ -2958,12 +3305,39 @@
                     // KPI cards
                     const avgCpu = s.length ? (s.reduce((a, x) => a + (x.avg_cpu || 0), 0) / s.length).toFixed(1) : '-';
                     const avgMem = s.length ? (s.reduce((a, x) => a + (x.avg_mem || 0), 0) / s.length).toFixed(1) : '-';
+                    const avgDisk = s.length ? (s.reduce((a, x) => a + (x.avg_disk || 0), 0) / s.length).toFixed(1) : '-';
+                    const diskVal = parseFloat(avgDisk);
+                    const diskClass = Number.isFinite(diskVal)
+                        ? (diskVal >= 90 ? 'danger' : diskVal >= 80 ? 'warning' : '')
+                        : '';
                     summaryCards.innerHTML = `
-                        <div class="col-md-3"><div class="stat-card primary"><h3>${avgCpu}%</h3><p>Avg CPU</p></div></div>
-                        <div class="col-md-3"><div class="stat-card warning"><h3>${avgMem}%</h3><p>Avg Memory</p></div></div>
-                        <div class="col-md-3"><div class="stat-card success"><h3>${s.length}</h3><p>Devices</p></div></div>
-                        <div class="col-md-3"><div class="stat-card"><h3>${data.granularity}</h3><p>Data Source</p></div></div>
+                        <div class="col"><div class="stat-card primary"><h3>${avgCpu}%</h3><p>Avg CPU</p></div></div>
+                        <div class="col"><div class="stat-card warning"><h3>${avgMem}%</h3><p>Avg Memory</p></div></div>
+                        <div class="col"><div class="stat-card ${diskClass}"><h3>${avgDisk}%</h3><p>Avg Disk</p></div></div>
+                        <div class="col"><div class="stat-card success"><h3>${s.length}</h3><p>Devices</p></div></div>
+                        <div class="col"><div class="stat-card"><p class="mb-1">Source</p>${_dataSourceBadge(data.granularity)}</div></div>
                     `;
+
+                    // Data quality notice
+                    const dhNote = document.getElementById('dhDataNote');
+                    if (dhNote) {
+                        if (data.data_note === 'no_data') {
+                            dhNote.className = 'alert alert-danger py-2 mb-3';
+                            dhNote.style.display = '';
+                            dhNote.innerHTML = '<i class="fas fa-database me-2"></i>'
+                                + '<strong>No health data yet.</strong> '
+                                + 'Run <a href="#" onclick="triggerRollup(event, loadDeviceHealthReport); return false">'
+                                + 'backfill rollups</a> to populate this report from existing scan history.';
+                        } else if (data.data_note === 'sparse') {
+                            dhNote.className = 'alert alert-warning py-2 mb-3';
+                            dhNote.style.display = '';
+                            dhNote.innerHTML = '<i class="fas fa-chart-line me-2"></i>'
+                                + '<strong>Limited data</strong> (' + (data.total_samples || 0) + ' samples). '
+                                + 'More data will accumulate as the scheduler runs.';
+                        } else {
+                            dhNote.style.display = 'none';
+                        }
+                    }
 
                     // Charts
                     const ts = data.time_series || {};
@@ -2985,9 +3359,24 @@
 
                     if (dhCpuChart) dhCpuChart.destroy();
                     if (dhMemChart) dhMemChart.destroy();
+                    if (dhDiskChart) dhDiskChart.destroy();
                     const chartOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa', font: { size: 10 } } } }, scales: { y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: v => v + '%' } }, x: { display: false } } };
-                    dhCpuChart = new Chart(document.getElementById('dhCpuChart').getContext('2d'), { type: 'line', data: { labels, datasets: cpuDatasets }, options: chartOpts });
-                    dhMemChart = new Chart(document.getElementById('dhMemChart').getContext('2d'), { type: 'line', data: { labels, datasets: memDatasets }, options: chartOpts });
+                    dhCpuChart = new Chart(document.getElementById('dhCpuChart').getContext('2d'), { type: 'line', data: { labels, datasets: cpuDatasets }, options: chartOpts, plugins: [_cpuMemThreshPlugin] });
+                    dhMemChart = new Chart(document.getElementById('dhMemChart').getContext('2d'), { type: 'line', data: { labels, datasets: memDatasets }, options: chartOpts, plugins: [_cpuMemThreshPlugin] });
+
+                    // Disk chart
+                    const diskDatasets = [];
+                    let ci2 = 0;
+                    Object.values(ts).forEach(dev => {
+                        const c = colors[ci2++ % colors.length];
+                        diskDatasets.push({
+                            label: dev.device_name,
+                            data: dev.points.map(p => p.disk),
+                            borderColor: c, backgroundColor: c + '22',
+                            tension: 0.3, fill: false, pointRadius: 0
+                        });
+                    });
+                    dhDiskChart = new Chart(document.getElementById('dhDiskChart').getContext('2d'), { type: 'line', data: { labels, datasets: diskDatasets }, options: chartOpts, plugins: [_diskThreshPlugin] });
                 })
                 .catch(e => { summaryCards.innerHTML = `<div class="alert alert-danger">Failed: ${e.message}</div>`; });
         }
@@ -3056,11 +3445,18 @@
                     // KPI cards
                     const mttr = data.mttr || {};
                     const incidents = mttr.total_incidents || 0;
+                    const mttrHuman = mttr.human != null ? mttr.human : 'N/A';
+                    const mttrCls = mttr.seconds != null ? 'stat-card success' : 'stat-card';
                     kpi.innerHTML = `
-                        <div class="col-md-4"><div class="stat-card success"><h3>${mttr.human || '0:00:00'}</h3><p>Mean Time To Resolve</p></div></div>
+                        <div class="col-md-4"><div class="${mttrCls}"><h3>${mttrHuman}</h3><p>Mean Time To Resolve</p>
+                            ${mttr.seconds == null ? '<small class="text-muted" style="font-size:0.65rem">No resolved incidents</small>' : ''}
+                        </div></div>
                         <div class="col-md-4"><div class="stat-card primary"><h3>${incidents}</h3><p>Resolved Incidents</p></div></div>
                         <div class="col-md-4"><div class="stat-card warning"><h3>${Object.keys(data.bandwidth || {}).length}</h3><p>Active Interfaces</p></div></div>
-                        <div class="col-12 mt-2"><small class="text-muted">Uptime Source: ${data.uptime_basis === 'device_scan_history' ? 'raw scan history fallback' : 'daily rollups'}</small></div>
+                        <div class="col-12 mt-2 d-flex align-items-center gap-2">
+                            <small class="text-muted">Uptime Source</small>
+                            ${_dataSourceBadge(data.uptime_basis)}
+                        </div>
                     `;
 
                     // Uptime table
@@ -3075,6 +3471,10 @@
                             return `<td class="fw-bold text-white">${device.device_name}</td><td class="${uColor} fw-bold">${device.avg_uptime != null ? device.avg_uptime + '%' : '-'}</td><td>${device.avg_latency_ms != null ? device.avg_latency_ms + ' ms' : '-'}</td><td>${device.avg_packet_loss != null ? device.avg_packet_loss + '%' : '-'}</td>`;
                         }
                     });
+                    _renderLatencyHistogram(uptime);
+                    _renderNetIfaceContext(data.bandwidth || {});
+                    _applyTableThresholds(tbody, 2, { warn: 50, crit: 150 });
+                    _applyTableThresholds(tbody, 3, { warn: 1,  crit: 5  });
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -3175,10 +3575,20 @@
                     renderCompletenessWarnings('alerthistory', data.meta);
                     // KPIs
                     const totalAlerts = (data.alerts || []).length;
+                    const ttaHuman = data.tta?.human != null ? data.tta.human : 'N/A';
+                    const ttrHuman = data.ttr?.human != null ? data.ttr.human : 'N/A';
+                    const ttaNull = data.tta?.seconds == null;
+                    const ttrNull = data.ttr?.seconds == null;
                     kpi.innerHTML = `
                         <div class="col-md-3"><div class="stat-card danger"><h3>${totalAlerts}</h3><p>Total Alerts</p></div></div>
-                        <div class="col-md-3"><div class="stat-card warning"><h3>${data.tta?.human || '0:00:00'}</h3><p>Avg Time to Ack</p></div></div>
-                        <div class="col-md-3"><div class="stat-card success"><h3>${data.ttr?.human || '0:00:00'}</h3><p>Avg Time to Resolve</p></div></div>
+                        <div class="col-md-3"><div class="stat-card ${ttaNull ? '' : 'warning'}">
+                            <h3 style="font-size:1.1rem">${ttaHuman}</h3><p>Avg Time to Ack</p>
+                            ${ttaNull ? '<small class="text-muted" style="font-size:0.65rem">No acknowledged alerts</small>' : ''}
+                        </div></div>
+                        <div class="col-md-3"><div class="stat-card ${ttrNull ? '' : 'success'}">
+                            <h3 style="font-size:1.1rem">${ttrHuman}</h3><p>Avg Time to Resolve</p>
+                            ${ttrNull ? '<small class="text-muted" style="font-size:0.65rem">No resolved alerts</small>' : ''}
+                        </div></div>
                         <div class="col-md-3"><div class="stat-card primary"><h3>${(data.severity_breakdown?.CRITICAL || 0)}</h3><p>Critical Alerts</p></div></div>
                     `;
 
@@ -3220,6 +3630,7 @@
                     const sevFilterEl = document.getElementById('alertListSeverityFilter');
                     if (sevFilterEl) sevFilterEl.value = '';
                     applyAlertListFilters();
+                    _renderUnresolvedAgePanel(data.alerts || []);
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -3656,6 +4067,24 @@
 
             // Table
             _renderWsTable(rows);
+
+            // Coverage warning banner
+            const wsNote = document.getElementById('wsDataNote');
+            if (wsNote) {
+                const warnings = data.meta?.completeness_warnings || [];
+                const cw = warnings.find(w => w.includes('rollup_coverage_low'));
+                if (cw) {
+                    const match = cw.match(/(\d+\.?\d*)%/);
+                    const pct = match ? match[1] : '?';
+                    wsNote.className = 'alert alert-warning py-2 mb-3';
+                    wsNote.style.display = '';
+                    wsNote.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>'
+                        + `<strong>Low data coverage (${pct}%)</strong> — results may be less accurate. `
+                        + 'Run <a href="#" onclick="triggerRollup(event, loadWorkstationHealth); return false">backfill rollups</a> to improve accuracy.';
+                } else {
+                    wsNote.style.display = 'none';
+                }
+            }
         } catch (err) {
             if (tbody) tbody.innerHTML = `<tr><td colspan="18" class="text-center text-danger p-4">${err.message || 'Failed to load workstation data.'}</td></tr>`;
         }
@@ -3781,6 +4210,48 @@
             const srvPktEl = document.getElementById('srvAvgPacketLoss');
             if (srvPktEl) srvPktEl.textContent = avgPktLoss;
             document.getElementById('srvCriticalCount').textContent = sla['Critical'] || 0;
+
+            // Threshold-based KPI card colors — packet loss
+            const pktVal = parseFloat(avgPktLoss);
+            const pktCard = srvPktEl ? srvPktEl.closest('.stat-card') : null;
+            if (pktCard && Number.isFinite(pktVal)) {
+                if (pktVal >= 5) {
+                    pktCard.style.background = '#dc2626';  // red — critical
+                } else if (pktVal >= 1) {
+                    pktCard.style.background = '#f97316';  // amber — warning
+                }
+                // else keep default purple (#8b5cf6)
+            }
+
+            // Threshold-based KPI card colors — latency
+            const latVal = parseFloat(avgLatency);
+            const latCard = srvLatEl ? srvLatEl.closest('.stat-card') : null;
+            if (latCard && Number.isFinite(latVal)) {
+                if (latVal >= 150) {
+                    latCard.style.background = '#dc2626';  // red — critical
+                } else if (latVal >= 50) {
+                    latCard.style.background = '#f97316';  // amber — warning
+                }
+                // else keep default cyan (#0ea5e9)
+            }
+
+            // Coverage warning banner
+            const srvNote = document.getElementById('srvDataNote');
+            if (srvNote) {
+                const warnings = data.meta?.completeness_warnings || [];
+                const cw = warnings.find(w => w.includes('rollup_coverage_low'));
+                if (cw) {
+                    const match = cw.match(/(\d+\.?\d*)%/);
+                    const pct = match ? match[1] : '?';
+                    srvNote.className = 'alert alert-warning py-2 mb-3';
+                    srvNote.style.display = '';
+                    srvNote.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>'
+                        + `<strong>Low data coverage (${pct}%)</strong> — results may be less accurate. `
+                        + 'Run <a href="#" onclick="triggerRollup(event, loadServerReports); return false">backfill rollups</a> to improve accuracy.';
+                } else {
+                    srvNote.style.display = 'none';
+                }
+            }
 
             // KPI row 2 — fleet resource averages
             const summary = data.summary || {};

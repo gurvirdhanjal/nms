@@ -125,6 +125,9 @@ function renderSparkline(trendData) {
         return;
     }
 
+    // Destroy any stale instance on the canvas
+    // @ts-ignore
+    Chart.getChart(canvas)?.destroy();
     // Create new Chart
     // @ts-ignore
     chartInstance = new Chart(ctx, {
@@ -169,6 +172,9 @@ function renderBreakdownTrend(trendData) {
         return;
     }
 
+    // Destroy any stale instance on the canvas
+    // @ts-ignore
+    Chart.getChart(canvas)?.destroy();
     // @ts-ignore
     breakdownChart = new Chart(ctx, {
         type: 'line',

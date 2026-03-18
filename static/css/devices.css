@@ -3,8 +3,8 @@
 .devices-page {
     --d-border: rgba(148, 163, 184, 0.2);
     --d-border-soft: rgba(148, 163, 184, 0.14);
-    --d-text-main: #e6edf5;
-    --d-text-muted: #8a97a6;
+    --d-text-main: var(--e-text-primary, #e6edf5);
+    --d-text-muted: var(--e-text-muted, #8a97a6);
 }
 
 .devices-page .lucide {
@@ -66,7 +66,7 @@
     font-size: 0.8rem;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: #c3cfdb;
+    color: var(--e-text-secondary, #c3cfdb);
 }
 
 .devices-page .devices-filters {
@@ -133,7 +133,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.085em;
-    color: #b8c6d5;
+    color: var(--e-text-secondary, #b8c6d5);
     white-space: nowrap;
 }
 
@@ -256,7 +256,7 @@
     margin-left: 0.45rem;
     font-size: 0.68rem;
     letter-spacing: 0.03em;
-    color: #b8c6d5;
+    color: var(--e-text-secondary, #b8c6d5);
     text-transform: none;
     white-space: nowrap;
 }

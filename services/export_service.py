@@ -165,7 +165,7 @@ def _utcnow() -> datetime:
 
 
 def _utc_label() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M")
+    return datetime.now().strftime("%dd-%mm-%YY %H:%M")
 
 
 def _sanitize_export_value(value):

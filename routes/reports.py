@@ -22,7 +22,7 @@ from flask import (
 from sqlalchemy import text
 
 from extensions import db
-from middleware.rbac import build_scope_context
+from middleware.rbac import build_scope_context, require_login, require_permission
 from services.device_monitor import DeviceMonitor
 from services.report_export_job_service import (
     cleanup_export_jobs as _job_cleanup,
@@ -36,6 +36,12 @@ from services.report_meta import build_report_meta
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
 logger = logging.getLogger(__name__)
+
+
+@reports_bp.before_request
+@require_login
+def _reports_auth_guard():
+    return None
 
 
 _report_cache = {}
@@ -860,7 +866,12 @@ def get_device_history():
     from models.scan_history import DeviceScanHistory
 
     device_ip = request.args.get('device_ip')
-    hours = int(request.args.get('hours', 24))
+    try:
+        hours = int(request.args.get('hours', 24))
+        if hours < 1 or hours > 8760:
+            raise ValueError
+    except (ValueError, TypeError):
+        return _json_error('hours must be an integer between 1 and 8760')
 
     cutoff_time = _utcnow_naive() - timedelta(hours=hours)
 
@@ -1165,6 +1176,7 @@ def preview_report(report_type):
 
 
 @reports_bp.route('/api/reports/<report_type>/export')
+@require_permission('reports.export')
 def export_report(report_type):
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
@@ -1207,6 +1219,7 @@ def export_report(report_type):
 
 
 @reports_bp.route('/api/reports/<report_type>/export-jobs', methods=['POST'])
+@require_permission('reports.export')
 def create_export_job(report_type):
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
@@ -1375,6 +1388,7 @@ def enterprise_uptime_report():
 
 
 @reports_bp.route('/api/reports/enterprise-uptime/pdf', methods=['GET'])
+@require_permission('reports.export')
 def enterprise_uptime_pdf():
     """
     Download a colour-formatted enterprise uptime/downtime PDF report.

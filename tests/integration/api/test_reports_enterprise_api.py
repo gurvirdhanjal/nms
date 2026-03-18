@@ -1,17 +1,14 @@
-import io
 import logging
 import time
 import uuid
 from datetime import datetime, timedelta
 
 import pytest
-from openpyxl import load_workbook
 
 from extensions import db
 from models.dashboard import DailyDeviceStats, DashboardEvent
 from models.department import Department
 from models.device import Device
-from models.interfaces import DeviceInterface, InterfaceTrafficHistory
 from models.report_export_job import ReportExportJob
 from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
@@ -345,9 +342,9 @@ def test_network_report_falls_back_to_raw_scan_history(admin_client):
     assert payload["uptime_summary"][0]["avg_uptime"] == 50.0
 
 
-def test_executive_xlsx_export_includes_custom_kpi_tabs(admin_client):
+def test_executive_pdf_export_returns_valid_pdf(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
-    device = _scoped_device("Exec-XLSX", "10.41.4.20", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device = _scoped_device("Exec-PDF", "10.41.4.20", site_id=alpha_department.site_id, department_id=alpha_department.id)
     now = datetime.utcnow()
     db.session.add(
         DeviceScanHistory(
@@ -361,40 +358,18 @@ def test_executive_xlsx_export_includes_custom_kpi_tabs(admin_client):
     db.session.commit()
 
     response = admin_client.get(
-        f"/api/reports/executive/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}&format=xlsx"
+        f"/api/reports/executive/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}"
     )
     assert response.status_code == 200
-    workbook = load_workbook(io.BytesIO(response.data))
-    assert {"Summary", "Overview", "Health Mix", "Problem Devices", "Data"}.issubset(set(workbook.sheetnames))
-    overview = workbook["Overview"]
-    assert overview["A1"].value == "Executive Overview"
-    assert isinstance(overview["B3"].value, (int, float))
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
 
 
-def test_network_xlsx_export_includes_custom_bandwidth_tabs(admin_client):
+def test_network_pdf_export_returns_valid_pdf(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
-    device = _scoped_device("Network-XLSX", "10.41.4.21", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device = _scoped_device("Network-PDF", "10.41.4.21", site_id=alpha_department.site_id, department_id=alpha_department.id)
     now = datetime.utcnow()
 
-    interface = DeviceInterface(
-        device_id=device.device_id,
-        if_index=1,
-        name="Gi0/1",
-        canonical_name="Gi0/1",
-        speed_bps=1_000_000_000,
-    )
-    db.session.add(interface)
-    db.session.flush()
-    db.session.add(
-        InterfaceTrafficHistory(
-            interface_id=interface.interface_id,
-            timestamp=now - timedelta(minutes=10),
-            rx_bps=125000.5,
-            tx_bps=64000.25,
-            rx_utilization_pct=12.5,
-            tx_utilization_pct=6.4,
-        )
-    )
     db.session.add(
         DailyDeviceStats(
             device_id=device.device_id,
@@ -409,33 +384,26 @@ def test_network_xlsx_export_includes_custom_bandwidth_tabs(admin_client):
     db.session.commit()
 
     response = admin_client.get(
-        f"/api/reports/network/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}&format=xlsx"
+        f"/api/reports/network/export?start={(now - timedelta(days=1)).isoformat()}&end={now.isoformat()}"
     )
     assert response.status_code == 200
-    workbook = load_workbook(io.BytesIO(response.data))
-    assert {"Summary", "Overview", "Uptime Summary", "Bandwidth", "Data"}.issubset(set(workbook.sheetnames))
-    bandwidth = workbook["Bandwidth"]
-    assert bandwidth["A1"].value == "Bandwidth Timeline"
-    assert isinstance(bandwidth["C4"].value, datetime)
-    assert isinstance(bandwidth["D4"].value, float)
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
 
 
-def test_alerts_xlsx_export_includes_custom_alert_tabs(admin_client):
+def test_alerts_pdf_export_returns_valid_pdf(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
-    device = _scoped_device("Alert-XLSX", "10.41.4.22", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device = _scoped_device("Alert-PDF", "10.41.4.22", site_id=alpha_department.site_id, department_id=alpha_department.id)
     now = datetime.utcnow()
-    _alert(device, timestamp=now, message="alert-xlsx-export")
+    _alert(device, timestamp=now, message="alert-pdf-export")
     db.session.commit()
 
     response = admin_client.get(
-        f"/api/reports/alerts/export?start={(now - timedelta(hours=1)).isoformat()}&end={(now + timedelta(minutes=1)).isoformat()}&format=xlsx"
+        f"/api/reports/alerts/export?start={(now - timedelta(hours=1)).isoformat()}&end={(now + timedelta(minutes=1)).isoformat()}"
     )
     assert response.status_code == 200
-    workbook = load_workbook(io.BytesIO(response.data))
-    assert {"Summary", "Overview", "Alerts", "Severity Mix", "Daily Trend", "Top Devices", "Data"}.issubset(set(workbook.sheetnames))
-    alerts = workbook["Alerts"]
-    assert alerts["A1"].value == "Alert Detail"
-    assert isinstance(alerts["A4"].value, datetime)
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
 
 
 def test_report_rate_limit_is_per_report_type_and_cached_requests_do_not_fail(admin_client, app):
@@ -458,7 +426,7 @@ def test_report_rate_limit_is_per_report_type_and_cached_requests_do_not_fail(ad
     assert operational.status_code == 200
 
 
-def test_sync_xlsx_export_sanitizes_formula_like_and_control_values(admin_client):
+def test_sync_pdf_export_handles_special_characters_in_alert_messages(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
     device = _scoped_device("Token-Alert", "10.41.5.10", site_id=alpha_department.site_id, department_id=alpha_department.id)
     now = datetime.utcnow()
@@ -466,11 +434,11 @@ def test_sync_xlsx_export_sanitizes_formula_like_and_control_values(admin_client
     db.session.commit()
 
     response = admin_client.get(
-        f"/api/reports/alerts/export?start={(now - timedelta(hours=1)).isoformat()}&end={(now + timedelta(minutes=1)).isoformat()}&format=xlsx"
+        f"/api/reports/alerts/export?start={(now - timedelta(hours=1)).isoformat()}&end={(now + timedelta(minutes=1)).isoformat()}"
     )
     assert response.status_code == 200
-    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    assert response.data.startswith(b"PK")
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
 
 
 def test_async_export_jobs_use_db_backend(admin_client, app):
@@ -486,7 +454,6 @@ def test_async_export_jobs_use_db_backend(admin_client, app):
         json={
             "start": (now - timedelta(hours=1)).isoformat(),
             "end": (now + timedelta(minutes=1)).isoformat(),
-            "format": "csv",
         },
     )
     assert create_response.status_code == 202
@@ -506,16 +473,15 @@ def test_async_export_jobs_use_db_backend(admin_client, app):
 
     download_response = admin_client.get(f"/api/reports/export-jobs/{job_id}/download")
     assert download_response.status_code == 200
-    assert download_response.data.startswith(b"Report Type,")
-    assert b",Section," in download_response.data.splitlines()[0]
+    assert download_response.data.startswith(b"%PDF-")
 
 
-def test_async_xlsx_export_includes_decorated_meta_and_section_sheets(admin_client, app):
+def test_async_pdf_export_produces_valid_pdf(admin_client, app):
     app.config["REPORT_EXPORT_JOB_BACKEND"] = "db"
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
-    device = _scoped_device("Job-Alert-XLSX", "10.50.1.11", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device = _scoped_device("Job-Alert-PDF", "10.50.1.11", site_id=alpha_department.site_id, department_id=alpha_department.id)
     now = datetime.utcnow()
-    _alert(device, timestamp=now, message="async-xlsx-job")
+    _alert(device, timestamp=now, message="async-pdf-job")
     db.session.commit()
 
     create_response = admin_client.post(
@@ -523,7 +489,6 @@ def test_async_xlsx_export_includes_decorated_meta_and_section_sheets(admin_clie
         json={
             "start": (now - timedelta(hours=1)).isoformat(),
             "end": (now + timedelta(minutes=1)).isoformat(),
-            "format": "xlsx",
         },
     )
     assert create_response.status_code == 202
@@ -542,14 +507,7 @@ def test_async_xlsx_export_includes_decorated_meta_and_section_sheets(admin_clie
 
     download_response = admin_client.get(f"/api/reports/export-jobs/{job_id}/download")
     assert download_response.status_code == 200
-    workbook = load_workbook(io.BytesIO(download_response.data))
-    assert "Summary" in workbook.sheetnames
-    assert "Alerts" in workbook.sheetnames
-
-    summary = workbook["Summary"]
-    summary_values = {(summary[f"A{row}"].value, summary[f"B{row}"].value) for row in range(1, summary.max_row + 1)}
-    assert ("Report Type", "Alerts") in summary_values
-    assert any(label == "Freshness State" and value for label, value in summary_values)
+    assert download_response.data.startswith(b"%PDF-")
 
 
 @pytest.mark.parametrize(

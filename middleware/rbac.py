@@ -295,9 +295,19 @@ def build_scope_context(role=None):
     normalized_role = str(role or current_role() or 'guest').strip().lower() or 'guest'
     site_id, department_id = _resolve_scope_ids()
 
-    if normalized_role in {'', 'guest', 'admin'}:
+    if normalized_role in {'', 'guest'}:
         return {
             'role': normalized_role or 'guest',
+            'scope_type': 'none',
+            'scope_key': 'none',
+            'scope_label': 'No Access',
+            'site_id': None,
+            'department_id': None,
+        }
+
+    if normalized_role == 'admin':
+        return {
+            'role': 'admin',
             'scope_type': 'global',
             'scope_key': 'global',
             'scope_label': 'Global',

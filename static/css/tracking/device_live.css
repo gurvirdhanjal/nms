@@ -1,3 +1,67 @@
+.device-live-page .mo-header-panel {
+    background-color: var(--e-bg-panel);
+    border: 1px solid var(--e-border);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    font-family: var(--t-sans);
+}
+
+.device-live-page .mo-header-subtitle {
+    font-size: 11px;
+    color: var(--e-text-muted);
+}
+
+/* ── Header typography: rein in oversized Bootstrap utility classes ── */
+.device-live-page .mo-header-panel h1.fs-3 {
+    font-size: 1.05rem !important;
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+}
+
+.device-live-page .kpi-stat-wrap .fs-4 {
+    font-size: 1.05rem !important;
+    line-height: 1.25;
+}
+
+.device-live-page .kpi-stat-wrap .fs-6 {
+    font-size: 0.7rem !important;
+}
+
+/* ── Header stat grid: tighten spacing ───────────────────────── */
+.device-live-page .mo-header-panel .mb-4 {
+    margin-bottom: 0.65rem !important;
+}
+
+.device-live-page .mo-header-panel .row.g-4 {
+    --bs-gutter-x: 1rem;
+    --bs-gutter-y: 0.5rem;
+}
+
+.device-live-page .mo-header-panel .row.pt-4 {
+    padding-top: 0.65rem !important;
+}
+
+/* ── Value-update flash: live data changes get a subtle flicker ─ */
+@keyframes dlValFlash {
+    0%   { opacity: 1; }
+    25%  { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+.device-live-page .val-flash {
+    animation: dlValFlash 0.22s ease-out forwards;
+}
+
+/* ── stat-value smooth transitions ───────────────────────────── */
+.device-live-page .stat-value {
+    transition: color 0.25s ease;
+}
+
+.device-live-page .kpi-updating .stat-value {
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+}
+
 .device-live-page .device-command-bar .panel-body {
     padding: 0.68rem 0.74rem;
 }
@@ -276,13 +340,13 @@
 
 .device-live-page .tab-counter-policy {
     background: rgba(253, 126, 20, 0.18);
-    color: #ff9c33;
+    color: var(--s-degraded);
     border: 1px solid rgba(253, 126, 20, 0.42);
 }
 
 .device-live-page .tab-counter-warning {
     background: rgba(255, 193, 7, 0.2);
-    color: #ffc74a;
+    color: var(--s-warning);
     border: 1px solid rgba(255, 193, 7, 0.42);
 }
 
@@ -336,10 +400,21 @@
 
 .device-live-page .device-tab-panel {
     display: none;
+    opacity: 0;
 }
 
 .device-live-page .device-tab-panel.active {
     display: block;
+    animation: panelFadeIn 0.18s ease-out forwards;
+}
+
+@keyframes panelFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .device-live-page .device-tab-panel.active { animation: none; opacity: 1; }
 }
 
 .device-live-page .telemetry-state-banner {
@@ -598,22 +673,9 @@
 
 .device-live-page .surveillance-recording-indicator i {
     font-size: 0.48rem;
-    animation: surveillancePulse 1.2s ease-in-out infinite;
 }
 
-@keyframes surveillancePulse {
-    0% {
-        opacity: 0.45;
-    }
-
-    50% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0.45;
-    }
-}
+/* surveillancePulse keyframes removed (v5.0: no infinite animations) */
 
 .device-live-page .surveillance-badge-stack {
     display: grid;
@@ -818,41 +880,10 @@
 }
 
 .device-live-page .surveillance-level-meter.active span {
-    animation: micLevelPulse 1.35s ease-in-out infinite;
     opacity: 1;
 }
 
-.device-live-page .surveillance-level-meter.active span:nth-child(1) {
-    animation-delay: 0s;
-}
-
-.device-live-page .surveillance-level-meter.active span:nth-child(2) {
-    animation-delay: 0.14s;
-}
-
-.device-live-page .surveillance-level-meter.active span:nth-child(3) {
-    animation-delay: 0.28s;
-}
-
-.device-live-page .surveillance-level-meter.active span:nth-child(4) {
-    animation-delay: 0.42s;
-}
-
-.device-live-page .surveillance-level-meter.active span:nth-child(5) {
-    animation-delay: 0.56s;
-}
-
-@keyframes micLevelPulse {
-
-    0%,
-    100% {
-        transform: scaleY(0.34);
-    }
-
-    50% {
-        transform: scaleY(1);
-    }
-}
+/* micLevelPulse keyframes removed (v5.0: no infinite animations) */
 
 .device-live-page .surveillance-audio-meta {
     display: grid;
@@ -873,7 +904,7 @@
 
 .device-live-page .surveillance-volume-slider {
     width: 100%;
-    accent-color: #20c997;
+    accent-color: var(--s-healthy);
 }
 
 .device-live-page .surveillance-activity {
@@ -1505,7 +1536,7 @@
 }
 
 .device-live-page .policy-domain-pill input[type='checkbox'] {
-    accent-color: #20c997;
+    accent-color: var(--s-healthy);
 }
 
 .device-live-page .policy-domain-select {
@@ -2850,7 +2881,7 @@
 }
 
 .device-live-page .policy-alert-link:hover:not(:disabled) {
-    color: #3fe1b2;
+    color: var(--s-healthy);
 }
 
 .device-live-page .policy-alert-acknowledged {
@@ -3200,7 +3231,7 @@
 
 .device-live-page .files-row-icon.is-dir {
     background: rgba(255, 193, 7, 0.12);
-    color: #ffc74a;
+    color: var(--s-warning);
 }
 
 .device-live-page .files-row-icon.is-file {
@@ -3491,7 +3522,6 @@
         rgba(255, 255, 255, 0.05) 100%
     );
     background-size: 220% 100%;
-    animation: device-live-shimmer 1.4s linear infinite;
 }
 
 .device-live-page[data-live-state="initial-loading"] .mo-btn,
@@ -3508,14 +3538,7 @@
     border-style: solid;
 }
 
-@keyframes device-live-shimmer {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
-}
+/* device-live-shimmer keyframes removed (v5.0: no infinite animations) */
 
 /* ── Smooth value transitions (anti-flicker) ──────────────────────────────── */
 .device-live-page .stat-value,
@@ -3624,4 +3647,219 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WEBSITE POLICY LOG MODAL — self-contained scope
+   Scoped to #policyLogsModal so styles apply regardless of
+   Bootstrap's modal stacking context detaching from ancestors.
+   ══════════════════════════════════════════════════════════════ */
+#policyLogsModal {
+    /* Define tokens locally so they're available inside the modal */
+    --pm-bg:        #13161b;
+    --pm-bg-chip:   rgba(148, 163, 184, 0.07);
+    --pm-border:    rgba(255, 255, 255, 0.07);
+    --pm-border-md: rgba(255, 255, 255, 0.12);
+    --pm-text:      #dde3ec;
+    --pm-muted:     #7a8899;
+    --pm-teal:      #00c98d;
+    --pm-amber:     #e6952a;
+    --pm-red:       #e84545;
+    --pm-blue:      #4d8fff;
+    --pm-mono:      'IBM Plex Mono', monospace;
+}
+
+#policyLogsModal .modal-content {
+    background: #0e111a !important;
+    border: 1px solid rgba(0, 201, 141, 0.2) !important;
+}
+
+#policyLogsModal .modal-header {
+    background: rgba(8, 11, 18, 0.9) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 0.9rem 1.25rem !important;
+}
+
+#policyLogsModal .modal-title {
+    color: var(--pm-teal) !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+}
+
+#policyLogsModal .modal-body {
+    padding: 1rem 1.25rem !important;
+    background: transparent !important;
+}
+
+/* Summary chips */
+#policyLogsModal .policy-summary-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 0.6rem !important;
+    margin-bottom: 1rem !important;
+}
+
+#policyLogsModal .policy-summary-chip {
+    border: 1px solid var(--pm-border) !important;
+    border-radius: 6px !important;
+    background: var(--pm-bg-chip) !important;
+    padding: 0.55rem 0.75rem !important;
+}
+
+#policyLogsModal .policy-summary-chip span {
+    display: block !important;
+    color: var(--pm-muted) !important;
+    font-family: var(--pm-mono) !important;
+    font-size: 0.62rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    margin-bottom: 0.18rem !important;
+}
+
+#policyLogsModal .policy-summary-chip strong {
+    color: var(--pm-text) !important;
+    font-family: var(--pm-mono) !important;
+    font-size: 0.88rem !important;
+    display: block !important;
+}
+
+/* Caption */
+#policyLogsModal .policy-modal-caption {
+    font-size: 0.72rem !important;
+    color: var(--pm-muted) !important;
+    margin-bottom: 0.75rem !important;
+}
+
+/* Incident card list */
+#policyLogsModal .policy-incident-list {
+    display: grid !important;
+    gap: 8px !important;
+}
+
+#policyLogsModal .policy-incident-card {
+    border: 1px solid var(--pm-border) !important;
+    border-left: 2px solid rgba(232, 69, 69, 0.55) !important;
+    border-radius: 6px !important;
+    background: rgba(148, 163, 184, 0.04) !important;
+    padding: 10px 14px !important;
+    display: grid !important;
+    gap: 7px !important;
+    transition: background 0.15s ease !important;
+}
+
+#policyLogsModal .policy-incident-card:hover {
+    background: rgba(148, 163, 184, 0.07) !important;
+}
+
+#policyLogsModal .policy-incident-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 12px !important;
+}
+
+#policyLogsModal .policy-incident-domain {
+    color: var(--pm-text) !important;
+    font-family: var(--pm-mono) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+#policyLogsModal .policy-incident-time {
+    color: var(--pm-muted) !important;
+    font-family: var(--pm-mono) !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+}
+
+#policyLogsModal .policy-incident-tags {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+}
+
+/* Badge base */
+#policyLogsModal .policy-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 20px !important;
+    padding: 0 8px !important;
+    border: 1px solid var(--pm-border-md) !important;
+    border-radius: 999px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+}
+
+/* Severity badges */
+#policyLogsModal .policy-badge-severity-low {
+    border-color: rgba(77, 143, 255, 0.25) !important;
+    background: rgba(77, 143, 255, 0.1) !important;
+    color: var(--pm-blue) !important;
+}
+
+#policyLogsModal .policy-badge-severity-medium {
+    border-color: rgba(230, 149, 42, 0.25) !important;
+    background: rgba(230, 149, 42, 0.1) !important;
+    color: var(--pm-amber) !important;
+}
+
+#policyLogsModal .policy-badge-severity-high {
+    border-color: rgba(232, 69, 69, 0.28) !important;
+    background: rgba(232, 69, 69, 0.1) !important;
+    color: var(--pm-red) !important;
+}
+
+/* Status badges */
+#policyLogsModal .policy-badge-status-active {
+    border-color: rgba(0, 201, 141, 0.2) !important;
+    background: rgba(0, 201, 141, 0.1) !important;
+    color: var(--pm-teal) !important;
+}
+
+#policyLogsModal .policy-badge-status-acknowledged,
+#policyLogsModal .policy-badge-status-resolved {
+    border-color: var(--pm-border-md) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--pm-muted) !important;
+}
+
+#policyLogsModal .policy-badge-source {
+    border-color: var(--pm-border-md) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--pm-muted) !important;
+}
+
+/* Blocked row */
+#policyLogsModal .policy-incident-blocked {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    color: rgba(232, 69, 69, 0.7) !important;
+    font-size: 11px !important;
+}
+
+/* Empty state */
+#policyLogsModal .policy-log-empty {
+    font-size: 0.76rem !important;
+    color: var(--pm-muted) !important;
+    padding: 1.5rem 0 !important;
+    text-align: center !important;
+}
+
+/* Scrollable list */
+#policyLogsModal .policy-log-modal-list {
+    max-height: 62vh !important;
+    overflow-y: auto !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent !important;
+}
+
+/* Footer */
+#policyLogsModal .modal-footer {
+    background: rgba(8, 11, 18, 0.9) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+    padding: 0.75rem 1.25rem !important;
 }

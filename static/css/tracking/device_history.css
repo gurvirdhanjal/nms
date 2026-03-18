@@ -361,7 +361,7 @@
 }
 
 #device-history-page .timeline-cell.verified {
-    background: #00a56f;
+    background: var(--s-healthy);
 }
 
 #device-history-page .timeline-cell.partial {
@@ -369,15 +369,15 @@
 }
 
 #device-history-page .timeline-cell.legacy_approx {
-    background: #a88633;
+    background: var(--s-warning);
 }
 
 #device-history-page .timeline-cell.invalid {
-    background: #a54854;
+    background: var(--s-critical);
 }
 
 #device-history-page .timeline-cell.unknown {
-    background: #6b7385;
+    background: var(--s-offline);
 }
 
 #device-history-page .history-actions-card {
@@ -471,7 +471,7 @@
     border-radius: 3px;
     border: 1px solid rgba(0, 212, 170, 0.28);
     background: rgba(0, 212, 170, 0.08);
-    color: var(--mo-teal, #00d4aa);
+    color: var(--s-healthy);
     font-family: monospace;
     font-size: 0.59rem;
     font-weight: 700;
@@ -570,4 +570,127 @@
     color: var(--e-text-muted, #8a97a6);
     font-style: italic;
     font-size: 0.72rem;
+}
+
+/* ── Policy tab — incident card view ────────────────────────── */
+#device-history-page .history-policy-list {
+    display: grid;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+#device-history-page .history-policy-empty {
+    font-size: 0.76rem;
+    color: var(--e-text-muted, #8a97a6);
+    padding: 1.25rem 0;
+    text-align: center;
+}
+
+#device-history-page .history-policy-card {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-left: 2px solid rgba(232, 69, 69, 0.55);
+    border-radius: 6px;
+    background: rgba(148, 163, 184, 0.04);
+    padding: 10px 14px;
+    display: grid;
+    gap: 7px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#device-history-page .history-policy-card:hover {
+    background: rgba(148, 163, 184, 0.07);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+#device-history-page .history-policy-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+#device-history-page .history-policy-domain {
+    color: var(--e-text-primary, #dde3ec);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+#device-history-page .history-policy-time {
+    color: var(--e-text-muted, #8a97a6);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#device-history-page .history-policy-user {
+    font-size: 11px;
+    color: var(--e-text-secondary, #7a8899);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+#device-history-page .history-policy-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+#device-history-page .history-policy-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#device-history-page .history-badge-sev-low {
+    border-color: rgba(77, 143, 255, 0.25);
+    background: rgba(77, 143, 255, 0.1);
+    color: #4d8fff;
+}
+
+#device-history-page .history-badge-sev-medium {
+    border-color: rgba(230, 149, 42, 0.25);
+    background: rgba(230, 149, 42, 0.1);
+    color: #e6952a;
+}
+
+#device-history-page .history-badge-sev-high {
+    border-color: rgba(232, 69, 69, 0.28);
+    background: rgba(232, 69, 69, 0.1);
+    color: #e84545;
+}
+
+#device-history-page .history-badge-status-active {
+    border-color: rgba(0, 201, 141, 0.2);
+    background: rgba(0, 201, 141, 0.1);
+    color: #00c98d;
+}
+
+#device-history-page .history-badge-status-acknowledged,
+#device-history-page .history-badge-status-resolved {
+    border-color: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--e-text-secondary, #7a8899);
+}
+
+#device-history-page .history-badge-source {
+    border-color: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--e-text-secondary, #7a8899);
+}
+
+#device-history-page .history-policy-blocked {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(232, 69, 69, 0.75);
+    font-size: 11px;
 }

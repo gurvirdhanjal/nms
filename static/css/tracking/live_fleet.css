@@ -28,14 +28,15 @@
     width: 36px;
     height: 36px;
     border-radius: 6px;
-    background: linear-gradient(135deg, var(--s-healthy) 0%, #059669 100%);
+    background: var(--e-bg-panel);
+    border: 1px solid var(--e-border-strong);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--e-text-secondary);
     font-size: 14px;
     flex-shrink: 0;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    /* v5.0: green never fills — neutral icon container */
 }
 
 .live-fleet-page .fleet-header-right {
@@ -83,19 +84,7 @@
 
 .live-fleet-page .live-pill[data-active="true"] .live-dot {
     box-shadow: 0 0 8px var(--s-healthy);
-    animation: fleetLivePulse 2s ease-in-out infinite;
-}
-
-@keyframes fleetLivePulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.35;
-    }
+    /* static — v5.0: no infinite animations */
 }
 
 .live-fleet-page .meta-mono {
@@ -580,12 +569,7 @@
 .live-fleet-page .status-badge.online .status-dot {
     background: var(--s-healthy);
     box-shadow: 0 0 6px var(--s-healthy);
-    animation: statusDotPulse 2.4s ease-in-out infinite;
-}
-
-@keyframes statusDotPulse {
-    0%, 100% { box-shadow: 0 0 4px var(--s-healthy); }
-    50%       { box-shadow: 0 0 10px var(--s-healthy), 0 0 18px rgba(16, 185, 129, 0.25); }
+    /* static — v5.0: no infinite animations */
 }
 
 .live-fleet-page .status-badge.degraded {

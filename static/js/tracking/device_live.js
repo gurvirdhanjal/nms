@@ -4670,7 +4670,12 @@
 
     function setText(id, value) {
         const node = document.getElementById(id);
-        if (node) node.textContent = value;
+        if (!node) return;
+        if (node.textContent === value) return;
+        node.classList.remove('val-flash');
+        void node.offsetWidth; // force reflow so animation restarts
+        node.textContent = value;
+        node.classList.add('val-flash');
     }
 
     function toFixed(value, digits) {

@@ -9,9 +9,12 @@ Requires: reportlab >= 4.1.0  (already in requirements.txt)
 from __future__ import annotations
 
 import io
+import logging
 import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # reportlab — install with: pip install reportlab
 from reportlab.lib import colors
@@ -563,6 +566,8 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
         BytesIO positioned at 0, ready for send_file().
     """
     fleet = fleet if fleet in _FLEET_TITLES else "all"
+    logger.info("[EnterprisePDF] Generating PDF: fleet=%s, devices=%d",
+                fleet, report.get("summary", {}).get("total_devices", 0))
     period = report.get("period", {})
     gen_at = report.get("generated_at", "")[:16].replace("T", " ")
     try:
@@ -604,4 +609,5 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
 
     doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
     buf.seek(0)
+    logger.info("[EnterprisePDF] PDF complete: %d bytes", len(buf.getvalue()))
     return buf

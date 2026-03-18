@@ -32,7 +32,7 @@
 }
 
 .session-warning-header i {
-    color: #ffc107;
+    color: var(--s-warning);
     font-size: 1rem;
 }
 
@@ -58,7 +58,7 @@
 .session-warning-body .countdown {
     font-variant-numeric: tabular-nums;
     font-weight: 700;
-    color: #dc3545;
+    color: var(--s-critical);
     padding: 0 0.2rem;
 }
 

@@ -19,7 +19,7 @@
     {% block ui_assets %}{% endblock %}
 
     <!-- Tactical Theme CSS -->
-    <link href="{{ url_for('static', filename='css/tactical.css') }}?v=4" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/tactical.css') }}?v=8" rel="stylesheet">
     <!-- Note: style.css removed - conflicts with tactical theme -->
 
     {% if session.logged_in %}
@@ -137,6 +137,24 @@
             --bg-surface: var(--ui-surface-3);
             --bg-surface-elevated: var(--ui-surface-4);
             --border-subtle: var(--ui-border);
+
+            /* Enterprise v5.0 light-mode overrides */
+            --e-bg-base:       #f5f7fb;
+            --e-bg-panel:      rgba(255, 255, 255, 0.95);
+            --e-bg-panel-soft: rgba(255, 255, 255, 0.80);
+            --e-bg-row-alt:    rgba(23, 34, 53, 0.025);
+            --e-bg-row-hover:  rgba(23, 34, 53, 0.06);
+
+            --e-border:        rgba(23, 34, 53, 0.12);
+            --e-border-strong: rgba(23, 34, 53, 0.24);
+            --e-border-panel:  rgba(23, 34, 53, 0.16);
+
+            --e-text-primary:   #172235;
+            --e-text-secondary: #3d4f63;
+            --e-text-muted:     #5f6f86;
+            --e-text-dim:       #8a97a6;
+
+            /* Status colors: same in both themes for operator consistency */
         }
 
         /* ============================================================

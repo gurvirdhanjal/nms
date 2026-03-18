@@ -71,9 +71,17 @@ def _memory_job_to_dict(job: dict) -> dict:
     }
 
 
+def _stale_job_timeout_seconds() -> int:
+    return int(current_app.config.get("REPORT_EXPORT_JOB_TIMEOUT_SECONDS", 600))
+
+
 def cleanup_export_jobs() -> None:
     now_utc = _utcnow_naive()
+    timeout_seconds = _stale_job_timeout_seconds()
+    cutoff = now_utc - timedelta(seconds=timeout_seconds)
+
     if get_backend() == "db":
+        # 1. Remove expired completed/failed jobs
         stale_rows = (
             ReportExportJob.query.filter(
                 ReportExportJob.expires_at.isnot(None),
@@ -89,16 +97,38 @@ def cleanup_export_jobs() -> None:
                 except OSError:
                     pass
             db.session.delete(row)
-        if stale_rows:
+
+        # 2. Reap running/pending jobs stuck longer than timeout
+        stuck_rows = (
+            ReportExportJob.query.filter(
+                ReportExportJob.status.in_(("pending", "running")),
+                ReportExportJob.updated_at < cutoff,
+            )
+            .all()
+        )
+        for row in stuck_rows:
+            row.status = "failed"
+            row.error = f"Reaped: stuck in {row.status} for >{timeout_seconds}s"
+            row.updated_at = now_utc
+            row.expires_at = now_utc + timedelta(seconds=max(1, _ttl_seconds()))
+            db.session.add(row)
+
+        if stale_rows or stuck_rows:
             db.session.commit()
         return
 
     stale_ids: list[str] = []
+    stuck_ids: list[str] = []
     with _memory_jobs_lock:
         for job_id, job in _memory_jobs.items():
             expires_at = job.get("expires_at")
             if expires_at and expires_at < now_utc:
                 stale_ids.append(job_id)
+            elif job.get("status") in ("pending", "running"):
+                updated_at = job.get("updated_at")
+                if updated_at and updated_at < cutoff:
+                    stuck_ids.append(job_id)
+
         for job_id in stale_ids:
             job = _memory_jobs.pop(job_id, None)
             file_path = job.get("file_path") if job else None
@@ -107,6 +137,14 @@ def cleanup_export_jobs() -> None:
                     os.remove(file_path)
                 except OSError:
                     pass
+
+        for job_id in stuck_ids:
+            job = _memory_jobs.get(job_id)
+            if job:
+                job["status"] = "failed"
+                job["error"] = f"Reaped: stuck in {job.get('status', 'unknown')} for >{timeout_seconds}s"
+                job["updated_at"] = now_utc
+                job["expires_at"] = now_utc + timedelta(seconds=max(1, _ttl_seconds()))
 
 
 def create_export_job(

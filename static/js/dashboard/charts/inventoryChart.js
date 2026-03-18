@@ -21,6 +21,9 @@ export function renderInventoryChart(data) {
         return;
     }
 
+    // Destroy any stale instance on the canvas (e.g. after hot reload / stale module var)
+    // @ts-ignore
+    Chart.getChart(canvas)?.destroy();
     // @ts-ignore
     inventoryChartInstance = new Chart(ctx, {
         type: 'doughnut',

@@ -76,3 +76,7 @@ secure_employee_monitor.db
 .gstack/
 .vscode/
 .artifacts/
+*.txt
+*.spec
+.npm-cache/
+.context/

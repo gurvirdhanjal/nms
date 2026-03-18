@@ -411,9 +411,9 @@ document.addEventListener('DOMContentLoaded', function () {
                             </th>`;
 
         scanResults.innerHTML = `
-            <div class="alert alert-info py-2 mb-2" style="font-size: 0.75rem;">
-                <i data-lucide="loader-2" class="icon-spin"></i> 
-                Network scan in progress... Found <span id="liveCount">0</span> devices so far...
+            <div class="scan-status-bar">
+                <div class="scan-spinner"></div>
+                <span>Scan in progress — <strong><span id="liveCount">0</span> devices</strong> found so far</span>
             </div>
             <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell" style="max-height: 50vh;">
                 <table class="table table-hover table-sm devices-table align-middle">
@@ -605,11 +605,9 @@ document.addEventListener('DOMContentLoaded', function () {
         lastBatchToastAt = now;
 
         showToast(
-            `<strong><i class="fas fa-bolt"></i> Batch Update!</strong><br>
-             Found ${batchSize} new devices<br>
-             <small>Total: ${totalFound} devices</small>`,
+            `+${batchSize} new devices — ${totalFound} total found`,
             'success',
-            2500
+            2200
         );
     }
 
@@ -620,9 +618,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (bulkAddBtn) {
             bulkAddBtn.disabled = selectedIPs.size === 0;
             if (selectedIPs.size > 0) {
-                bulkAddBtn.innerHTML = `<i class="fas fa-plus-circle"></i> Add ${selectedIPs.size} Selected Device(s)`;
+                bulkAddBtn.textContent = `Add ${selectedIPs.size} Selected`;
             } else {
-                bulkAddBtn.innerHTML = `<i class="fas fa-plus-circle"></i> Add Selected to Inventory`;
+                bulkAddBtn.textContent = `Add to Inventory`;
             }
         }
 

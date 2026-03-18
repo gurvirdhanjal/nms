@@ -142,22 +142,97 @@ comparison is meaningful. Deferred until sufficient data has accumulated.
 
 ## P2 — Security
 
-### TODO-10: GET export endpoint lacks role-based permission
-**What:** `/api/reports/<type>/export` (GET) has no permission check beyond `@require_login`.
-Any logged-in viewer can download any report PDF.
-
-**Why:** Report exports may contain sensitive operational data (device health, alerts,
-network performance). A viewer role should not have unrestricted export access.
-
-**Where to start:**
-- `middleware/rbac.py` — add `reports_bp.export_report` to `ENDPOINT_PERMISSIONS`
-  with `reports.export` permission
-- Consider which roles should have export access (admin + manager, not viewer)
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** Nothing — pure security hardening
+### TODO-10: GET export endpoint lacks role-based permission ✅ DONE
+**Status:** Fixed in `feat/reports-module-refactor` (2026-03-16).
+`@require_permission('reports.export')` applied to `export_report()`, `create_export_job()`,
+and `enterprise_uptime_pdf()` in `routes/reports.py`. Maps to admin + manager via `ROLE_PERMISSIONS`.
 
 ---
 
-*Updated: 2026-03-16*
+## P3 — Code Cleanup
+
+### TODO-11: Remove dead CSV/XLSX export code from export_service.py
+**What:** PDF-only decision made 2026-03-16 for the reports flow. CSV/XLSX generation
+functions in `services/export_service.py` are now unreachable from the reports route
+(all exports go through `enterprise_pdf_service.py` or the PDF builder pipeline).
+
+**Why:** ~400 LOC of dead code (openpyxl-based XLSX builders, CSV stream functions)
+that will rot without test coverage since reports are PDF-only. Either remove entirely
+or mark as internal-only utility if other code paths still use them.
+
+**Where to start:**
+- `services/export_service.py` — identify which functions are still called from anywhere
+  (grep for `export_to_xlsx`, `export_to_csv` across the codebase)
+- Remove unreachable functions and their openpyxl imports
+- Run `pytest tests/` to verify nothing breaks
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** Nothing — pure dead code cleanup
+
+---
+
+## P3 — Frontend Migration
+
+### TODO-12: Migrate remaining --mo-* inline styles in device_live.html
+**What:** Move 13+ inline `style="..."` attributes (lines 57-137) from `device_live.html` to CSS
+classes in `device_live.css`, replacing `--mo-*` tokens with `--e-*` enterprise tokens.
+
+**Why:** `--mo-*` tokens are legacy (minimal ops system). They resolve today via `tactical.css:117`
+but should migrate to `--e-*` per v5.0 spec. Inline styles also prevent CSP `style-src` tightening.
+
+**Where to start:**
+- `templates/tracking/device_live.html` — lines 57, 83, 87, 96, 98, 100, 106, 115, 126, 128, 130, 133, 135, 137
+- `static/css/tracking/device_live.css` — add class rules mapping to `--e-*` tokens
+- `static/css/tactical.css:117-124` — `--mo-*` definitions (can be removed after full migration)
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** Visual refinement PR (ships Fix 6 as partial progress)
+
+---
+
+### TODO-13: Jinja2 macro for repeated KPI card structure in dashboard.html
+**What:** `dashboard.html` repeats the KPI card HTML pattern 5 times (lines ~2238–2280). Convert
+to a `{% macro kpi_card(id, label, icon) %}` macro.
+
+**Why:** Reduce template size by ~120 lines. Any future KPI card change requires editing 5 places today.
+
+**Where to start:**
+- `templates/dashboard.html` — KPI card blocks (5× near line 2238)
+- Extract to `templates/macros/dashboard_macros.html` (new)
+
+**Effort:** S | **Priority:** P4
+
+---
+
+### TODO-14: Bootstrap grid vs custom CSS grid unification on #device-kpi-row
+**What:** `dashboard.html` applies both Bootstrap `row-cols-lg-5` and a custom CSS Grid override
+(`repeat(6, minmax(0, 1fr))`) to `#device-kpi-row`. Currently works but fragile.
+
+**Why:** Two layout systems on the same element will conflict if Bootstrap updates or a new KPI card is added.
+
+**Where to start:**
+- `templates/dashboard.html` — `#device-kpi-row` (line ~2237)
+- `templates/dashboard.html` `{% block extra_css %}` — `#device-kpi-row` grid rule
+
+**Effort:** M | **Priority:** P4
+
+---
+
+### TODO-15: Move dashboard.html extra_css <style> block to static/css/dashboard.css
+**What:** The 2100+ line `<style>` block inside `{% block extra_css %}` in `dashboard.html`
+should become a cached external CSS file `static/css/dashboard.css`.
+
+**Why:** Browser cannot cache inline styles. Large inline style block adds ~38KB to HTML response
+on every page load.
+
+**Where to start:**
+- `templates/dashboard.html` — lines 7–2170 (`{% block extra_css %}`)
+- Create `static/css/dashboard.css`, link it via `{% block extra_css %}` `<link>` tag
+
+**Effort:** M | **Priority:** P3
+
+---
+
+*Updated: 2026-03-17*
