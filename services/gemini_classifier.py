@@ -66,19 +66,16 @@ def _save_to_db(fingerprint_hash: str, device_type: str, reasoning: str, source:
     try:
         from models.device_classification_cache import DeviceClassificationCache
         from extensions import db
-        existing = DeviceClassificationCache.query.get(fingerprint_hash)
-        if existing:
-            existing.device_type = device_type
-            existing.reasoning = reasoning
-        else:
-            entry = DeviceClassificationCache(
-                fingerprint_hash=fingerprint_hash,
-                device_type=device_type,
-                reasoning=reasoning,
-                source=source,
-            )
-            db.session.add(entry)
+        # session.merge() handles concurrent inserts safely (upsert via PK match)
+        entry = DeviceClassificationCache(
+            fingerprint_hash=fingerprint_hash,
+            device_type=device_type,
+            reasoning=reasoning,
+            source=source,
+        )
+        db.session.merge(entry)
         db.session.commit()
+        logger.debug("Persisted Gemini classification to DB: %s → %s", fingerprint_hash[:8], device_type)
     except Exception:
         try:
             from extensions import db
@@ -119,21 +116,28 @@ def compute_fingerprint(signals_dict: dict) -> str:
 # Prompt builder
 # ---------------------------------------------------------------------------
 
+def _safe(value, max_len: int = 120) -> str:
+    """Sanitize a signal value for prompt inclusion — strip newlines, truncate."""
+    if value is None:
+        return "none"
+    return str(value).replace("\r", " ").replace("\n", " ").strip()[:max_len] or "none"
+
+
 def _build_prompt(signals_dict: dict) -> str:
     ports = signals_dict.get("open_ports", [])
     return (
         "Classify this network device into exactly one of these types:\n"
         "firewall, router, switch, access_point, server, workstation, printer, camera, mobile, unknown\n\n"
         "Signals:\n"
-        f"- MAC vendor/manufacturer: {signals_dict.get('manufacturer', 'Unknown')}\n"
+        f"- MAC vendor/manufacturer: {_safe(signals_dict.get('manufacturer', 'Unknown'))}\n"
         f"- TTL from ping: {signals_dict.get('ttl', 'unknown')} "
         "(255=network gear, 128=Windows, 64=Linux)\n"
         f"- Open TCP ports: {sorted(ports) if ports else 'none'}\n"
-        f"- HTTP Server header + page title: {signals_dict.get('http_banner') or 'none'}\n"
-        f"- SSH banner: {signals_dict.get('ssh_banner') or 'none'}\n"
+        f"- HTTP Server header + page title: {_safe(signals_dict.get('http_banner'))}\n"
+        f"- SSH banner: {_safe(signals_dict.get('ssh_banner'))}\n"
         f"- mDNS service types: {signals_dict.get('mdns_services') or 'none'}\n"
-        f"- UPnP device info: {signals_dict.get('upnp_info') or 'none'}\n"
-        f"- Hostname: {signals_dict.get('hostname', 'unknown')}\n\n"
+        f"- UPnP device info: {_safe(signals_dict.get('upnp_info'))}\n"
+        f"- Hostname: {_safe(signals_dict.get('hostname', 'unknown'))}\n\n"
         "Respond with exactly ONE word from the list above. No explanation."
     )
 
@@ -155,7 +159,11 @@ def _classify_via_gemini(signals_dict: dict) -> str:
         model = genai.GenerativeModel("gemini-2.0-flash")
 
         prompt = _build_prompt(signals_dict)
-        response = model.generate_content(prompt)
+        response = model.generate_content(
+            prompt,
+            generation_config={"max_output_tokens": 10},
+            request_options={"timeout": 10},
+        )
         raw = response.text.strip().lower().split()[0] if response.text.strip() else "unknown"
 
         # Normalize to a valid device type via DeviceClassifier
