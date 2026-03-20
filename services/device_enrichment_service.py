@@ -40,7 +40,7 @@ _discover_upnp(ip)
 
 All methods:
 - Swallow every exception — never raise to the caller.
-- Bound every network operation to ≤1.5 s via asyncio.wait_for.
+- Bound every network operation via asyncio.wait_for (ping: 1s, HTTP/SSH/mDNS: 1.5s, UPnP: 2.0s).
 - Use loop.run_in_executor(None, …) for blocking socket/subprocess calls.
 """
 
@@ -462,7 +462,7 @@ class DeviceEnrichmentService:
                 length = data[offset]
                 if length == 0:
                     break
-                if (length & 0xC0) == 0xC0:  # pointer
+                if (length & 0xC0) == 0xC0 and offset + 1 < len(data):  # pointer
                     ptr = ((length & 0x3F) << 8) | data[offset + 1]
                     offset = ptr
                     continue
