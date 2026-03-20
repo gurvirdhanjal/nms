@@ -156,6 +156,18 @@ def _ensure_enhanced_server_metrics_columns(inspector=None):
         if 'disk_total_gb' not in existing:
             statements.append("ALTER TABLE server_health_logs ADD COLUMN disk_total_gb DOUBLE PRECISION")
 
+        # Uptime accuracy columns (accurate boot time + agent session tracking)
+        if 'boot_time' not in existing:
+            statements.append("ALTER TABLE server_health_logs ADD COLUMN boot_time TIMESTAMP")
+        if 'agent_start_time' not in existing:
+            statements.append("ALTER TABLE server_health_logs ADD COLUMN agent_start_time TIMESTAMP")
+        if 'agent_session_id' not in existing:
+            statements.append("ALTER TABLE server_health_logs ADD COLUMN agent_session_id VARCHAR(64)")
+        if 'is_reboot' not in existing:
+            statements.append("ALTER TABLE server_health_logs ADD COLUMN is_reboot BOOLEAN DEFAULT FALSE")
+        if 'network_connections_unique_ips' not in existing:
+            statements.append("ALTER TABLE server_health_logs ADD COLUMN network_connections_unique_ips INTEGER")
+
         if not statements:
             return
 
@@ -419,6 +431,10 @@ def _ensure_device_maintenance_columns(inspector=None):
             statements.append("ALTER TABLE device ADD COLUMN maintenance_mode BOOLEAN DEFAULT FALSE")
         if 'health_alert_strikes' not in existing:
             statements.append("ALTER TABLE device ADD COLUMN health_alert_strikes INTEGER DEFAULT 0")
+        if 'last_agent_heartbeat' not in existing:
+            statements.append("ALTER TABLE device ADD COLUMN last_agent_heartbeat TIMESTAMP")
+        if 'last_agent_session_id' not in existing:
+            statements.append("ALTER TABLE device ADD COLUMN last_agent_session_id VARCHAR(64)")
 
         if not statements:
             return
@@ -1119,6 +1135,82 @@ def _ensure_app_category_cache_table():
         print(f"[DB] Migration warning (app_category_cache): {exc}")
 
 
+def _ensure_device_classification_cache_table():
+    """Create device_classification_cache table if absent (idempotent)."""
+    try:
+        from models.device_classification_cache import DeviceClassificationCache
+        DeviceClassificationCache.__table__.create(bind=db.engine, checkfirst=True)
+        db.session.commit()
+        print("[DB] device_classification_cache table verified.")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (device_classification_cache): {exc}")
+
+
+def _ensure_performance_indexes():
+    """
+    Composite and partial indexes for high-frequency query paths.
+    All use IF NOT EXISTS — idempotent, safe on every startup.
+    PostgreSQL-only; returns immediately on SQLite.
+    """
+    try:
+        backend = db.engine.url.get_backend_name()
+        if backend != 'postgresql':
+            return
+
+        statements = [
+            # dashboard_events: covers GROUP BY severity query + alert list queries
+            # (device_id IN (...), resolved=false, GROUP BY severity)
+            """
+            CREATE INDEX IF NOT EXISTS idx_dashboard_events_device_sev_res_ts
+            ON dashboard_events (device_id, severity, resolved, timestamp DESC)
+            """,
+            # device: partial index for server device filter — only active 'server' rows
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_type_active
+            ON device (device_type, is_active)
+            WHERE is_active = true
+            """,
+            # device: partial index for maintenance bulk UPDATE WHERE maintenance_mode=true
+            # Typically 0–3 rows — near-zero storage, near-zero scan cost
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_maintenance_mode
+            ON device (device_id)
+            WHERE maintenance_mode = true
+            """,
+            # device: compliance_profile_id FK is unindexed — AlertManager queries it per health check
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_compliance_profile_id
+            ON device (compliance_profile_id)
+            WHERE compliance_profile_id IS NOT NULL
+            """,
+            # port_scan_result: no indexes at all — add composite for IP + time lookups
+            """
+            CREATE INDEX IF NOT EXISTS idx_port_scan_result_ip_ts
+            ON port_scan_result (device_ip, scan_timestamp DESC)
+            """,
+            # audit_logs: composite for combined filter + ORDER BY timestamp DESC
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_ts_entity_action
+            ON audit_logs (timestamp DESC, entity_type, action)
+            """,
+            # device_scan_history_remote: no indexes on this table
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_scan_history_remote_mac_ts
+            ON device_scan_history_remote (mac_address, scan_timestamp DESC)
+            """,
+        ]
+
+        for stmt in statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+        print(f"[DB] Performance indexes applied ({len(statements)} statements).")
+
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (performance indexes): {exc}")
+
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -1146,6 +1238,8 @@ def ensure_server_health_columns():
     _ensure_behavioral_indexes()
     _ensure_typed_text_policy_alert_table()
     _ensure_app_category_cache_table()
+    _ensure_device_classification_cache_table()
+    _ensure_performance_indexes()
 
 
 def ensure_tracking_stabilization_columns():

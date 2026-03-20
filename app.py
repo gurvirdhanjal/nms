@@ -42,6 +42,28 @@ def create_app(test_config=None):
         app.config['TEMPLATES_AUTO_RELOAD'] = False
     app.jinja_env.auto_reload = app.config.get('TEMPLATES_AUTO_RELOAD', False)
 
+    # Jinja2 filter: format UTC-naive datetimes in India Standard Time (UTC+5:30)
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfo
+        _IST_TZ = _ZoneInfo('Asia/Kolkata')
+    except ImportError:
+        import pytz as _pytz
+        _IST_TZ = _pytz.timezone('Asia/Kolkata')
+
+    from datetime import timezone as _utc_tz
+
+    def _ist_filter(dt, fmt='%d %b %Y, %H:%M:%S'):
+        if dt is None:
+            return 'N/A'
+        try:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_utc_tz.utc)
+            return dt.astimezone(_IST_TZ).strftime(fmt)
+        except Exception:
+            return dt.strftime(fmt)
+
+    app.jinja_env.filters['ist'] = _ist_filter
+
     # Optional hard-enforcement for production deployments.
     if app.config.get('REQUIRE_POSTGRES'):
         backend = make_url(app.config.get('SQLALCHEMY_DATABASE_URI', '')).get_backend_name()
@@ -96,6 +118,8 @@ def create_app(test_config=None):
 
     db.init_app(app)
     bcrypt.init_app(app)
+    app.config['RATELIMIT_STORAGE_URI'] = app.config.get('REDIS_URL') or 'memory://'
+    app.config.setdefault('RATELIMIT_SWALLOW_ERRORS', True)
     limiter.init_app(app)
 
     # ---------------------------
@@ -224,6 +248,7 @@ def create_app(test_config=None):
             AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
         )
         from models.compliance_profile import ComplianceProfile
+        from models.device_classification_cache import DeviceClassificationCache
         from models.discovery_config import DiscoveryConfig
         from utils.db_migrations import ensure_server_health_columns, ensure_tracking_stabilization_columns
 
@@ -352,6 +377,32 @@ def create_app(test_config=None):
     def inject_rbac_context():
         from middleware.rbac import get_ui_rbac_context
         return {'rbac_context': get_ui_rbac_context()}
+
+    @app.get('/health')
+    def health():
+        backend = 'unknown'
+        try:
+            db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+            backend = make_url(db_uri).get_backend_name() if db_uri else 'unknown'
+        except Exception:
+            pass
+
+        try:
+            with db.engine.connect() as conn:
+                conn.exec_driver_sql('select 1')
+        except Exception as exc:
+            return jsonify({
+                'status': 'unhealthy',
+                'database': 'unreachable',
+                'backend': backend,
+                'error': str(exc),
+            }), 503
+
+        return jsonify({
+            'status': 'healthy',
+            'database': 'reachable',
+            'backend': backend,
+        })
 
     # ---------------------------
     # Error handlers
