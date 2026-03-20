@@ -567,6 +567,10 @@ def save_device():
                 # Update existing device
                 from middleware.rbac import scoped_query
                 device = scoped_query(Device).get(device_id)
+                if not device:
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return jsonify({'success': False, 'message': 'Device not found'}), 404
+                    return redirect(url_for('devices_bp.device_management'))
                 device.device_name = device_name
                 device.device_ip = device_ip
                 device.device_type = device_type
@@ -700,15 +704,21 @@ def save_device():
                 description=f"Device {action}d: {device.device_name or device.device_ip} ({device.device_ip})"
             )
             
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'device_id': device.device_id}), 200
             return redirect(url_for('devices_bp.device_management'))
         except Exception as e:
             db.session.rollback()
-            logger.error(f"[Devices] Failed to add device: {e}")
+            logger.error(f"[Devices] Failed to save device: {e}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
             from models.device import Device
             devices = Device.query.all()
             return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}"), 500
-    
+
     except Exception as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
         from models.device import Device
         devices = Device.query.all()
         return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}")
@@ -1525,24 +1535,39 @@ def update_device_type(device_id):
 def reclassify_all():
     # Auth handled by middleware
 
-    
+
     from models.device import Device
-    from services.device_classifier import DeviceClassifier, DeviceSignals
+    from services.device_classifier import DeviceClassifier, DeviceSignals, ConfidenceLevel
+    from services.device_enrichment_service import DeviceEnrichmentService
     from flask import current_app
     import os
 
     classifier = DeviceClassifier()
+    _enrich_svc = DeviceEnrichmentService()
     devices = Device.query.all()
     updated_count = 0
     updated_devices = []
     force = request.args.get('force', 'false').lower() == 'true'
     auto_mode = request.args.get('auto', 'false').lower() == 'true'
-    
+    unknown_only = request.args.get('unknown_only', 'false').lower() == 'true'
+
+    # Change 1: filter to unknowns only when requested
+    if unknown_only:
+        devices = [d for d in devices if (d.device_type or "").strip().lower() == "unknown"]
+
+    # Resolution counters
+    classifier_resolved = 0
+    gemini_resolved = 0
+    still_unknown = 0
+
     # Get shared scanner instance
     scanner = get_discovery_service().scanner
 
-    logger.info("[Reclassify] start devices=%d force=%s auto=%s", len(devices), force, auto_mode)
-    
+    logger.info(
+        "[Reclassify] start devices=%d force=%s auto=%s unknown_only=%s",
+        len(devices), force, auto_mode, unknown_only,
+    )
+
     for device in devices:
         try:
             dtype = (device.device_type or "").strip().lower()
@@ -1558,7 +1583,7 @@ def reclassify_all():
                     continue
 
             # Ping first (ICMP may be blocked; do not rely on it for classification)
-            status, _latency, _packet_loss, *_ = asyncio.run(scanner.ping_device(device.device_ip))
+            status, _latency, _packet_loss, ttl, *_ = asyncio.run(scanner.ping_device(device.device_ip))
 
             mac_address = device.macaddress or "N/A"
             hostname = device.hostname or ""
@@ -1584,16 +1609,59 @@ def reclassify_all():
             open_ports = asyncio.run(scanner.scan_ports(device.device_ip))
             port_numbers = [p.get("port") for p in open_ports if isinstance(p, dict)]
 
+            # Enrich with banners / mDNS / UPnP before classification
+            is_l2_reachable = bool(mac_address and mac_address not in ("N/A", "Unknown", ""))
+            enriched = asyncio.run(_enrich_svc.enrich(device.device_ip, port_numbers, is_l2_reachable))
+
             signals = DeviceSignals(
                 ip_address=device.device_ip,
                 mac_address=mac_address,
                 hostname=hostname,
                 manufacturer=manufacturer,
-                open_ports=port_numbers
+                open_ports=port_numbers,
+                ttl=ttl,
+                http_banner=enriched.get("http_banner"),
+                ssh_banner=enriched.get("ssh_banner"),
+                mdns_services=enriched.get("mdns_services", []),
+                upnp_info=enriched.get("upnp_info"),
             )
 
             result = classifier.classify(signals)
             normalized_type = DeviceClassifier.normalize_device_type(result.device_type)
+
+            # Track classifier resolution
+            if result.confidence != ConfidenceLevel.LOW:
+                classifier_resolved += 1
+
+            # Gemini fallback for low-confidence results
+            gemini_resolved_this = False
+            if result.confidence == ConfidenceLevel.LOW:
+                try:
+                    from services.gemini_classifier import classify_device as gemini_classify
+                    gemini_signals = {
+                        "manufacturer": manufacturer or "",
+                        "mac_address": mac_address or "",
+                        "ttl": ttl,
+                        "open_ports": port_numbers,
+                        "http_banner": enriched.get("http_banner"),
+                        "ssh_banner": enriched.get("ssh_banner"),
+                        "mdns_services": enriched.get("mdns_services", []),
+                        "upnp_info": enriched.get("upnp_info"),
+                        "hostname": hostname or "",
+                    }
+                    gemini_type = gemini_classify(gemini_signals)
+                    if gemini_type and gemini_type != "unknown":
+                        normalized_type = gemini_type
+                        gemini_resolved_this = True
+                except Exception:
+                    pass
+
+            if gemini_resolved_this:
+                gemini_resolved += 1
+
+            # Track devices still unknown after all resolution attempts
+            if (normalized_type or "").strip().lower() == "unknown":
+                still_unknown += 1
 
             # Update device
             device.device_type = normalized_type
@@ -1613,15 +1681,18 @@ def reclassify_all():
             })
         except Exception as e:
             logger.error("[Reclassify] Failed for %s: %s", device.device_ip, e)
-            
+
     db.session.commit()
-    
+
     return jsonify({
         'success': True,
         'message': f"Reclassified {updated_count} devices.",
         'updated_count': updated_count,
         'updated_devices': updated_devices,
-        'db_uri': current_app.config.get('SQLALCHEMY_DATABASE_URI', 'unknown')
+        'db_uri': current_app.config.get('SQLALCHEMY_DATABASE_URI', 'unknown'),
+        'classifier_resolved': classifier_resolved,
+        'gemini_resolved': gemini_resolved,
+        'still_unknown': still_unknown,
     })
 @devices_bp.route('/api/devices/<int:device_id>', methods=['POST'])
 @require_permission('devices.edit')
