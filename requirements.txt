@@ -37,3 +37,6 @@ reportlab>=4.1.0
 
 # LDAP / Active Directory
 ldap3>=2.9
+
+# AI Classification (Gemini LLM fallback for unknown device classification)
+google-generativeai>=0.8.0
