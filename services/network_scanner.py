@@ -624,10 +624,13 @@ class NetworkScanner:
                 expected_level='debug',
             )
         return None
-    
+
     # ---------------------------
     # Agent Discovery
     # ---------------------------
+    # FIXME: check_tactical_agent, check_port, and _fetch_agent_identity are defined twice
+    # (first block ~line 553, this duplicate block here). Pre-existing bug — second definition
+    # silently overrides the first. Safe to remove this duplicate section in a future cleanup.
     async def check_tactical_agent(self, ip: str):
         """Check if device is running the Tactical Agent service on port 5002."""
         try:
