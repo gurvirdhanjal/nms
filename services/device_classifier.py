@@ -368,6 +368,8 @@ class DeviceClassifier:
             if upnp_mfr:
                 for vendor_key, dtype in self.VENDOR_MAP.items():
                     if vendor_key.lower() in upnp_mfr.lower():
+                        # 30 pts (slightly less than WEIGHT_UPNP=35) because manufacturer
+                        # strings can be generic; deviceType scores full 35 pts when present.
                         add_score(dtype, 30, f"UPnP manufacturer: {upnp_mfr}")
                         break
             if upnp_type:
