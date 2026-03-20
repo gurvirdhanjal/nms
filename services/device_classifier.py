@@ -32,6 +32,11 @@ class DeviceSignals:
     snmp_sys_object_id: Optional[str] = None
     detected_services: List[str] = field(default_factory=list)
     manufacturer: Optional[str] = None # Added convenient field from existing MacLookup
+    ttl: Optional[int] = None
+    http_banner: Optional[str] = None
+    ssh_banner: Optional[str] = None
+    mdns_services: List[str] = field(default_factory=list)
+    upnp_info: Optional[dict] = None
 
 @dataclass
 class ClassificationResult:
@@ -70,6 +75,10 @@ class DeviceClassifier:
     WEIGHT_MAC = 45
     WEIGHT_PORT = 10
     WEIGHT_HOSTNAME = 35
+    WEIGHT_TTL    = 25   # max TTL points
+    WEIGHT_BANNER = 40   # max HTTP/SSH banner points
+    WEIGHT_MDNS   = 45   # max mDNS points (equal to MAC — very reliable)
+    WEIGHT_UPNP   = 35   # max UPnP points
 
     # Score normalization (maps evidence to a 50–100 confidence band)
     SCORE_BASE = 50
@@ -154,6 +163,49 @@ class DeviceClassifier:
         DeviceType.PRINTER: [r"^(printer|print|hp|canon|epson)[\-_]?"],
         DeviceType.CAMERA_IOT: [r"^(cam|camera|ipc|dvr|nvr)[\-_]?"],
         DeviceType.MOBILE: [r"^(iphone|ipad|android|galaxy)"]
+    }
+
+    # SSH Banner → Device Type mapping
+    SSH_BANNER_MAP = {
+        r"dropbear":  (DeviceType.CAMERA_IOT, 30, "SSH Dropbear banner (IoT/Camera)"),
+        r"openssh":   (DeviceType.SERVER,      20, "SSH OpenSSH banner (Server/Workstation)"),
+        r"cisco":     (DeviceType.ROUTER,      25, "SSH Cisco banner"),
+        r"routeros":  (DeviceType.ROUTER,      25, "SSH MikroTik RouterOS banner"),
+    }
+
+    # HTTP Server header → Device Type mapping
+    HTTP_SERVER_MAP = {
+        r"cups":      (DeviceType.PRINTER,    40, "HTTP Server: CUPS (printer)"),
+        r"goahead":   (DeviceType.CAMERA_IOT, 40, "HTTP Server: GoAhead (IP camera)"),
+        r"hikvision": (DeviceType.CAMERA_IOT, 40, "HTTP Server: Hikvision"),
+        r"dahua":     (DeviceType.CAMERA_IOT, 40, "HTTP Server: Dahua"),
+        r"nginx":     (DeviceType.SERVER,     20, "HTTP Server: nginx"),
+        r"apache":    (DeviceType.SERVER,     20, "HTTP Server: Apache"),
+        r"iis":       (DeviceType.SERVER,     20, "HTTP Server: IIS"),
+        r"lighttpd":  (DeviceType.SERVER,     15, "HTTP Server: lighttpd"),
+        r"jetty":     (DeviceType.SERVER,     15, "HTTP Server: Jetty"),
+    }
+
+    # HTTP page title → Device Type mapping
+    HTTP_TITLE_MAP = {
+        r"printer|mfp|laserjet|inkjet":  (DeviceType.PRINTER,      35, "HTTP title: Printer"),
+        r"camera|dvr|nvr|surveillance":  (DeviceType.CAMERA_IOT,   35, "HTTP title: Camera/DVR"),
+        r"router|gateway":               (DeviceType.ROUTER,       25, "HTTP title: Router"),
+        r"switch":                       (DeviceType.SWITCH,       25, "HTTP title: Switch"),
+        r"access point|wireless":        (DeviceType.ACCESS_POINT, 25, "HTTP title: AP"),
+        r"unifi|ubiquiti":               (DeviceType.ACCESS_POINT, 30, "HTTP title: Ubiquiti"),
+    }
+
+    # mDNS service type → Device Type mapping
+    MDNS_SERVICE_MAP = {
+        "_ipp._tcp":            (DeviceType.PRINTER,      45, "mDNS: IPP printer"),
+        "_printer._tcp":        (DeviceType.PRINTER,      45, "mDNS: printer._tcp"),
+        "_pdl-datastream._tcp": (DeviceType.PRINTER,      40, "mDNS: PDL printer"),
+        "_googlecast._tcp":     (DeviceType.CAMERA_IOT,   40, "mDNS: Chromecast/IoT"),
+        "_airplay._tcp":        (DeviceType.MOBILE,       35, "mDNS: AirPlay (Apple)"),
+        "_raop._tcp":           (DeviceType.MOBILE,       35, "mDNS: RAOP (Apple)"),
+        "_ssh._tcp":            (DeviceType.SERVER,       15, "mDNS: SSH service"),
+        "_smb._tcp":            (DeviceType.WORKSTATION,  15, "mDNS: SMB service"),
     }
 
     CANONICAL_MAP = {
@@ -259,7 +311,73 @@ class DeviceClassifier:
                         add_score(dtype, self.WEIGHT_HOSTNAME, f"Hostname pattern match: '{pattern}'")
                         break
 
-        # 5. Specialized Logic / Tie Breakers
+        # 5. TTL-based OS fingerprinting (Weight: WEIGHT_TTL=25)
+        # ----------------------------
+        if signals.ttl is not None:
+            ttl = signals.ttl
+            if 240 <= ttl <= 255:
+                add_score(DeviceType.ROUTER, 25, f"TTL={ttl} (network gear, Cisco/HP default)")
+                add_score(DeviceType.SWITCH, 20, f"TTL={ttl} (network gear)")
+            elif 120 <= ttl <= 135:
+                add_score(DeviceType.WORKSTATION, 20, f"TTL={ttl} (Windows default 128)")
+            elif 55 <= ttl <= 70:
+                add_score(DeviceType.SERVER, 15, f"TTL={ttl} (Linux/macOS default 64)")
+
+        # 6. SSH Banner Analysis (Weight: WEIGHT_BANNER=40)
+        # ----------------------------
+        if signals.ssh_banner:
+            banner_lower = signals.ssh_banner.lower()
+            for pattern, (dtype, points, reason) in self.SSH_BANNER_MAP.items():
+                if re.search(pattern, banner_lower):
+                    add_score(dtype, points, reason)
+                    break
+
+        # 7. HTTP Banner Analysis (Weight: WEIGHT_BANNER=40)
+        # ----------------------------
+        if signals.http_banner:
+            # Format expected: "Server: <value> | Title: <title>"
+            parts = signals.http_banner.split(" | ", 1)
+            server_half = parts[0] if parts else ""
+            title_half  = parts[1] if len(parts) > 1 else ""
+            server_lower = server_half.lower()
+            title_lower  = title_half.lower()
+            for pattern, (dtype, points, reason) in self.HTTP_SERVER_MAP.items():
+                if re.search(pattern, server_lower):
+                    add_score(dtype, points, reason)
+                    break
+            for pattern, (dtype, points, reason) in self.HTTP_TITLE_MAP.items():
+                if re.search(pattern, title_lower):
+                    add_score(dtype, points, reason)
+                    break
+
+        # 8. mDNS Services Analysis (Weight: WEIGHT_MDNS=45)
+        # ----------------------------
+        if signals.mdns_services:
+            for svc in signals.mdns_services:
+                svc_lower = svc.lower()
+                for key, (dtype, points, reason) in self.MDNS_SERVICE_MAP.items():
+                    if key.lower() in svc_lower:
+                        add_score(dtype, points, reason)
+                        break
+
+        # 9. UPnP Info Analysis (Weight: WEIGHT_UPNP=35)
+        # ----------------------------
+        if signals.upnp_info:
+            upnp_mfr  = signals.upnp_info.get("manufacturer", "")
+            upnp_type = signals.upnp_info.get("deviceType", "")
+            if upnp_mfr:
+                for vendor_key, dtype in self.VENDOR_MAP.items():
+                    if vendor_key.lower() in upnp_mfr.lower():
+                        add_score(dtype, 30, f"UPnP manufacturer: {upnp_mfr}")
+                        break
+            if upnp_type:
+                upnp_type_lower = upnp_type.lower()
+                if "printer" in upnp_type_lower:
+                    add_score(DeviceType.PRINTER, 35, f"UPnP deviceType contains 'printer'")
+                if any(x in upnp_type_lower for x in ["mediarenderer", "mediaplayer"]):
+                    add_score(DeviceType.CAMERA_IOT, 30, f"UPnP deviceType: media renderer/player")
+
+        # 10. Specialized Logic / Tie Breakers
         # ----------------------------
         # No ports open and Mobile vendor? High confidence mobile.
         if (not ports) and (DeviceType.MOBILE in scores) and (scores[DeviceType.MOBILE] >= self.WEIGHT_MAC):
@@ -300,10 +418,20 @@ class DeviceClassifier:
             alternatives = [(t.value, s) for t, s in sorted_types[1:3]]
 
         signals_summary = []
-        if signals.manufacturer: signals_summary.append({"source": "Vendor", "value": signals.manufacturer})
-        if signals.open_ports: signals_summary.append({"source": "Ports", "value": str(signals.open_ports)})
-        if signals.snmp_sys_descr: signals_summary.append({"source": "SNMP", "value": "sysDescr matched"})
-        if signals.hostname: signals_summary.append({"source": "Hostname", "value": signals.hostname})
+        if signals.manufacturer: signals_summary.append({"source": "Vendor",    "value": signals.manufacturer})
+        if signals.open_ports:   signals_summary.append({"source": "Ports",     "value": str(signals.open_ports)})
+        if signals.snmp_sys_descr: signals_summary.append({"source": "SNMP",   "value": "sysDescr matched"})
+        if signals.hostname:     signals_summary.append({"source": "Hostname",  "value": signals.hostname})
+        if signals.ttl is not None:
+            signals_summary.append({"source": "TTL",  "value": str(signals.ttl)})
+        if signals.http_banner:
+            signals_summary.append({"source": "HTTP", "value": signals.http_banner[:80]})
+        if signals.ssh_banner:
+            signals_summary.append({"source": "SSH",  "value": signals.ssh_banner[:80]})
+        if signals.mdns_services:
+            signals_summary.append({"source": "mDNS", "value": str(signals.mdns_services)})
+        if signals.upnp_info:
+            signals_summary.append({"source": "UPnP", "value": str(signals.upnp_info.get("manufacturer", ""))})
 
         return ClassificationResult(
             device_type=best_type,
