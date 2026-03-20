@@ -429,17 +429,32 @@ class NetworkScanner:
     # Ping / Port scan
     # ---------------------------
 
+    def _ping_for_ttl(self, ip: str):
+        """Extract TTL from a single ping. Returns None on any failure."""
+        try:
+            import re as _re
+            is_windows = platform.system().lower() == "windows"
+            if is_windows:
+                cmd = ["ping", "-n", "1", "-w", "1000", ip]
+            else:
+                cmd = ["ping", "-c", "1", "-W", "1", ip]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            match = _re.search(r'(?i)ttl=(\d+)', result.stdout)
+            return int(match.group(1)) if match else None
+        except Exception:
+            return None
+
     async def ping_device(self, ip: str, timeout: int = 2, count: int = 4):
         """
-        Ping a device and return status, latency (ms), packet loss (%), and jitter (ms).
+        Ping a device and return status, latency (ms), packet loss (%), jitter (ms), and TTL.
         Safe fallback to system ping if aioping lacks permissions.
         """
         successful_pings = 0
         latencies = []
-        
+
         # Check system type once
         is_windows = platform.system().lower() == "windows"
-        
+
         for _ in range(count):
             try:
                 # Try aioping first (faster, accurate)
@@ -454,9 +469,9 @@ class NetworkScanner:
                 if delay is not None:
                      latencies.append(delay * 1000)
                      successful_pings += 1
-        
+
         packet_loss = ((count - successful_pings) / count) * 100
-        
+
         if successful_pings > 0:
             avg_latency = round(sum(latencies) / len(latencies), 2)
             # Calculate simple jitter: average absolute difference between successive latencies
@@ -464,10 +479,14 @@ class NetworkScanner:
             if len(latencies) > 1:
                 diffs = [abs(latencies[j] - latencies[j-1]) for j in range(1, len(latencies))]
                 jitter = round(sum(diffs) / len(diffs), 2)
-                
-            return "Online", avg_latency, packet_loss, jitter
+
+            # Extract TTL in parallel via executor (aioping does not expose TTL)
+            loop = asyncio.get_running_loop()
+            ttl = await loop.run_in_executor(self._executor, self._ping_for_ttl, ip)
+
+            return "Online", avg_latency, packet_loss, jitter, ttl
         else:
-            return "Offline", None, 100.0, None
+            return "Offline", None, 100.0, None, None
 
     async def _ping_system(self, ip: str, timeout: int, is_windows: bool) -> float:
         """Fallback system ping (executes ping command). Returns delay in seconds or None."""
@@ -672,7 +691,7 @@ class NetworkScanner:
     async def scan_single_device(self, ip: str, scan_mode: str = 'heavy'):
         """Comprehensive scan of a single device (fast + safe)."""
         try:
-            status, latency, packet_loss, jitter = await self.ping_device(ip, timeout=self.timeout)
+            status, latency, packet_loss, jitter, ttl = await self.ping_device(ip, timeout=self.timeout)
 
             device_info = {
                 "ip": ip,
@@ -680,6 +699,7 @@ class NetworkScanner:
                 "latency": latency,
                 "packet_loss": packet_loss,  # NEW: Include packet loss
                 "jitter": jitter,            # NEW: Include jitter
+                "ttl": ttl,                  # NEW: Include TTL for OS fingerprinting
                 "hostname": "Unknown",
                 "mac": "N/A",
                 "manufacturer": "Unknown",
@@ -743,6 +763,12 @@ class NetworkScanner:
                     port_numbers = [p["port"] for p in open_ports_list if isinstance(p, dict) and "port" in p]
 
 
+                    # Enrichment (Layer 1 — new signals for classification)
+                    from services.device_enrichment_service import DeviceEnrichmentService
+                    _enrichment_svc = DeviceEnrichmentService()
+                    mac_address = device_info.get("mac", "N/A")
+                    is_l2_reachable = bool(mac_address and mac_address != "N/A")
+                    enriched = await _enrichment_svc.enrich(ip, port_numbers, is_l2_reachable)
 
                     classifier = DeviceClassifier()
 
@@ -762,9 +788,12 @@ class NetworkScanner:
                         open_ports=port_numbers,
 
 
-                        manufacturer=device_info.get("manufacturer")
-
-
+                        manufacturer=device_info.get("manufacturer"),
+                        ttl=device_info.get("ttl"),
+                        http_banner=enriched.get("http_banner"),
+                        ssh_banner=enriched.get("ssh_banner"),
+                        mdns_services=enriched.get("mdns_services", []),
+                        upnp_info=enriched.get("upnp_info"),
                         # Add SNMP here if gathered
 
 
@@ -782,6 +811,29 @@ class NetworkScanner:
                         "classification_confidence": classification.confidence.value,
                         "classification_details": classification.to_dict()
                     })
+
+                    # Gemini LLM fallback for LOW confidence classifications
+                    try:
+                        from services.device_classifier import ConfidenceLevel
+                        if classification.confidence == ConfidenceLevel.LOW:
+                            from services.gemini_classifier import classify_device as gemini_classify
+                            gemini_signals = {
+                                "manufacturer": device_info.get("manufacturer", ""),
+                                "mac_address": device_info.get("mac", ""),
+                                "ttl": device_info.get("ttl"),
+                                "open_ports": port_numbers,
+                                "http_banner": enriched.get("http_banner"),
+                                "ssh_banner": enriched.get("ssh_banner"),
+                                "mdns_services": enriched.get("mdns_services", []),
+                                "upnp_info": enriched.get("upnp_info"),
+                                "hostname": device_info.get("hostname", ""),
+                            }
+                            gemini_type = gemini_classify(gemini_signals)
+                            if gemini_type and gemini_type != "unknown":
+                                device_info["device_type"] = gemini_type
+                                device_info["classification_confidence"] = "gemini_fallback"
+                    except Exception:
+                        pass  # Never block scan on LLM failure
 
 
 
