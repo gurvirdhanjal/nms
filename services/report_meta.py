@@ -603,6 +603,26 @@ def build_report_meta(
     elif scope.get("scope_type") == "department":
         scope_id = scope.get("department_id")
 
+    # ── Per-source confidence levels ─────────────────────────────────────
+    source_confidence = {}
+    for source_name, stats in source_stats.items():
+        count = int(stats.get("count") or 0)
+        range_count = int(stats.get("range_count") or 0)
+        if count == 0:
+            source_confidence[source_name] = "NO_DATA"
+        elif range_count == 0:
+            source_confidence[source_name] = "LOW"
+        else:
+            expected = _expected_day_buckets(start_date, end_date) if "daily" in source_name else _expected_hour_buckets(start_date, end_date)
+            distinct = int(stats.get("distinct_buckets") or 0)
+            coverage = distinct / max(1, expected)
+            if coverage >= 0.8:
+                source_confidence[source_name] = "HIGH"
+            elif coverage >= 0.4:
+                source_confidence[source_name] = "MEDIUM"
+            else:
+                source_confidence[source_name] = "LOW"
+
     return {
         "report_type": report_type,
         "generated_at": generated_at.isoformat(),
@@ -620,4 +640,5 @@ def build_report_meta(
         "exportable_formats": report_definition.get("exportable_formats", ["pdf"]),
         "completeness_warnings": warnings,
         "freshness_sources": list(freshness_sources),
+        "source_confidence": source_confidence,
     }

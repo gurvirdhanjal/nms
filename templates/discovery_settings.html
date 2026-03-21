@@ -5,20 +5,7 @@
 {% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<!-- Specific discovery settings styling not covered by global layout -->
-<style>
-    /* Discovery settings specific overrides */
-    .discovery-settings-page .page-header h1 {
-        font-family: 'Rajdhani', sans-serif;
-        letter-spacing: 0.1em;
-    }
-
-    .discovery-settings-page .enterprise-panel {
-        background: var(--mo-surface);
-        border: 1px solid var(--mo-border);
-        border-radius: 6px;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/discovery_settings.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -26,52 +13,71 @@
     <div class="row mb-2">
         <div class="col-md-12 page-header">
             <h1><i data-lucide="satellite-dish"></i> Discovery Telemetry</h1>
-            <h4>Configure subnets to scan for new devices</h4>
+            <h4>Configure subnets to scan for new devices and update inventory automatically</h4>
         </div>
     </div>
 
-    <!-- Metric Strip: Denser monochromatic KPI layout -->
+    <!-- Health Strip -->
     <div class="enterprise-panel mb-3 py-3 px-4" id="settingsHealthStrip">
         <div class="row g-4 align-items-center">
             <div class="col-md-3">
                 <div class="kpi-stat-wrap" id="healthCard">
-                    <div class="stat-label text-uppercase fw-bold mb-1"
-                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">
+                    <div class="stat-label text-uppercase fw-bold mb-1">
                         <i class="fas fa-microchip me-1"></i> Subsystem Status
                     </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="h-2 w-2 rounded-full bg-slate-500" id="stripDot"
-                            style="box-shadow: 0 0 5px currentColor;"></div>
-                        <span id="stripState" class="font-monospace fs-5 text-white lh-1">INITIALIZING...</span>
+                    <div class="d-flex align-items-center gap-2 mt-1">
+                        <span class="status-dot dot-offline" id="stripDot"></span>
+                        <span id="stripState" class="font-monospace fs-5 text-white lh-1">INITIALIZING</span>
                     </div>
                 </div>
             </div>
             <div class="col-md-2">
                 <div class="kpi-stat-wrap">
-                    <div class="stat-label text-uppercase fw-bold mb-1"
-                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Last Enrichment</div>
-                    <div class="font-monospace fs-5 text-white lh-1" id="stripLastScan">--</div>
+                    <div class="stat-label text-uppercase fw-bold mb-1">Last Scan</div>
+                    <div class="font-monospace fs-6 text-white lh-1" id="stripLastScan">--</div>
                 </div>
             </div>
             <div class="col-md-2">
                 <div class="kpi-stat-wrap">
-                    <div class="stat-label text-uppercase fw-bold mb-1"
-                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Delta (New)</div>
+                    <div class="stat-label text-uppercase fw-bold mb-1">Next Scan</div>
+                    <div class="font-monospace fs-6 text-white lh-1" id="stripNextScan">--</div>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <div class="kpi-stat-wrap">
+                    <div class="stat-label text-uppercase fw-bold mb-1">New</div>
                     <div class="font-monospace fs-5 text-white lh-1" id="stripNewCount">0</div>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <div class="kpi-stat-wrap">
-                    <div class="stat-label text-uppercase fw-bold mb-1"
-                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Delta (Update)</div>
+                    <div class="stat-label text-uppercase fw-bold mb-1">Updated</div>
                     <div class="font-monospace fs-5 text-white lh-1" id="stripUpdatedCount">0</div>
                 </div>
             </div>
             <div class="col-md-3 text-end">
-                <button class="mo-btn mo-btn-ghost py-1 px-3" id="triggerHeavyBtn" style="font-size: 11px;">
-                    <i class="fas fa-bolt me-1"></i> FORCE ENRICHMENT
+                <button class="ds-btn ds-btn-ghost" id="triggerHeavyBtn">
+                    <i class="fas fa-bolt me-1"></i> FORCE SCAN
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Scan Progress Panel (shown while scan is active) -->
+    <div id="scanProgressPanel">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="ds-progress-label">
+                <span class="status-dot dot-scanning me-2" style="display:inline-block;"></span>
+                ENRICHMENT SCAN IN PROGRESS
+            </span>
+            <span class="ds-badge ds-badge-scanning" id="scanProgressPct">0%</span>
+        </div>
+        <div class="ds-progress-bar-track">
+            <div class="ds-progress-bar-fill" id="scanProgressFill"></div>
+        </div>
+        <div class="d-flex justify-content-between mt-1">
+            <span class="ds-progress-label" id="scanProgressDetail">Probing subnet...</span>
+            <span class="ds-progress-label" id="scanFoundCount">0 devices found</span>
         </div>
     </div>
 
@@ -83,9 +89,10 @@
         <div class="col-xl-8">
             <div class="card bg-dark border-secondary">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-uppercase tracking-wider fs-7"><i data-lucide="settings-2" class="me-1"></i>
-                        Discovery Parameters</h6>
-                    <span id="statusBadge" class="mo-badge mo-badge-online" style="font-size: 9px;">LOADING</span>
+                    <h6 class="mb-0 text-uppercase tracking-wider fs-7">
+                        <i data-lucide="settings-2" class="me-1"></i> Discovery Parameters
+                    </h6>
+                    <span id="statusBadge" class="ds-badge ds-badge-inactive">LOADING</span>
                 </div>
 
                 <div class="card-body p-4">
@@ -93,14 +100,17 @@
                     <div class="d-flex align-items-center justify-content-between p-3 mb-4"
                         style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
                         <div>
-                            <h6 class="mb-1 fw-bold text-white text-uppercase tracking-wider fs-7">Autonomous Discovery
+                            <h6 class="mb-1 fw-bold text-white text-uppercase tracking-wider fs-7">
+                                Autonomous Discovery
                             </h6>
-                            <p class="mb-0 text-muted" style="font-size: 11px;">ICMP probes will be dispatched to
-                                configured subnets mapping new assets.</p>
+                            <p class="mb-0 text-muted" style="font-size: 11px;">
+                                ICMP probes dispatch to configured subnets on the set interval.
+                                New assets are added; existing devices are updated (including IP changes).
+                            </p>
                         </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" id="enabledToggle"
-                                style="width: 2.8rem; height: 1.4rem;">
+                        <div class="form-check form-switch ms-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                id="enabledToggle" style="width: 2.8rem; height: 1.4rem;">
                         </div>
                     </div>
 
@@ -110,17 +120,17 @@
                             style="font-size: 10px; letter-spacing: 0.1em;">Target CIDR Blocks</label>
                         <div class="bg-black p-2 border border-secondary rounded mb-2"
                             style="height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3) !important;">
-                            <ul id="subnetList" class="list-unstyled mb-0">
-                                <!-- Subnets injected via JS -->
-                            </ul>
+                            <ul id="subnetList" class="list-unstyled mb-0"></ul>
                         </div>
                         <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-dark border-secondary text-muted"><i
-                                    class="fas fa-network-wired"></i></span>
-                            <input type="text" id="newSubnet" class="form-control bg-dark text-white border-secondary"
-                                placeholder="Format: 192.168.1.0/24">
+                            <span class="input-group-text bg-dark border-secondary text-muted">
+                                <i class="fas fa-network-wired"></i>
+                            </span>
+                            <input type="text" id="newSubnet"
+                                class="form-control bg-dark text-white border-secondary"
+                                placeholder="e.g. 192.168.1.0/24">
                             <button type="button" id="addSubnetBtn" class="btn btn-outline-secondary">
-                                <i class="fas fa-plus me-1"></i> Append
+                                <i class="fas fa-plus me-1"></i> Add
                             </button>
                         </div>
                     </div>
@@ -133,7 +143,7 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-floating font-monospace">
-                                <input type="number" id="heavyInterval"
+                                <input type="number" id="heavyInterval" min="1"
                                     class="form-control form-control-sm bg-dark text-white border-secondary"
                                     placeholder="Period">
                                 <label for="heavyInterval" class="text-muted small">INTERVAL (MIN)</label>
@@ -141,7 +151,7 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-floating font-monospace">
-                                <input type="number" id="maxPings"
+                                <input type="number" id="maxPings" min="1" max="200"
                                     class="form-control form-control-sm bg-dark text-white border-secondary"
                                     placeholder="Max Pings">
                                 <label for="maxPings" class="text-muted small">CONCURRENT PROBES</label>
@@ -149,7 +159,7 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-floating font-monospace">
-                                <input type="number" id="pingTimeout"
+                                <input type="number" id="pingTimeout" min="1" max="10"
                                     class="form-control form-control-sm bg-dark text-white border-secondary"
                                     placeholder="Timeout">
                                 <label for="pingTimeout" class="text-muted small">ICMP T/O (SEC)</label>
@@ -157,99 +167,109 @@
                         </div>
                         <div class="col-md-8">
                             <div class="form-floating">
-                                <select id="autoAddPolicy" class="form-select bg-dark text-white border-secondary">
-                                    <option value="auto">AUTOMATIC (Commit Instantly)</option>
-                                    <option value="approval">QUARANTINE (Require Approval)</option>
+                                <select id="autoAddPolicy"
+                                    class="form-select bg-dark text-white border-secondary">
+                                    <option value="auto">AUTOMATIC — Add instantly on detection</option>
+                                    <option value="approval">QUARANTINE — Require admin approval</option>
                                 </select>
                                 <label for="autoAddPolicy" class="text-muted small">INGESTION POLICY</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-floating font-monospace">
-                                <input type="number" id="autoAddAfterN"
+                                <input type="number" id="autoAddAfterN" min="1"
                                     class="form-control form-control-sm bg-dark text-white border-secondary"
                                     placeholder="Detections">
-                                <label for="autoAddAfterN" class="text-muted small">REQ_DETECTIONS</label>
+                                <label for="autoAddAfterN" class="text-muted small">MIN DETECTIONS</label>
                             </div>
                         </div>
                         <div class="col-12">
                             <div class="form-check">
                                 <input id="autoMonitor" type="checkbox"
                                     class="form-check-input bg-dark border-secondary">
-                                <label for="autoMonitor" class="form-check-label text-muted small">Immediately attach
-                                    monitoring probe to discovered nodes</label>
+                                <label for="autoMonitor" class="form-check-label text-muted small">
+                                    Immediately attach monitoring probe to newly discovered nodes
+                                </label>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card-footer bg-dark border-secondary py-3 d-flex justify-content-end">
-                    <button id="saveBtn" type="button" class="mo-btn mo-btn-primary py-2 px-4 shadow-sm">
+                    <button id="saveBtn" type="button" class="ds-btn ds-btn-primary px-4">
                         <i class="fas fa-save me-2"></i> COMMIT CONFIGURATION
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- Side Panel (Metrics) -->
+        <!-- Side Panel -->
         <div class="col-xl-4">
+            <!-- Operation Stats -->
             <div class="card bg-dark border-secondary mb-3">
                 <div class="card-header py-2">
-                    <h6 class="mb-0 text-uppercase tracking-wider fs-7"><i data-lucide="bar-chart-3" class="me-1"></i>
-                        Operation Stats</h6>
+                    <h6 class="mb-0 text-uppercase tracking-wider fs-7">
+                        <i data-lucide="bar-chart-3" class="me-1"></i> Scan Telemetry
+                    </h6>
                 </div>
                 <div class="card-body p-3">
                     <div class="row g-2">
                         <div class="col-6">
-                            <div class="p-2 border border-secondary rounded overflow-hidden"
-                                style="background: rgba(0,0,0,0.1);">
-                                <div class="text-uppercase fw-bold text-muted mb-1" style="font-size: 9px;">Initiated
-                                </div>
+                            <div class="p-2 border border-secondary rounded"
+                                style="background: rgba(0,0,0,0.15);">
+                                <div class="text-uppercase fw-bold text-muted mb-1"
+                                    style="font-size: 9px; letter-spacing: 0.08em;">Last Run</div>
                                 <div class="font-monospace text-white small" id="statHeavyScan">--</div>
                             </div>
                         </div>
                         <div class="col-6">
-                            <div class="p-2 border border-secondary rounded overflow-hidden"
-                                style="background: rgba(0,0,0,0.1);">
-                                <div class="text-uppercase fw-bold text-muted mb-1" style="font-size: 9px;">Runtime
-                                </div>
+                            <div class="p-2 border border-secondary rounded"
+                                style="background: rgba(0,0,0,0.15);">
+                                <div class="text-uppercase fw-bold text-muted mb-1"
+                                    style="font-size: 9px; letter-spacing: 0.08em;">Duration</div>
                                 <div class="font-monospace text-white small" id="statDuration">--</div>
                             </div>
                         </div>
                         <div class="col-6">
-                            <div class="p-2 border border-secondary rounded overflow-hidden"
-                                style="background: rgba(0,0,0,0.1);">
-                                <div class="text-uppercase fw-bold text-muted mb-1" style="font-size: 9px;">Nodes
-                                    Discovered</div>
+                            <div class="p-2 border border-secondary rounded"
+                                style="background: rgba(0,0,0,0.15);">
+                                <div class="text-uppercase fw-bold text-muted mb-1"
+                                    style="font-size: 9px; letter-spacing: 0.08em;">Nodes Added</div>
                                 <div class="font-monospace text-info fs-5 fw-bold" id="statNew">0</div>
                             </div>
                         </div>
                         <div class="col-6">
-                            <div class="p-2 border border-secondary rounded overflow-hidden"
-                                style="background: rgba(0,0,0,0.1);">
-                                <div class="text-uppercase fw-bold text-muted mb-1" style="font-size: 9px;">Nodes
-                                    Updated</div>
-                                <div class="font-monospace text-secondary fs-5 fw-bold" id="statUpdated">0</div>
+                            <div class="p-2 border border-secondary rounded"
+                                style="background: rgba(0,0,0,0.15);">
+                                <div class="text-uppercase fw-bold text-muted mb-1"
+                                    style="font-size: 9px; letter-spacing: 0.08em;">Nodes Updated</div>
+                                <div class="font-monospace fs-5 fw-bold"
+                                    style="color: var(--mo-teal, #00e5a0);" id="statUpdated">0</div>
                             </div>
                         </div>
                     </div>
-
                     <div id="statError"
-                        class="d-none mt-3 p-2 rounded bg-danger bg-opacity-10 border border-danger border-opacity-20 text-danger font-monospace"
-                        style="font-size: 10px;"></div>
+                        class="d-none mt-3 p-2 rounded font-monospace"
+                        style="font-size: 10px; background: rgba(220,53,69,.08);
+                               border: 1px solid rgba(220,53,69,.25); color: #dc3545;"></div>
                 </div>
             </div>
 
+            <!-- Runtime Notice -->
             <div class="card bg-dark border-secondary">
                 <div class="card-header py-2">
-                    <h6 class="mb-0 text-uppercase tracking-wider fs-7"><i data-lucide="info" class="me-1"></i> Runtime
-                        Notice</h6>
+                    <h6 class="mb-0 text-uppercase tracking-wider fs-7">
+                        <i data-lucide="info" class="me-1"></i> How It Works
+                    </h6>
                 </div>
                 <div class="card-body p-3">
-                    <p class="text-muted small mb-0 lh-base">
-                        Autonomous discovery operations utilize low-level ICMP/ARP probes. Ensure network security
-                        appliances allow bypass for the management interface.
-                    </p>
+                    <ul class="text-muted mb-0 lh-base ps-3" style="font-size: 11px;">
+                        <li class="mb-1">ICMP probes sent to every IP in each CIDR block</li>
+                        <li class="mb-1">Online devices matched by MAC → hostname → IP</li>
+                        <li class="mb-1">IP changes detected and updated automatically</li>
+                        <li class="mb-1">New devices added to inventory per ingestion policy</li>
+                        <li>Runs automatically every <strong class="text-white" id="noticeInterval">N</strong> min when enabled</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -259,280 +279,373 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        let currentSubnets = [];
+document.addEventListener('DOMContentLoaded', function () {
+    let currentSubnets = [];
+    let _pollingTimer = null;
+    let _scanTriggeredAt = null;   // timestamp when a scan was manually/auto triggered
 
-        function parseApiTimestamp(value) {
-            if (!value) return null;
-            const str = String(value).trim();
-            if (!str) return null;
-            const hasTimezone = /[zZ]$|[+\-]\d{2}:\d{2}$/.test(str);
-            const dt = new Date(hasTimezone ? str : str + 'Z');
-            return Number.isNaN(dt.getTime()) ? null : dt;
+    // ----------------------------------------------------------------
+    // Timestamp helpers
+    // ----------------------------------------------------------------
+    function parseApiTs(value) {
+        if (!value) return null;
+        const s = String(value).trim();
+        const hasZone = /[zZ]$|[+\-]\d{2}:\d{2}$/.test(s);
+        const d = new Date(hasZone ? s : s + 'Z');
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function fmtTs(value) {
+        const d = parseApiTs(value);
+        if (!d) return '--';
+        return d.toLocaleString('en-IN', {
+            month: 'short', day: '2-digit', hour: '2-digit',
+            minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Kolkata'
+        });
+    }
+
+    function fmtNextScan(lastHeavyScan, intervalMin) {
+        const last = parseApiTs(lastHeavyScan);
+        if (!last || !intervalMin) return '--';
+        const next = new Date(last.getTime() + intervalMin * 60 * 1000);
+        const now = new Date();
+        const diffMs = next - now;
+        if (diffMs <= 0) return 'OVERDUE';
+        const diffMin = Math.round(diffMs / 60000);
+        if (diffMin < 1) return 'in <1 min';
+        if (diffMin < 60) return `in ${diffMin} min`;
+        return `in ${Math.round(diffMin / 60)}h`;
+    }
+
+    // ----------------------------------------------------------------
+    // Status strip
+    // ----------------------------------------------------------------
+    function updateStatusStrip(cfg) {
+        const state = document.getElementById('stripState');
+        const dot   = document.getElementById('stripDot');
+        if (!state || !dot) return;
+
+        // Determine if a scan is actively running (triggered within last 90s and no new last_heavy_scan)
+        const isScanningNow = _scanTriggeredAt &&
+            (Date.now() - _scanTriggeredAt < 90_000);
+
+        dot.className = 'status-dot';
+        if (!cfg.enabled) {
+            dot.classList.add('dot-offline');
+            state.textContent = 'OFFLINE';
+            state.className = 'font-monospace fs-5 text-muted lh-1';
+        } else if (isScanningNow) {
+            dot.classList.add('dot-scanning');
+            state.textContent = 'SCANNING';
+            state.className = 'font-monospace fs-5 lh-1';
+            state.style.color = 'var(--ui-accent, #00e5a0)';
+        } else if (cfg.last_error) {
+            dot.classList.add('dot-fault');
+            state.textContent = 'FAULT';
+            state.className = 'font-monospace fs-5 text-danger lh-1';
+            state.style.color = '';
+        } else {
+            dot.classList.add('dot-nominal');
+            state.textContent = 'NOMINAL';
+            state.className = 'font-monospace fs-5 text-white lh-1';
+            state.style.color = '';
         }
 
-        function formatScanTimestamp(value) {
-            const dt = parseApiTimestamp(value);
-            if (!dt) return '--';
-            return dt.toLocaleString([], {
-                month: 'short',
-                day: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-        }
+        document.getElementById('stripLastScan').textContent = fmtTs(cfg.last_heavy_scan);
+        document.getElementById('stripNextScan').textContent =
+            cfg.enabled ? fmtNextScan(cfg.last_heavy_scan, cfg.heavy_interval_min) : '--';
+        document.getElementById('stripNewCount').textContent = cfg.last_new_count || 0;
+        document.getElementById('stripUpdatedCount').textContent = cfg.last_updated_count || 0;
+    }
 
-        async function loadSettings() {
-            try {
-                const res = await fetch('/api/discovery-settings');
-                const cfg = await res.json();
-                populateForm(cfg);
-            } catch (e) {
-                console.error('Failed to load settings:', e);
-                showTriggerStatus('Failed to load discovery settings: ' + e.message, 'error');
-            }
-        }
+    // ----------------------------------------------------------------
+    // Scan progress panel
+    // ----------------------------------------------------------------
+    function showScanProgress(pct, detail, found) {
+        const panel = document.getElementById('scanProgressPanel');
+        if (panel) panel.classList.add('visible');
+        const fill = document.getElementById('scanProgressFill');
+        const pctEl = document.getElementById('scanProgressPct');
+        const detEl = document.getElementById('scanProgressDetail');
+        const foundEl = document.getElementById('scanFoundCount');
+        if (fill)   fill.style.width = pct + '%';
+        if (pctEl)  pctEl.textContent = pct + '%';
+        if (detEl)  detEl.textContent = detail || 'Probing subnet...';
+        if (foundEl) foundEl.textContent = (found || 0) + ' devices found';
+    }
 
-        function updateStatusStrip(cfg) {
-            const state = document.getElementById('stripState');
-            const dot = document.getElementById('stripDot');
+    function hideScanProgress() {
+        const panel = document.getElementById('scanProgressPanel');
+        if (panel) panel.classList.remove('visible');
+    }
 
-            if (!state || !dot) return;
+    // ----------------------------------------------------------------
+    // Form population
+    // ----------------------------------------------------------------
+    function populateForm(cfg) {
+        document.getElementById('enabledToggle').checked = Boolean(cfg.enabled);
+        document.getElementById('heavyInterval').value = cfg.heavy_interval_min;
+        document.getElementById('maxPings').value = cfg.max_concurrent_pings;
+        document.getElementById('pingTimeout').value = cfg.ping_timeout || 2;
+        document.getElementById('autoAddPolicy').value = cfg.auto_add_policy;
+        document.getElementById('autoAddAfterN').value = cfg.auto_add_after_n;
+        document.getElementById('autoMonitor').checked = Boolean(cfg.auto_monitor_new);
 
-            if (!cfg.enabled) {
-                state.textContent = 'OFFLINE';
-                state.className = 'font-monospace fs-5 text-muted lh-1';
-                dot.style.color = 'var(--mo-muted)';
-            } else if (cfg.last_error) {
-                state.textContent = 'FAULT';
-                state.className = 'font-monospace fs-5 text-danger lh-1';
-                dot.style.color = 'var(--mo-red)';
-            } else {
-                state.textContent = 'NOMINAL';
-                state.className = 'font-monospace fs-5 text-white lh-1';
-                dot.style.color = 'var(--mo-teal)';
-                dot.classList.add('animate-pulse');
-            }
+        currentSubnets = Array.isArray(cfg.subnets) ? cfg.subnets : [];
+        renderSubnets();
 
-            document.getElementById('stripLastScan').textContent = formatScanTimestamp(cfg.last_heavy_scan);
-            document.getElementById('stripNewCount').textContent = cfg.last_new_count || 0;
-            document.getElementById('stripUpdatedCount').textContent = cfg.last_updated_count || 0;
-        }
-
-        function populateForm(cfg) {
-            document.getElementById('enabledToggle').checked = Boolean(cfg.enabled);
-            document.getElementById('heavyInterval').value = cfg.heavy_interval_min;
-            document.getElementById('maxPings').value = cfg.max_concurrent_pings;
-            document.getElementById('pingTimeout').value = cfg.ping_timeout || 2;
-            document.getElementById('autoAddPolicy').value = cfg.auto_add_policy;
-            document.getElementById('autoAddAfterN').value = cfg.auto_add_after_n;
-            document.getElementById('autoMonitor').checked = Boolean(cfg.auto_monitor_new);
-
-            currentSubnets = Array.isArray(cfg.subnets) ? cfg.subnets : [];
-            renderSubnets();
-
-            const badge = document.getElementById('statusBadge');
+        const badge = document.getElementById('statusBadge');
+        if (badge) {
             if (cfg.enabled) {
-                badge.innerText = 'ACTIVE';
-                badge.className = 'mo-badge mo-badge-online';
+                badge.textContent = 'ACTIVE';
+                badge.className = 'ds-badge ds-badge-active';
             } else {
-                badge.innerText = 'SUSPENDED';
-                badge.className = 'mo-badge mo-badge-risk';
+                badge.textContent = 'SUSPENDED';
+                badge.className = 'ds-badge ds-badge-inactive';
             }
-
-            document.getElementById('statHeavyScan').textContent = formatScanTimestamp(cfg.last_heavy_scan);
-            document.getElementById('statDuration').textContent = cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '--';
-            document.getElementById('statNew').textContent = cfg.last_new_count || 0;
-            document.getElementById('statUpdated').textContent = cfg.last_updated_count || 0;
-
-            const errEl = document.getElementById('statError');
-            if (cfg.last_error) {
-                errEl.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i> ${cfg.last_error}`;
-                errEl.classList.remove('d-none');
-            } else {
-                errEl.classList.add('d-none');
-            }
-
-            updateStatusStrip(cfg);
         }
 
-        function renderSubnets() {
-            const list = document.getElementById('subnetList');
-            if (!list) return;
+        // Side panel stats
+        document.getElementById('statHeavyScan').textContent = fmtTs(cfg.last_heavy_scan);
+        document.getElementById('statDuration').textContent =
+            cfg.last_scan_duration != null ? cfg.last_scan_duration + 's' : '--';
+        document.getElementById('statNew').textContent = cfg.last_new_count || 0;
+        document.getElementById('statUpdated').textContent = cfg.last_updated_count || 0;
 
-            if (!currentSubnets.length) {
-                list.innerHTML = `
-                    <div class="h-100 d-flex flex-column align-items-center justify-content-center text-muted" style="opacity: 0.4;">
-                        <i class="fas fa-network-wired fa-2x mb-2"></i>
-                        <p class="small fw-bold text-uppercase tracking-tight">No scopes mapped</p>
-                    </div>
-                `;
-                return;
+        const errEl = document.getElementById('statError');
+        if (cfg.last_error) {
+            errEl.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + cfg.last_error;
+            errEl.classList.remove('d-none');
+        } else {
+            errEl.classList.add('d-none');
+        }
+
+        // Runtime notice interval
+        const noticeEl = document.getElementById('noticeInterval');
+        if (noticeEl) noticeEl.textContent = cfg.heavy_interval_min || '--';
+
+        updateStatusStrip(cfg);
+
+        // If scanning was triggered and scan completed (last_heavy_scan updated), clear state
+        if (_scanTriggeredAt && cfg.last_heavy_scan) {
+            const completedAt = parseApiTs(cfg.last_heavy_scan);
+            if (completedAt && completedAt.getTime() > _scanTriggeredAt) {
+                _scanTriggeredAt = null;
+                hideScanProgress();
             }
+        }
+    }
 
-            list.innerHTML = currentSubnets.map(function (subnet, idx) {
-                return `
-                    <li class="d-flex align-items-center justify-content-between py-1 px-2 border-bottom border-secondary border-opacity-10">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-sitemap text-muted small me-2"></i>
-                            <span class="font-monospace small text-white">${subnet}</span>
-                        </div>
-                        <button type="button" class="remove-subnet btn btn-link text-danger p-0" data-idx="${idx}" style="text-decoration: none;">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </li>
-                `;
-            }).join('');
+    // ----------------------------------------------------------------
+    // Load / polling
+    // ----------------------------------------------------------------
+    async function loadSettings() {
+        try {
+            const res = await fetch('/api/discovery-settings');
+            const cfg = await res.json();
+            populateForm(cfg);
+        } catch (e) {
+            showTriggerStatus('Failed to load discovery settings: ' + e.message, 'error');
+        }
+    }
 
-            list.querySelectorAll('.remove-subnet').forEach(function (button) {
-                button.addEventListener('click', function () {
-                    const idx = parseInt(this.dataset.idx, 10);
-                    if (Number.isInteger(idx) && idx >= 0 && idx < currentSubnets.length) {
-                        currentSubnets.splice(idx, 1);
-                        renderSubnets();
-                    }
-                });
+    function startPolling() {
+        stopPolling();
+        _pollingTimer = setInterval(loadSettings, 15000);
+    }
+
+    function stopPolling() {
+        if (_pollingTimer) { clearInterval(_pollingTimer); _pollingTimer = null; }
+    }
+
+    // ----------------------------------------------------------------
+    // Subnet list
+    // ----------------------------------------------------------------
+    function renderSubnets() {
+        const list = document.getElementById('subnetList');
+        if (!list) return;
+
+        if (!currentSubnets.length) {
+            list.innerHTML = `
+                <div class="h-100 d-flex flex-column align-items-center justify-content-center text-muted"
+                     style="opacity:.4; padding-top:2rem;">
+                    <i class="fas fa-network-wired fa-2x mb-2"></i>
+                    <p class="small fw-bold text-uppercase mb-0">No CIDR blocks mapped</p>
+                </div>`;
+            return;
+        }
+
+        list.innerHTML = currentSubnets.map((subnet, idx) => `
+            <li class="d-flex align-items-center justify-content-between py-1 px-2
+                        border-bottom border-secondary border-opacity-10">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-sitemap text-muted small"></i>
+                    <span class="font-monospace small text-white">${subnet}</span>
+                </div>
+                <button type="button" class="remove-subnet btn btn-link text-danger p-0"
+                        data-idx="${idx}" style="text-decoration:none;" title="Remove">
+                    <i class="fas fa-times"></i>
+                </button>
+            </li>`).join('');
+
+        list.querySelectorAll('.remove-subnet').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const idx = parseInt(this.dataset.idx, 10);
+                if (Number.isInteger(idx) && idx >= 0 && idx < currentSubnets.length) {
+                    currentSubnets.splice(idx, 1);
+                    renderSubnets();
+                }
             });
-        }
+        });
+    }
 
-        function addSubnetFromInput() {
-            const input = document.getElementById('newSubnet');
-            const value = (input.value || '').trim();
-            if (!value) return;
-            // Basic CIDR validation
-            if (!/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$/.test(value)) {
-                showTriggerStatus('Invalid CIDR format. Example: 10.0.0.0/24', 'error');
+    function addSubnetFromInput() {
+        const input = document.getElementById('newSubnet');
+        const value = (input.value || '').trim();
+        if (!value) return;
+        if (!/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$/.test(value)) {
+            showTriggerStatus('Invalid CIDR format. Example: 10.0.0.0/24', 'error');
+            return;
+        }
+        if (currentSubnets.includes(value)) {
+            showTriggerStatus('CIDR block already in list.', 'warning');
+            return;
+        }
+        currentSubnets.push(value);
+        input.value = '';
+        renderSubnets();
+    }
+
+    // ----------------------------------------------------------------
+    // Save settings
+    // ----------------------------------------------------------------
+    async function saveSettings() {
+        const btn = document.getElementById('saveBtn');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>COMMITTING...';
+
+        try {
+            const payload = {
+                enabled: document.getElementById('enabledToggle').checked,
+                subnets: currentSubnets,
+                heavy_interval_min: parseInt(document.getElementById('heavyInterval').value, 10) || 1440,
+                max_concurrent_pings: parseInt(document.getElementById('maxPings').value, 10) || 50,
+                ping_timeout: parseInt(document.getElementById('pingTimeout').value, 10) || 2,
+                auto_add_policy: document.getElementById('autoAddPolicy').value,
+                auto_add_after_n: parseInt(document.getElementById('autoAddAfterN').value, 10) || 2,
+                auto_monitor_new: document.getElementById('autoMonitor').checked,
+            };
+
+            const res = await fetch('/api/discovery-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+
+            if (!data.success) {
+                showTriggerStatus('COMMIT FAILED: ' + (data.error || 'Unknown error'), 'error');
                 return;
             }
-            if (currentSubnets.includes(value)) {
-                showTriggerStatus('CIDR block already mapped in current scope.', 'warning');
-                return;
-            }
-            currentSubnets.push(value);
-            input.value = '';
-            renderSubnets();
-        }
 
-        async function saveSettings() {
-            const btn = document.getElementById('saveBtn');
-            const originalHtml = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> COMMITTING...';
+            populateForm(data.config);
 
-            try {
-                const payload = {
-                    enabled: document.getElementById('enabledToggle').checked,
-                    subnets: currentSubnets,
-                    heavy_interval_min: parseInt(document.getElementById('heavyInterval').value, 10) || 1440,
-                    max_concurrent_pings: parseInt(document.getElementById('maxPings').value, 10) || 50,
-                    ping_timeout: parseInt(document.getElementById('pingTimeout').value, 10) || 2,
-                    auto_add_policy: document.getElementById('autoAddPolicy').value,
-                    auto_add_after_n: parseInt(document.getElementById('autoAddAfterN').value, 10) || 2,
-                    auto_monitor_new: document.getElementById('autoMonitor').checked
-                };
-
-                const res = await fetch('/api/discovery-settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await res.json();
-                if (!data.success) {
-                    showTriggerStatus(`TRANSACTION FAILED: ${data.error || 'Unknown error'}`, 'error');
-                    return;
-                }
-
-                populateForm(data.config);
-                if (data.auto_scan_triggered) {
-                    showTriggerStatus(`CONFIGURATION COMMITTED. Probe dispatch initiated on ${data.queued_subnets || 0} subnets.`, 'success');
-                } else {
-                    showTriggerStatus('CONFIGURATION COMMITTED SUCCESSFULLY.', 'success');
-                }
-
-                setTimeout(loadSettings, 8000);
-            } catch (e) {
-                showTriggerStatus(`TRANSACTION FAILED: ${e.message}`, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalHtml;
-            }
-        }
-
-        async function triggerHeavyScan() {
-            const btn = document.getElementById('triggerHeavyBtn');
-            const originalHtml = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> EXECUTING PROBES...';
-
-            try {
-                const res = await fetch('/api/discovery-settings/trigger-heavy', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    showTriggerStatus(data.message || 'ENRICHMENT PROTOCOL INITIATED.', 'success');
-                    setTimeout(loadSettings, 8000);
-                } else {
-                    showTriggerStatus(`PROBE DISPATCH FAILED: ${data.error}`, 'error');
-                }
-            } catch (e) {
-                showTriggerStatus(`PROBE DISPATCH FAILED: ${e.message}`, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalHtml;
-            }
-        }
-
-        function showTriggerStatus(message, tone) {
-            const el = document.getElementById('triggerStatus');
-            if (!el) return;
-
-            let styles = '';
-
-            if (tone === 'success') {
-                styles = 'alert-success bg-success bg-opacity-10 text-success border-success border-opacity-20';
-            } else if (tone === 'warning') {
-                styles = 'alert-warning bg-warning bg-opacity-10 text-warning border-warning border-opacity-20';
+            if (data.auto_scan_triggered) {
+                _scanTriggeredAt = Date.now();
+                showScanProgress(0, 'Scan queued for ' + (data.queued_subnets || 0) + ' subnet(s)...', 0);
+                showTriggerStatus(
+                    'Configuration saved. Scan dispatched on ' + (data.queued_subnets || 0) + ' subnet(s).',
+                    'success'
+                );
+                startPolling();
             } else {
-                styles = 'alert-danger bg-danger bg-opacity-10 text-danger border-danger border-opacity-20';
+                showTriggerStatus('Configuration saved.', 'success');
             }
-
-            el.innerHTML = message;
-            el.className = `alert py-2 px-3 mb-3 font-monospace ${styles}`;
-            el.classList.remove('d-none');
-
-            // Auto-hide after 7 seconds
-            window.setTimeout(function () {
-                el.classList.add('d-none');
-            }, 7000);
+        } catch (e) {
+            showTriggerStatus('COMMIT FAILED: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
         }
+    }
 
-        document.getElementById('addSubnetBtn').addEventListener('click', addSubnetFromInput);
-        document.getElementById('newSubnet').addEventListener('keydown', function (event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                addSubnetFromInput();
-            }
-        });
+    // ----------------------------------------------------------------
+    // Force scan
+    // ----------------------------------------------------------------
+    async function triggerHeavyScan() {
+        const btn = document.getElementById('triggerHeavyBtn');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>QUEUING...';
 
-        document.getElementById('saveBtn').addEventListener('click', saveSettings);
-        document.getElementById('triggerHeavyBtn').addEventListener('click', triggerHeavyScan);
-
-        document.getElementById('enabledToggle').addEventListener('change', function () {
-            const badge = document.getElementById('statusBadge');
-
-            if (this.checked) {
-                badge.innerText = 'PENDING COMMIT';
-                badge.className = 'mo-badge mo-badge-policy';
+        try {
+            const res = await fetch('/api/discovery-settings/trigger-heavy', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                _scanTriggeredAt = Date.now();
+                showScanProgress(0, 'Scan queued...', 0);
+                showTriggerStatus(data.message || 'Scan queued.', 'success');
+                updateStatusStrip({ enabled: true });
+                startPolling();
             } else {
-                badge.innerText = 'SUSPENSION PENDING';
-                badge.className = 'mo-badge mo-badge-risk';
+                showTriggerStatus('SCAN FAILED: ' + (data.error || 'Unknown error'), 'error');
             }
-        });
+        } catch (e) {
+            showTriggerStatus('SCAN FAILED: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
+    }
 
-        loadSettings();
+    // ----------------------------------------------------------------
+    // Status message
+    // ----------------------------------------------------------------
+    function showTriggerStatus(message, tone) {
+        const el = document.getElementById('triggerStatus');
+        if (!el) return;
+        const cls = tone === 'success'
+            ? 'alert-success bg-success bg-opacity-10 text-success border-success border-opacity-20'
+            : tone === 'warning'
+            ? 'alert-warning bg-warning bg-opacity-10 text-warning border-warning border-opacity-20'
+            : 'alert-danger bg-danger bg-opacity-10 text-danger border-danger border-opacity-20';
+        el.innerHTML = message;
+        el.className = `alert py-2 px-3 mb-3 font-monospace ${cls}`;
+        el.classList.remove('d-none');
+        setTimeout(() => el.classList.add('d-none'), 7000);
+    }
+
+    // ----------------------------------------------------------------
+    // Toggle badge feedback before save
+    // ----------------------------------------------------------------
+    document.getElementById('enabledToggle').addEventListener('change', function () {
+        const badge = document.getElementById('statusBadge');
+        if (!badge) return;
+        if (this.checked) {
+            badge.textContent = 'PENDING COMMIT';
+            badge.className = 'ds-badge ds-badge-pending';
+        } else {
+            badge.textContent = 'SUSPEND PENDING';
+            badge.className = 'ds-badge ds-badge-pending';
+        }
     });
+
+    // ----------------------------------------------------------------
+    // Wire controls
+    // ----------------------------------------------------------------
+    document.getElementById('addSubnetBtn').addEventListener('click', addSubnetFromInput);
+    document.getElementById('newSubnet').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addSubnetFromInput(); }
+    });
+    document.getElementById('saveBtn').addEventListener('click', saveSettings);
+    document.getElementById('triggerHeavyBtn').addEventListener('click', triggerHeavyScan);
+
+    // ----------------------------------------------------------------
+    // Init
+    // ----------------------------------------------------------------
+    loadSettings();
+    startPolling();   // poll every 15s so health strip stays fresh
+});
 </script>
 {% endblock %}

@@ -140,6 +140,29 @@ comparison is meaningful. Deferred until sufficient data has accumulated.
 
 ---
 
+### TODO-8: Add "Hours Opened" column to website violation tables
+**What:** Add estimated viewing duration column to the violation tables in both
+Workstation Monitoring tab and Device Inspector. Use agent's window_title events
+× window_poll_seconds for estimation.
+
+**Why:** Currently only violation count + website name are shown. Duration data
+tells admins how much time was actually spent on restricted sites.
+
+**Where to start:**
+- `services/enterprise_report_service.py` — `_fleet_violation_summary()`: add
+  `sum(case(source='window_title', 1, else_=0))` column, multiply by
+  `RestrictedSitePolicy.window_poll_seconds / 3600`
+- `routes/reports.py` — `_device_violation_breakdown()`: same pattern for single device
+- `templates/reports.html` — add "Hours Opened" column to both tables
+- Consider: show "—" when only DNS events exist (no duration data)
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** Website violations in reports (shipped 2026-03-21), optionally
+agent-side enhancement to track explicit foreground duration per domain
+
+---
+
 ## P2 — Security
 
 ### TODO-10: GET export endpoint lacks role-based permission ✅ DONE
@@ -235,4 +258,55 @@ on every page load.
 
 ---
 
-*Updated: 2026-03-17*
+---
+
+## P2 — API / Safety
+
+### TODO-API-1: Fix api_live_alerts() — live network scans in route handler
+**What:** `api_live_alerts()` in `routes/tracking.py` (~line 5862) calls
+`TrackedDevice.query.filter(...).all()` (no limit) then fires a synchronous
+ICMP/TCP scan for every device IP in the request thread.
+
+**Why:** Synchronous multi-device network I/O in a Flask request handler blocks
+the WSGI worker thread for seconds. At 239 devices with a 2.5s scan timeout,
+this request can take up to 10 minutes and exhaust the Waitress thread pool.
+This is worse than the live-summary OOM risk addressed in the API Optimization sprint.
+
+**How to fix:**
+1. Move scan logic to a background task (enqueue via `poll_tasks`).
+2. Return cached/last-known alert state from Redis or DB instead of live-probing.
+3. Alternatively, gate with a strict `?device_id=` single-device filter (no batch scanning).
+
+**Where to start:** `routes/tracking.py` line ~5862 — `api_live_alerts()` function.
+
+**Effort:** M | **Priority:** P2
+**Depends on:** Nothing
+
+---
+
+### TODO-API-2: Remove POST from toggle routes after PATCH migration
+**What:** Six toggle routes currently accept both `POST` and `PATCH`
+(`['POST', 'PATCH']` methods list). Once all callers are confirmed to use PATCH,
+remove `POST` from the methods list.
+
+**Why:** Keeping POST indefinitely defeats the REST correctness improvement. The
+transition period exists to avoid breaking clients — it should not become permanent.
+
+**Routes to update (remove POST):**
+- `POST /api/devices/<id>/toggle_monitoring` (`routes/devices.py`)
+- `POST /api/devices/<id>/update_type` (`routes/devices.py`)
+- `POST /api/devices/<id>/reassign-site` (`routes/devices.py`)
+- `POST /api/tracking/toggle-mic/<mac>` (`routes/tracking.py`)
+- `POST /api/tracking/toggle-camera/<mac>` (`routes/tracking.py`)
+
+**Frontend callers already migrated to PATCH:**
+- `static/js/tracking/device_live.js` (mic/camera)
+- `static/js/dashboard/tables/inventoryTable.js` (toggle_monitoring)
+- `templates/devices.html` (update_type)
+
+**Effort:** S | **Priority:** P3
+**Depends on:** Confirm no other callers still use POST (grep codebase first)
+
+---
+
+*Updated: 2026-03-20*

@@ -18,7 +18,7 @@ export function renderTopLatencyTable(data) {
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatPercent(device.loss_avg)}</td>
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
-            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
+            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         `,
         applyRow: (row, device) => {
             if (device.device_id) {
@@ -51,7 +51,7 @@ export function renderTopPacketLossTable(data) {
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatLatencyPair(device.latency_avg, device.latency_max)}</td>
             <td class="tactical-text-muted d-none d-lg-table-cell">${formatMs(device.jitter_avg)}</td>
             <td class="tactical-text-muted d-none d-md-table-cell">${device.ip}</td>
-            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
+            <td class="tactical-text-muted d-none d-md-table-cell" title="${device.time ? new Date(device.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         `,
         applyRow: (row, device) => {
             if (device.device_id) {
@@ -81,9 +81,9 @@ export function renderRecentAlertsTable(data) {
         renderCells: (alert) => `
             <td><span class="badge ${getSeverityClass(alert.severity)}">${alert.severity}</span></td>
             <td>${alert.message}</td>
-            <td class="tactical-text-muted d-none d-md-table-cell" title="${new Date(alert.time).toLocaleString()}">
+            <td class="tactical-text-muted d-none d-md-table-cell" title="${new Date(alert.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}">
                 <div style="font-size: 0.9em; font-weight: 600; color: var(--tactical-accent);">${timeAgo(alert.time)}</div>
-                <div style="font-size: 0.75em; opacity: 0.7">${new Date(alert.time).toLocaleTimeString()}</div>
+                <div style="font-size: 0.75em; opacity: 0.7">${new Date(alert.time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
                 ${!alert.is_acknowledged ?
                 `<button class="btn btn-sm btn-link tactical-text-accent p-0 ms-2" onclick="acknowledgeAlert('${alert.id}', event)" title="Acknowledge">
                     <i class="far fa-check-circle"></i>
@@ -107,7 +107,7 @@ export function renderTopAffectedDevices(data) {
         renderCells: (device) => `
             <td>${device.device_name || device.ip}</td>
             <td class="tactical-text-muted">${device.ip}</td>
-            <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString() : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
+            <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
         `,
         applyRow: (row, device) => {
             if (device.device_id) {

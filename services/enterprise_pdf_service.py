@@ -198,13 +198,13 @@ def _build_cover(report: dict, styles, fleet: str = "all") -> list:
 
     def _start_str():
         try:
-            return datetime.fromisoformat(period["start"]).strftime("%d %b %Y")
+            return datetime.fromisoformat(period["start"]).strftime("%d-%m-%Y")
         except Exception:
             return period.get("start", "")[:10]
 
     def _end_str():
         try:
-            return datetime.fromisoformat(period["end"]).strftime("%d %b %Y")
+            return datetime.fromisoformat(period["end"]).strftime("%d-%m-%Y")
         except Exception:
             return period.get("end", "")[:10]
 
@@ -610,4 +610,119 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
     doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
     buf.seek(0)
     logger.info("[EnterprisePDF] PDF complete: %d bytes", len(buf.getvalue()))
+    return buf
+
+
+def generate_device_inspector_pdf(
+    stats: dict,
+    device_name: str,
+    device_ip: str,
+    period_label: str,
+) -> io.BytesIO:
+    """Single-device performance report PDF (Portrait A4)."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1*cm, rightMargin=1*cm,
+        topMargin=1.5*cm, bottomMargin=1.5*cm,
+    )
+    styles = getSampleStyleSheet()
+    gen_at = datetime.utcnow().strftime("%d-%m-%Y %H:%M UTC")
+    footer = PageFooter(f"Device Inspector — {device_ip}", gen_at)
+    story = []
+
+    # Header
+    story.append(Paragraph(
+        f'<font color="{TEAL}"><b>{device_name}</b></font>',
+        ParagraphStyle('h1', parent=styles['Normal'], fontSize=18, spaceAfter=4),
+    ))
+    story.append(Paragraph(
+        f'<font color="{TEXT_MID}">{device_ip} &nbsp;&middot;&nbsp; {period_label}</font>',
+        ParagraphStyle('sub', parent=styles['Normal'], fontSize=10, spaceAfter=4),
+    ))
+    story.append(Paragraph(
+        f'<font color="{TEXT_LIGHT}">Generated: {gen_at}</font>',
+        ParagraphStyle('gen', parent=styles['Normal'], fontSize=8, spaceAfter=8),
+    ))
+    story.append(HRFlowable(width="100%", thickness=1, color=hex_color(TEAL)))
+    story.append(Spacer(1, 0.3*cm))
+
+    # Availability KPI table
+    uptime = stats.get('uptime_percentage', 0.0)
+    downtime = round(100.0 - uptime, 2)
+    tier = (
+        "Gold"    if uptime >= 99.5 else
+        "Silver"  if uptime >= 99.0 else
+        "Bronze"  if uptime >= 95.0 else
+        "Warning" if uptime >= 90.0 else "Critical"
+    )
+    tc, tbg = _sla_badge_style(tier)
+    avail_data = [
+        ["Total Scans", "Online", "Offline", "No Response", "Uptime %", "Downtime %"],
+        [
+            str(stats.get('total_scans', 0)),
+            str(stats.get('online_count', 0)),
+            str(stats.get('offline_count', 0)),
+            str(stats.get('no_response_count', 0)),
+            _fmt_uptime(uptime),
+            _fmt_uptime(downtime),
+        ],
+    ]
+    ts_avail = base_table_style()
+    ts_avail.add('BACKGROUND', (4, 1), (4, 1), hex_color(tbg))
+    ts_avail.add('TEXTCOLOR',  (4, 1), (4, 1), hex_color(tc))
+    story.append(Paragraph('<b>Availability</b>',
+        ParagraphStyle('sec', parent=styles['Normal'], fontSize=11, spaceBefore=8, spaceAfter=4)))
+    story.append(Table(avail_data, hAlign='LEFT', style=ts_avail, repeatRows=1))
+    story.append(Spacer(1, 0.4*cm))
+
+    # Latency & Packet Loss (omit if device was always offline)
+    if stats.get('avg_latency') is not None:
+        lat_data = [
+            ["Avg Latency", "Min Latency", "Max Latency", "Std Dev", "Avg Packet Loss"],
+            [
+                _fmt_num(stats.get('avg_latency'),     ' ms'),
+                _fmt_num(stats.get('min_latency'),     ' ms'),
+                _fmt_num(stats.get('max_latency'),     ' ms'),
+                _fmt_num(stats.get('latency_std_dev'), ' ms'),
+                _fmt_num(stats.get('avg_packet_loss'), '%'),
+            ],
+        ]
+        story.append(Paragraph('<b>Latency &amp; Packet Loss</b>',
+            ParagraphStyle('sec', parent=styles['Normal'], fontSize=11, spaceBefore=6, spaceAfter=4)))
+        story.append(Table(lat_data, hAlign='LEFT', style=base_table_style(), repeatRows=1))
+        story.append(Spacer(1, 0.4*cm))
+
+    # Agent Telemetry (conditional)
+    agent = stats.get('agent_data', {})
+    if agent.get('available') and agent.get('latest'):
+        l = agent['latest']
+        ag_data = [
+            ["CPU %", "Memory %", "Disk %", "Net In", "Net Out", "Uptime"],
+            [
+                _fmt_num(l.get('cpu_percent'),    '%'),
+                _fmt_num(l.get('memory_percent'), '%'),
+                _fmt_num(l.get('disk_percent'),   '%'),
+                _fmt_bps(l.get('network_in_bps')),
+                _fmt_bps(l.get('network_out_bps')),
+                _fmt_hours(float(l.get('uptime_seconds') or 0) / 3600),
+            ],
+        ]
+        story.append(Paragraph('<b>Agent Telemetry (Latest Sample)</b>',
+            ParagraphStyle('sec', parent=styles['Normal'], fontSize=11, spaceBefore=6, spaceAfter=4)))
+        story.append(Table(ag_data, hAlign='LEFT', style=base_table_style(), repeatRows=1))
+        story.append(Spacer(1, 0.4*cm))
+
+    # Footer note
+    story.append(HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER)))
+    story.append(Paragraph(
+        f'<i><font color="{TEXT_LIGHT}">Read-only report. '
+        f'Data sourced from ICMP scan history (5-min interval) and agent telemetry.</font></i>',
+        ParagraphStyle('note', parent=styles['Normal'], fontSize=7, spaceBefore=6),
+    ))
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    logger.info("[DeviceInspectorPDF] Generated for %s (%s): %d bytes",
+                device_ip, period_label, len(buf.getvalue()))
     return buf

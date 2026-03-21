@@ -208,7 +208,7 @@ async function loadWindows() {
         const data = await res.json();
 
         allWindows = data.windows || [];
-        if (updateEl) updateEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+        if (updateEl) updateEl.textContent = `Updated: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
 
         filterWindows();
     } catch (e) {
@@ -280,7 +280,7 @@ function renderWindows(windows) {
         if (w.start_time && !w.start_time.endsWith('Z') && !w.start_time.includes('+')) startDt = new Date(w.start_time + 'Z');
         if (w.end_time && !w.end_time.endsWith('Z') && !w.end_time.includes('+')) endDt = new Date(w.end_time + 'Z');
 
-        const formatTime = (d) => `<div class="font-monospace">${d.toLocaleDateString()}</div><div class="small text-muted font-monospace">${d.toLocaleTimeString()}</div>`;
+        const formatTime = (d) => `<div class="font-monospace">${d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</div><div class="small text-muted font-monospace">${d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>`;
 
         let actions = '-';
         if (isActiveOrSched && w.is_active) {

@@ -15,6 +15,11 @@ devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 logger = logging.getLogger(__name__)
 
 
+def _parse_limit(default: int = 100, max_val: int = 500) -> int:
+    """Parse and cap the ?limit= query parameter."""
+    return min(max(1, request.args.get('limit', default, type=int)), max_val)
+
+
 def _iso_utc(ts):
     if not ts:
         return None
@@ -727,7 +732,7 @@ def save_device():
 def api_device_subnets():
     """Return sorted list of distinct subnet_cidr values."""
     from models.device import Device
-    rows = db.session.query(Device.subnet_cidr).distinct().all()
+    rows = db.session.query(Device.subnet_cidr).distinct().limit(500).all()
     subnets = sorted([r[0] for r in rows if r[0]])
     return jsonify(subnets)
 
@@ -1301,7 +1306,7 @@ def get_device_connections(device_id):
             meta=_base_meta(monitoring_mode='unknown'),
         )
 
-@devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST'])
+@devices_bp.route('/api/devices/<int:device_id>/toggle_monitoring', methods=['POST', 'PATCH'])
 @require_permission('devices.edit')
 def toggle_device_monitoring(device_id):
     from models.device import Device
@@ -1502,7 +1507,7 @@ def bulk_delete_devices():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@devices_bp.route('/api/devices/<int:device_id>/update_type', methods=['POST'])
+@devices_bp.route('/api/devices/<int:device_id>/update_type', methods=['POST', 'PATCH'])
 @require_permission('devices.edit')
 def update_device_type(device_id):
     try:
@@ -1900,7 +1905,7 @@ def suggest_site_for_device(device_id):
     })
 
 
-@devices_bp.route('/api/devices/<int:device_id>/reassign-site', methods=['POST'])
+@devices_bp.route('/api/devices/<int:device_id>/reassign-site', methods=['POST', 'PATCH'])
 @require_permission('devices.edit')
 def reassign_device_site(device_id):
     """

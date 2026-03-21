@@ -2154,13 +2154,13 @@
                 const dateEl = document.getElementById('clock-date');
                 const timeEl = document.getElementById('clock-time');
                 if (dateEl) {
-                    dateEl.textContent = now.toLocaleDateString('en-US', {
-                        weekday: 'short', month: 'short', day: 'numeric'
+                    dateEl.textContent = now.toLocaleDateString('en-IN', {
+                        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata'
                     }).toUpperCase();
                 }
                 if (timeEl) {
-                    timeEl.textContent = now.toLocaleTimeString('en-US', {
-                        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    timeEl.textContent = now.toLocaleTimeString('en-IN', {
+                        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata'
                     });
                 }
             }

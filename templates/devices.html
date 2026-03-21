@@ -3,7 +3,28 @@
 {% block title %}Device Management - Device Monitoring{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/devices.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/devices.css') }}">
+<style>
+.snmp-toggle-btn{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:.18rem .52rem;border-radius:3px;border:1px solid;cursor:pointer;background:none;transition:background .15s;white-space:nowrap;}
+.snmp-toggle-btn.snmp-on{color:#4ade80;border-color:rgba(74,222,128,.32);background:rgba(74,222,128,.07);}
+.snmp-toggle-btn.snmp-on:hover{background:rgba(74,222,128,.14);}
+.snmp-toggle-btn.snmp-off{color:#64748b;border-color:rgba(100,116,139,.28);background:rgba(100,116,139,.05);}
+.snmp-toggle-btn.snmp-off:hover{background:rgba(100,116,139,.12);color:#94a3b8;}
+.snmp-toggle-btn.snmp-has-error{border-color:rgba(251,191,36,.5);color:#fbbf24;}
+.snmp-dot{width:5px;height:5px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.snmp-dot-on{background:#4ade80;}.snmp-dot-off{background:#475569;}
+.cp-flat-table{width:100%;border-collapse:collapse;}
+.cp-flat-table th{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b;padding:.45rem .75rem;border-bottom:1px solid rgba(148,163,184,.14);white-space:nowrap;}
+.cp-flat-table td{padding:.52rem .75rem;font-size:.8rem;color:#cbd5e1;border-bottom:1px solid rgba(148,163,184,.07);vertical-align:middle;}
+.cp-flat-table tr:last-child td{border-bottom:none;}
+.cp-flat-table tr:hover td{background:rgba(148,163,184,.04);}
+.cp-flat-table .cp-name{font-weight:600;color:#e2e8f0;}
+.cp-flat-table .cp-desc{color:#64748b;font-size:.73rem;}
+.cp-chip{display:inline-flex;align-items:center;border-radius:2px;padding:.1rem .34rem;font-size:.59rem;font-family:monospace;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid;margin:.1rem .1rem 0 0;}
+.cp-chip.warn{color:#fbbf24;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.07);}
+.cp-chip.crit{color:#f87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.07);}
+.cp-chip.dflt{color:#64748b;border-color:rgba(100,116,139,.22);background:rgba(100,116,139,.06);}
+</style>
 {% endblock %}
 {% block content %}
 <div class="devices-page">
@@ -231,7 +252,7 @@
                     <div id="compliancePaneLoading" class="text-center text-muted py-4 small">
                         <i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;
                     </div>
-                    <div id="compliancePaneContent" class="accordion accordion-flush d-none"></div>
+                    <div id="compliancePaneContent" class="d-none"></div>
                     <div id="compliancePaneEmpty" class="text-center text-muted py-4 small d-none">
                         No compliance profiles yet. Create one to get started.
                     </div>
@@ -327,6 +348,72 @@
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
                         <button type="button" class="btn btn-danger btn-sm" id="cpDeleteConfirmBtn" onclick="executeComplianceDelete()">
                             <i class="fas fa-trash me-1"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SNMP Config Mini-Modal -->
+        <div class="modal fade" id="snmpConfigModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
+                <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
+                    <div class="modal-header" style="border-color:rgba(148,163,184,.14);padding:.65rem .9rem;">
+                        <div>
+                            <h6 class="modal-title mb-0" style="font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;"><i class="fas fa-network-wired me-1"></i> SNMP Configuration</h6>
+                            <div id="snmpModalDeviceName" style="font-size:.82rem;color:#e2e8f0;margin-top:.15rem;font-weight:600;"></div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" style="padding:.9rem;">
+                        <input type="hidden" id="snmpModalDeviceId">
+                        <input type="hidden" id="snmpModalDeviceIp">
+                        <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom:1px solid rgba(148,163,184,.1);">
+                            <div>
+                                <div style="font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;">SNMP Polling</div>
+                                <div style="font-size:.73rem;color:#64748b;margin-top:.1rem;">Enable SNMP polling for this device</div>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="snmpModalEnabled" style="width:2.4rem;height:1.2rem;cursor:pointer;">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-12">
+                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Community String</label>
+                                <input type="text" id="snmpModalCommunity" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="public" autocomplete="off">
+                            </div>
+                            <div class="col-6">
+                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Version</label>
+                                <select id="snmpModalVersion" class="form-select form-select-sm bg-dark text-white border-secondary">
+                                    <option value="1">v1</option>
+                                    <option value="2c" selected>v2c</option>
+                                    <option value="3">v3</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Port</label>
+                                <input type="number" id="snmpModalPort" class="form-control form-control-sm bg-dark text-white border-secondary" value="161" min="1" max="65535">
+                            </div>
+                            <div class="col-12">
+                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Poll Interval</label>
+                                <select id="snmpModalInterval" class="form-select form-select-sm bg-dark text-white border-secondary">
+                                    <option value="60">Every 1 min</option>
+                                    <option value="300" selected>Every 5 min</option>
+                                    <option value="600">Every 10 min</option>
+                                    <option value="1800">Every 30 min</option>
+                                    <option value="3600">Every 1 hr</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="snmpModalTestResult" class="mt-2"></div>
+                    </div>
+                    <div class="modal-footer" style="border-color:rgba(148,163,184,.14);padding:.55rem .9rem;gap:.5rem;">
+                        <button type="button" id="snmpModalTestBtn" class="btn btn-sm me-auto" style="background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.22);color:#94a3b8;font-size:.72rem;" onclick="testSnmpFromModal()">
+                            <i class="fas fa-plug me-1"></i> Test Connection
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" id="snmpModalSaveBtn" class="btn btn-sm btn-primary" onclick="saveSnmpConfig()">
+                            <i class="fas fa-save me-1"></i> Save
                         </button>
                     </div>
                 </div>
@@ -888,9 +975,11 @@
                                 });
                                 typeSelectHtml += `</select>`;
 
+                                const snmpErrAttr = d.snmp_last_error ? ` title="${String(d.snmp_last_error).replace(/"/g,'&quot;')}"` : '';
+                                const snmpErrCls  = d.snmp_last_error ? ' snmp-has-error' : '';
                                 let snmpHtml = d.snmp_enabled
-                                    ? `<span class="badge bg-success">Enabled</span>` + (d.snmp_last_error ? `<div class="small text-warning mt-1" title="${d.snmp_last_error}">Error</div>` : '')
-                                    : `<span class="badge bg-secondary">Disabled</span>`;
+                                    ? `<button class="snmp-toggle-btn snmp-on${snmpErrCls}" onclick="event.stopPropagation();openSnmpModal(${d.device_id})"${snmpErrAttr}><span class="snmp-dot snmp-dot-on"></span>SNMP</button>`
+                                    : `<button class="snmp-toggle-btn snmp-off" onclick="event.stopPropagation();openSnmpModal(${d.device_id})"><span class="snmp-dot snmp-dot-off"></span>SNMP</button>`;
 
                                 const statusKey = normalizeDeviceStatusKey(d.status);
                                 const statusClass = statusKey === 'online'
@@ -1878,7 +1967,7 @@
             selectElement.disabled = true;
 
             fetch('/api/devices/' + deviceId + '/update_type', {
-                method: 'POST',
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ device_type: newType })
             })
@@ -2297,7 +2386,39 @@
         }
 
         // Load on page init as well
-        document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
+        
+        // AJAX form submit — prevents full page reload on device save
+        (function () {
+            var _devForm = document.getElementById('deviceForm');
+            if (!_devForm) { return; }
+            _devForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var formData = new FormData(_devForm);
+                var saveBtn = document.querySelector('[form="deviceForm"]');
+                if (saveBtn) { saveBtn.disabled = true; }
+                fetch('/devices/save', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        var modal = bootstrap.Modal.getInstance(document.getElementById('deviceModal'));
+                        if (modal) { modal.hide(); }
+                        showDevicesNotification('Device saved successfully.', 'success');
+                        if (typeof loadDevicesPage === 'function') { loadDevicesPage(); }
+                        else if (typeof submitServerFilters === 'function') { submitServerFilters({ force: true }); }
+                    } else {
+                        showDevicesNotification(data.message || 'Failed to save device.', 'danger');
+                    }
+                })
+                .catch(function () { showDevicesNotification('Network error saving device.', 'danger'); })
+                .finally(function () { if (saveBtn) { saveBtn.disabled = false; } });
+            });
+        }());
+
+document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
 
         // ── Compliance Profiles Pane ────────────────────────────────────────────
         (function () {
@@ -2354,54 +2475,29 @@
                 if (content) { content.classList.remove('d-none'); }
                 if (empty)   { empty.classList.add('d-none'); }
 
-                content.innerHTML = profiles.map(function (p) {
-                    var chips = buildThresholdChips(p.rules_json || {});
-                    var cnt   = p.device_count || 0;
-                    var countBadge = '<span class="badge bg-primary ms-1" style="font-size:.6rem;vertical-align:middle;">'
-                        + cnt + '&nbsp;device' + (cnt !== 1 ? 's' : '') + '</span>';
-                    var descHtml = p.description
-                        ? '<span class="text-muted ms-2" style="font-size:.78rem;">' + escHtml(p.description) + '</span>'
-                        : '';
-                    return '<div class="accordion-item" style="background:transparent;border-color:rgba(148,163,184,.12);">'
-                        + '<h2 class="accordion-header">'
-                        + '<button class="accordion-button collapsed" type="button"'
-                        + ' style="background:rgba(148,163,184,.04);color:#e6edf5;flex-direction:column;align-items:flex-start;"'
-                        + ' data-bs-toggle="collapse" data-bs-target="#profileCollapse' + p.id + '"'
-                        + ' data-profile-id="' + p.id + '">'
-                        + '<div class="d-flex w-100 align-items-center mb-1">'
-                        + '<span class="fw-semibold" style="font-size:.86rem;">' + escHtml(p.name) + '</span>'
-                        + countBadge + descHtml
-                        + '</div>'
-                        + '<div class="d-flex align-items-center gap-1 flex-wrap">'
-                        + (chips || '<span class="badge bg-secondary" style="font-size:.6rem;">Global defaults</span>')
-                        + '</div>'
-                        + '</button>'
-                        + '</h2>'
-                        + '<div id="profileCollapse' + p.id + '" class="accordion-collapse collapse"'
-                        + ' data-loaded="0">'
-                        + '<div class="accordion-body pt-2 pb-3">'
-                        + '<div class="d-flex gap-2 mb-2">'
-                        + '<button class="btn btn-sm btn-outline-secondary"'
-                        + ' onclick=\'openComplianceEditModal(' + JSON.stringify(p) + ')\'>'
-                        + '<i class="fas fa-pen-to-square me-1"></i>Edit</button>'
-                        + '<button class="btn btn-sm btn-outline-danger"'
-                        + ' onclick="confirmDeleteComplianceProfile(' + p.id + ',\'' + escHtml(p.name) + '\')">'
-                        + '<i class="fas fa-trash me-1"></i>Delete</button>'
-                        + '</div>'
-                        + '<div id="profileDeviceList' + p.id + '" class="text-muted small">'
-                        + '<i class="fas fa-spinner fa-spin me-1"></i>Loading devices&hellip;</div>'
-                        + '</div></div>'
-                        + '</div>';
+                var rows = profiles.map(function (p) {
+                    var chips   = buildThresholdChips(p.rules_json || {});
+                    var cnt     = p.device_count || 0;
+                    var created = p.created_at ? p.created_at.substring(0, 10) : '—';
+                    return '<tr>'
+                        + '<td><div class="cp-name">' + escHtml(p.name) + '</div>'
+                        + (p.description ? '<div class="cp-desc">' + escHtml(p.description) + '</div>' : '')
+                        + '</td>'
+                        + '<td>' + (chips || '<span class="cp-chip dflt">Global defaults</span>') + '</td>'
+                        + '<td style="text-align:center;"><span style="font-size:.8rem;color:' + (cnt > 0 ? '#60a5fa' : '#64748b') + ';">' + cnt + '</span></td>'
+                        + '<td style="font-size:.72rem;color:#64748b;white-space:nowrap;">' + created + '</td>'
+                        + '<td style="text-align:right;white-space:nowrap;">'
+                        + '<button class="btn btn-sm" style="padding:.18rem .45rem;font-size:.72rem;color:#60a5fa;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);margin-right:.3rem;"'
+                        + ' onclick=\'openComplianceEditModal(' + JSON.stringify(p) + ')\'><i class="fas fa-pen-to-square"></i></button>'
+                        + '<button class="btn btn-sm" style="padding:.18rem .45rem;font-size:.72rem;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);"'
+                        + ' onclick="confirmDeleteComplianceProfile(' + p.id + ',&quot;' + escHtml(p.name) + '&quot;)"><i class="fas fa-trash"></i></button>'
+                        + '</td></tr>';
                 }).join('');
 
-                // Wire lazy device load on accordion expand
-                content.addEventListener('show.bs.collapse', function (e) {
-                    var pane = e.target;
-                    if (pane.dataset.loaded === '1') { return; }
-                    pane.dataset.loaded = '1';
-                    var profileId = pane.id.replace('profileCollapse', '');
-                    loadProfileDevices(profileId);
-                });
+                content.innerHTML = '<table class="cp-flat-table">'
+                    + '<thead><tr>'
+                    + '<th>Profile</th><th>Thresholds</th><th style="text-align:center;">Devices</th><th>Created</th><th></th>'
+                    + '</tr></thead><tbody>' + rows + '</tbody></table>';
             }
 
             function loadProfileDevices(profileId) {
@@ -2439,9 +2535,8 @@
                 };
                 return Object.keys(map).filter(function (k) { return rules[k] != null; })
                     .map(function (k) {
-                        var cls = k.endsWith('_critical') ? 'bg-danger' : 'bg-warning text-dark';
-                        return '<span class="badge ' + cls + ' me-1" style="font-size:.6rem;">'
-                            + map[k] + '&nbsp;' + rules[k] + '%</span>';
+                        var cls = k.endsWith('_critical') ? 'crit' : 'warn';
+                        return '<span class="cp-chip ' + cls + '">' + map[k] + ' ' + rules[k] + '%</span>';
                     }).join('');
             }
 
@@ -2582,6 +2677,99 @@
                 });
             };
         }());
+
+        // ── SNMP Config Modal ──────────────────────────────────────────────────
+        (function () {
+            var _snmpModal = null;
+
+            window.openSnmpModal = function (deviceId) {
+                var resultDiv = document.getElementById('snmpModalTestResult');
+                if (resultDiv) { resultDiv.innerHTML = ''; }
+                fetch('/api/snmp/config/' + deviceId, { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var cfg = data.configured ? data.config : (data.defaults || {});
+                        document.getElementById('snmpModalDeviceId').value  = deviceId;
+                        document.getElementById('snmpModalEnabled').checked = data.configured ? (cfg.is_enabled !== false) : false;
+                        document.getElementById('snmpModalCommunity').value  = cfg.community_string || 'public';
+                        document.getElementById('snmpModalVersion').value    = cfg.snmp_version || '2c';
+                        document.getElementById('snmpModalPort').value       = cfg.snmp_port || 161;
+                        document.getElementById('snmpModalInterval').value   = cfg.poll_interval_seconds || 300;
+                        // Enrich: use device name + IP from API response
+                        var nameEl = document.getElementById('snmpModalDeviceName');
+                        if (nameEl) { nameEl.textContent = (cfg.device_name || '') + (cfg.device_ip ? '  ·  ' + cfg.device_ip : ''); }
+                        var ipEl = document.getElementById('snmpModalDeviceIp');
+                        if (ipEl && cfg.device_ip) { ipEl.value = cfg.device_ip; }
+                        _snmpModal = new bootstrap.Modal(document.getElementById('snmpConfigModal'));
+                        _snmpModal.show();
+                    })
+                    .catch(function () { showDevicesNotification('Failed to load SNMP config.', 'danger'); });
+            };
+
+            window.testSnmpFromModal = function () {
+                var btn = document.getElementById('snmpModalTestBtn');
+                var resultDiv = document.getElementById('snmpModalTestResult');
+                var ip = document.getElementById('snmpModalDeviceIp').value || '';
+                if (!ip) { resultDiv.innerHTML = '<div class="alert alert-warning py-1 small mb-0">Device IP not available.</div>'; return; }
+                btn.disabled = true;
+                resultDiv.innerHTML = '<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Testing…</div>';
+                var community = document.getElementById('snmpModalCommunity').value || 'public';
+                var version   = document.getElementById('snmpModalVersion').value || '2c';
+                var port      = document.getElementById('snmpModalPort').value || 161;
+                fetch('/api/snmp/test?ip=' + encodeURIComponent(ip) + '&community=' + encodeURIComponent(community) + '&version=' + encodeURIComponent(version) + '&port=' + encodeURIComponent(port), { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            var s = data.system || {};
+                            var info = [s.sys_name, s.sys_descr, s.sys_location].filter(Boolean).join(' · ');
+                            resultDiv.innerHTML = '<div class="alert alert-success py-1 small mb-0"><i class="fas fa-check me-1"></i>Reachable' + (info ? ': ' + info : '') + '</div>';
+                        } else {
+                            resultDiv.innerHTML = '<div class="alert alert-danger py-1 small mb-0"><i class="fas fa-times me-1"></i>' + (data.error || 'Unreachable') + '</div>';
+                        }
+                    })
+                    .catch(function () { resultDiv.innerHTML = '<div class="alert alert-danger py-1 small mb-0">Network error during test.</div>'; })
+                    .finally(function () { btn.disabled = false; });
+            };
+
+            window.saveSnmpConfig = function () {
+                var deviceId = document.getElementById('snmpModalDeviceId').value;
+                var saveBtn  = document.getElementById('snmpModalSaveBtn');
+                saveBtn.disabled = true;
+                var payload = {
+                    device_id: parseInt(deviceId),
+                    is_enabled: document.getElementById('snmpModalEnabled').checked,
+                    community_string: document.getElementById('snmpModalCommunity').value,
+                    snmp_version: document.getElementById('snmpModalVersion').value,
+                    snmp_port: parseInt(document.getElementById('snmpModalPort').value) || 161,
+                    poll_interval_seconds: parseInt(document.getElementById('snmpModalInterval').value) || 300,
+                };
+                fetch('/api/snmp/config', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify(payload)
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.success || data.config) {
+                        if (_snmpModal) { _snmpModal.hide(); }
+                        // Update the toggle pill in the table without reload
+                        var toggleBtn = document.querySelector('.snmp-toggle-btn[onclick*="openSnmpModal(' + deviceId + ')"]');
+                        if (toggleBtn) {
+                            var enabled = payload.is_enabled;
+                            toggleBtn.className = 'snmp-toggle-btn ' + (enabled ? 'snmp-on' : 'snmp-off');
+                            var dot = toggleBtn.querySelector('.snmp-dot');
+                            if (dot) { dot.className = 'snmp-dot ' + (enabled ? 'snmp-dot-on' : 'snmp-dot-off'); }
+                        }
+                        showDevicesNotification('SNMP configuration saved.', 'success');
+                    } else {
+                        showDevicesNotification(data.error || 'Failed to save SNMP config.', 'danger');
+                    }
+                })
+                .catch(function () { showDevicesNotification('Network error saving SNMP config.', 'danger'); })
+                .finally(function () { saveBtn.disabled = false; });
+            };
+        }());
+
         // ── End Compliance Profiles Pane ────────────────────────────────────────
 
         document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);

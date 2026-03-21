@@ -446,13 +446,13 @@ function renderSecondary(state) {
 
         // 8. Timestamps
         const timeEl = document.getElementById('last-updated-text');
-        if (timeEl && state.lastUpdated) timeEl.textContent = state.lastUpdated.toLocaleTimeString();
+        if (timeEl && state.lastUpdated) timeEl.textContent = state.lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
 
         const breakdownUpdated = document.getElementById('device-breakdown-updated');
-        if (breakdownUpdated && state.lastUpdated) breakdownUpdated.textContent = state.lastUpdated.toLocaleString();
+        if (breakdownUpdated && state.lastUpdated) breakdownUpdated.textContent = state.lastUpdated.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
         const alertsUpdated = document.getElementById('alerts-last-updated');
-        if (alertsUpdated && state.lastUpdated) alertsUpdated.textContent = state.lastUpdated.toLocaleString();
+        if (alertsUpdated && state.lastUpdated) alertsUpdated.textContent = state.lastUpdated.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
         // 9. Global Error Clearing
         if (!state.error) {
@@ -899,7 +899,7 @@ async function renderAvailabilityDetails() {
         const data = await fetchAvailabilityDetails(availabilityDetailRange, true);
         if (updatedEl) {
             const timestamp = data.generated_at ? new Date(data.generated_at) : new Date();
-            updatedEl.textContent = timestamp.toLocaleString();
+            updatedEl.textContent = timestamp.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         }
         updateAvailabilityRangeUi({
             subtitle: `${data.meta?.range_label || defaultAvailabilityRangeMeta(availabilityDetailRange).subtitle} · ${data.meta?.bucket_label || ''}`.replace(/\s·\s$/, ''),
@@ -1096,7 +1096,7 @@ function renderSubnetModalDetails(details) {
     const healthLabel = formatSubnetHealthLabel(healthPct);
     const healthTone = healthPct < 50 ? 'critical' : (healthPct < 90 ? 'warning' : 'healthy');
     const subnetLabel = normalizeSubnetValue(payload.subnet);
-    const generatedAt = payload.generated_at ? new Date(payload.generated_at).toLocaleString() : '-';
+    const generatedAt = payload.generated_at ? new Date(payload.generated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
 
     const setText = (id, value) => {
         const el = document.getElementById(id);

@@ -137,6 +137,25 @@ _Update this section after completing each item._
 
 ---
 
+## BANNED COMMANDS — Never Run These, Ever
+
+A subagent previously ran `git reset --hard HEAD` and permanently destroyed uncommitted working
+tree changes that could not be recovered (SNMP edits, device tab optimizations, and dozens of
+other modified files). **This must never happen again.**
+
+The following commands are **absolutely banned** for Claude and all subagents in this project:
+
+```
+git reset --hard (any variant)
+git checkout -- . or git checkout -- <file>
+git restore . or git restore <file>  (working tree only — staging-only is fine)
+git clean -f / -fd / -fdx
+```
+
+If you think you need one of these, **STOP and ask the user first.** No exceptions.
+
+---
+
 ## 4. Hard Rules (Follow Every Session)
 
 1. **One file at a time.** Do not touch unrelated files even if they look wrong.

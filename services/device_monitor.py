@@ -96,7 +96,7 @@ class DeviceMonitor:
             device_id, device_ip, device_name, _ = device_info
             
             # 1. Try Standard Ping
-            status, latency, packet_loss, jitter = await self.scanner.ping_device(device_ip)
+            status, latency, packet_loss, jitter, _ttl = await self.scanner.ping_device(device_ip)
             
             # 2. Try Tactical Agent Port (5002) if Ping fails or timeout
             if status == 'Offline':
@@ -246,6 +246,10 @@ class DeviceMonitor:
             'total_scans': len(scans),
             'online_count': len(online_scans),
             'offline_count': len(offline_scans),
+            'no_response_count': sum(
+                1 for s in offline_scans
+                if s.ping_time_ms is None
+            ),
             'uptime_percentage': (len(online_scans) / len(scans)) * 100 if scans else 0,
             'downtime_percentage': (len(offline_scans) / len(scans)) * 100 if scans else 0,
         }

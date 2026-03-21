@@ -417,7 +417,7 @@ async function exportToCSV() {
 function formatDateTime(isoString) {
     if (!isoString) return '-';
     const date = new Date(isoString);
-    return date.toLocaleString();
+    return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 }
 
 function formatBytes(bytes) {

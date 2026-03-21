@@ -186,7 +186,7 @@ export function initInventoryInteractions() {
         const toggleBtn = e.target.closest('.btn-toggle-monitor');
         if (toggleBtn) {
             const deviceId = toggleBtn.dataset.id;
-            fetch(`/api/devices/${deviceId}/toggle_monitoring`, { method: 'POST' })
+            fetch(`/api/devices/${deviceId}/toggle_monitoring`, { method: 'PATCH' })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {

@@ -19,10 +19,12 @@ from flask import (
     session,
     url_for,
 )
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from extensions import db
-from middleware.rbac import build_scope_context, require_login, require_permission
+from models.restricted_site_policy import RestrictedSiteEvent
+from models.tracked_device import TrackedDevice
+from middleware.rbac import build_scope_context, require_login, require_permission, scoped_query
 from services.device_monitor import DeviceMonitor
 from services.report_export_job_service import (
     cleanup_export_jobs as _job_cleanup,
@@ -786,67 +788,185 @@ def reports_page():
     )
 
 
+def _build_device_stats(device_ip: str, hours: int):
+    """RBAC-scoped device lookup + ICMP stats + agent telemetry.
+
+    Returns (device, stats) on success.
+    Returns (None, None) if device is out of scope (-> 403).
+    Returns (device, None) if device is in scope but has no scan data (-> 404).
+    """
+    from models.device import Device
+    from models.server_health import ServerHealthLog
+
+    device = scoped_query(Device).filter_by(device_ip=device_ip).first()
+    if not device:
+        return None, None
+
+    stats = monitor.get_device_statistics(device_ip, hours)
+    if not stats:
+        return device, None
+
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    agent_data = {'available': False}
+    agent_logs = (
+        ServerHealthLog.query
+        .filter(
+            ServerHealthLog.device_id == device.device_id,
+            ServerHealthLog.source == 'agent',
+            ServerHealthLog.timestamp >= cutoff,
+        )
+        .order_by(ServerHealthLog.timestamp.asc())
+        .limit(300)
+        .all()
+    )
+    if agent_logs:
+        latest = agent_logs[-1]
+        agent_data = {
+            'available': True,
+            'latest': {
+                'cpu_percent': latest.cpu_usage,
+                'memory_percent': latest.memory_usage,
+                'disk_percent': latest.disk_usage,
+                'uptime_seconds': float(latest.uptime) if latest.uptime is not None else None,
+                'network_in_bps': latest.network_in_bps,
+                'network_out_bps': latest.network_out_bps,
+            },
+            'time_series': [
+                {
+                    'timestamp': log.timestamp.isoformat(),
+                    'cpu': log.cpu_usage,
+                    'memory': log.memory_usage,
+                    'disk': log.disk_usage,
+                }
+                for log in agent_logs
+            ],
+        }
+    stats['agent_data'] = agent_data
+
+    # Website policy violations (tracked device only)
+    stats['website_violations'] = []
+    try:
+        td = TrackedDevice.query.filter_by(ip_address=device_ip).first()
+        if td:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            stats['website_violations'] = _device_violation_breakdown(td.id, cutoff)
+    except Exception:
+        logger.warning("[DeviceStats] website violation lookup failed for %s", device_ip)
+
+    return device, stats
+
+
 @reports_bp.route('/api/device_statistics')
 def get_device_statistics():
     device_ip = request.args.get('device_ip')
     period = request.args.get('period', '24h')
 
-    if period == '24h':
-        hours = 24
-    elif period == '7d':
-        hours = 24 * 7
-    elif period == '30d':
-        hours = 24 * 30
-    else:
-        hours = 24
+    if not device_ip:
+        return jsonify({'error': 'device_ip is required'}), 400
 
-    stats = monitor.get_device_statistics(device_ip, hours)
-    if not stats:
-        return jsonify({'error': 'No data available'})
+    hours = {'24h': 24, '7d': 168, '30d': 720}.get(period, 24)
+    device, stats = _build_device_stats(device_ip, hours)
 
-    # Augment with agent telemetry from server_health_logs
-    from models.device import Device
-    from models.server_health import ServerHealthLog
+    if device is None:
+        return jsonify({'error': 'Device not found'}), 403
+    if stats is None:
+        return jsonify({'error': 'No data available'}), 404
 
-    agent_data = {'available': False}
-    device = Device.query.filter_by(device_ip=device_ip).first()
-    if device:
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
-        agent_logs = (
-            ServerHealthLog.query
-            .filter(
-                ServerHealthLog.device_id == device.device_id,
-                ServerHealthLog.source == 'agent',
-                ServerHealthLog.timestamp >= cutoff,
-            )
-            .order_by(ServerHealthLog.timestamp.asc())
-            .limit(300)
-            .all()
-        )
-        if agent_logs:
-            latest = agent_logs[-1]
-            agent_data = {
-                'available': True,
-                'latest': {
-                    'cpu_percent': latest.cpu_usage,
-                    'memory_percent': latest.memory_usage,
-                    'disk_percent': latest.disk_usage,
-                    'uptime_seconds': latest.uptime,
-                    'network_in_bps': latest.network_in_bps,
-                    'network_out_bps': latest.network_out_bps,
-                },
-                'time_series': [
-                    {
-                        'timestamp': log.timestamp.isoformat(),
-                        'cpu': log.cpu_usage,
-                        'memory': log.memory_usage,
-                        'disk': log.disk_usage,
-                    }
-                    for log in agent_logs
-                ],
-            }
-    stats['agent_data'] = agent_data
     return jsonify(stats)
+
+
+@reports_bp.route('/api/device_statistics/pdf')
+@require_permission('reports.export')
+def get_device_statistics_pdf():
+    device_ip = request.args.get('device_ip')
+    period = request.args.get('period', '24h')
+
+    if not device_ip:
+        return jsonify({'error': 'device_ip is required'}), 400
+
+    hours = {'24h': 24, '7d': 168, '30d': 720}.get(period, 24)
+    period_label = {'24h': 'Last 24 Hours', '7d': 'Last 7 Days',
+                    '30d': 'Last 30 Days'}.get(period, 'Last 24 Hours')
+
+    device, stats = _build_device_stats(device_ip, hours)
+
+    if device is None:
+        return jsonify({'error': 'Device not found'}), 403
+    if stats is None:
+        return jsonify({'error': 'No scan data available for this period'}), 404
+
+    from services.enterprise_pdf_service import generate_device_inspector_pdf
+    try:
+        buf = generate_device_inspector_pdf(
+            stats, device.device_name, device_ip, period_label
+        )
+    except Exception:
+        logger.exception(
+            "[DeviceInspectorPDF] Generation failed for %s (%s)", device_ip, period
+        )
+        return jsonify({'error': 'PDF generation failed'}), 500
+
+    ts = datetime.utcnow().strftime('%Y%m%d_%H%M')
+    filename = f"device_inspector_{device_ip.replace('.', '_')}_{period}_{ts}.pdf"
+    return send_file(buf, mimetype='application/pdf',
+                     as_attachment=True, download_name=filename)
+
+
+# ── Shared helper: single-device violation breakdown ──────────────────────
+
+def _device_violation_breakdown(device_id: int, cutoff: datetime) -> list:
+    """Group RestrictedSiteEvent by domain for a single tracked device.
+
+    Returns [{domain, count, last_seen}] ordered by count DESC.
+    Caller is responsible for try/except.
+    """
+    rows = (
+        db.session.query(
+            RestrictedSiteEvent.domain,
+            func.count(RestrictedSiteEvent.id).label("count"),
+            func.max(RestrictedSiteEvent.observed_at_utc).label("last_seen"),
+        )
+        .filter(
+            RestrictedSiteEvent.device_id == device_id,
+            RestrictedSiteEvent.observed_at_utc >= cutoff,
+        )
+        .group_by(RestrictedSiteEvent.domain)
+        .order_by(func.count(RestrictedSiteEvent.id).desc())
+        .all()
+    )
+    return [
+        {
+            "domain": r.domain,
+            "count": int(r.count),
+            "last_seen": r.last_seen.isoformat() if r.last_seen else None,
+        }
+        for r in rows
+    ]
+
+
+@reports_bp.route('/api/reports/device-violations/<int:device_id>')
+def get_device_violations(device_id):
+    """Per-device website violation breakdown for the Workstation Monitoring tab."""
+    range_str = request.args.get('range', '30d')
+    days = {'7d': 7, '30d': 30, '90d': 90}.get(range_str, 30)
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    td = TrackedDevice.query.get(device_id)
+    if not td:
+        return jsonify({'error': 'Device not found'}), 404
+
+    try:
+        violations = _device_violation_breakdown(td.id, cutoff)
+    except Exception:
+        logger.warning("[DeviceViolations] query failed for device_id=%s", device_id)
+        violations = []
+
+    return jsonify({
+        'device_id': device_id,
+        'device_name': td.device_name or td.hostname or '\u2014',
+        'employee_name': td.employee_name or '\u2014',
+        'violations': violations,
+    })
 
 
 @reports_bp.route('/api/daily_report')
@@ -1372,15 +1492,17 @@ def enterprise_uptime_report():
     """
     JSON summary of enterprise uptime/downtime data.  Read-only.
     Optional: ?fleet=server|workstation  filters to a single fleet.
+    Optional: ?device_ids=1,2,3          filters to specific device IDs.
     """
     try:
         start_date, end_date = _parse_date_range(max_days=365)
         fleet = _parse_fleet_param()
+        device_ids = _parse_device_ids()
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
     try:
         from services.enterprise_report_service import build_enterprise_uptime_report
-        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet)
+        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet, device_ids=device_ids)
         return jsonify(data)
     except Exception as exc:
         logger.exception("[EnterpriseUptime] JSON build failed: %s", exc)
@@ -1393,16 +1515,18 @@ def enterprise_uptime_pdf():
     """
     Download a colour-formatted enterprise uptime/downtime PDF report.
     Optional: ?fleet=server|workstation  scopes PDF to a single fleet.
+    Optional: ?device_ids=1,2,3          filters to specific device IDs.
     """
     try:
         start_date, end_date = _parse_date_range(max_days=365)
         fleet = _parse_fleet_param()
+        device_ids = _parse_device_ids()
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
     try:
         from services.enterprise_report_service import build_enterprise_uptime_report
         from services.enterprise_pdf_service import generate_enterprise_pdf
-        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet)
+        data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet, device_ids=device_ids)
         buf = generate_enterprise_pdf(data, fleet=fleet or "all")
         timestamp = _utcnow().strftime('%Y%m%d_%H%M')
         label = fleet or "enterprise"

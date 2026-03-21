@@ -224,7 +224,7 @@ def receive_metrics():
             network_out_bps=net_out,
             tcp_retransmits_delta=tcp_retransmits_delta,
             network_per_interface=network_per_interface,
-            uptime=str(uptime),
+            uptime=str(int(uptime)) if uptime is not None else None,
             source='agent',
             os_name=os_name,
             os_version=os_version,

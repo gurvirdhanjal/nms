@@ -231,7 +231,7 @@
             el('dnsSeenTtlSeconds').value = pol.dns_seen_ttl_seconds ?? 1800;
             el('policyVersion').textContent = pol.policy_version || '-';
             el('updatedBy').textContent = pol.updated_by || '-';
-            el('updatedAt').textContent = pol.updated_at ? new Date(pol.updated_at + 'Z').toLocaleString() : '-';
+            el('updatedAt').textContent = pol.updated_at ? new Date(pol.updated_at + 'Z').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
         } catch (err) {
             showAlert(err.message);
         }

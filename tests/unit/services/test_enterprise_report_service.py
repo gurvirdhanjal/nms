@@ -132,6 +132,48 @@ class TestBuildEnterpriseUptimeReport:
         assert report["server_rows"] == []
 
 
+# ── _fleet_violation_summary() tests ──────────────────────────────────────
+
+class TestFleetViolationSummary:
+
+    def test_empty_device_ids_returns_empty_list(self):
+        from services.enterprise_report_service import _fleet_violation_summary
+        now = datetime.utcnow()
+        result = _fleet_violation_summary([], now - timedelta(days=30), now)
+        assert result == []
+
+    def test_nonexistent_device_ids_returns_empty_list(self):
+        from services.enterprise_report_service import _fleet_violation_summary
+        now = datetime.utcnow()
+        result = _fleet_violation_summary([999999], now - timedelta(days=30), now)
+        assert result == []
+
+    def test_return_dict_has_expected_keys(self):
+        """If there are results, each dict must have the canonical keys."""
+        from services.enterprise_report_service import _fleet_violation_summary
+        now = datetime.utcnow()
+        result = _fleet_violation_summary([999999], now - timedelta(days=30), now)
+        # Empty is valid — but if we had data, check the shape
+        expected_keys = {"device_id", "device_name", "employee_name", "domain",
+                         "violation_count", "last_violation"}
+        for row in result:
+            assert set(row.keys()) == expected_keys
+
+
+class TestBuildReportIncludesViolationDetails:
+
+    def test_workstation_fleet_has_website_violation_details_key(self):
+        from services.enterprise_report_service import build_enterprise_uptime_report
+        report = build_enterprise_uptime_report(fleet="workstation")
+        assert "website_violation_details" in report
+        assert isinstance(report["website_violation_details"], list)
+
+    def test_server_fleet_has_empty_violation_details(self):
+        from services.enterprise_report_service import build_enterprise_uptime_report
+        report = build_enterprise_uptime_report(fleet="server")
+        assert report["website_violation_details"] == []
+
+
 # ── _compute_focus_score() edge cases ───────────────────────────────────────
 
 class TestComputeFocusScore:
@@ -254,6 +296,77 @@ class TestReportingServicePrevPeriod:
         end = datetime(2026, 3, 17, 0, 0, 0)
         result = _exec(svc, end - timedelta(days=30), end)
         assert result['prev_uptime_score'] is None
+
+
+class _MockAvailabilityEvent:
+    """Minimal stand-in for TrackedDeviceAvailabilityEvent in pure-logic tests."""
+    def __init__(self, status: str, observed_at: datetime):
+        self.status = status
+        self.observed_at = observed_at
+
+
+class TestComputeUptimeFromEvents:
+    """Unit tests for the pure _compute_uptime_from_events state machine."""
+
+    def test_no_events_returns_none(self):
+        from services.enterprise_report_service import _compute_uptime_from_events
+        start = datetime(2026, 3, 1)
+        end = datetime(2026, 3, 2)
+        uptime, incidents = _compute_uptime_from_events([], start, end)
+        assert uptime is None
+        assert incidents == []
+
+    def test_single_online_event_full_uptime(self):
+        from services.enterprise_report_service import _compute_uptime_from_events
+        start = datetime(2026, 3, 1, 0, 0, 0)
+        end = datetime(2026, 3, 1, 1, 0, 0)
+        events = [_MockAvailabilityEvent("online", start)]
+        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        # No offline event — no downtime recorded
+        assert uptime == 100.0
+        assert incidents == []
+
+    def test_offline_then_online_counts_incident(self):
+        from services.enterprise_report_service import _compute_uptime_from_events
+        start = datetime(2026, 3, 1, 0, 0, 0)
+        mid = datetime(2026, 3, 1, 0, 30, 0)
+        end = datetime(2026, 3, 1, 1, 0, 0)
+        events = [
+            _MockAvailabilityEvent("offline", start),
+            _MockAvailabilityEvent("online", mid),
+        ]
+        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        assert len(incidents) == 1
+        assert incidents[0]["duration_min"] == 30.0
+        # 30 min down out of 60 min window → ~50 % uptime
+        assert uptime == 50.0
+
+    def test_open_incident_at_window_end(self):
+        from services.enterprise_report_service import _compute_uptime_from_events
+        start = datetime(2026, 3, 1, 0, 0, 0)
+        offline_at = datetime(2026, 3, 1, 0, 45, 0)
+        end = datetime(2026, 3, 1, 1, 0, 0)
+        events = [_MockAvailabilityEvent("offline", offline_at)]
+        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        assert len(incidents) == 1
+        assert incidents[0].get("open") is True
+        assert incidents[0]["duration_min"] == 15.0
+        # 15 min down out of 60 min window → 75 % uptime
+        assert uptime == 75.0
+
+    def test_device_always_offline(self):
+        from services.enterprise_report_service import _compute_uptime_from_events
+        start = datetime(2026, 3, 1, 0, 0, 0)
+        end = datetime(2026, 3, 1, 1, 0, 0)
+        events = [
+            _MockAvailabilityEvent("offline", start),
+            _MockAvailabilityEvent("degraded", datetime(2026, 3, 1, 0, 20, 0)),
+        ]
+        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        # Only the first offline event opens the incident; degraded while already
+        # offline is ignored (offline_since already set).  Incident runs to end.
+        assert len(incidents) == 1
+        assert uptime == 0.0
 
 
 class TestReportingServiceDataHealth:

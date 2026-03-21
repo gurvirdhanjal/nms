@@ -566,7 +566,7 @@
         if (!parsed) {
             return 'Last probe: n/a';
         }
-        return `Last probe: ${parsed.toLocaleTimeString()}`;
+        return `Last probe: ${parsed.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     }
 
     function buildProbeReason(device) {
@@ -605,7 +605,7 @@
         if (!parsed) {
             return 'service.py check-in stale';
         }
-        return `last service.py check-in ${parsed.toLocaleTimeString()}`;
+        return `last service.py check-in ${parsed.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     }
 
     function openAddDeviceModal() {
@@ -1491,7 +1491,7 @@
 
             devices.forEach((device) => {
                 const parsedLastSeen = parseUniversalDate(device.timestamp);
-                const lastSeen = parsedLastSeen ? parsedLastSeen.toLocaleDateString() : 'Never';
+                const lastSeen = parsedLastSeen ? parsedLastSeen.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Never';
                 csvLines.push([
                     csvEscape(device.device_name || ''),
                     csvEscape(device.employee_name || ''),

@@ -437,7 +437,7 @@ def get_system_info():
         "hostname": get_exact_hostname(),
         "cpu_cores": psutil.cpu_count(),
         "total_memory": round(psutil.virtual_memory().total / (1024**3), 2),
-        "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+        "boot_time": datetime.utcfromtimestamp(psutil.boot_time()).isoformat() + 'Z',
     }
 
 def register_or_update_employee():
@@ -535,7 +535,7 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
             "sampled_at_utc": sampled_at_utc.isoformat(),
             "sample_interval_seconds": 60,
             "schema_version": "2",
-            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+            "boot_time": datetime.utcfromtimestamp(psutil.boot_time()).isoformat() + 'Z',
         },
         "device_info": {
             "mac_address": get_mac_address(),
@@ -568,7 +568,7 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
             "used_gb": used_gb,
             "total_gb": total_gb,
             "disk_usage": disk_usage,
-            "boot_time": datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+            "boot_time": datetime.utcfromtimestamp(psutil.boot_time()).isoformat() + 'Z',
             "network_speed": network_stats if ENABLE_NET_MONITOR else None,
             "active_window": active_window,
             "top_processes": top_processes,

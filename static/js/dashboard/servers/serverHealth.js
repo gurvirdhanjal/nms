@@ -78,7 +78,7 @@ export function renderServerHealthTable(payload) {
             const badgeClass = statusBadge[health] || 'tactical-badge-secondary';
             const statusHint = health === 'Offline' ? 'Agent offline' : (health === 'Unknown' ? 'No data yet' : 'Agent reporting');
             const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
-            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString() : '-';
+            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
 
             return `
                 <td>
@@ -284,7 +284,7 @@ export function renderEnhancedServerTable(payload) {
             const packetLoss = server.packet_loss;
             const jitter = server.jitter;
             const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
-            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString() : '-';
+            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
 
             const getValClass = (val) => val > 90 ? 'text-danger fw-bold' : (val > 75 ? 'text-warning fw-bold' : '');
             const formatPct = (val) => (val !== null && val !== undefined) ? `${Number(val).toFixed(1)}%` : '-';

@@ -54,7 +54,7 @@ function parseUtcDate(value) {
 
 function formatDateTime(value) {
     const date = parseUtcDate(value);
-    return date ? date.toLocaleString() : '-';
+    return date ? date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
 }
 
 function formatMetricValue(value, unit = '') {
@@ -401,8 +401,8 @@ export function createServerMetricsView({ root, prefix }) {
             const dt = parseUtcDate(ts);
             if (!dt) return '';
             return showDate
-                ? dt.toLocaleDateString()
-                : dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                ? dt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
+                : dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
         };
 
         const formatTick = tickFormatter || ((value) => {

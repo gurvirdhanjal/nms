@@ -250,8 +250,8 @@ class ReportingService:
                 )
                 .first()
             )
-            uptime_score = round((total_online_scans / total_scans) * 100.0, 2) if total_scans else 0.0
-            avg_latency = round(raw_ping_stats.avg_latency, 2) if raw_ping_stats and raw_ping_stats.avg_latency is not None else 0.0
+            uptime_score = round((total_online_scans / total_scans) * 100.0, 2) if total_scans else None
+            avg_latency = round(raw_ping_stats.avg_latency, 2) if raw_ping_stats and raw_ping_stats.avg_latency is not None else None
 
         # --- Prev-period uptime for trend badge ---
         # prev_end = start_date - 1 day to avoid double-counting boundary
@@ -374,6 +374,26 @@ class ReportingService:
                 ),
             )[:10]
 
+        # ── Data confidence metadata ───────────────────────────────────────
+        _confidence = {
+            "uptime_score": {
+                "level": "HIGH" if availability_basis == "daily_device_stats" else ("MEDIUM" if uptime_score is not None else "NO_DATA"),
+                "source": availability_basis if uptime_score is not None else None,
+            },
+            "avg_latency": {
+                "level": "HIGH" if availability_basis == "daily_device_stats" and avg_latency is not None else ("MEDIUM" if avg_latency is not None else "NO_DATA"),
+                "source": availability_basis if avg_latency is not None else None,
+            },
+            "prev_uptime_score": {
+                "level": "HIGH" if prev_uptime_score is not None else "NO_DATA",
+                "source": "daily_device_stats" if prev_uptime_score is not None else None,
+            },
+            "mtta_seconds": {
+                "level": "HIGH" if mtta_seconds is not None else "NO_DATA",
+                "source": "dashboard_events" if mtta_seconds is not None else None,
+            },
+        }
+
         return {
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
             "uptime_score": uptime_score,
@@ -405,6 +425,7 @@ class ReportingService:
                 for row in problematic_devices
             ],
             "total_devices": int(self._inventory_devices_query().count()),
+            "_confidence": _confidence,
         }
 
     def get_operational_report(self, start_date=None, end_date=None):
@@ -1403,7 +1424,7 @@ class ReportingService:
             for row in raw_rows:
                 total_scans = int(row.total_scans or 0)
                 online_scans = int(row.online_scans or 0)
-                availability_pct = round((online_scans / total_scans) * 100.0, 2) if total_scans else 0.0
+                availability_pct = round((online_scans / total_scans) * 100.0, 2) if total_scans else None
                 device_id, device_name = device_map.get(row.device_ip, (None, row.device_ip))
                 downtime_leaders.append(
                     {

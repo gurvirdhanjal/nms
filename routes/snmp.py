@@ -251,20 +251,33 @@ def get_snmp_config(device_id):
         config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
         
         if not config:
+            from models.device import Device
+            device = Device.query.get(device_id)
             return jsonify({
                 'device_id': device_id,
                 'configured': False,
                 'defaults': {
                     'community_string': 'public',
                     'snmp_version': '2c',
-                    'snmp_port': 161
+                    'snmp_port': 161,
+                    'poll_interval_seconds': 300,
+                    'is_enabled': False,
+                    'device_name': device.device_name if device else '',
+                    'device_ip': device.device_ip if device else '',
                 }
             })
         
+        from models.device import Device
+        device = Device.query.get(device_id)
+        cfg = config.to_dict()
+        cfg['community_string'] = config.community_string  # include actual value for edit modal
+        if device:
+            cfg['device_name'] = device.device_name
+            cfg['device_ip']   = device.device_ip
         return jsonify({
             'device_id': device_id,
             'configured': True,
-            'config': config.to_dict()
+            'config': cfg
         })
         
     except Exception as e:

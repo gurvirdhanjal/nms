@@ -1566,7 +1566,7 @@
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const parsedDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
-        const timeLabel = parsed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const timeLabel = parsed.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 
         if (parsedDay === today) {
             return `Today ${timeLabel}`;
@@ -1574,12 +1574,13 @@
         if (parsedDay === (today - 86400000)) {
             return `Yesterday ${timeLabel}`;
         }
-        return parsed.toLocaleString([], {
+        return parsed.toLocaleString('en-IN', {
             month: 'numeric',
             day: 'numeric',
             year: 'numeric',
             hour: 'numeric',
             minute: '2-digit',
+            timeZone: 'Asia/Kolkata',
         });
     }
 
@@ -1964,7 +1965,7 @@
             return;
         }
         list.innerHTML = violations.map(v => {
-            const t = v.at ? new Date(v.at.endsWith('Z') ? v.at : v.at + 'Z').toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+            const t = v.at ? new Date(v.at.endsWith('Z') ? v.at : v.at + 'Z').toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}) : '—';
             const confCls = (v.confidence || '').toUpperCase() === 'HIGH' ? 'danger' : 'warning';
             return `<div class="d-flex gap-2 align-items-center py-1 border-bottom border-secondary">
                 <span class="badge bg-secondary" style="font-size:0.72rem">${escapeHtml(v.source || '?')}</span>
@@ -3632,7 +3633,7 @@
             return;
         }
         try {
-            await postJson(`/api/tracking/toggle-camera/${encodeURIComponent(macAddress)}`);
+            await patchJson(`/api/tracking/toggle-camera/${encodeURIComponent(macAddress)}`);
             if (dom.cameraPreview) {
                 dom.cameraPreview.src = `/api/tracking/stream/camera/${encodeURIComponent(macAddress)}?t=${Date.now()}`;
             }
@@ -3719,7 +3720,7 @@
             return;
         }
         try {
-            await postJson(`/api/tracking/toggle-mic/${encodeURIComponent(macAddress)}`);
+            await patchJson(`/api/tracking/toggle-mic/${encodeURIComponent(macAddress)}`);
             if (dom.micAudio) {
                 dom.micAudio.pause();
                 dom.micAudio.muted = false;
@@ -3768,7 +3769,7 @@
 
         let remoteStopSucceeded = false;
         try {
-            await postJson(`/api/tracking/toggle-mic/${encodeURIComponent(macAddress)}`, true);
+            await patchJson(`/api/tracking/toggle-mic/${encodeURIComponent(macAddress)}`, true);
             remoteStopSucceeded = true;
         } catch (error) {
             if (!silent) {
@@ -3804,6 +3805,16 @@
     async function postJson(url, keepalive) {
         const { payload } = await requestJson(url, {
             method: 'POST',
+            headers: { Accept: 'application/json' },
+            keepalive: Boolean(keepalive),
+            credentials: 'same-origin',
+        });
+        return payload;
+    }
+
+    async function patchJson(url, keepalive) {
+        const { payload } = await requestJson(url, {
+            method: 'PATCH',
             headers: { Accept: 'application/json' },
             keepalive: Boolean(keepalive),
             credentials: 'same-origin',
@@ -4195,7 +4206,7 @@
             }
             return '--:--';
         }
-        return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return parsed.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
     }
 
     function setCameraStates(headerText, panelText, options) {
@@ -4597,7 +4608,7 @@
     function formatTimestamp(value) {
         const parsed = parseUniversalDate(value);
         if (!parsed) return 'Never';
-        return parsed.toLocaleString();
+        return parsed.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     }
 
     function setLastSeenDisplay(value) {
@@ -4609,7 +4620,7 @@
             node.removeAttribute('title');
             return;
         }
-        node.textContent = parsed.toLocaleString();
+        node.textContent = parsed.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
         node.title = formatRelativeFromIso(parsed);
     }
 

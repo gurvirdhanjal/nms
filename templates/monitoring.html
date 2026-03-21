@@ -218,7 +218,7 @@
             meta.textContent = 'Last refreshed: n/a';
             return;
         }
-        meta.textContent = `Last refreshed: ${new Date(lastSuccessAt).toLocaleTimeString()}`;
+        meta.textContent = `Last refreshed: ${new Date(lastSuccessAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     }
 
     function patchTableRows(devices) {
@@ -255,7 +255,7 @@
 
             const status = String(device.status || 'Offline');
             const latencyText = device.latency ? `${Math.round(device.latency)} ms` : 'N/A';
-            const lastCheck = new Date().toLocaleTimeString();
+            const lastCheck = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
 
             row.innerHTML = `
                 <td>

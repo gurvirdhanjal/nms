@@ -16,14 +16,16 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from extensions import db
+from models.compliance_profile import ComplianceProfile
 from models.dashboard import DailyDeviceStats
 from models.device import Device
 from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
 from models.server_health_rollups import ServerHealthHourlyRollup, ServerHealthDailyRollup
+from models.restricted_site_policy import RestrictedSiteEvent
 from models.tracked_device import (
     TrackedDevice, TrackedDeviceAvailabilityEvent,
     TrackingDailyRollup, TrackingHourlyRollup,
@@ -43,25 +45,68 @@ _VALID_FLEETS = (None, "server", "workstation")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _safe_round(val, decimals: int = 2) -> float:
+def _safe_round(val, decimals: int = 2):
+    """Round a numeric value, preserving None to distinguish 'no data' from zero."""
+    if val is None:
+        return None
     try:
         return round(float(val), decimals)
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
-def sla_tier(uptime_pct: Optional[float]) -> str:
+def sla_tier(uptime_pct: Optional[float], thresholds: Optional[Dict[str, float]] = None) -> str:
+    """Assign SLA tier based on uptime percentage.
+
+    If *thresholds* is provided, uses per-device SLA thresholds from
+    ComplianceProfile.rules_json (keys: sla_gold, sla_silver, sla_bronze,
+    sla_warning).  Missing keys fall back to module-level constants.
+    """
     if uptime_pct is None:
         return "Unknown"
-    if uptime_pct >= SLA_GOLD:
+    t = thresholds or {}
+    gold    = t.get("sla_gold",    SLA_GOLD)
+    silver  = t.get("sla_silver",  SLA_SILVER)
+    bronze  = t.get("sla_bronze",  SLA_BRONZE)
+    warning = t.get("sla_warning", SLA_WARNING)
+    if uptime_pct >= gold:
         return "Gold"
-    if uptime_pct >= SLA_SILVER:
+    if uptime_pct >= silver:
         return "Silver"
-    if uptime_pct >= SLA_BRONZE:
+    if uptime_pct >= bronze:
         return "Bronze"
-    if uptime_pct >= SLA_WARNING:
+    if uptime_pct >= warning:
         return "Warning"
     return "Critical"
+
+
+def _bulk_load_sla_thresholds(device_profile_map: Dict[int, Optional[int]]) -> Tuple[Dict[int, Dict[str, float]], Dict[str, int]]:
+    """Bulk-load ComplianceProfile SLA thresholds for a set of devices.
+
+    Returns a tuple:
+      - {device_id: {sla_gold: X, sla_silver: Y, ...}} for devices with custom SLA keys
+      - {profile_name: device_count} summary of profiles in use
+
+    Devices without a profile or without SLA keys in rules_json are not
+    in the first dict (callers should treat missing entries as "use defaults").
+    """
+    profile_ids = set(pid for pid in device_profile_map.values() if pid is not None)
+    if not profile_ids:
+        return {}, {}
+    profile_objs = ComplianceProfile.query.filter(ComplianceProfile.id.in_(profile_ids)).all()
+    profiles = {p.id: (p.name, p.rules_json or {}) for p in profile_objs}
+    sla_keys = {"sla_gold", "sla_silver", "sla_bronze", "sla_warning"}
+    result: Dict[int, Dict[str, float]] = {}
+    profile_usage: Dict[str, int] = {}
+    for device_id, profile_id in device_profile_map.items():
+        if profile_id is None or profile_id not in profiles:
+            continue
+        name, rules = profiles[profile_id]
+        sla_overrides = {k: float(v) for k, v in rules.items() if k in sla_keys and v is not None}
+        if sla_overrides:
+            result[device_id] = sla_overrides
+            profile_usage[name] = profile_usage.get(name, 0) + 1
+    return result, profile_usage
 
 
 def downtime_hours(uptime_pct: Optional[float], period_hours: float) -> Optional[float]:
@@ -151,23 +196,17 @@ def _inventory_network_stats(device_id: int, start: datetime, end: datetime) -> 
     }
 
 
-def _tracked_uptime_and_incidents(
-    device_id: int, start: datetime, end: datetime
+def _compute_uptime_from_events(
+    events: list, start: datetime, end: datetime
 ) -> Tuple[Optional[float], List[dict]]:
     """
-    Uptime % and incident list for a tracked device over [start, end].
-    Derived from TrackedDeviceAvailabilityEvent stream.
+    Pure state-machine helper: derive uptime % and incident list from a
+    pre-fetched list of availability event objects.
+
+    Each object must expose `.status` (str) and `.observed_at` (datetime).
+    Returns (uptime_pct, incidents).  Both are None / [] when there is no data
+    or when the time window is degenerate.
     """
-    events = (
-        TrackedDeviceAvailabilityEvent.query
-        .filter(
-            TrackedDeviceAvailabilityEvent.device_id == device_id,
-            TrackedDeviceAvailabilityEvent.observed_at >= start,
-            TrackedDeviceAvailabilityEvent.observed_at <= end,
-        )
-        .order_by(TrackedDeviceAvailabilityEvent.observed_at.asc())
-        .all()
-    )
     if not events:
         return None, []
 
@@ -197,6 +236,61 @@ def _tracked_uptime_and_incidents(
     total_down_s = sum(inc["duration_min"] * 60 for inc in incidents)
     uptime_pct = _safe_round(max(0.0, 1.0 - total_down_s / period_seconds) * 100.0)
     return uptime_pct, incidents
+
+
+def _tracked_uptime_and_incidents(
+    device_id: int, start: datetime, end: datetime
+) -> Tuple[Optional[float], List[dict]]:
+    """
+    Uptime % and incident list for a tracked device over [start, end].
+    Derived from TrackedDeviceAvailabilityEvent stream.
+    """
+    events = (
+        TrackedDeviceAvailabilityEvent.query
+        .filter(
+            TrackedDeviceAvailabilityEvent.device_id == device_id,
+            TrackedDeviceAvailabilityEvent.observed_at >= start,
+            TrackedDeviceAvailabilityEvent.observed_at <= end,
+        )
+        .order_by(TrackedDeviceAvailabilityEvent.observed_at.asc())
+        .all()
+    )
+    return _compute_uptime_from_events(events, start, end)
+
+
+def _bulk_uptime_and_incidents(
+    device_ids: List[int],
+    start: datetime,
+    end: datetime,
+) -> "Dict[int, Tuple[Optional[float], List[dict]]]":
+    """Bulk version: one query for all device IDs, groups in Python.
+    Returns {device_id: (uptime_pct, incidents)} for every id in device_ids.
+    Devices with no events get (None, []).
+    """
+    if not device_ids:
+        return {}
+    all_events = (
+        TrackedDeviceAvailabilityEvent.query
+        .filter(
+            TrackedDeviceAvailabilityEvent.device_id.in_(device_ids),
+            TrackedDeviceAvailabilityEvent.observed_at >= start,
+            TrackedDeviceAvailabilityEvent.observed_at <= end,
+        )
+        .order_by(
+            TrackedDeviceAvailabilityEvent.device_id.asc(),
+            TrackedDeviceAvailabilityEvent.observed_at.asc(),
+        )
+        .all()
+    )
+    # Group by device_id
+    grouped: "Dict[int, list]" = {did: [] for did in device_ids}
+    for ev in all_events:
+        if ev.device_id in grouped:
+            grouped[ev.device_id].append(ev)
+    return {
+        did: _compute_uptime_from_events(evs, start, end)
+        for did, evs in grouped.items()
+    }
 
 
 def _mttr_mtbf(incidents: List[dict]) -> Tuple[Optional[float], Optional[float]]:
@@ -380,7 +474,6 @@ def _workstation_behavioral_metrics(
     # ── Policy violation count via unique_client_id → agent_key_id ────────────
     violation_count: Optional[int] = None
     try:
-        from models.restricted_site_policy import RestrictedSiteEvent
         dev = TrackedDevice.query.get(device_id)
         if dev and getattr(dev, "unique_client_id", None):
             violation_count = (
@@ -392,8 +485,8 @@ def _workstation_behavioral_metrics(
                 )
                 .scalar()
             ) or 0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[EnterpriseReport] violation count query failed for device %s: %s", device_id, exc)
 
     # ── Focus score ───────────────────────────────────────────────────────────
     focus_score = _compute_focus_score(device_id, start, end)
@@ -410,6 +503,63 @@ def _workstation_behavioral_metrics(
         "productivity_score":    productivity_score,
         "focus_score":           focus_score,
     }
+
+
+def _fleet_violation_summary(
+    device_ids: List[int],
+    start: datetime,
+    end: datetime,
+) -> List[dict]:
+    """
+    Fleet-wide website policy violation breakdown grouped by (device, domain).
+
+    Returns a flat list of dicts ordered by violation_count DESC, capped at 500.
+    Each dict: {device_id, device_name, employee_name, domain, violation_count, last_violation}.
+
+    # cf. reporting_service.py:1479 — similar query for operational summary
+    """
+    if not device_ids:
+        return []
+    try:
+        rows = (
+            db.session.query(
+                TrackedDevice.id.label("device_id"),
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
+                RestrictedSiteEvent.domain,
+                func.count(RestrictedSiteEvent.id).label("violation_count"),
+                func.max(RestrictedSiteEvent.observed_at_utc).label("last_violation"),
+            )
+            .join(TrackedDevice, TrackedDevice.id == RestrictedSiteEvent.device_id)
+            .filter(
+                RestrictedSiteEvent.device_id.in_(device_ids),
+                RestrictedSiteEvent.observed_at_utc >= start,
+                RestrictedSiteEvent.observed_at_utc <= end,
+            )
+            .group_by(
+                TrackedDevice.id,
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
+                RestrictedSiteEvent.domain,
+            )
+            .order_by(func.count(RestrictedSiteEvent.id).desc())
+            .limit(500)
+            .all()
+        )
+        return [
+            {
+                "device_id": r.device_id,
+                "device_name": r.device_name or "—",
+                "employee_name": r.employee_name or "—",
+                "domain": r.domain,
+                "violation_count": int(r.violation_count),
+                "last_violation": r.last_violation.isoformat() if r.last_violation else None,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.warning("[EnterpriseReport] _fleet_violation_summary failed: %s", exc)
+        return []
 
 
 def _server_metrics_bulk(device_ids: list, start: datetime, end: datetime) -> dict:
@@ -571,6 +721,7 @@ def build_enterprise_uptime_report(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     fleet: Optional[str] = None,
+    device_ids: Optional[List[int]] = None,
 ) -> dict:
     """
     Build the enterprise uptime/downtime report.
@@ -579,6 +730,10 @@ def build_enterprise_uptime_report(
       None         — both server and workstation fleets (default)
       "server"     — inventory devices only; tracked_rows will be []
       "workstation"— tracked/employee devices only; server_rows will be []
+
+    device_ids:
+      Optional list of TrackedDevice IDs to restrict the workstation fleet.
+      When None (default) all non-archived tracked devices are included.
 
     Returns a dict with keys:
       period, summary, server_rows, tracked_rows, generated_at
@@ -592,6 +747,7 @@ def build_enterprise_uptime_report(
 
     # ── Inventory / Server fleet (server_agent.py devices) ───────────────────
     server_rows: List[dict] = []
+    sla_profiles_used: Dict[str, int] = {}   # {profile_name: device_count}
     if fleet in (None, "server"):
         inv_devices = (
             Device.query
@@ -602,12 +758,20 @@ def build_enterprise_uptime_report(
         inv_device_ids = [dev.device_id for dev in inv_devices]
         all_metrics = _server_metrics_bulk(inv_device_ids, start_dt, end_dt)
 
+        # Bulk-load per-device SLA thresholds from ComplianceProfile
+        inv_profile_map = {
+            dev.device_id: getattr(dev, "compliance_profile_id", None)
+            for dev in inv_devices
+        }
+        inv_sla_thresholds = _bulk_load_sla_thresholds(inv_profile_map)
+
         for dev in inv_devices:
             try:
                 up = _inventory_uptime(dev.device_ip, dev.device_id, start_dt, end_dt)
                 metrics = all_metrics.get(dev.device_id, {})
                 net_stats = _inventory_network_stats(dev.device_id, start_dt, end_dt)
-                tier = sla_tier(up)
+                dev_thresholds = inv_sla_thresholds.get(dev.device_id)
+                tier = sla_tier(up, dev_thresholds)
                 server_rows.append({
                     "device_id": dev.device_id,
                     "device_name": dev.device_name or f"Device-{dev.device_ip}",
@@ -635,6 +799,7 @@ def build_enterprise_uptime_report(
                     "max_latency_ms": net_stats.get("max_latency_ms"),
                     "avg_packet_loss_pct": net_stats.get("avg_packet_loss_pct"),
                     "total_alerts": net_stats.get("total_alerts", 0),
+                    "sla_thresholds": "custom" if dev_thresholds else "default",
                 })
             except Exception as exc:
                 logger.warning("[EnterpriseReport] server device_id=%s error=%s", dev.device_id, exc)
@@ -651,15 +816,26 @@ def build_enterprise_uptime_report(
         except Exception:
             _category_cache = None
 
-        tracked_devices = (
+        td_query = (
             TrackedDevice.query
             .filter(TrackedDevice.is_archived.isnot(True))
             .order_by(TrackedDevice.device_name.asc())
-            .all()
         )
+        if device_ids:
+            td_query = td_query.filter(TrackedDevice.id.in_(device_ids))
+        tracked_devices = td_query.all()
+
+        # One bulk availability query instead of N per-device queries.
+        # Apply a 5-second statement timeout to guard against table scans on
+        # large event histories.
+        if db.engine.url.get_backend_name() == 'postgresql':
+            db.session.execute(text("SET LOCAL statement_timeout = '5000'"))
+        tracked_ids = [dev.id for dev in tracked_devices]
+        bulk_uptime = _bulk_uptime_and_incidents(tracked_ids, start_dt, end_dt)
+
         for dev in tracked_devices:
             try:
-                up, incidents = _tracked_uptime_and_incidents(dev.id, start_dt, end_dt)
+                up, incidents = bulk_uptime.get(dev.id, (None, []))
                 mttr, mtbf = _mttr_mtbf(incidents)
                 tier = sla_tier(up)
                 beh = _workstation_behavioral_metrics(dev.id, start_dt, end_dt, _category_cache)
@@ -683,6 +859,7 @@ def build_enterprise_uptime_report(
                     "mtbf_hours": mtbf,
                     "last_seen": dev.last_seen.isoformat() if dev.last_seen else None,
                     "availability_status": dev.availability_status or "unknown",
+                    "data_source": "availability_events" if up is not None else "unknown",
                     # Behavioral fields
                     "total_keyboard_events": beh.get("total_keyboard_events"),
                     "total_mouse_events":    beh.get("total_mouse_events"),
@@ -696,6 +873,11 @@ def build_enterprise_uptime_report(
                 })
             except Exception as exc:
                 logger.warning("[EnterpriseReport] tracked device_id=%s error=%s", dev.id, exc)
+
+    # ── Website violation detail breakdown (workstation fleet only) ───────────
+    website_violation_details: List[dict] = []
+    if fleet in (None, "workstation") and tracked_ids:
+        website_violation_details = _fleet_violation_summary(tracked_ids, start_dt, end_dt)
 
     # ── Fleet resource averages (server fleet only, agent-equipped devices) ──
     agent_server_rows = [r for r in server_rows if (r.get("sample_count") or 0) > 0]
@@ -725,6 +907,38 @@ def build_enterprise_uptime_report(
                 fleet, len(server_rows), len(tracked_rows),
                 sla_tier(fleet_avg) if fleet_avg is not None else "N/A")
 
+    # ── Per-row data source tracking for confidence ──────────────────────
+    server_data_sources = set()
+    tracked_data_sources = set()
+    for r in server_rows:
+        server_data_sources.add(r.get("data_source", "unknown"))
+    for r in tracked_rows:
+        tracked_data_sources.add(r.get("data_source", "unknown"))
+
+    def _confidence_level(sources: set) -> str:
+        if not sources or sources == {"unknown"}:
+            return "NO_DATA"
+        if "rollup" in sources or "daily_rollup" in sources or "hourly_rollup" in sources:
+            return "HIGH"
+        if "raw" in sources or "availability_events" in sources or "scan_history" in sources:
+            return "MEDIUM"
+        return "LOW"
+
+    _confidence = {
+        "fleet_avg_uptime": {
+            "level": "HIGH" if rows_with_data else "NO_DATA",
+            "source": "computed_from_device_rows",
+        },
+        "server_fleet": {
+            "level": _confidence_level(server_data_sources),
+            "source": ", ".join(sorted(server_data_sources)) if server_data_sources else None,
+        },
+        "tracked_fleet": {
+            "level": _confidence_level(tracked_data_sources),
+            "source": ", ".join(sorted(tracked_data_sources)) if tracked_data_sources else None,
+        },
+    }
+
     return {
         "period": {
             "start": start_dt.isoformat(),
@@ -748,5 +962,7 @@ def build_enterprise_uptime_report(
         },
         "server_rows": server_rows,
         "tracked_rows": tracked_rows,
+        "website_violation_details": website_violation_details,
         "generated_at": datetime.utcnow().isoformat(),
+        "_confidence": _confidence,
     }

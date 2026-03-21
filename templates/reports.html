@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Reports - Device Monitoring{% endblock %}
 
@@ -930,7 +930,7 @@
             <button class="nav-link" id="workstationhealth-tab" data-bs-toggle="pill"
                 data-bs-target="#workstationhealth" type="button" role="tab"
                 onclick="lazyLoadWorkstationHealth()">
-                <i class="fas fa-desktop me-2"></i> Workstation Health
+                <i class="fas fa-desktop me-2"></i> Workstation Monitoring
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -1157,7 +1157,7 @@
                         </div>
                         <div class="card-body p-4">
                             <div class="row align-items-end mb-4">
-                                <div class="col-md-5">
+                                <div class="col-md-4">
                                     <label for="deviceSearch"
                                         class="form-label text-uppercase text-muted small fw-bold">Select
                                         Device</label>
@@ -1171,7 +1171,7 @@
                                         <input type="hidden" id="selectedDeviceIp">
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label for="periodSelect"
                                         class="form-label text-uppercase text-muted small fw-bold">Time
                                         Period</label>
@@ -1184,6 +1184,12 @@
                                 <div class="col-md-3">
                                     <button class="btn btn-primary w-100" id="generateReport">
                                         <i class="fas fa-bolt"></i> GENERATE
+                                    </button>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-outline-secondary w-100" id="downloadPdfBtn"
+                                            disabled title="Generate a report first">
+                                        <i class="fas fa-file-pdf me-1"></i>PDF
                                     </button>
                                 </div>
                             </div>
@@ -1643,7 +1649,7 @@
             <!-- Header card -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation &amp; Employee Device Fleet</h5>
+                    <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation Monitoring — Employee Device Fleet</h5>
                     <div class="d-flex gap-2 align-items-center">
                         <select class="form-select form-select-sm" id="wsRange" style="width:130px">
                             <option value="7d">Last 7 Days</option>
@@ -1777,7 +1783,7 @@
                                     </thead>
                                     <tbody>
                                         <tr><td colspan="18" class="text-center text-muted p-4">
-                                            Click <strong>Workstation Health</strong> tab to load.
+                                            Click <strong>Workstation Monitoring</strong> tab to load.
                                         </td></tr>
                                     </tbody>
                                 </table>
@@ -1786,6 +1792,74 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Fleet-wide website policy violations (conditionally visible) -->
+            <div class="row mt-3" id="wsViolFleetSection" style="display:none">
+                <div class="col-12 mb-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="fas fa-shield-alt me-1"></i> Top Website Policy Violations</h6>
+                            <input type="text" id="wsViolSearchInput" class="form-control form-control-sm"
+                                placeholder="Search employee / device / website…" style="width:240px"
+                                oninput="filterWsViolTable()">
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height:300px;overflow-y:auto">
+                                <table class="table table-hover table-sm mb-0" id="wsViolDetailTable">
+                                    <thead class="table-dark" style="position:sticky;top:0;z-index:1">
+                                        <tr>
+                                            <th>Employee</th>
+                                            <th>Device</th>
+                                            <th>Website</th>
+                                            <th class="text-end">Violations</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="4" class="text-center text-muted p-3">No violation data loaded.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Per-device violation detail picker (always visible when tracked devices exist) -->
+            <div class="row mt-3" id="wsViolPickerSection" style="display:none">
+                <div class="col-12 mb-3">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-search me-1"></i> Device Violation Detail</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row align-items-end mb-3">
+                                <div class="col-md-5">
+                                    <label class="form-label text-uppercase text-muted small fw-bold">Select Workstation</label>
+                                    <div class="search-select-container">
+                                        <input type="text" class="search-select-input" id="wsViolDeviceSearch"
+                                            placeholder="Search workstation…" autocomplete="off">
+                                        <i class="fas fa-search search-select-icon"></i>
+                                        <div class="search-select-dropdown" id="wsViolDeviceList"></div>
+                                        <input type="hidden" id="wsViolSelectedDeviceId">
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-primary w-100" onclick="loadDeviceViolations()">
+                                        <i class="fas fa-bolt me-1"></i> LOAD
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="wsViolDeviceDetail">
+                                <div class="text-center text-muted py-3">
+                                    <i class="fas fa-shield-alt fa-2x mb-2" style="opacity:0.3"></i>
+                                    <p class="small">Select a workstation to view its violation details.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- ══════════════════════════════════════════════════════════════
@@ -1970,6 +2044,51 @@
 
 {% block extra_js %}
 <script>
+    // ==========================================
+    // Reusable search-select dropdown utility
+    // ==========================================
+    function initSearchSelect({inputId, listId, hiddenId, items, renderItem, getSearchText, onSelect}) {
+        const input = document.getElementById(inputId);
+        const list = document.getElementById(listId);
+        const hidden = document.getElementById(hiddenId);
+        if (!input || !list) return;
+
+        function render(filtered) {
+            list.innerHTML = '';
+            if (!filtered.length) {
+                list.innerHTML = '<div class="search-select-item disabled">No matches</div>';
+                return;
+            }
+            filtered.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'search-select-item';
+                div.innerHTML = renderItem(item);
+                div.addEventListener('click', () => {
+                    input.value = getSearchText(item);
+                    if (hidden) hidden.value = item._selectValue || '';
+                    list.classList.remove('show');
+                    if (onSelect) onSelect(item);
+                });
+                list.appendChild(div);
+            });
+        }
+
+        function filter(q) {
+            const lq = (q || '').toLowerCase();
+            render(!lq ? items : items.filter(i => getSearchText(i).toLowerCase().includes(lq)));
+        }
+
+        input.addEventListener('focus', () => { list.classList.add('show'); filter(input.value); });
+        input.addEventListener('keyup', () => filter(input.value));
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest(`#${inputId}`) && !e.target.closest(`#${listId}`)
+                && !e.target.closest(`.search-select-container`))
+                list.classList.remove('show');
+        });
+
+        return { update(newItems) { items = newItems; filter(input.value); } };
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         // Session keepalive — prevent timeout while user is viewing reports
         const _keepalive = setInterval(async () => {
@@ -2334,19 +2453,21 @@
             return Number.isNaN(parsed.getTime()) ? null : parsed;
         }
 
+        const _IST = { timeZone: 'Asia/Kolkata' };
+
         function formatReportDateTime(value, options = {}) {
             const parsed = parseReportDate(value);
-            return parsed ? parsed.toLocaleString(undefined, options) : 'Unknown';
+            return parsed ? parsed.toLocaleString('en-IN', { ..._IST, ...options }) : 'Unknown';
         }
 
         function formatReportDate(value, options = {}) {
             const parsed = parseReportDate(value);
-            return parsed ? parsed.toLocaleDateString(undefined, options) : 'Unknown';
+            return parsed ? parsed.toLocaleDateString('en-IN', { ..._IST, ...options }) : 'Unknown';
         }
 
         function formatReportTime(value, options = {}) {
             const parsed = parseReportDate(value);
-            return parsed ? parsed.toLocaleTimeString(undefined, options) : '';
+            return parsed ? parsed.toLocaleTimeString('en-IN', { ..._IST, ...options }) : '';
         }
 
         async function parseJsonResponse(response) {
@@ -2556,83 +2677,47 @@
             container.innerHTML = html;
         }
 
+
         // ==========================================
-        // Executive Report Logic
-        const searchInput = document.getElementById('deviceSearch');
-        const deviceList = document.getElementById('deviceList');
-        const hiddenInput = document.getElementById('selectedDeviceIp');
-        let allDevices = [];
-
-        // Show dropdown on focus
-        searchInput.addEventListener('focus', () => {
-            deviceList.classList.add('show');
-            filterDevices(searchInput.value);
-        });
-
-        // Hide dropdown on click outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-select-container')) {
-                deviceList.classList.remove('show');
-            }
-        });
-
-        // Filter on type
-        searchInput.addEventListener('keyup', (e) => {
-            filterDevices(e.target.value);
-        });
-
-        function filterDevices(query) {
-            const lowerQuery = query.toLowerCase();
-            const filtered = allDevices.filter(d =>
-                d.device_name.toLowerCase().includes(lowerQuery) ||
-                d.device_ip.includes(lowerQuery)
-            );
-            renderDeviceList(filtered);
-        }
-
-        function renderDeviceList(devices) {
-            deviceList.innerHTML = '';
-
-            if (devices.length === 0) {
-                deviceList.innerHTML = '<div class="search-select-item disabled">No devices found</div>';
-                return;
-            }
-
-            devices.forEach(device => {
-                const div = document.createElement('div');
-                div.className = 'search-select-item';
-                div.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="device-name">${device.device_name}</span>
-                        <span class="device-ip">${device.device_ip}</span>
-                    </div>
-                `;
-                div.addEventListener('click', () => {
-                    selectDevice(device);
-                });
-                deviceList.appendChild(div);
-            });
-        }
-
-        function selectDevice(device) {
-            searchInput.value = `${device.device_name} (${device.device_ip})`;
-            hiddenInput.value = device.device_ip;
-            deviceList.classList.remove('show');
-        }
+        // Device Inspector search-select (uses shared utility)
+        let _inspectorDevices = [];
 
         function loadDevices() {
             fetch('/api/devices')
                 .then(response => response.json())
                 .then(devices => {
-                    allDevices = devices; // Store globally
-                    renderDeviceList(devices);
-                    // Pre-select first if none selected? No, leave empty.
+                    _inspectorDevices = devices;
+                    initSearchSelect({
+                        inputId: 'deviceSearch',
+                        listId: 'deviceList',
+                        hiddenId: 'selectedDeviceIp',
+                        items: devices.map(d => ({
+                            ...d,
+                            _selectValue: d.device_ip,
+                        })),
+                        renderItem: (d) => `<div class="d-flex justify-content-between align-items-center">
+                            <span class="device-name">${d.device_name}</span>
+                            <span class="device-ip">${d.device_ip}</span>
+                        </div>`,
+                        getSearchText: (d) => `${d.device_name} ${d.device_ip}`,
+                        onSelect: () => {
+                            const btn = document.getElementById('downloadPdfBtn');
+                            if (btn) btn.disabled = true;
+                        },
+                    });
                 })
                 .catch(error => {
                     console.error('Error loading devices:', error);
-                    deviceList.innerHTML = '<div class="search-select-item disabled">Error loading devices</div>';
+                    const dl = document.getElementById('deviceList');
+                    if (dl) dl.innerHTML = '<div class="search-select-item disabled">Error loading devices</div>';
                 });
         }
+
+        // Disable PDF button when period changes (stale-state prevention)
+        document.getElementById('periodSelect')?.addEventListener('change', () => {
+            const btn = document.getElementById('downloadPdfBtn');
+            if (btn) btn.disabled = true;
+        });
 
         // ==========================================
         // Executive Report Logic
@@ -2809,10 +2894,20 @@
                         document.getElementById('reportResults').innerHTML = `
                         <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${data.error}</div>
                     `;
+                        const pdfBtn = document.getElementById('downloadPdfBtn');
+                        if (pdfBtn) pdfBtn.disabled = true;
                         return;
                     }
 
                     displayReport(data, deviceIp, period);
+                    const pdfBtn = document.getElementById('downloadPdfBtn');
+                    if (pdfBtn) {
+                        pdfBtn.disabled = false;
+                        pdfBtn.onclick = () => {
+                            window.location.href =
+                                `/api/device_statistics/pdf?device_ip=${encodeURIComponent(deviceIp)}&period=${period}`;
+                        };
+                    }
                 })
                 .catch(error => {
                     console.error('Error generating report:', error);
@@ -2887,6 +2982,32 @@
             </div>` : ''}`;
         }
 
+        function _inspectorViolationSection(violations) {
+            if (!violations || !violations.length) return '';
+            return `
+            <hr class="my-4" style="border-color:rgba(255,255,255,0.08);">
+            <h5 class="section-title-primary mb-3">
+                <i class="fas fa-shield-alt me-2"></i>Website Policy Violations
+            </h5>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr>
+                        <th>Website</th>
+                        <th class="text-end">Violations</th>
+                        <th>Last Detected</th>
+                    </tr></thead>
+                    <tbody>${violations.map(v => `<tr>
+                        <td><code>${_esc(v.domain)}</code></td>
+                        <td class="text-end"><span class="badge bg-danger">${v.count}</span></td>
+                        <td style="font-size:0.78rem">${v.last_seen
+                            ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
+                                .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
+                            : '\u2014'}</td>
+                    </tr>`).join('')}</tbody>
+                </table>
+            </div>`;
+        }
+
         function displayReport(stats, deviceIp, period) {
             const uptimeColor = stats.uptime_percentage >= 90 ? 'success' :
                 stats.uptime_percentage >= 80 ? 'warning' : 'danger';
@@ -2933,7 +3054,49 @@
                     </div>
                 </div>
             </div>
-            
+
+            ${stats.avg_latency != null ? `
+            <div class="row mb-3">
+                <div class="col-md-3 mb-2">
+                    <div class="stat-card primary">
+                        <i class="fas fa-tachometer-alt fa-2x mb-2 stat-icon-primary"></i>
+                        <h3>${stats.avg_latency.toFixed(1)} ms</h3>
+                        <p>Avg Latency</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-2">
+                    <div class="stat-card primary">
+                        <i class="fas fa-arrow-down fa-2x mb-2 stat-icon-primary"></i>
+                        <h3>${stats.min_latency.toFixed(1)} ms</h3>
+                        <p>Min Latency</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-2">
+                    <div class="stat-card primary">
+                        <i class="fas fa-arrow-up fa-2x mb-2 stat-icon-primary"></i>
+                        <h3>${stats.max_latency.toFixed(1)} ms</h3>
+                        <p>Max Latency</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-2">
+                    <div class="stat-card ${(stats.no_response_count ?? 0) > 0 ? 'warning' : 'success'}">
+                        <i class="fas fa-ban fa-2x mb-2 stat-icon-${(stats.no_response_count ?? 0) > 0 ? 'warning' : 'success'}"></i>
+                        <h3>${stats.no_response_count ?? 0}</h3>
+                        <p>No Response</p>
+                    </div>
+                </div>
+            </div>
+            ` : `
+            <div class="row mb-3">
+                <div class="col-md-3 mb-2">
+                    <div class="stat-card ${(stats.no_response_count ?? 0) > 0 ? 'warning' : 'success'}">
+                        <i class="fas fa-ban fa-2x mb-2"></i>
+                        <h3>${stats.no_response_count ?? 0}</h3>
+                        <p>No Response</p>
+                    </div>
+                </div>
+            </div>
+            `}
 
             ${stats.avg_latency ? `
             <div class="row mt-4">
@@ -2986,6 +3149,7 @@
             </div>
             ` : ''}
             ${agentSection(stats.agent_data)}
+            ${_inspectorViolationSection(stats.website_violations)}
         `;
 
             document.getElementById('reportResults').innerHTML = html;
@@ -3353,7 +3517,7 @@
                     const labels = Object.values(ts)[0]?.points.map(p => {
                         const d = parseReportDate(p.ts);
                         return d
-                            ? `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            ? `${d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}`
                             : p.ts;
                     }) || [];
 
@@ -3859,6 +4023,8 @@
         window.lazyLoadWorkstationHealth = lazyLoadWorkstationHealth;
         window.lazyLoadServerReports = lazyLoadServerReports;
         window.filterWsTable = filterWsTable;
+        window.filterWsViolTable = filterWsViolTable;
+        window.loadDeviceViolations = loadDeviceViolations;
         window.filterSrvTable = filterSrvTable;
         // Executive sort toggle (called from onclick attribute)
         window.toggleProblematicSort = toggleProblematicSort;
@@ -3988,6 +4154,39 @@
     // Workstation Health Tab
     // ══════════════════════════════════════════════════════
 
+    // Tracked device list for workstation violation search — loaded from DB
+    let _wsViolSearchHandle = null;
+    function loadWsViolDeviceSearch() {
+        fetch('/api/tracking/list', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var devices = Array.isArray(data) ? data : (data.devices || []);
+                var items = devices.map(function(d) {
+                    return {
+                        _selectValue: String(d.id),
+                        name: d.device_name || '—',
+                        employee: d.employee_name || '—',
+                        ip: d.device_ip || '',
+                    };
+                });
+                _wsViolSearchHandle = initSearchSelect({
+                    inputId: 'wsViolDeviceSearch',
+                    listId: 'wsViolDeviceList',
+                    hiddenId: 'wsViolSelectedDeviceId',
+                    items: items,
+                    renderItem: function(d) {
+                        return '<div class="d-flex justify-content-between align-items-center px-1">'
+                            + '<span>' + _esc(d.name) + '</span>'
+                            + '<span class="text-muted small ms-2">' + _esc(d.employee) + '</span>'
+                            + '</div>';
+                    },
+                    getSearchText: function(d) { return d.name + " " + d.employee + " " + d.ip; },
+                    onSelect: null,
+                });
+            })
+            .catch(function(e) { console.warn('[ws-viol-search] Failed to load device list:', e); });
+    }
+
     let _wsAllRows = [];
     let _wsLoaded = false;
 
@@ -4068,6 +4267,18 @@
             // Table
             _renderWsTable(rows);
 
+            // Fleet-wide violation summary table
+            const violRows = data.website_violation_details || [];
+            _wsViolAllRows = violRows;
+            const fleetSection = document.getElementById('wsViolFleetSection');
+            if (fleetSection) fleetSection.style.display = violRows.length > 0 ? '' : 'none';
+            _renderWsViolTable(violRows);
+
+            // Device violation picker — loads all tracked devices from DB
+            const pickerSection = document.getElementById('wsViolPickerSection');
+            if (pickerSection) pickerSection.style.display = '';
+            loadWsViolDeviceSearch();
+
             // Coverage warning banner
             const wsNote = document.getElementById('wsDataNote');
             if (wsNote) {
@@ -4110,7 +4321,7 @@
             return;
         }
         tbody.innerHTML = rows.map(r => {
-            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}) : '—';
             const mttr = r.mttr_min != null ? `${Math.round(r.mttr_min)} min` : '—';
             const mtbf = r.mtbf_hours != null ? `${r.mtbf_hours.toFixed(1)} h` : '—';
             // Behavioral columns
@@ -4156,6 +4367,87 @@
             (r.hostname || '').toLowerCase().includes(q)
         );
         _renderWsTable(filtered);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Workstation Monitoring — Website Violation Tables
+    // ══════════════════════════════════════════════════════
+
+    let _wsViolAllRows = [];
+
+    function _renderWsViolTable(rows) {
+        const tbody = document.querySelector('#wsViolDetailTable tbody');
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3">No website violations recorded for this period.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(r => {
+            const lastViol = r.last_violation
+                ? new Date(r.last_violation.endsWith('Z') ? r.last_violation : r.last_violation + 'Z')
+                    .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
+                : '\u2014';
+            return `<tr>
+                <td class="text-muted">${_esc(r.employee_name || '\u2014')}</td>
+                <td><span class="fw-semibold">${_esc(r.device_name || '\u2014')}</span></td>
+                <td><code style="font-size:0.78rem">${_esc(r.domain || '\u2014')}</code></td>
+                <td class="text-end"><span class="badge bg-danger">${r.violation_count || 0}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filterWsViolTable() {
+        const q = (document.getElementById('wsViolSearchInput')?.value || '').toLowerCase();
+        const filtered = !q ? _wsViolAllRows : _wsViolAllRows.filter(r =>
+            (r.employee_name || '').toLowerCase().includes(q) ||
+            (r.device_name || '').toLowerCase().includes(q) ||
+            (r.domain || '').toLowerCase().includes(q)
+        );
+        _renderWsViolTable(filtered);
+    }
+
+    async function loadDeviceViolations() {
+        const deviceId = document.getElementById('wsViolSelectedDeviceId')?.value;
+        if (!deviceId) { alert('Select a workstation first'); return; }
+        const range = document.getElementById('wsRange')?.value || '30d';
+        const container = document.getElementById('wsViolDeviceDetail');
+        if (!container) return;
+        container.innerHTML = '<div class="text-center p-3"><div class="spinner-border spinner-border-sm"></div> Loading\u2026</div>';
+
+        try {
+            const resp = await fetch(`/api/reports/device-violations/${deviceId}?range=${range}`, {credentials:'same-origin'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+            _renderDeviceViolDetail(container, data);
+        } catch (err) {
+            container.innerHTML = `<div class="alert alert-danger py-2">${_esc(err.message || 'Failed to load violations')}</div>`;
+        }
+    }
+
+    function _renderDeviceViolDetail(container, data) {
+        if (!data.violations || !data.violations.length) {
+            container.innerHTML = '<div class="alert alert-success py-2"><i class="fas fa-check-circle me-2"></i>No violations for this device in the selected period.</div>';
+            return;
+        }
+        container.innerHTML = `
+            <h6 class="mb-2">${_esc(data.device_name)} \u2014 ${_esc(data.employee_name)}</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-dark"><tr>
+                        <th>Website</th>
+                        <th class="text-end">Violations</th>
+                        <th>Last Detected</th>
+                    </tr></thead>
+                    <tbody>${data.violations.map(v => `<tr>
+                        <td><code style="font-size:0.78rem">${_esc(v.domain)}</code></td>
+                        <td class="text-end"><span class="badge bg-danger">${v.count}</span></td>
+                        <td style="font-size:0.75rem">${v.last_seen
+                            ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
+                                .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
+                            : '\u2014'}</td>
+                    </tr>`).join('')}</tbody>
+                </table>
+            </div>`;
     }
 
     // ══════════════════════════════════════════════════════

@@ -31,6 +31,7 @@ JOB_META: dict[str, tuple[str, int]] = {
     "run_tracking_history_integrity":  ("tracking_history_integrity",   86400),
     "run_tracking_history_retention":  ("tracking_history_retention",   86400),
     "enqueue_config_backup_tasks":     ("backup_device_configs",        86400),
+    "maybe_run_auto_discovery":        ("auto_discovery",               60),
 }
 
 
@@ -268,6 +269,7 @@ class MonitoringScheduler:
     def maybe_run_auto_discovery(self):
         """Check if auto-discovery should run and fire heavy scan when due."""
         with self.app.app_context():
+            fired = False
             try:
                 from models.discovery_config import get_config
                 cfg = get_config()
@@ -277,15 +279,19 @@ class MonitoringScheduler:
                 from datetime import datetime, timedelta
                 now = datetime.utcnow()
 
-                # Heavy scan check
                 heavy_interval = timedelta(minutes=cfg.heavy_interval_min or 1440)
                 if cfg.last_heavy_scan is None or (now - cfg.last_heavy_scan) >= heavy_interval:
                     from services.auto_discovery_service import get_auto_discovery_service
                     svc = get_auto_discovery_service()
                     svc.trigger_heavy_scan(self.app)
+                    fired = True
+                    logger.info("[AutoDiscovery] Heavy scan triggered by scheduler")
+
+                _record_run("auto_discovery", True)
 
             except Exception as e:
-                print(f"Error in auto-discovery check: {e}")
+                _record_run("auto_discovery", False)
+                logger.error("[AutoDiscovery] maybe_run_auto_discovery failed: %s", e)
             finally:
                 db.session.remove()
 

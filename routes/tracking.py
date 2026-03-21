@@ -144,6 +144,12 @@ from services.tracking_sync_intake_service import (
 
 tracking_bp = Blueprint('tracking_bp', __name__)
 
+
+def _parse_limit(default: int = 100, max_val: int = 500) -> int:
+    """Parse and cap the ?limit= query parameter."""
+    return min(max(1, request.args.get('limit', default, type=int)), max_val)
+
+
 @tracking_bp.before_request
 def _tracking_auth_guard():
     # Only enforce tracking blueprint specific auth on specific endpoints.
@@ -3710,7 +3716,7 @@ def api_stream_audio(mac_address):
     return Response(generate(), mimetype='audio/wav')
 
 
-@tracking_bp.route('/api/tracking/toggle-mic/<mac_address>', methods=['POST'])
+@tracking_bp.route('/api/tracking/toggle-mic/<mac_address>', methods=['POST', 'PATCH'])
 @require_role('admin')
 def api_toggle_mic(mac_address):
     """Toggle microphone state"""
@@ -3804,7 +3810,7 @@ def proxy_camera_stream(mac_address):
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@tracking_bp.route('/api/tracking/toggle-camera/<mac_address>', methods=['POST'])
+@tracking_bp.route('/api/tracking/toggle-camera/<mac_address>', methods=['POST', 'PATCH'])
 @require_role('admin')
 def api_toggle_camera(mac_address):
     """Toggle camera state"""
@@ -5463,6 +5469,26 @@ def api_tracked_device_file_download(device_id):
         proxy_response.headers['Content-Disposition'] = f'attachment; filename="{fallback_name}"'
     return proxy_response
 
+@tracking_bp.route('/api/tracking/list')
+@require_login
+def api_tracking_list():
+    """Lightweight list of all non-archived tracked devices for search/select pickers."""
+    try:
+        devices = scoped_tracked_device_query(
+            include_archived=False,
+            include_unscoped_for_admin=True,
+        ).order_by(TrackedDevice.device_name.asc()).all()
+        return jsonify([{
+            'id': d.id,
+            'device_name': d.device_name or '',
+            'employee_name': d.employee_name or '',
+            'device_ip': d.device_ip or '',
+            'mac_address': d.mac_address or '',
+        } for d in devices])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @tracking_bp.route('/api/tracking/live-summary')
 @require_login
 def api_live_summary():
@@ -5471,11 +5497,16 @@ def api_live_summary():
     try:
         from extensions import redis_client
         now_utc = datetime.utcnow()
+        limit = _parse_limit(default=100, max_val=500)
         checkin_window_seconds = max(30, int(getattr(Config, 'TRACKING_AGENT_CHECKIN_WINDOW_SECONDS', 180) or 180))
+        total_devices = scoped_tracked_device_query(
+            include_archived=False,
+            include_unscoped_for_admin=True,
+        ).count()
         devices = scoped_tracked_device_query(
             include_archived=False,
             include_unscoped_for_admin=True,
-        ).all()
+        ).order_by(TrackedDevice.device_name.asc()).limit(limit).all()
         identity_sources = _identity_source_map_for_tracked_devices([device.id for device in devices])
         violation_summary_map = _safe_build_active_violation_summary([device.id for device in devices if device and device.id])
         summary_data = []
@@ -5587,6 +5618,8 @@ def api_live_summary():
         
         return jsonify({
             'success': True,
+            'total': total_devices,
+            'truncated': total_devices > limit,
             'total_devices': len(devices),
             'online_devices': len([d for d in summary_data if d['status'] == 'online']),
             'degraded_devices': len([d for d in summary_data if d['status'] == 'degraded']),

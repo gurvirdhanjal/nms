@@ -20,21 +20,21 @@ function getAxisLabel(isoString, bucketHours = 1) {
     const date = new Date(isoString);
     if (Number.isNaN(date.getTime())) return '--';
     if (bucketHours >= 24) {
-        return date.toLocaleDateString([], { month: 'short', day: '2-digit' });
+        return date.toLocaleDateString('en-IN', { month: 'short', day: '2-digit', timeZone: 'Asia/Kolkata' });
     }
     if (bucketHours >= 12) {
-        const day = date.toLocaleDateString([], { month: 'short', day: '2-digit' });
-        const hour = date.toLocaleTimeString([], { hour: '2-digit', hour12: false });
+        const day = date.toLocaleDateString('en-IN', { month: 'short', day: '2-digit', timeZone: 'Asia/Kolkata' });
+        const hour = date.toLocaleTimeString('en-IN', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
         return `${day} ${hour}`;
     }
-    return date.toLocaleTimeString([], { hour: '2-digit', hour12: false });
+    return date.toLocaleTimeString('en-IN', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 }
 
 export function formatAvailabilityHour(isoString) {
     if (!isoString) return 'Unknown';
     const date = new Date(isoString);
     if (Number.isNaN(date.getTime())) return 'Unknown';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 }
 
 export function getAvailabilityClass(value) {

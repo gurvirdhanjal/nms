@@ -22,6 +22,12 @@ from middleware.rbac import (
 
 dashboard_bp = Blueprint('dashboard_bp', __name__, url_prefix='/api/dashboard')
 
+
+def _parse_limit(default: int = 100, max_val: int = 500) -> int:
+    """Parse and cap the ?limit= query parameter."""
+    return min(max(1, request.args.get('limit', default, type=int)), max_val)
+
+
 @dashboard_bp.before_request
 @require_login
 def _dashboard_auth_guard():
@@ -875,7 +881,7 @@ def get_all_alerts():
         ]
 
         status = request.args.get('status', 'active')
-        limit = int(request.args.get('limit', 100))
+        limit = _parse_limit(default=100, max_val=500)
 
         query = DashboardEvent.query
         if scoped_device_ids:

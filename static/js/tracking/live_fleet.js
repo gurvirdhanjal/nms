@@ -591,13 +591,13 @@
             dom.lastUpdate.textContent = 'Never updated';
             return;
         }
-        dom.lastUpdate.textContent = `Updated ${new Date(timestampMs).toLocaleTimeString()}`;
+        dom.lastUpdate.textContent = `Updated ${new Date(timestampMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     }
 
     function formatTimestamp(isoValue) {
         const parsed = parseUniversalDate(isoValue);
         if (!parsed) return 'Never';
-        return parsed.toLocaleString();
+        return parsed.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     }
 
     async function requestJson(url, options) {

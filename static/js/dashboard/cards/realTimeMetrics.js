@@ -114,7 +114,7 @@ function renderIoChart(data) {
     ctx.style.display = 'block';
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const labels = data.labels.map(l => new Date(l).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const labels = data.labels.map(l => new Date(l).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }));
     const inData = data.inbound;
     const outData = data.outbound;
 
