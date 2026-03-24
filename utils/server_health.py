@@ -18,8 +18,8 @@ def compute_server_health(log) -> str:
     Determine server health from the latest agent log.
     Rules:
       - Offline: last_seen > 120s OR missing metrics
-      - Critical: CPU > 90% OR Disk > 95%
-      - Warning: CPU > 80% OR RAM > 85%
+      - Critical: CPU > 95% OR RAM > 95% OR Disk > 95%
+      - Warning: CPU > 80% OR RAM > 85% OR Disk > 80%
       - Healthy: otherwise
     """
     if not log or not getattr(log, "timestamp", None):

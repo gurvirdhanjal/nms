@@ -5895,39 +5895,54 @@ def check_live_alerts(tracking_data, device_info):
 @tracking_bp.route('/api/tracking/live-alerts')
 @require_login
 def api_live_alerts():
-    """Get live alerts for all devices"""
-    
-    try:
-        devices = TrackedDevice.query.filter(
-            db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None))
-        ).all()
-        all_alerts = []
-        scanner = NetworkScanner()
-        scanner.timeout = 2.5
+    """Get live alerts for tracked devices.
 
+    If ?device_id= is provided: run a live probe for that single device only.
+    If absent: return last-known alert state from DB without live probing (non-blocking).
+    """
+    device_id = request.args.get('device_id', type=int)
+
+    try:
+        live = False
+        if device_id:
+            device = TrackedDevice.query.get(device_id)
+            if not device:
+                return _json_error('DEVICE_NOT_FOUND', 'Device not found', 404)
+            devices = [device]
+        else:
+            devices = TrackedDevice.query.filter(
+                db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None))
+            ).all()
+
+        all_alerts = []
         for device in devices:
-            if device.ip_address:
+            if device_id and device.ip_address:
+                # Single-device live probe only (bounded, user-initiated)
+                scanner = NetworkScanner()
+                scanner.timeout = 2.5
                 service_info = scanner.check_tracking_service(device.ip_address, profile='interactive')
                 availability_status = service_info.get('availability_status', 'offline') if isinstance(service_info, dict) else 'offline'
-                tracking_payload = service_info.get('data') if isinstance(service_info, dict) else {}
+                tracking_payload = (service_info.get('data') or {}) if isinstance(service_info, dict) else {}
+                live = True
+                if availability_status not in ('online', 'degraded'):
+                    tracking_payload = {}
+            else:
+                # No live scan — return last-known state only
+                tracking_payload = {}
 
-                if availability_status in ('online', 'degraded') and isinstance(tracking_payload, dict):
-                    alerts = check_live_alerts(
-                        tracking_payload,
-                        device_to_dict(device)  # Use serializable version
-                    )
-                    
-                    for alert in alerts:
-                        alert['device_name'] = device.device_name
-                        alert['device_id'] = device.id
-                        all_alerts.append(alert)
-        
+            alerts = check_live_alerts(tracking_payload, device_to_dict(device))
+            for alert in alerts:
+                alert['device_name'] = device.device_name
+                alert['device_id']   = device.id
+                all_alerts.append(alert)
+
         return jsonify({
             'success': True,
             'alerts': all_alerts,
-            'count': len(all_alerts)
+            'count':  len(all_alerts),
+            'live':   live,
         })
-        
+
     except Exception as e:
         return _json_exception(
             'LIVE_ALERTS_FAILED',

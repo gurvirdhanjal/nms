@@ -18,9 +18,9 @@ HEALTH_SCORE_WEIGHTS: dict[str, dict[str, float]] = {
 }
 
 METRIC_CATALOG: dict[str, dict[str, Any]] = {
-    "cpu_usage_pct": {"label": "CPU Usage", "unit": "%", "category": "cpu", "default_enabled": True, "default_warning": 80.0, "default_critical": 90.0},
-    "memory_usage_pct": {"label": "Memory Usage", "unit": "%", "category": "memory", "default_enabled": True, "default_warning": 75.0, "default_critical": 95.0},
-    "disk_usage_pct": {"label": "Disk Usage", "unit": "%", "category": "disk", "default_enabled": True, "default_warning": 90.0, "default_critical": 95.0},
+    "cpu_usage_pct": {"label": "CPU Usage", "unit": "%", "category": "cpu", "default_enabled": True, "default_warning": 80.0, "default_critical": 95.0},
+    "memory_usage_pct": {"label": "Memory Usage", "unit": "%", "category": "memory", "default_enabled": True, "default_warning": 85.0, "default_critical": 95.0},
+    "disk_usage_pct": {"label": "Disk Usage", "unit": "%", "category": "disk", "default_enabled": True, "default_warning": 80.0, "default_critical": 95.0},
     "cpu_iowait_pct": {"label": "CPU IO Wait", "unit": "%", "category": "cpu", "default_enabled": False, "default_warning": 20.0, "default_critical": 40.0},
     "cpu_steal_pct": {"label": "CPU Steal", "unit": "%", "category": "cpu", "default_enabled": False, "default_warning": 10.0, "default_critical": 20.0},
     "network_in_mb_per_sec": {"label": "Network In", "unit": "MB/s", "category": "network", "default_enabled": False, "default_warning": 250.0, "default_critical": 500.0},

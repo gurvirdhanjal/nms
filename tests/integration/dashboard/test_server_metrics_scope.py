@@ -168,8 +168,8 @@ def test_server_telemetry_endpoint_returns_composite_health_and_connection_resol
     payload = response.get_json()
 
     assert payload['device_name'] == 'Server Gamma'
-    assert payload['health'] == 'Critical'
-    assert payload['health_score'] == 55
+    assert payload['health'] == 'Warning'
+    assert payload['health_score'] == 70
     assert payload['memory_paging_label'] == 'Pagefile Usage'
     assert payload['boot_time'] is not None
     assert payload['telemetry_refreshed_at'] is not None
@@ -244,6 +244,50 @@ def test_server_health_and_inventory_use_latest_timestamp_not_highest_id(admin_c
     inventory_payload = inventory_response.get_json()
     inventory_row = next(row for row in inventory_payload['devices'] if row['device_id'] == server.device_id)
     assert inventory_row['server_health'] != 'Offline'
+
+
+def test_fleet_metrics_surfaces_live_breach_as_active_issue_and_snapshot_alert(admin_client):
+    server = Device(
+        device_name='Server Zeta',
+        device_type='server',
+        device_ip='10.0.7.77',
+        hostname='server-zeta',
+    )
+    db.session.add(server)
+    db.session.flush()
+
+    db.session.add(
+        ServerHealthLog(
+            device_id=server.device_id,
+            source='agent',
+            cpu_usage=22.7,
+            memory_usage=88.4,
+            disk_usage=16.4,
+            timestamp=datetime.utcnow(),
+        )
+    )
+    db.session.commit()
+    _clear_server_health_cache()
+
+    fleet_response = admin_client.get('/api/server/fleet-metrics')
+    assert fleet_response.status_code == 200
+    fleet_payload = fleet_response.get_json()
+
+    assert fleet_payload['filters']['problem'] >= 1
+    assert fleet_payload['metric_cards']['memory']['impacted_servers'] >= 1
+    assert fleet_payload['dominant_issue']['device_id'] == server.device_id
+    assert fleet_payload['dominant_issue']['metric_label'] == 'Memory Pressure'
+    assert fleet_payload['dominant_issue']['source'] == 'live_breach'
+
+    snapshot_response = admin_client.get('/api/dashboard/full_snapshot?fresh=1')
+    assert snapshot_response.status_code == 200
+    snapshot_payload = snapshot_response.get_json()
+    live_alerts = [alert for alert in snapshot_payload['alerts'] if alert.get('synthetic')]
+
+    assert any(
+        alert['device_id'] == server.device_id and alert['severity'] == 'WARNING'
+        for alert in live_alerts
+    )
 
 
 def test_server_telemetry_skips_reverse_dns_on_interactive_load(admin_client, monkeypatch):

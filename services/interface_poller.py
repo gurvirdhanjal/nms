@@ -83,17 +83,28 @@ class InterfacePoller:
             self._stop_event.wait(wait_seconds)
 
     def _poll_all_devices(self):
-        """Polls all monitored devices (no simulation fallback)."""
-        devices = Device.query.filter_by(is_monitored=True).all()
+        """Polls only devices that have SNMP enabled (no simulation fallback)."""
+        from models.snmp_config import DeviceSnmpConfig
+        # Join to DeviceSnmpConfig so we only iterate devices with an active
+        # SNMP config — avoids a per-device warning log for every non-SNMP device.
+        device_ids = [
+            row[0]
+            for row in (
+                db.session.query(Device.device_id)
+                .join(DeviceSnmpConfig, DeviceSnmpConfig.device_id == Device.device_id)
+                .filter(Device.is_monitored == True, DeviceSnmpConfig.is_enabled == True)
+                .all()
+            )
+        ]
 
-        for device in devices:
+        for device_id in device_ids:
             if self._stop_event.is_set():
                 break
             for attempt in range(3):
                 if self._stop_event.is_set():
                     break
                 try:
-                    self._poll_device_real(device)
+                    self.poll_device_interfaces(device_id)
                     db.session.commit()
                     self._stop_event.wait(0.05)
                     break
@@ -102,21 +113,13 @@ class InterfacePoller:
                     if "database is locked" in str(e).lower() and attempt < 2:
                         self._stop_event.wait(0.2 * (attempt + 1))
                         continue
-                    log.error(f"[InterfacePoller] DB error for device {device.device_id}: {e}")
+                    log.error(f"[InterfacePoller] DB error for device {device_id}: {e}")
                     break
                 except Exception as e:
                     db.session.rollback()
-                    log.error(f"[InterfacePoller] Error polling device {device.device_id}: {e}")
+                    log.error(f"[InterfacePoller] Error polling device {device_id}: {e}")
                     break
             db.session.remove()
-
-    def _poll_device_real(self, device) -> bool:
-        """
-        Poll SNMP interface data for a device and persist results.
-        Delegates to poll_device_interfaces; returns True on success.
-        """
-        result = self.poll_device_interfaces(device.device_id)
-        return result.get('success', False)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public interface — also called by snmp_worker._execute_interface_poll()
@@ -148,7 +151,7 @@ class InterfacePoller:
                 device_id=device_id, is_enabled=True
             ).first()
             if not config:
-                log.warning(
+                log.debug(
                     f"[InterfacePoller] device_id={device_id}: no enabled SNMP config — skipping"
                 )
                 return {'success': False, 'error': 'SNMP_NOT_CONFIGURED'}

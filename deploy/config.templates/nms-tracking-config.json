@@ -1,0 +1,8 @@
+{
+  "_comment": "NMS Tracking Agent config — place at C:\\ProgramData\\nms-tracking-agent\\config.json",
+  "server_url": "http://172.16.2.103:5001",
+  "tracking_api_key": "",
+  "admin_api_key": "",
+  "agent_port": 5002,
+  "preferred_subnet_prefix": "192.168.1."
+}

@@ -117,7 +117,7 @@
 
     /* v5.0: KPI value — IBM Plex Mono, max 1.2rem */
     .tactical-stat-card .stat-value {
-        font-family: var(--t-mono);
+        font-family: 'IBM Plex Mono', monospace;
         font-size: 1.2rem;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
@@ -228,11 +228,6 @@
         color: #8b949e;
     }
 
-    #server-health-summary .server-kpi-card.server-filter-active {
-        border-color: rgba(148, 163, 184, 0.32);
-        box-shadow: none;
-    }
-
     .section-block {
         padding-inline: 10px;
     }
@@ -328,8 +323,7 @@
         padding: 2rem 0;
     }
 
-    .device-kpi-card:hover,
-    .server-kpi-card:hover {
+    .device-kpi-card:hover {
         border-color: rgba(148, 163, 184, 0.32);
         transform: translateY(-1px);
         transition: transform 130ms ease, border-color 130ms ease;
@@ -2190,7 +2184,7 @@
                     <li><a class="dropdown-item" href="#" data-value="30d">Last 30 Days</a></li>
                 </ul>
             </div>
-            <button id="btn-refresh" class="btn tactical-btn-outline btn-sm"><i class="fas fa-sync-alt" aria-hidden="true"></i>
+            <button id="btn-refresh" class="btn tactical-btn-outline btn-sm"><i class="fas fa-sync-alt"></i>
                 Refresh</button>
             <button class="dash-config-btn" id="dash-add-device-btn" title="Add / configure device">
                 <i class="fas fa-plus"></i>
@@ -2335,7 +2329,7 @@
                             <div class="col-12">
                                 <div class="tactical-card breakdown-subcard">
                                     <div class="card-header small d-flex justify-content-between align-items-center">
-                                        <span id="availability-heatmap-title"><i class="fas fa-th me-2" aria-hidden="true"></i>Availability Heatmap</span>
+                                        <span id="availability-heatmap-title"><i class="fas fa-th me-2"></i>Availability Heatmap</span>
                                         <span class="text-secondary">Updated: <span
                                                 id="availability-modal-updated">-</span></span>
                                     </div>
@@ -2433,7 +2427,655 @@
     </div>
 
     <!-- Network Intelligence / Device Breakdown -->
-    <div id="device-breakdown">
+    <style>
+        #device-breakdown {
+            display: block;
+            max-height: 0;
+            opacity: 0;
+            transform: translateY(-10px);
+            margin-top: 0;
+            overflow: hidden;
+            pointer-events: none;
+            transition: max-height 360ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 260ms ease,
+                transform 320ms ease,
+                margin-top 260ms ease;
+        }
+
+        #device-breakdown.is-active {
+            max-height: 2800px;
+            opacity: 1;
+            transform: translateY(0);
+            margin-top: 0.65rem;
+            pointer-events: auto;
+        }
+
+        #device-breakdown::before {
+            content: '';
+            display: block;
+            height: 1px;
+            margin-bottom: 0.72rem;
+            background: linear-gradient(90deg,
+                    rgba(148, 163, 184, 0.05),
+                    rgba(148, 163, 184, 0.5),
+                    rgba(148, 163, 184, 0.05));
+            opacity: 0;
+            transform: scaleX(0.96);
+            transition: opacity 220ms ease, transform 260ms ease;
+        }
+
+        #device-breakdown.is-active::before {
+            opacity: 1;
+            transform: scaleX(1);
+        }
+
+        #device-breakdown .breakdown-panel {
+            background: var(--e-bg-panel);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
+        }
+
+        /* v5.0: focus pulse removed — state changes are instant */
+        .device-kpi-card {
+            cursor: pointer;
+        }
+
+        .device-kpi-card.breakdown-active {
+            border-color: rgba(173, 186, 201, 0.62) !important;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+            transform: translateY(-1px);
+        }
+
+        .device-kpi-card.breakdown-active .kpi-view-icon {
+            color: rgba(214, 223, 232, 0.9);
+        }
+
+        .breakdown-collapse-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.36rem;
+            font-size: 0.72rem;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .breakdown-collapse-btn i {
+            font-size: 0.68rem;
+        }
+
+        #availability-modal .modal-dialog {
+            max-width: min(1320px, calc(100vw - 1rem));
+        }
+
+        #availability-modal .modal-content {
+            background:
+                radial-gradient(circle at top right, rgba(23, 59, 107, 0.22), transparent 38%),
+                linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(11, 15, 24, 0.98));
+            border: 1px solid rgba(96, 118, 154, 0.34);
+            box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
+        }
+
+        #availability-modal .modal-header {
+            padding: 0.82rem 1rem 0.36rem;
+            border-bottom: 1px solid rgba(96, 118, 154, 0.18) !important;
+        }
+
+        #availability-modal .modal-body {
+            padding: 0.55rem 1rem 1rem;
+        }
+
+        #availability-modal .breakdown-subcard {
+            overflow: hidden;
+        }
+
+        #availability-modal .breakdown-subcard .card-header {
+            padding: 0.58rem 0.82rem;
+            background: linear-gradient(90deg, rgba(0, 224, 196, 0.05), transparent 62%);
+            border-bottom: 1px solid rgba(96, 118, 154, 0.18);
+        }
+
+        #availability-modal .breakdown-subcard .card-body {
+            padding: 0.78rem 0.82rem;
+        }
+
+        #availability-modal .breakdown-subcard .card-body.p-0 {
+            padding: 0 !important;
+        }
+
+        #availability-modal .availability-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            margin-bottom: 0.72rem;
+        }
+
+        #availability-modal .availability-range-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.22rem;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 118, 154, 0.22);
+            background: rgba(12, 18, 28, 0.82);
+        }
+
+        #availability-modal .availability-range-btn {
+            border: 0;
+            background: transparent;
+            color: #8ea0b6;
+            padding: 0.34rem 0.68rem;
+            border-radius: 999px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            transition: background-color 120ms ease, color 120ms ease;
+        }
+
+        #availability-modal .availability-range-btn:hover {
+            color: #eef5ff;
+            background: rgba(96, 118, 154, 0.12);
+        }
+
+        #availability-modal .availability-range-btn.is-active {
+            color: #eef5ff;
+            background: linear-gradient(180deg, rgba(0, 224, 196, 0.24), rgba(27, 108, 132, 0.18));
+            box-shadow: inset 0 0 0 1px rgba(84, 236, 214, 0.16);
+        }
+
+        #availability-modal .availability-range-meta {
+            font-size: 0.68rem;
+            color: #90a1b7;
+            letter-spacing: 0.03em;
+        }
+
+        #availability-modal .availability-summary-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.48rem;
+            margin-bottom: 0.72rem;
+        }
+
+        #availability-modal .availability-summary-kpi,
+        #availability-modal .availability-summary-empty {
+            min-height: 64px;
+            padding: 0.56rem 0.66rem;
+            border-radius: 8px;
+            border: 1px solid rgba(96, 118, 154, 0.22);
+            background: linear-gradient(180deg, rgba(17, 24, 36, 0.9), rgba(11, 16, 26, 0.84));
+        }
+
+        #availability-modal .availability-summary-empty {
+            display: flex;
+            align-items: center;
+            color: var(--e-text-muted);
+            font-size: 0.76rem;
+        }
+
+        #availability-modal .availability-summary-label {
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #6f8198;
+        }
+
+        #availability-modal .availability-summary-value {
+            margin-top: 0.28rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.02rem;
+            line-height: 1;
+            color: #eef5ff;
+        }
+
+        #availability-modal .availability-summary-meta {
+            margin-top: 0.28rem;
+            font-size: 0.68rem;
+            color: #90a1b7;
+            line-height: 1.35;
+        }
+
+        #availability-modal .availability-heatmap-shell {
+            padding: 0.62rem;
+            border-radius: 10px;
+            border: 1px solid rgba(96, 118, 154, 0.2);
+            background: linear-gradient(180deg, rgba(9, 14, 22, 0.92), rgba(10, 14, 22, 0.68));
+            overflow-x: auto;
+        }
+
+        #availability-modal .availability-heatmap-axis,
+        #availability-modal .availability-heatmap {
+            display: grid;
+            gap: 4px;
+        }
+
+        #availability-modal .availability-heatmap-axis {
+            margin-bottom: 4px;
+        }
+
+        #availability-modal .availability-axis-label {
+            min-height: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.56rem;
+            line-height: 1;
+            text-align: center;
+            color: #607286;
+            letter-spacing: 0.05em;
+        }
+
+        #availability-modal .availability-axis-label.is-major {
+            color: #a8b7ca;
+        }
+
+        #availability-modal .availability-axis-label.is-minor {
+            opacity: 0.48;
+        }
+
+        #availability-modal .availability-cell {
+            position: relative;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(118, 136, 166, 0.18);
+            background: rgba(18, 24, 32, 0.75);
+            overflow: hidden;
+            box-shadow: none;
+            transition: border-color 120ms ease, filter 120ms ease;
+        }
+
+        #availability-modal .availability-cell::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 48%, transparent 100%);
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        #availability-modal .availability-cell:hover {
+            transform: none;
+            filter: brightness(1.06);
+            border-color: rgba(200, 214, 235, 0.42);
+        }
+
+        #availability-modal .availability-cell.avail-excellent,
+        #availability-modal .legend-swatch.avail-excellent {
+            background: linear-gradient(180deg, rgba(24, 212, 176, 0.86), rgba(12, 108, 100, 0.76));
+            border-color: rgba(91, 241, 209, 0.38);
+        }
+
+        #availability-modal .availability-cell.avail-good,
+        #availability-modal .legend-swatch.avail-good {
+            background: linear-gradient(180deg, rgba(74, 140, 255, 0.84), rgba(40, 74, 168, 0.76));
+            border-color: rgba(133, 178, 255, 0.36);
+        }
+
+        #availability-modal .availability-cell.avail-warning,
+        #availability-modal .legend-swatch.avail-warning {
+            background: linear-gradient(180deg, rgba(242, 181, 76, 0.84), rgba(154, 94, 27, 0.76));
+            border-color: rgba(255, 213, 132, 0.38);
+        }
+
+        #availability-modal .availability-cell.avail-bad,
+        #availability-modal .legend-swatch.avail-bad {
+            background: linear-gradient(180deg, rgba(237, 90, 111, 0.86), rgba(136, 39, 57, 0.8));
+            border-color: rgba(255, 154, 168, 0.4);
+        }
+
+        #availability-modal .availability-cell.avail-unknown,
+        #availability-modal .legend-swatch.avail-unknown {
+            background: repeating-linear-gradient(45deg,
+                    rgba(108, 122, 144, 0.26),
+                    rgba(108, 122, 144, 0.26) 4px,
+                    rgba(35, 43, 55, 0.78) 4px,
+                    rgba(35, 43, 55, 0.78) 8px);
+            border-color: rgba(126, 141, 164, 0.28);
+        }
+
+        #availability-modal .availability-cell.avail-unknown::after,
+        #availability-modal .legend-swatch.avail-unknown::after {
+            display: none;
+        }
+
+        #availability-modal .availability-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.44rem;
+        }
+
+        #availability-modal .availability-legend .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 118, 154, 0.18);
+            background: rgba(14, 20, 31, 0.72);
+            font-size: 0.67rem;
+            line-height: 1;
+            color: #9cafc4;
+        }
+
+        #availability-modal .availability-legend .legend-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #availability-modal .availability-table-wrap {
+            max-height: 272px;
+            overflow: auto;
+        }
+
+        #availability-modal .tactical-table th {
+            padding: 0.56rem 0.72rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.12em;
+            color: #7fd7d5;
+        }
+
+        #availability-modal .tactical-table td {
+            padding: 0.7rem 0.72rem;
+            font-size: 0.82rem;
+            vertical-align: middle;
+        }
+
+        #availability-modal .availability-device-name {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #eef5ff;
+        }
+
+        #availability-modal .availability-device-meta {
+            margin-top: 0.18rem;
+            font-size: 0.63rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6f8198;
+        }
+
+        #availability-modal .availability-inline-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 58px;
+            padding: 0.28rem 0.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(96, 118, 154, 0.2);
+            background: rgba(18, 25, 39, 0.84);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.73rem;
+            line-height: 1;
+            color: #d7e5f7;
+        }
+
+        #availability-modal .availability-inline-pill-ip {
+            justify-content: flex-start;
+            min-width: 0;
+            color: #63e0d2;
+        }
+
+        #availability-modal .availability-inline-pill-count {
+            color: #cdd8e5;
+        }
+
+        #availability-modal .availability-inline-pill.tone-excellent {
+            color: #aaf5df;
+            border-color: rgba(24, 212, 176, 0.26);
+            background: rgba(17, 101, 89, 0.3);
+        }
+
+        #availability-modal .availability-inline-pill.tone-good {
+            color: #bfd8ff;
+            border-color: rgba(74, 140, 255, 0.26);
+            background: rgba(34, 70, 146, 0.26);
+        }
+
+        #availability-modal .availability-inline-pill.tone-warning {
+            color: #ffe0a6;
+            border-color: rgba(242, 181, 76, 0.28);
+            background: rgba(116, 70, 23, 0.3);
+        }
+
+        #availability-modal .availability-inline-pill.tone-bad {
+            color: #ffc0cb;
+            border-color: rgba(237, 90, 111, 0.3);
+            background: rgba(110, 32, 46, 0.34);
+        }
+
+        @media (max-width: 1199px) {
+            #availability-modal .availability-range-meta {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #availability-modal .modal-header {
+                padding-inline: 0.82rem;
+            }
+
+            #availability-modal .modal-body {
+                padding-inline: 0.82rem;
+            }
+
+            #availability-modal .availability-summary-strip {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            #availability-modal .availability-controls {
+                align-items: flex-start;
+            }
+        }
+
+        /* Dense layout + enhanced tables for expanded breakdown row */
+        #device-breakdown .expanded-wrapper {
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        #device-breakdown .breakdown-panel {
+            padding: 0.56rem 0.62rem 0.64rem;
+            /* v5.0: no backdrop-filter blur */
+
+        }
+
+        #device-breakdown .breakdown-grid {
+            grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+            gap: 0.56rem;
+        }
+
+        #device-breakdown .breakdown-left,
+        #device-breakdown .breakdown-right {
+            gap: 0.56rem;
+        }
+
+        #device-breakdown .breakdown-subcard .card-header {
+            min-height: 30px;
+            padding: 0.36rem 0.56rem;
+            font-size: 0.66rem;
+            letter-spacing: 0.07em;
+        }
+
+        #device-breakdown .breakdown-subcard .card-body {
+            padding: 0.44rem 0.56rem;
+        }
+
+        #device-breakdown .breakdown-subcard .card-body.p-0 {
+            padding: 0 !important;
+        }
+
+        #device-breakdown .breakdown-section-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.1rem 0.06rem 0.04rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+            margin-bottom: 0.12rem;
+        }
+
+        #device-breakdown .breakdown-section-heading h6 {
+            margin: 0;
+            font-size: 0.62rem;
+            letter-spacing: 0.1em;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #d7e1ec;
+        }
+
+        #device-breakdown .breakdown-section-heading span {
+            font-size: 0.58rem;
+            color: #98a7b6;
+            white-space: nowrap;
+        }
+
+        #device-breakdown .enterprise-section-sub {
+            font-size: 0.64rem;
+        }
+
+        #device-breakdown .tabs {
+            gap: 0.22rem;
+        }
+
+        #device-breakdown .tabs button {
+            padding: 0.14rem 0.42rem;
+            font-size: 0.56rem;
+            letter-spacing: 0.09em;
+        }
+
+        #device-breakdown .table-responsive {
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 8px;
+            background: rgba(11, 15, 21, 0.5);
+            overflow: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+        }
+
+        #device-breakdown .table-responsive::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+
+        #device-breakdown .table-responsive::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 3px;
+        }
+
+        #device-breakdown .breakdown-left .table-responsive {
+            max-height: 322px;
+        }
+
+        #device-breakdown .breakdown-right .table-responsive {
+            max-height: 220px;
+        }
+
+        #device-breakdown .service-impact-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+            gap: 0.56rem;
+        }
+
+        #device-breakdown .service-impact-row .table-responsive {
+            max-height: 220px;
+        }
+
+        #device-breakdown .tactical-table {
+            font-size: 0.74rem;
+        }
+
+        #device-breakdown .tactical-table thead th {
+            padding: 0.34rem 0.52rem;
+            font-size: 0.58rem;
+            letter-spacing: 0.075em;
+            font-weight: 700;
+            color: #b9c8d8;
+            background: rgba(14, 19, 27, 0.98);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+        }
+
+        #device-breakdown .tactical-table tbody tr {
+            background: rgba(255, 255, 255, 0.012);
+            transition: background-color 120ms ease;
+        }
+
+        #device-breakdown .tactical-table tbody tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        #device-breakdown .tactical-table tbody tr:hover {
+            background: rgba(148, 163, 184, 0.11);
+        }
+
+        #device-breakdown .tactical-table tbody td {
+            padding: 0.36rem 0.52rem;
+            line-height: 1.22;
+            color: #c6d1dc;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        #device-breakdown .tactical-table tbody td:first-child {
+            font-weight: 600;
+            color: #e2eaf2;
+        }
+
+        #device-breakdown .tactical-table td,
+        #device-breakdown .tactical-table th {
+            font-variant-numeric: tabular-nums;
+        }
+
+        #device-breakdown #table-inventory th:first-child,
+        #device-breakdown #table-inventory td:first-child {
+            width: 34px !important;
+            text-align: center;
+            padding-left: 0.38rem;
+            padding-right: 0.38rem;
+        }
+
+        #device-breakdown .tactical-input,
+        #device-breakdown .tactical-select {
+            min-height: 28px;
+            height: 28px;
+            font-size: 0.7rem;
+            padding: 0.18rem 0.42rem;
+            border-radius: 6px;
+        }
+
+        @media (max-width: 992px) {
+            #device-breakdown .breakdown-grid {
+                grid-template-columns: 1fr;
+            }
+
+            #device-breakdown .service-impact-row {
+                grid-template-columns: 1fr;
+            }
+
+            #device-breakdown .breakdown-section-heading {
+                flex-wrap: wrap;
+                gap: 0.22rem;
+            }
+
+            #device-breakdown .breakdown-section-heading span {
+                white-space: normal;
+            }
+
+            #device-breakdown .breakdown-left .table-responsive,
+            #device-breakdown .breakdown-right .table-responsive {
+                max-height: none;
+            }
+
+            #device-breakdown .service-impact-row .table-responsive {
+                max-height: none;
+            }
+        }
+    </style>
+    <div id="device-breakdown" data-premium-tabs-root="device-breakdown">
         <div class="expanded-wrapper">
             <div class="breakdown-panel">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -2460,14 +3102,14 @@
                         <div class="tactical-card breakdown-subcard">
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
-                                <div class="tabs"><button class="active"
-                                        data-target="tab-latency">Latency</button><button
-                                        data-target="tab-loss">Loss</button><button
-                                        data-target="tab-inventory-list">Inventory</button><button
-                                        data-target="tab-discovery">Discovery</button></div>
+                                <div class="tabs" data-premium-tabs><button class="active"
+                                        data-premium-tab data-target="tab-latency">Latency</button><button
+                                        data-premium-tab data-target="tab-loss">Loss</button><button
+                                        data-premium-tab data-target="tab-inventory-list">Inventory</button><button
+                                        data-premium-tab data-target="tab-discovery">Discovery</button></div>
                             </div>
                             <div class="card-body">
-                                <div id="tab-latency" class="tab-content is-active">
+                                <div id="tab-latency" class="tab-content is-active" data-premium-panel>
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -2489,7 +3131,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-loss" class="tab-content">
+                                <div id="tab-loss" class="tab-content" data-premium-panel>
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -2512,7 +3154,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-inventory-list" class="tab-content">
+                                <div id="tab-inventory-list" class="tab-content" data-premium-panel>
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0" id="table-inventory">
                                             <thead>
@@ -2520,8 +3162,7 @@
                                                     <th>
                                                         <div class="form-check d-flex justify-content-center">
                                                             <input class="form-check-input" type="checkbox"
-                                                                id="inventory-select-all"
-                                                                aria-label="Select all devices">
+                                                                id="inventory-select-all">
                                                         </div>
                                                     </th>
                                                     <th>Device</th>
@@ -2540,7 +3181,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-discovery" class="tab-content">
+                                <div id="tab-discovery" class="tab-content" data-premium-panel>
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-6"><label class="form-label small text-secondary">Seed
                                                 IP</label><input id="seed-ip" class="form-control tactical-input"
@@ -2684,8 +3325,8 @@
             </div>
 
             <div class="d-flex align-items-center gap-3">
-                <a href="{{ url_for('monitoring_bp.server_dashboard') }}" class="btn btn-sm tactical-btn-outline">
-                    <i class="fas fa-server me-1" aria-hidden="true"></i>Server Dashboard
+                <a href="{{ url_for('monitoring_bp.server_dashboard') }}" class="btn btn-sm tactical-btn-outline" style="font-size: 11px;">
+                    <i class="fas fa-server me-1"></i>Server Dashboard
                 </a>
                 <div class="tactical-text-muted small server-health-meta d-none d-md-block me-3">
                     Last check: <span id="server-last-check">-</span>
@@ -2757,7 +3398,7 @@
                                         <th class="text-end">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="table-server-health-body" aria-live="polite" aria-relevant="additions removals">
+                                <tbody id="table-server-health-body">
                                     <tr>
                                         <td colspan="10" class="text-center text-secondary p-3">
                                             Loading...
@@ -2771,15 +3412,6 @@
             </div>
         </div>
 
-    </div>
-
-    <!-- Usage Alerts (Moved Bottom) -->
-    <div id="fleet-alerts-bar" class="alert alert-danger mb-0 py-2 alert-banner-critical">
-        <div class="d-flex align-items-center gap-3"><i class="fas fa-exclamation-triangle text-danger"></i>
-            <div class="flex-grow-1 small fw-bold" id="fleet-alerts-text">No critical alerts.
-            </div><button class="btn btn-sm btn-outline-danger" id="btn-view-critical">View
-                Details</button>
-        </div>
     </div>
 </div>
 
@@ -2910,7 +3542,7 @@
                     </ul>
                 </div>
             </div>
-            <div class="col-12 col-lg-5">
+            <div class="col-md-5">
                 <input id="filter-alert-device" class="form-control tactical-input w-100"
                     placeholder="Filter by device or message">
             </div>
@@ -2928,7 +3560,7 @@
                         <th>Time</th>
                     </tr>
                 </thead>
-                <tbody id="table-alerts-body" aria-live="polite" aria-relevant="additions removals">
+                <tbody id="table-alerts-body">
                     <tr>
                         <td colspan="5" class="text-center text-secondary p-3">Loading alerts...</td>
                     </tr>
@@ -3031,7 +3663,7 @@
         </div>
         <form id="dash-add-device-form" action="{{ url_for('devices_bp.save_device') }}" method="POST">
             <div class="dash-modal-body">
-                <div class="dash-grid-2col">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.7rem;">
                     <div>
                         <label>Device Name *</label>
                         <input type="text" name="device_name" id="dash-device-name" required
@@ -3059,21 +3691,15 @@
                         <label>MAC Address</label>
                         <input type="text" name="macaddress" id="dash-device-mac" placeholder="AA:BB:CC:DD:EE:FF">
                     </div>
-                    <div class="dash-col-span-2">
+                    <div style="grid-column:span 2;">
                         <label>Description</label>
                         <input type="text" name="description" id="dash-device-desc" placeholder="Optional notes">
-                    </div>
-                    <div class="dash-col-span-2">
-                        <label>Compliance Profile</label>
-                        <select name="compliance_profile_id" id="dash-compliance-profile">
-                            <option value="">— None (global defaults) —</option>
-                        </select>
                     </div>
                 </div>
                 <!-- Credentials -->
                 <div class="dash-cred-divider"><i class="fas fa-key" style="margin-right:0.3rem;"></i> Credentials</div>
                 <p class="dash-cred-hint">Used for SSH / SNMP / API. Password is stored hashed.</p>
-                <div class="dash-grid-2col">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.7rem;">
                     <div>
                         <label>Username</label>
                         <input type="text" name="device_username" placeholder="admin" autocomplete="off">
@@ -3093,6 +3719,70 @@
     </div>
 </div>
 
+<script>
+    (function () {
+        const modal = document.getElementById('dash-add-device-modal');
+        const form = document.getElementById('dash-add-device-form');
+        const open = document.getElementById('dash-add-device-btn');
+        const close = document.getElementById('dash-modal-close');
+        const cancel = document.getElementById('dash-modal-cancel');
+        const submit = form ? form.querySelector('button[type="submit"]') : null;
+        const nameInput = document.getElementById('dash-device-name');
+
+        if (!modal || !form || !open || !close || !cancel || !submit) {
+            return;
+        }
+
+        let submitting = false;
+        const defaultSubmitLabel = submit.textContent.trim();
+
+        function setSubmitting(isBusy) {
+            submitting = isBusy;
+            submit.disabled = isBusy;
+            submit.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+            submit.textContent = isBusy ? 'Saving...' : defaultSubmitLabel;
+        }
+
+        function show() {
+            modal.style.display = 'flex';
+            requestAnimationFrame(() => nameInput?.focus());
+        }
+
+        function hide() {
+            if (submitting) {
+                return;
+            }
+            modal.style.display = 'none';
+            form.reset();
+            setSubmitting(false);
+        }
+
+        open.addEventListener('click', show);
+        close.addEventListener('click', hide);
+        cancel.addEventListener('click', hide);
+        modal.addEventListener('click', function (e) { if (e.target === modal) hide(); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.style.display !== 'none') {
+                hide();
+            }
+        });
+
+        form.addEventListener('submit', function (e) {
+            if (submitting) {
+                e.preventDefault();
+                return;
+            }
+            setSubmitting(true);
+
+            // Preserve a usable UI if navigation is interrupted by the browser or network.
+            window.setTimeout(function () {
+                if (document.body.contains(form)) {
+                    setSubmitting(false);
+                }
+            }, 10000);
+        });
+    })();
+</script>
 {% endblock %}
 
 {% block extra_js %}

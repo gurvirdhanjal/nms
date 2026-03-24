@@ -1,4 +1,5 @@
 from app import create_app
+import atexit
 import webbrowser
 import threading
 import os
@@ -56,21 +57,31 @@ if __name__ == "__main__":
         t.daemon = True
         t.start()
     
+    _bg_scheduler = None
+
+    def _shutdown():
+        """Stop background threads before interpreter teardown to avoid
+        'could not acquire lock for stdout' fatal errors from daemon threads
+        that are still running during atexit."""
+        if _bg_scheduler is not None:
+            try:
+                _bg_scheduler.stop_scheduled_monitoring()
+            except Exception:
+                pass
+        try:
+            interface_poller.stop_polling(timeout=3.0)
+        except Exception:
+            pass
+
+    atexit.register(_shutdown)
+
+    try:
+        _bg_scheduler = scheduler
+    except NameError:
+        pass
+
     try:
         print(f"[WEB] Starting web_main on {WEB_HOST}:{WEB_PORT} (debug={WEB_DEBUG})")
         app.run(host=WEB_HOST, port=WEB_PORT, debug=WEB_DEBUG, use_reloader=False)
     finally:
-        if 'scheduler' in locals():
-            try:
-                scheduler.stop_scheduled_monitoring()
-            except KeyboardInterrupt:
-                pass
-            except Exception as e:
-                print(f"Error stopping scheduler: {e}")
-        if 'interface_poller' in locals():
-            try:
-                interface_poller.stop_polling(timeout=1.0)
-            except KeyboardInterrupt:
-                pass
-            except Exception as e:
-                print(f"Error stopping interface poller: {e}")
+        _shutdown()

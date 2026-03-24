@@ -11,7 +11,7 @@ import { renderInventoryTable, initInventoryInteractions } from './tables/invent
 import { renderInventoryChart } from './charts/inventoryChart.js';
 import { initDiscovery } from './discovery.js';
 import { initServerModal } from './modals/serverDetailModal.js';
-import { renderServerHealthSummary, renderServerHealthTable, initServerHealthTable, setServerHealthFilter, renderFleetOverview, renderEnhancedServerTable } from './servers/serverHealth.js';
+import { renderServerHealthTable, setServerHealthFilter, renderFleetOverview, renderEnhancedServerTable } from './servers/serverHealth.js';
 import { initAlertCenter, renderAlertCenter } from './alerts/alertCenter.js';
 import { renderConnectionIndicator, initConnectionIndicator } from './connectionIndicator.js';
 import { timeAgo, setupTacticalDropdown, formatPercent, formatNumber } from './utils.js';
@@ -20,7 +20,6 @@ import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
 import { enforceSnapshotMeta } from './rbacGuard.js';
 import { renderScopeSummary } from './scopeSummary.js';
 import { renderAvailabilityHeatmap, renderAvailabilityRows } from './modals/availabilityDetail.js';
-import { initQuickAddDevice } from './modals/quickAddDevice.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -72,6 +71,15 @@ function initDashboard() {
     }
     window[dashboardBootKey] = true;
 
+    // Wire premium tabs for device-breakdown surface
+    if (window.UI?.PremiumTabs) {
+        window.UI.PremiumTabs.init({
+            root: '[data-premium-tabs-root="device-breakdown"]',
+            tablist: '[data-premium-tabs]',
+            panelSelector: '[data-premium-panel]',
+        });
+    }
+
     console.log('[Dashboard] Initializing...');
     const errorEl = document.getElementById('global-error');
 
@@ -81,8 +89,7 @@ function initDashboard() {
         initConnectionIndicator();
         initRealtimeTransport();
 
-        // 2. Initialize modals and Discovery UI
-        initQuickAddDevice();
+        // 2. Initialize Discovery UI
         initDiscovery();
         renderScopeSummary(document.getElementById('dashboardScopeSummary'), window.__RBAC_CONTEXT__ || {});
 
@@ -176,8 +183,7 @@ function initDashboard() {
         // 10. Init Server Modal
         initServerModal();
 
-        // 11. Init Server Health Table
-        initServerHealthTable();
+        // 11. Init Server Health Table (no-op kept for structural clarity)
 
         // 12. Init Alert Center
         initAlertCenter({
@@ -187,7 +193,6 @@ function initDashboard() {
         // 13. Init KPI interactions
         initDeviceBreakdown();
         initAvailabilityControls();
-        initServerKpiInteractions();
 
         console.log('[Dashboard] Initialization sequence complete.');
 
@@ -363,6 +368,13 @@ async function refreshAll(options = {}) {
         }
     } catch (err) {
         updateStateBatch({ isLoading: false });
+        // End boot phase even on error so renderSecondary can run
+        if (booting) {
+            setTimeout(() => {
+                booting = false;
+                scheduleRender(getState());
+            }, 100);
+        }
         throw err;
     }
 
@@ -394,6 +406,9 @@ function renderCritical(state) {
         // 2. Fleet Overview (KPIs)
         if (state.fleetMetrics) {
             safeRender('Fleet Overview', () => renderFleetOverview(state.fleetMetrics));
+        } else if (state.lastUpdated && !state.isLoading) {
+            // Load attempted but fleet section returned an error — render empty state
+            safeRender('Fleet Overview', () => renderFleetOverview({}));
         }
     } catch (e) {
         console.error("Critical Render Error", e);
@@ -421,13 +436,8 @@ function renderSecondary(state) {
         }
 
         // 5. Server Health (Table + Meta)
-        if (state.serverHealth) {
-            safeRender('Server Health Table', () => renderEnhancedServerTable(state.serverHealth));
-            safeRender('Server Health Meta', () => renderServerLastCheck(state.serverHealth));
-            safeRender('Server Health Summary', () => renderServerHealthSummary(state.serverHealth));
-        } else {
-            safeRender('Server Health Meta', () => renderServerLastCheck(null));
-        }
+        safeRender('Server Health Table', () => renderEnhancedServerTable(state.serverHealth || { servers: [] }));
+        safeRender('Server Health Meta', () => renderServerLastCheck(state.serverHealth || null));
 
         // 6. Alert Center (Table)
         if (state.alerts) {
@@ -923,26 +933,6 @@ async function renderAvailabilityDetails() {
     }
 }
 
-function initServerKpiInteractions() {
-    const cards = document.querySelectorAll('.server-kpi-card');
-    const target = document.getElementById('server-health-detail');
-    cards.forEach(card => {
-        card.addEventListener('click', () => {
-            const filter = card.dataset.serverFilter || 'all';
-            setServerHealthFilter(filter);
-            cards.forEach(c => c.classList.remove('server-filter-active'));
-            card.classList.add('server-filter-active');
-            const state = getState();
-            if (state.serverHealth) {
-                renderServerHealthTable(state.serverHealth);
-            }
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-        card.style.cursor = 'pointer';
-    });
-}
 
 // Batch DOM updates to the next animation frame
 
@@ -1490,4 +1480,3 @@ document.addEventListener('visibilitychange', () => {
         stopPolling();
     }
 });
-

@@ -9,6 +9,7 @@ from middleware.rbac import require_login, require_role, scoped_query
 from models.audit_log import AuditLog
 from models.device import Device
 from models.server_health import ServerHealthLog
+from services.dashboard_server_incidents import build_server_incident_snapshot
 from services.dashboard_cache_service import invalidate_dashboard_threshold_views
 from services.server_thresholds import (
     METRIC_CATALOG,
@@ -654,125 +655,35 @@ def _create_threshold_audit_log(previous_version, next_version, changed_metric_k
 def get_fleet_metrics():
     try:
         scoped_servers, scoped_server_ids = _scoped_server_devices()
-        if not scoped_server_ids:
+        if not scoped_servers:
             return jsonify(
                 {
                     "health": {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "offline": 0},
                     "aggregates": {"cpu": 0, "memory": 0, "disk": 0},
-                    "p95": {"cpu": 0, "memory": 0},
+                    "p95": {"cpu": 0, "memory": 0, "disk": 0},
                     "alerts": [],
-                    "trends": {"cpu": [], "memory": [], "labels": []},
+                    "active_issues": [],
+                    "dominant_issue": None,
+                    "impact_summary": {
+                        "affected_servers": 0,
+                        "healthy_servers": 0,
+                        "total_servers": 0,
+                        "fleet_pct": 0,
+                        "primary_issue_label": "No active server issues",
+                        "primary_issue_severity": "Healthy",
+                        "unaffected_domains": ["CPU", "Memory", "Disk"],
+                    },
+                    "filters": {"all": 0, "problem": 0, "healthy": 0, "critical": 0, "warning": 0},
+                    "metric_cards": {},
+                    "trends": {"labels": [], "cpu": {}, "memory": {}, "disk": {}},
+                    "uptime": {"current_24h_pct": 0.0, "previous_24h_pct": 0.0, "delta_pct": 0.0},
+                    "synthetic_alerts": [],
+                    "thresholds": {},
                 }
             )
-
-        server_map = {device.device_id: device for device in scoped_servers}
-        thresholds = get_merged_thresholds()
-
-        cutoff = _utcnow_naive() - timedelta(hours=24)
-        latest_logs = query_latest_server_health_logs(
-            device_ids=scoped_server_ids,
-            source="agent",
-            cutoff=cutoff,
-        )
-
-        total_servers = len(latest_logs)
-        if total_servers == 0:
-            return jsonify(
-                {
-                    "health": {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "offline": 0},
-                    "aggregates": {"cpu": 0, "memory": 0, "disk": 0},
-                    "p95": {"cpu": 0, "memory": 0},
-                    "alerts": [],
-                    "trends": {"cpu": [], "memory": [], "labels": []},
-                }
-            )
-
-        health_counts = {"total": total_servers, "healthy": 0, "warning": 0, "critical": 0, "offline": 0}
-        cpu_values = []
-        mem_values = []
-        disk_values = []
-        critical_servers = []
-
-        for log in latest_logs:
-            health = compute_server_health(log)
-            health_lower = health.lower()
-            if health_lower in health_counts:
-                health_counts[health_lower] += 1
-            else:
-                health_counts["offline"] += 1
-
-            if log.cpu_usage is not None:
-                cpu_values.append(log.cpu_usage)
-            if log.memory_usage is not None:
-                mem_values.append(log.memory_usage)
-            if log.disk_usage is not None:
-                disk_values.append(log.disk_usage)
-
-            evaluations = evaluate_metrics_for_log(log, thresholds)
-            alerts = []
-            for metric_key in PRIMARY_HEALTH_METRICS:
-                evaluation = evaluations.get(metric_key)
-                if evaluation and evaluation.state in {"warning", "critical"}:
-                    alerts.append(f"{metric_key.replace('_pct', '').replace('_', ' ').title()} {evaluation.value:.1f}{evaluation.threshold.get('unit') or ''}")
-
-            if alerts:
-                device = server_map.get(log.device_id)
-                critical_servers.append(
-                    {
-                        "name": device.device_name if device else f"ID {log.device_id}",
-                        "alerts": alerts,
-                    }
-                )
-
-        def calc_p95(values):
-            if not values:
-                return 0
-            values.sort()
-            idx = int(len(values) * 0.95)
-            return values[min(idx, len(values) - 1)]
-
-        backend = db.engine.url.get_backend_name()
-        if backend == "sqlite":
-            hour_bucket = func.strftime("%Y-%m-%dT%H:00:00", ServerHealthLog.timestamp).label("hour")
-        else:
-            hour_bucket = func.date_trunc("hour", ServerHealthLog.timestamp).label("hour")
-        trend_query = (
-            db.session.query(
-                hour_bucket,
-                func.avg(ServerHealthLog.cpu_usage).label("avg_cpu"),
-                func.avg(ServerHealthLog.memory_usage).label("avg_mem"),
-            )
-            .filter(
-                ServerHealthLog.source == "agent",
-                ServerHealthLog.timestamp >= cutoff,
-                ServerHealthLog.device_id.in_(scoped_server_ids),
-            )
-            .group_by(hour_bucket)
-            .order_by(hour_bucket)
-            .all()
-        )
-
-        return jsonify(
-            {
-                "health": health_counts,
-                "aggregates": {
-                    "cpu": round(sum(cpu_values) / len(cpu_values), 1) if cpu_values else 0,
-                    "memory": round(sum(mem_values) / len(mem_values), 1) if mem_values else 0,
-                    "disk": round(sum(disk_values) / len(disk_values), 1) if disk_values else 0,
-                },
-                "p95": {
-                    "cpu": round(calc_p95(cpu_values), 1),
-                    "memory": round(calc_p95(mem_values), 1),
-                },
-                "alerts": critical_servers,
-                "trends": {
-                    "labels": [row.hour if isinstance(row.hour, str) else _iso_utc(row.hour) for row in trend_query],
-                    "cpu": [float(row.avg_cpu) if row.avg_cpu else 0 for row in trend_query],
-                    "memory": [float(row.avg_mem) if row.avg_mem else 0 for row in trend_query],
-                },
-            }
-        )
+        return jsonify(build_server_incident_snapshot(scoped_servers))
     except Exception as exc:
+        current_app.logger.exception("[fleet_metrics] Failed to build fleet snapshot")
         return jsonify({"error": str(exc)}), 500
 
 
@@ -790,98 +701,41 @@ def get_server_health_summary():
             if cached:
                 return jsonify(json.loads(cached))
         except Exception as e:
-            logger.warning(f"[ServerHealth] Redis cache read failed: {e}")
-    
+            current_app.logger.warning("[ServerHealth] Redis cache read failed: %s", e)
+
     try:
-        _, scoped_server_ids = _scoped_server_devices()
-        if not scoped_server_ids:
+        scoped_servers, _ = _scoped_server_devices()
+        if not scoped_servers:
             empty_response = {
                 "timestamp": _iso_utc(_utcnow_naive()),
                 "counts": {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "offline": 0},
+                "filters": {"all": 0, "problem": 0, "healthy": 0, "critical": 0, "warning": 0},
+                "dominant_issue": None,
+                "active_issues": [],
                 "servers": [],
             }
             return jsonify(empty_response)
 
-        latest_logs = query_latest_server_health_logs(
-            device_ids=scoped_server_ids,
-            source="agent",
-        )
-
-        health_map = {log.device_id: log for log in latest_logs}
-        agent_device_ids = list(health_map.keys())
-        if not agent_device_ids:
-            empty_response = {
-                "timestamp": _iso_utc(_utcnow_naive()),
-                "counts": {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "offline": 0},
-                "servers": [],
-            }
-            return jsonify(empty_response)
-
-        servers = Device.query.filter(Device.device_id.in_(agent_device_ids)).all()
-        
-        from models.scan_history import DeviceScanHistory
-        
-        # Fetch latest scan records for these agents
-        latest_scans_subq = (
-            db.session.query(
-                DeviceScanHistory.device_ip,
-                func.max(DeviceScanHistory.scan_id).label("max_scan_id"),
-            )
-            .filter(DeviceScanHistory.device_ip.in_([d.device_ip for d in servers if d.device_ip]))
-            .group_by(DeviceScanHistory.device_ip)
-            .subquery()
-        )
-        
-        latest_scans = db.session.query(DeviceScanHistory).join(
-            latest_scans_subq, DeviceScanHistory.scan_id == latest_scans_subq.c.max_scan_id
-        ).all()
-        
-        scan_map = {scan.device_ip: scan for scan in latest_scans}
-
-        counts = {"total": 0, "healthy": 0, "warning": 0, "critical": 0, "offline": 0}
-        server_list = []
-        for device in servers:
-            counts["total"] += 1
-            log = health_map.get(device.device_id)
-            health = compute_server_health(log)
-            counts[health.lower()] = counts.get(health.lower(), 0) + 1
-            
-            scan = scan_map.get(device.device_ip)
-            
-            server_list.append(
-                {
-                    "device_id": device.device_id,
-                    "device_name": device.device_name,
-                    "hostname": device.hostname,
-                    "ip": device.device_ip,
-                    "health": health,
-                    "last_seen": _iso_utc(log.timestamp) if log and log.timestamp else None,
-                    "cpu_usage": log.cpu_usage if log else None,
-                    "memory_usage": log.memory_usage if log else None,
-                    "disk_usage": log.disk_usage if log else None,
-                    "os": log.os_name if log else None,
-                    "uptime": log.uptime if log else None,
-                    "latency": scan.ping_time_ms if scan else None,
-                    "packet_loss": scan.packet_loss if scan else None,
-                    "jitter": scan.jitter if scan else None,
-                }
-            )
-
+        snapshot = build_server_incident_snapshot(scoped_servers)
         response_data = {
-            "timestamp": _iso_utc(_utcnow_naive()), 
-            "counts": counts, 
-            "servers": server_list
+            "timestamp": snapshot.get("timestamp"),
+            "counts": snapshot.get("counts", {}),
+            "filters": snapshot.get("filters", {}),
+            "dominant_issue": snapshot.get("dominant_issue"),
+            "active_issues": snapshot.get("active_issues", []),
+            "servers": snapshot.get("servers", []),
         }
         
         # Cache in Redis for 30 seconds
         if is_redis_available():
             try:
-                redis_client.setex(cache_key, 30, json.dumps(response_data))
+                redis_client.setex(cache_key, 30, json.dumps(response_data, default=str))
             except Exception as e:
-                logger.warning(f"[ServerHealth] Redis cache write failed: {e}")
-        
+                current_app.logger.warning("[ServerHealth] Redis cache write failed: %s", e)
+
         return jsonify(response_data)
     except Exception as exc:
+        current_app.logger.exception("[server_health] Failed to build health summary")
         return jsonify({"error": str(exc)}), 500
 
 

@@ -680,6 +680,36 @@ def get_full_snapshot():
             if section_error:
                 errors[key] = section_error
 
+        fleet_metrics = payload.get('fleetMetrics') if isinstance(payload.get('fleetMetrics'), dict) else {}
+        synthetic_alerts = list(fleet_metrics.get('synthetic_alerts') or [])
+        if synthetic_alerts and isinstance(payload.get('alerts'), list):
+            existing_ids = {str(alert.get('id') or '') for alert in payload['alerts'] if isinstance(alert, dict)}
+            merged_alerts = list(payload['alerts'])
+            for alert in synthetic_alerts:
+                alert_id = str(alert.get('id') or '')
+                if alert_id and alert_id not in existing_ids:
+                    merged_alerts.append(alert)
+                    existing_ids.add(alert_id)
+            payload['alerts'] = merged_alerts
+
+            if isinstance(payload.get('summary'), dict):
+                summary_alerts = payload['summary'].setdefault('active_alerts', {})
+                critical = 0
+                warning = 0
+                info = 0
+                for alert in merged_alerts:
+                    severity = str(alert.get('severity') or '').upper()
+                    if severity == 'CRITICAL':
+                        critical += 1
+                    elif severity == 'WARNING':
+                        warning += 1
+                    else:
+                        info += 1
+                summary_alerts['critical'] = critical
+                summary_alerts['warning'] = warning
+                summary_alerts['info'] = info
+                summary_alerts['total'] = critical + warning + info
+
         if errors:
             payload['errors'] = errors
 

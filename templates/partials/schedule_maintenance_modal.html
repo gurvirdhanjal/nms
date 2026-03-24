@@ -1,0 +1,49 @@
+<!-- Schedule Maintenance Window Modal — shared partial (server_dashboard + maintenance_window) -->
+<div class="modal fade" id="scheduleMaintenanceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary shadow-lg">
+            <div class="modal-header border-secondary border-opacity-20 py-2">
+                <h6 class="modal-title text-uppercase tracking-wider fs-7">
+                    <i class="fas fa-calendar-plus me-2 text-primary"></i> Schedule Suppression
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 10px;"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="scheduleMaintenanceForm" class="row g-3">
+                    <div class="col-12">
+                        <label class="text-uppercase fw-bold text-muted mb-2" style="font-size: 10px; letter-spacing: 0.1em;">Asset Selection</label>
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control bg-dark text-white border-secondary" id="scheduleDeviceSearch" placeholder="SEARCH IDENTIFIERS...">
+                        </div>
+                        <select class="form-select form-select-sm bg-dark text-white border-secondary" id="scheduleDevice" required>
+                            <option value="">SELECT TARGET ASSET</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating font-monospace">
+                            <input type="datetime-local" class="form-control form-control-sm bg-dark text-white border-secondary" id="scheduleStartTime" required style="font-size: 11px;">
+                            <label for="scheduleStartTime" class="text-muted small">T-START</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating font-monospace">
+                            <input type="datetime-local" class="form-control form-control-sm bg-dark text-white border-secondary" id="scheduleEndTime" required style="font-size: 11px;">
+                            <label for="scheduleEndTime" class="text-muted small">T-END</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="text-uppercase fw-bold text-muted mb-2" style="font-size: 10px; letter-spacing: 0.1em;">Operational Directive / Reason</label>
+                        <textarea class="form-control bg-dark text-white border-secondary small" id="scheduleReason" rows="3" maxlength="500" placeholder="E.G. PATCH DEPLOYMENT, FIRMWARE UPGRADE..." required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-20 py-2">
+                <button type="button" class="mo-btn mo-btn-ghost py-1 px-3" data-bs-dismiss="modal" style="font-size: 11px;">CANCEL</button>
+                <button type="button" class="mo-btn mo-btn-primary py-1 px-3" id="btnSubmitSchedule" style="font-size: 11px;">
+                    <i class="fas fa-check me-1"></i> COMMIT SCHEDULE
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

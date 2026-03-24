@@ -388,12 +388,68 @@ Device Live View sprint (2026-03-13):
     Redis read inserted between in-memory cache miss and live probe (anti-flicker on page reload)
   - workstation_monitor removed: route now redirects to device_history; template + JS deleted
 
+Reports Phase 3 — Enterprise Spec Conformance (2026-03-23):
+  PR 20A: services/reporting_service.py (2045 LOC) split into services/reporting/ package
+    (base.py, executive.py, operational.py, health.py, alert.py, other.py, __init__.py)
+    Backward-compat shim at services/reporting_service.py; test patches updated to
+    services.reporting.base.build_scope_context
+
+  PR 16: Narrative + Intelligence Rules + Formatting (Master Spec)
+    NEW services/report_formatting.py (140 LOC) — UTC timestamps, durations, device names,
+      violation risk classification (HIGH=AI, MEDIUM=streaming, LOW=other), severity labels
+    NEW services/report_intelligence_rules.py (220 LOC) — 7 auto-annotation rules:
+      subnet_impact, memory_leak, admin_login_anomaly, ai_service_violation,
+      long_term_offline, rogue_device, zero_uptime
+    NEW services/report_narrative_service.py (520 LOC) — 8 narrative generators:
+      executive, server-fleet, tracked-fleet, alerts, security-compliance,
+      operational, device-health, device-inspector
+      Progressive disclosure output: executive_banner → action_required → section_intro →
+      top_findings → interpretation → action_items → risk_summary
+    services/report_insight_engine.py — added get_report_thresholds() canonical accessor
+    routes/reports.py — wired narrative + intelligence_annotations into _decorate_report_payload()
+      and enterprise_uptime_report() endpoint
+    templates/reports.html — CSS for narrative blocks, KPI banners, action-required sections;
+      renderNarrativeBlock(), renderIntelligenceAnnotations(), drillToDevice() JS functions;
+      narrative containers in all 7 report tabs; IST timezone via _fmtLocalTime()
+    NEW tests/unit/services/test_report_formatting.py (61 tests)
+    NEW tests/unit/services/test_report_intelligence_rules.py (40 tests)
+    NEW tests/unit/services/test_report_narrative_service.py (42 tests)
+
+  PR 17: Asset segmentation + classification confidence + data gaps
+    services/enterprise_report_service.py — _compute_classification_flags(), _dedup_rank(),
+      _deduplicate_server_rows(), _segment_rows(), _batch_scan_existence(), _compute_data_gaps()
+    Each server_row now includes: classification_confidence, confidence_score, auto_named,
+      _classification_flags, _data_gaps
+    Summary includes: segments (infra/endpoint/unclassified), data_quality, _duplicate_ips_merged
+    services/reporting/executive.py — Device.classification_confidence added to top_problematic
+      query; confidence gate deprioritizes LOW-confidence devices
+
+  PR 18: Alert synthesis + security compliance enrichment
+    services/reporting/alert.py — alert_type_breakdown (OFFLINE/Latency/PktLoss/ServerHealth/Other),
+      unresolved_aging (0-24h/1-7d/7-30d/30d+), subnet_analysis (per-/24 with >30% flag),
+      risk_summary + recommended_actions (deterministic text)
+    Alert rows capped at 20 (was 200) with alerts_total_count/alerts_truncated metadata
+    Security compliance: violation risk context (HIGH/MEDIUM/LOW via classify_violation_risk),
+      top_risks (top 5 threshold breaches), rows capped at 20
+
+  PR 19: Peaks, breaches, capacity runway
+    services/reporting/health.py — _extract_peaks_and_breaches() (peak values with timestamps,
+      threshold breach detection with sustained-breach analysis, trend_description text)
+    _compute_capacity_runway() — linear regression for days-to-breach estimate
+      (only shown when R^2 > 0.3, growth > 0.1%/day, >= 7 data points)
+    peaks_and_breaches dict added to device-health report return
+
+  Test results: 452 unit/integration tests passing, 143 new (0 report-related failures)
+
+  Timezone convention: backend stores/computes UTC; frontend renders IST (Asia/Kolkata)
+
 Discovered gaps (still open):
   - 72 print() calls remain in services/ — de-prioritised, not customer-visible
   - No CSRF protection on any POST routes — needs Flask-WTF (Phase 5)
   - SESSION_COOKIE_SECURE=False in app.py line 63 — keep until HTTPS cert in place
-  - Remote view double-buffer swap logic not yet wired in device_live.js refreshRemoteViewSnapshot()
-    (back-buffer HTML added; JS swap logic is additive enhancement for next session)
+  - Remote view double-buffer swap logic not yet wired in device_live.js
+  - PR 20B (reports.html JS split into per-tab modules) deferred — new JS went into new functions
+  - PDF narrative rendering (_build_narrative_section) not yet done — PDF still uses old format
 
 Blockers (still open):
   - FERNET_KEY must be set in .env before restarting the app — generate with:

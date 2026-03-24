@@ -391,6 +391,41 @@ export function initServerDashboard() {
 
     // Auto-refresh every 30 seconds
     setInterval(fetchServerData, 30000);
+
+    // Wire premium tabs for server dashboard surface
+    if (window.UI?.PremiumTabs) {
+        window.UI.PremiumTabs.init({
+            root: '[data-premium-tabs-root="server-dashboard"]',
+            panelSelector: '[data-premium-panel]',
+            panelHost: '[data-premium-panels-host]',
+        });
+    }
+}
+
+export function buildCoverageSummary(summary) {
+    const scopedTotal    = Number(summary?.scoped_total    ?? 0);
+    const reportingTotal = Number(summary?.reporting_total ?? 0);
+    const coveragePercent = scopedTotal > 0
+        ? Math.round((reportingTotal / scopedTotal) * 100) : 0;
+    return {
+        scopedTotal,
+        reportingTotal,
+        coveragePercent,
+        coverageLabel: `${coveragePercent}%`,
+        countLabel:    `${reportingTotal} of ${scopedTotal} scoped servers reporting`,
+    };
+}
+
+const _SEVERITY_RANK = { critical: 0, warning: 1, info: 2 };
+
+export function sortAlerts(alerts) {
+    // Sort: critical < warning < info; within same severity, more metrics = higher priority
+    return [...alerts].sort((a, b) => {
+        const ra = _SEVERITY_RANK[a.severity] ?? 99;
+        const rb = _SEVERITY_RANK[b.severity] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return (b.metrics?.length ?? 0) - (a.metrics?.length ?? 0);
+    });
 }
 
 // Export for use in template

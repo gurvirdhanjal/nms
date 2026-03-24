@@ -1,0 +1,141 @@
+<h2>Section 4 of 4 — Dashboard &amp; Device Live: Deferred Loading</h2>
+<p class="subtitle">Load critical content first, defer everything else until visible or idle</p>
+
+<div class="section">
+  <h3>4a · Dashboard — Defer Non-Critical Widgets</h3>
+  <p class="subtitle">Dashboard already uses SSE + 30s polling. Goal: first paint shows KPI cards instantly; heavy widgets (Top Problems table, Trends chart) load after.</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header" style="background:#2a1a1a;color:#f87171">❌ BEFORE — All widgets block first paint</div>
+      <div class="mockup-body" style="padding:10px;font-size:11px">
+        <div style="color:#888;margin-bottom:8px">Page open → waiting for all data:</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+          <div style="background:#1a1a2a;border-radius:4px;padding:8px;text-align:center">
+            <div style="color:#888;font-size:9px">TOTAL</div>
+            <div style="color:#888;font-size:16px">—</div>
+          </div>
+          <div style="background:#1a1a2a;border-radius:4px;padding:8px;text-align:center">
+            <div style="color:#888;font-size:9px">ONLINE</div>
+            <div style="color:#888;font-size:16px">—</div>
+          </div>
+          <div style="background:#1a1a2a;border-radius:4px;padding:8px;text-align:center">
+            <div style="color:#888;font-size:9px">ALERTS</div>
+            <div style="color:#888;font-size:16px">—</div>
+          </div>
+          <div style="background:#1a1a2a;border-radius:4px;padding:8px;text-align:center">
+            <div style="color:#888;font-size:9px">OFFLINE</div>
+            <div style="color:#888;font-size:16px">—</div>
+          </div>
+        </div>
+
+        <div style="background:#1a1a2a;border-radius:4px;padding:8px;margin-bottom:6px;height:50px;display:flex;align-items:center;justify-content:center;color:#444;font-size:10px">Top Problems — loading…</div>
+        <div style="background:#1a1a2a;border-radius:4px;padding:8px;height:50px;display:flex;align-items:center;justify-content:center;color:#444;font-size:10px">Trend Chart — loading…</div>
+
+        <div style="color:#f87171;font-size:10px;margin-top:8px">⚠ User sees blank page until ALL data arrives</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header" style="background:#1a2a1a;color:#4ade80">✅ AFTER — Critical first, deferred second</div>
+      <div class="mockup-body" style="padding:10px;font-size:11px">
+
+        <div style="color:#4ade80;font-size:10px;margin-bottom:6px">① First paint (~300ms) — KPI cards from cache snapshot:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+          <div style="background:#1e293b;border-radius:4px;padding:8px;text-align:center;border:1px solid #334">
+            <div style="color:#888;font-size:9px">TOTAL</div>
+            <div style="color:#e2e8f0;font-size:16px;font-weight:600">239</div>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:8px;text-align:center;border:1px solid #334">
+            <div style="color:#888;font-size:9px">ONLINE</div>
+            <div style="color:#4ade80;font-size:16px;font-weight:600">201</div>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:8px;text-align:center;border:1px solid #334">
+            <div style="color:#888;font-size:9px">ALERTS</div>
+            <div style="color:#fbbf24;font-size:16px;font-weight:600">12</div>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:8px;text-align:center;border:1px solid #334">
+            <div style="color:#888;font-size:9px">OFFLINE</div>
+            <div style="color:#f87171;font-size:16px;font-weight:600">38</div>
+          </div>
+        </div>
+
+        <div style="color:#fbbf24;font-size:10px;margin-bottom:4px">② Deferred (~800ms) — Top Problems loads after KPI:</div>
+        <div style="background:#1e293b;border-radius:4px;padding:8px;margin-bottom:6px;border:1px solid #334">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-bottom:4px">
+            <span>Top Problems</span><span style="color:#4ade80">✓ loaded</span>
+          </div>
+          <div style="height:24px;background:#111;border-radius:3px;display:flex;align-items:center;padding:0 8px;font-size:10px;color:#f87171">Switch-Core · 43% pkt loss</div>
+        </div>
+
+        <div style="color:#fbbf24;font-size:10px;margin-bottom:4px">③ Deferred (~1.2s) — Trends chart loads last:</div>
+        <div style="background:#1e293b;border-radius:4px;padding:8px;border:1px solid #334;height:36px;display:flex;align-items:center;justify-content:center">
+          <span style="font-size:10px;color:#60a5fa">📈 Trend data rendered</span>
+        </div>
+
+        <div style="color:#4ade80;font-size:10px;margin-top:8px">✓ Uses existing DashboardSnapshot cache (already built)<br>✓ requestIdleCallback for deferred widgets</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>4b · Device Live View — Collapse Idle Sections</h3>
+  <p class="subtitle">device_live.js is 4,944 lines handling 8+ sections. Heavy sections (Behavioral, File Transfer, Console) load even when never used.</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header" style="background:#2a1a1a;color:#f87171">❌ BEFORE — All sections init on load</div>
+      <div class="mockup-body" style="padding:10px;font-size:11px">
+        <div style="color:#888;margin-bottom:8px">Page open triggers ALL section inits:</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="background:#1e293b;border-radius:4px;padding:6px;border-left:3px solid #4ade80;font-size:10px">✅ KPI Cards — always needed</div>
+          <div style="background:#1e293b;border-radius:4px;padding:6px;border-left:3px solid #4ade80;font-size:10px">✅ Real-time metrics — always needed</div>
+          <div style="background:#2a1a1a;border-radius:4px;padding:6px;border-left:3px solid #f87171;font-size:10px">⚠ Behavioral Analysis — heavy, rarely viewed</div>
+          <div style="background:#2a1a1a;border-radius:4px;padding:6px;border-left:3px solid #f87171;font-size:10px">⚠ File Transfer panel — niche feature</div>
+          <div style="background:#2a1a1a;border-radius:4px;padding:6px;border-left:3px solid #f87171;font-size:10px">⚠ Device Console — rarely used, heavy init</div>
+          <div style="background:#2a1a1a;border-radius:4px;padding:6px;border-left:3px solid #f87171;font-size:10px">⚠ Policy Violations table — full query on load</div>
+        </div>
+        <div style="color:#f87171;font-size:10px;margin-top:8px">⚠ ~1.5–2s extra init for sections user may never open</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header" style="background:#1a2a1a;color:#4ade80">✅ AFTER — Collapsed by default, expand on click</div>
+      <div class="mockup-body" style="padding:10px;font-size:11px">
+        <div style="color:#4ade80;font-size:10px;margin-bottom:8px">Critical sections load immediately:</div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+          <div style="background:#1e293b;border-radius:4px;padding:6px;border-left:3px solid #4ade80;font-size:10px">✅ KPI Cards — loads immediately</div>
+          <div style="background:#1e293b;border-radius:4px;padding:6px;border-left:3px solid #4ade80;font-size:10px">✅ Real-time metrics — loads immediately</div>
+        </div>
+
+        <div style="color:#fbbf24;font-size:10px;margin-bottom:6px">Deferred sections — collapsed accordion:</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="background:#1e293b;border-radius:4px;padding:6px 10px;border:1px solid #334;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:10px">
+            <span>Behavioral Analysis</span>
+            <span style="color:#60a5fa">▶ Expand to load</span>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:6px 10px;border:1px solid #334;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:10px">
+            <span>File Transfer</span>
+            <span style="color:#60a5fa">▶ Expand to load</span>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:6px 10px;border:1px solid #334;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:10px">
+            <span>Device Console</span>
+            <span style="color:#60a5fa">▶ Expand to load</span>
+          </div>
+          <div style="background:#1e293b;border-radius:4px;padding:6px 10px;border:1px solid #334;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:10px">
+            <span>Policy Violations</span>
+            <span style="color:#60a5fa">▶ Expand to load</span>
+          </div>
+        </div>
+
+        <div style="color:#4ade80;font-size:10px;margin-top:8px">
+          ✓ Section inits only on first expand (one-shot flag)<br>
+          ✓ Bootstrap collapse already in the page — no new lib<br>
+          ✓ State preserved after first expand (no double-fetch)
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

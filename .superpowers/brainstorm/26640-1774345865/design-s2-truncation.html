@@ -1,0 +1,114 @@
+<h2>Section 2 of 4 — Reports: Truncation Badges &amp; Validation</h2>
+<p class="subtitle">UX feedback layer — no more silent data cuts</p>
+
+<div class="section">
+  <h3>2a · Truncation Badges on Capped Tables</h3>
+  <p class="subtitle">Currently: tables silently slice to 20 rows. No user indication. <code>alerts_truncated</code> flag already in API response — just unused.</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header" style="background:#2a1a1a;color:#f87171">❌ BEFORE</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Alert History</strong>
+          <span style="color:#888;font-size:11px">— no count shown</span>
+        </div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <tr style="color:#888;border-bottom:1px solid #222"><td style="padding:4px">Device</td><td style="padding:4px">Type</td><td style="padding:4px">Time</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">Switch-01</td><td style="padding:4px">Offline</td><td style="padding:4px">2h ago</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">Router-03</td><td style="padding:4px">High Latency</td><td style="padding:4px">4h ago</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">AP-12</td><td style="padding:4px">Pkt Loss</td><td style="padding:4px">6h ago</td></tr>
+          <tr><td colspan="3" style="padding:6px;color:#444;font-size:10px;text-align:center">— end of table —</td></tr>
+        </table>
+        <div style="color:#f87171;font-size:10px;margin-top:8px">⚠ User has no idea 467 more alerts exist</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header" style="background:#1a2a1a;color:#4ade80">✅ AFTER</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Alert History</strong>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600">Showing 20 of 487</span>
+            <button style="background:#1e293b;color:#60a5fa;border:1px solid #334155;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer">Export all →</button>
+          </div>
+        </div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <tr style="color:#888;border-bottom:1px solid #222"><td style="padding:4px">Device</td><td style="padding:4px">Type</td><td style="padding:4px">Time</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">Switch-01</td><td style="padding:4px">Offline</td><td style="padding:4px">2h ago</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">Router-03</td><td style="padding:4px">High Latency</td><td style="padding:4px">4h ago</td></tr>
+          <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:4px">AP-12</td><td style="padding:4px">Pkt Loss</td><td style="padding:4px">6h ago</td></tr>
+          <tr><td colspan="3" style="padding:6px;color:#4ade80;font-size:10px;text-align:center">↑ 20 of 487 shown · Export to see all</td></tr>
+        </table>
+        <div style="color:#4ade80;font-size:10px;margin-top:8px">✓ Badge reads total from <code>alerts_total_count</code> in API response (already there)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2b · Date Range Pre-flight Validation</h3>
+  <p class="subtitle">Currently: users hit a 413 error after submitting. Proposed: warn inline before submit.</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header" style="background:#2a1a1a;color:#f87171">❌ BEFORE</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px">
+        <div style="margin-bottom:8px;color:#888;font-size:11px">User picks 90-day range on Productivity tab:</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+          <input style="background:#1a1a2a;border:1px solid #334;padding:4px 8px;border-radius:4px;color:#e2e8f0;font-size:11px;width:90px" value="2025-12-15" readonly>
+          <span style="color:#888">→</span>
+          <input style="background:#1a1a2a;border:1px solid #334;padding:4px 8px;border-radius:4px;color:#e2e8f0;font-size:11px;width:90px" value="2026-03-24" readonly>
+          <button style="background:#3b82f6;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;border:none">Run Report</button>
+        </div>
+        <div style="background:#2a1a1a;border:1px solid #7f1d1d;border-radius:4px;padding:8px;font-size:11px;color:#f87171">
+          ❌ Error: Projected result exceeds allowed size.<br>Please reduce time range or filter devices.
+        </div>
+        <div style="color:#888;font-size:10px;margin-top:6px">User wasted the round-trip. No guidance on max range.</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header" style="background:#1a2a1a;color:#4ade80">✅ AFTER</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px">
+        <div style="margin-bottom:8px;color:#888;font-size:11px">User picks same range — inline warning appears immediately:</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <input style="background:#1a1a2a;border:1px solid #334;padding:4px 8px;border-radius:4px;color:#e2e8f0;font-size:11px;width:90px" value="2025-12-15" readonly>
+          <span style="color:#888">→</span>
+          <input style="background:#2a1a1a;border:1px solid #f59e0b;padding:4px 8px;border-radius:4px;color:#e2e8f0;font-size:11px;width:90px" value="2026-03-24" readonly>
+          <button style="background:#475569;color:#94a3b8;padding:4px 12px;border-radius:4px;font-size:11px;border:none;cursor:not-allowed" disabled>Run Report</button>
+        </div>
+        <div style="background:#2a1a0a;border:1px solid #92400e;border-radius:4px;padding:8px;font-size:11px;color:#fbbf24;margin-bottom:6px">
+          ⚠ Productivity reports are limited to 30 days. Current range: 99 days.<br>
+          <span style="color:#888">Reduce to ≤ 30 days to run this report.</span>
+        </div>
+        <div style="color:#4ade80;font-size:10px">✓ Button disabled until range is valid · Uses <code>MAX_PRODUCTIVITY_REPORT_RANGE_DAYS=30</code> from config</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2c · Export Row-Count Preview</h3>
+  <p class="subtitle">Show estimated rows before the async job starts — uses existing <code>estimated_rows</code> from preview endpoint.</p>
+
+  <div class="mockup" style="max-width:420px">
+    <div class="mockup-header">Export button → confirmation tooltip</div>
+    <div class="mockup-body" style="padding:12px;font-size:12px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <button style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:5px 14px;border-radius:4px;font-size:11px">📥 Export CSV</button>
+        <button style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:5px 14px;border-radius:4px;font-size:11px">📄 Export PDF</button>
+      </div>
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:10px;font-size:11px">
+        <div style="color:#94a3b8;margin-bottom:6px">Export summary</div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#e2e8f0">Estimated rows</span><span style="color:#fbbf24;font-weight:600">~12,400</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#e2e8f0">Estimated size</span><span style="color:#94a3b8">~2.4 MB</span></div>
+        <div style="display:flex;gap:6px">
+          <button style="flex:1;background:#3b82f6;color:#fff;padding:4px;border-radius:4px;border:none;font-size:11px">Confirm Export</button>
+          <button style="flex:1;background:#1a2a1a;color:#888;padding:4px;border-radius:4px;border:1px solid #334;font-size:11px">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

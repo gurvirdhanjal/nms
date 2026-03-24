@@ -1,3 +1,4 @@
+
 # TODOS — Deferred Work
 
 Items from the Behavioral Intelligence plan review (SCOPE EXPANSION mode, 2026-03-16).
@@ -309,4 +310,30 @@ transition period exists to avoid breaking clients — it should not become perm
 
 ---
 
-*Updated: 2026-03-20*
+---
+
+## P3 — Performance
+
+### TODO-reports-cache: Cache `/api/reports/devices` response
+**What:** Add a 60-second server-side cache to `GET /api/reports/devices` using the existing
+`_report_cache + threading.Lock` infrastructure in `routes/reports.py`.
+
+**Why:** The global summary bar fetches this endpoint on every page load and again on every tab
+range-selector change. Currently the endpoint runs 3 bulk queries (servers + workstations + summary
+aggregation). At 239 devices this is ~ms, but will degrade as device count grows.
+
+**Pros:** Zero user-facing change; protects DB from rapid repeated requests during page interaction.
+
+**Cons:** 60-second staleness — acceptable for a summary bar; can be lowered if needed.
+
+**Context:** The endpoint is at `routes/reports.py::get_devices_report()`. `_report_cache` is a
+module-level dict and `_cache_lock` is a `threading.Lock` — both already present. Cache key:
+`f"devices_report_{range}"`. Invalidate on manual refresh (pass `?_nocache=1`).
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** Nothing — infrastructure already exists.
+
+---
+
+*Updated: 2026-03-24*

@@ -1,0 +1,103 @@
+<h2>Section 3 of 4 — Tracking: Device List Pagination</h2>
+<p class="subtitle">All 239 devices currently rendered server-side in one shot — client-side pagination with search filter</p>
+
+<div class="section">
+  <h3>Approach: Client-side slice + filter (no backend change needed)</h3>
+  <p class="subtitle">The full device list is already in the DOM (server-rendered). JS hides/shows rows per page. Search already debounced. Zero new API calls.</p>
+</div>
+
+<div class="split">
+
+  <div class="mockup">
+    <div class="mockup-header" style="background:#2a1a1a;color:#f87171">❌ BEFORE — All 239 rows in DOM</div>
+    <div class="mockup-body" style="padding:12px;font-size:12px">
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <input style="flex:1;background:#1a1a2a;border:1px solid #334;padding:5px 10px;border-radius:4px;color:#e2e8f0;font-size:11px" placeholder="Search devices…" readonly>
+        <button style="background:#1e293b;border:1px solid #334;color:#e2e8f0;padding:5px 10px;border-radius:4px;font-size:11px">+ Add Device</button>
+      </div>
+
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        <tr style="color:#888;border-bottom:1px solid #222">
+          <td style="padding:5px">Device</td><td style="padding:5px">IP</td><td style="padding:5px">Status</td><td style="padding:5px">Actions</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">PC-JOHN</td><td style="padding:5px">172.16.1.10</td><td style="padding:5px"><span style="color:#4ade80">●</span> Online</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">PC-MARY</td><td style="padding:5px">172.16.1.11</td><td style="padding:5px"><span style="color:#f87171">●</span> Offline</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">LAPTOP-03</td><td style="padding:5px">172.16.1.12</td><td style="padding:5px"><span style="color:#fbbf24">●</span> Stale</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr><td colspan="4" style="padding:5px;color:#444;text-align:center;font-size:10px">… 236 more rows below the fold …</td></tr>
+      </table>
+
+      <div style="color:#f87171;font-size:10px;margin-top:10px">
+        ⚠ 239 &lt;tr&gt; elements in DOM at all times<br>
+        ⚠ Scroll, search, and filter degrade as count grows<br>
+        ⚠ No count shown anywhere
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header" style="background:#1a2a1a;color:#4ade80">✅ AFTER — 50 rows visible, rest hidden</div>
+    <div class="mockup-body" style="padding:12px;font-size:12px">
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <input style="flex:1;background:#1a1a2a;border:1px solid #334;padding:5px 10px;border-radius:4px;color:#e2e8f0;font-size:11px" placeholder="Search devices…" readonly>
+        <span style="color:#94a3b8;font-size:10px;white-space:nowrap">239 devices</span>
+        <button style="background:#1e293b;border:1px solid #334;color:#e2e8f0;padding:5px 10px;border-radius:4px;font-size:11px">+ Add Device</button>
+      </div>
+
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        <tr style="color:#888;border-bottom:1px solid #222">
+          <td style="padding:5px">Device</td><td style="padding:5px">IP</td><td style="padding:5px">Status</td><td style="padding:5px">Actions</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">PC-JOHN</td><td style="padding:5px">172.16.1.10</td><td style="padding:5px"><span style="color:#4ade80">●</span> Online</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">PC-MARY</td><td style="padding:5px">172.16.1.11</td><td style="padding:5px"><span style="color:#f87171">●</span> Offline</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr style="border-bottom:1px solid #1a1a1a"><td style="padding:5px">LAPTOP-03</td><td style="padding:5px">172.16.1.12</td><td style="padding:5px"><span style="color:#fbbf24">●</span> Stale</td><td style="padding:5px;color:#60a5fa">View</td></tr>
+        <tr><td colspan="4" style="padding:5px;color:#4ade80;text-align:center;font-size:10px">Showing rows 1–50 of 239</td></tr>
+      </table>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:6px 0;border-top:1px solid #1e293b">
+        <button style="background:#1e293b;border:1px solid #334;color:#94a3b8;padding:4px 12px;border-radius:4px;font-size:11px;cursor:not-allowed" disabled>← Prev</button>
+        <div style="display:flex;gap:4px">
+          <span style="background:#3b82f6;color:#fff;padding:3px 8px;border-radius:4px;font-size:11px">1</span>
+          <span style="background:#1e293b;color:#94a3b8;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">2</span>
+          <span style="background:#1e293b;color:#94a3b8;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">3</span>
+          <span style="color:#94a3b8;padding:3px 4px;font-size:11px">…</span>
+          <span style="background:#1e293b;color:#94a3b8;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">5</span>
+        </div>
+        <button style="background:#1e293b;border:1px solid #334;color:#e2e8f0;padding:4px 12px;border-radius:4px;font-size:11px">Next →</button>
+      </div>
+
+      <div style="color:#4ade80;font-size:10px;margin-top:8px">
+        ✓ DOM always has 239 rows — JS toggles display:none (no re-render)<br>
+        ✓ Search filters first, then paginates filtered set<br>
+        ✓ 15s status refresh updates only visible rows<br>
+        ✓ Zero backend changes needed
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:16px">
+  <h3>Search + filter interaction</h3>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="flex:1;min-width:180px;background:#111;border-radius:6px;padding:10px;font-size:11px">
+      <div style="color:#fbbf24;margin-bottom:6px">Filter tab: "Offline only"</div>
+      <div style="color:#888">→ hides online/stale rows</div>
+      <div style="color:#888">→ re-paginate filtered set</div>
+      <div style="color:#4ade80;margin-top:4px">Shows: "14 of 239 filtered"</div>
+    </div>
+    <div style="flex:1;min-width:180px;background:#111;border-radius:6px;padding:10px;font-size:11px">
+      <div style="color:#fbbf24;margin-bottom:6px">Search: "PC-J"</div>
+      <div style="color:#888">→ debounce 800ms (existing)</div>
+      <div style="color:#888">→ filter rows by name/IP</div>
+      <div style="color:#4ade80;margin-top:4px">Shows: "3 of 239 matching"</div>
+    </div>
+    <div style="flex:1;min-width:180px;background:#111;border-radius:6px;padding:10px;font-size:11px">
+      <div style="color:#fbbf24;margin-bottom:6px">Combined</div>
+      <div style="color:#888">→ filter first, search second</div>
+      <div style="color:#888">→ pagination resets to page 1</div>
+      <div style="color:#4ade80;margin-top:4px">Works with existing JS state</div>
+    </div>
+  </div>
+</div>

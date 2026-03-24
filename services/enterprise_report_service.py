@@ -26,6 +26,7 @@ from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
 from models.server_health_rollups import ServerHealthHourlyRollup, ServerHealthDailyRollup
 from models.restricted_site_policy import RestrictedSiteEvent
+from models.typed_text_policy_alert import TypedTextPolicyAlert
 from models.tracked_device import (
     TrackedDevice, TrackedDeviceAvailabilityEvent,
     TrackingDailyRollup, TrackingHourlyRollup,
@@ -34,50 +35,22 @@ from models.tracked_device import (
 
 logger = logging.getLogger(__name__)
 
-# ── SLA tier thresholds (%) ─────────────────────────────────────────────────
-SLA_GOLD = 99.9
-SLA_SILVER = 99.5
-SLA_BRONZE = 99.0
-SLA_WARNING = 95.0
+# Re-export all shared functions/constants from core_metrics_service so that
+# existing callers (tests, routes) can continue to import them from here.
+from services.core_metrics_service import (  # noqa: E402
+    _safe_round, sla_tier, downtime_hours, coverage_level,
+    _inventory_uptime, _count_no_response_scans, _inventory_network_stats,
+    _compute_uptime_from_events, _bulk_uptime_and_incidents,
+    _merge_flapping_incidents, _mttr_mtbf, _detect_anomaly,
+    get_device_violations, _bulk_icmp_coverage,
+    SLA_GOLD, SLA_SILVER, SLA_BRONZE, SLA_WARNING,
+    ANOMALY_LATENCY_MS, ANOMALY_PACKET_LOSS_PCT, ANOMALY_UPTIME_PCT,
+    ANOMALY_VIOLATION_COUNT,
+    FLAP_MERGE_GAP_S, MIN_INCIDENT_DURATION_S, MAX_INCIDENT_DURATION_H,
+    GAP_THRESHOLD_S,
+)
 
 _VALID_FLEETS = (None, "server", "workstation")
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _safe_round(val, decimals: int = 2):
-    """Round a numeric value, preserving None to distinguish 'no data' from zero."""
-    if val is None:
-        return None
-    try:
-        return round(float(val), decimals)
-    except (TypeError, ValueError):
-        return None
-
-
-def sla_tier(uptime_pct: Optional[float], thresholds: Optional[Dict[str, float]] = None) -> str:
-    """Assign SLA tier based on uptime percentage.
-
-    If *thresholds* is provided, uses per-device SLA thresholds from
-    ComplianceProfile.rules_json (keys: sla_gold, sla_silver, sla_bronze,
-    sla_warning).  Missing keys fall back to module-level constants.
-    """
-    if uptime_pct is None:
-        return "Unknown"
-    t = thresholds or {}
-    gold    = t.get("sla_gold",    SLA_GOLD)
-    silver  = t.get("sla_silver",  SLA_SILVER)
-    bronze  = t.get("sla_bronze",  SLA_BRONZE)
-    warning = t.get("sla_warning", SLA_WARNING)
-    if uptime_pct >= gold:
-        return "Gold"
-    if uptime_pct >= silver:
-        return "Silver"
-    if uptime_pct >= bronze:
-        return "Bronze"
-    if uptime_pct >= warning:
-        return "Warning"
-    return "Critical"
 
 
 def _bulk_load_sla_thresholds(device_profile_map: Dict[int, Optional[int]]) -> Tuple[Dict[int, Dict[str, float]], Dict[str, int]]:
@@ -109,135 +82,6 @@ def _bulk_load_sla_thresholds(device_profile_map: Dict[int, Optional[int]]) -> T
     return result, profile_usage
 
 
-def downtime_hours(uptime_pct: Optional[float], period_hours: float) -> Optional[float]:
-    if uptime_pct is None:
-        return None
-    frac = max(0.0, 1.0 - uptime_pct / 100.0)
-    return _safe_round(frac * period_hours)
-
-
-# ── Uptime calculators ────────────────────────────────────────────────────────
-
-def _inventory_uptime(device_ip: Optional[str], device_id: int,
-                      start: datetime, end: datetime) -> Optional[float]:
-    """
-    Uptime % for an inventory device over [start, end].
-    Primary: DailyDeviceStats aggregates (fast).
-    Fallback: raw DeviceScanHistory by IP.
-    """
-    # Fast path — pre-aggregated daily rollup
-    avg = (
-        db.session.query(func.avg(DailyDeviceStats.uptime_percent))
-        .filter(
-            DailyDeviceStats.device_id == device_id,
-            DailyDeviceStats.date >= start.date(),
-            DailyDeviceStats.date <= end.date(),
-        )
-        .scalar()
-    )
-    if avg is not None:
-        return _safe_round(float(avg))
-
-    # Fallback — scan history keyed by IP
-    if not device_ip:
-        return None
-    total = (
-        db.session.query(func.count(DeviceScanHistory.scan_id))
-        .filter(
-            DeviceScanHistory.device_ip == device_ip,
-            DeviceScanHistory.scan_timestamp >= start,
-            DeviceScanHistory.scan_timestamp <= end,
-        )
-        .scalar()
-        or 0
-    )
-    if total == 0:
-        return None
-    online = (
-        db.session.query(func.count(DeviceScanHistory.scan_id))
-        .filter(
-            DeviceScanHistory.device_ip == device_ip,
-            DeviceScanHistory.scan_timestamp >= start,
-            DeviceScanHistory.scan_timestamp <= end,
-            func.lower(DeviceScanHistory.status) == "online",
-        )
-        .scalar()
-        or 0
-    )
-    return _safe_round((online / total) * 100.0)
-
-
-def _inventory_network_stats(device_id: int, start: datetime, end: datetime) -> dict:
-    """
-    Network-quality stats from DailyDeviceStats: latency, packet-loss, alerts.
-    Returns empty dict when no rows exist for the period.
-    """
-    row = (
-        db.session.query(
-            func.avg(DailyDeviceStats.avg_latency_ms).label("avg_lat"),
-            func.max(DailyDeviceStats.max_latency_ms).label("max_lat"),
-            func.avg(DailyDeviceStats.avg_packet_loss_pct).label("avg_pkt"),
-            func.sum(DailyDeviceStats.total_alerts).label("total_alerts"),
-        )
-        .filter(
-            DailyDeviceStats.device_id == device_id,
-            DailyDeviceStats.date >= start.date(),
-            DailyDeviceStats.date <= end.date(),
-        )
-        .first()
-    )
-    if not row or row.avg_lat is None:
-        return {}
-    return {
-        "avg_latency_ms": _safe_round(row.avg_lat) if row.avg_lat is not None else None,
-        "max_latency_ms": _safe_round(row.max_lat) if row.max_lat is not None else None,
-        "avg_packet_loss_pct": _safe_round(row.avg_pkt) if row.avg_pkt is not None else None,
-        "total_alerts": int(row.total_alerts or 0),
-    }
-
-
-def _compute_uptime_from_events(
-    events: list, start: datetime, end: datetime
-) -> Tuple[Optional[float], List[dict]]:
-    """
-    Pure state-machine helper: derive uptime % and incident list from a
-    pre-fetched list of availability event objects.
-
-    Each object must expose `.status` (str) and `.observed_at` (datetime).
-    Returns (uptime_pct, incidents).  Both are None / [] when there is no data
-    or when the time window is degenerate.
-    """
-    if not events:
-        return None, []
-
-    period_seconds = (end - start).total_seconds()
-    if period_seconds <= 0:
-        return None, []
-
-    incidents: List[dict] = []
-    offline_since: Optional[datetime] = None
-
-    for ev in events:
-        status = (ev.status or "").lower()
-        if status in ("offline", "degraded") and offline_since is None:
-            offline_since = ev.observed_at
-        elif status == "online" and offline_since is not None:
-            dur_min = _safe_round((ev.observed_at - offline_since).total_seconds() / 60.0)
-            incidents.append({"start": offline_since.isoformat(), "end": ev.observed_at.isoformat(),
-                               "duration_min": dur_min})
-            offline_since = None
-
-    # Open-ended incident still in progress at window end
-    if offline_since is not None:
-        dur_min = _safe_round((end - offline_since).total_seconds() / 60.0)
-        incidents.append({"start": offline_since.isoformat(), "end": end.isoformat(),
-                           "duration_min": dur_min, "open": True})
-
-    total_down_s = sum(inc["duration_min"] * 60 for inc in incidents)
-    uptime_pct = _safe_round(max(0.0, 1.0 - total_down_s / period_seconds) * 100.0)
-    return uptime_pct, incidents
-
-
 def _tracked_uptime_and_incidents(
     device_id: int, start: datetime, end: datetime
 ) -> Tuple[Optional[float], List[dict]]:
@@ -256,69 +100,6 @@ def _tracked_uptime_and_incidents(
         .all()
     )
     return _compute_uptime_from_events(events, start, end)
-
-
-def _bulk_uptime_and_incidents(
-    device_ids: List[int],
-    start: datetime,
-    end: datetime,
-) -> "Dict[int, Tuple[Optional[float], List[dict]]]":
-    """Bulk version: one query for all device IDs, groups in Python.
-    Returns {device_id: (uptime_pct, incidents)} for every id in device_ids.
-    Devices with no events get (None, []).
-    """
-    if not device_ids:
-        return {}
-    all_events = (
-        TrackedDeviceAvailabilityEvent.query
-        .filter(
-            TrackedDeviceAvailabilityEvent.device_id.in_(device_ids),
-            TrackedDeviceAvailabilityEvent.observed_at >= start,
-            TrackedDeviceAvailabilityEvent.observed_at <= end,
-        )
-        .order_by(
-            TrackedDeviceAvailabilityEvent.device_id.asc(),
-            TrackedDeviceAvailabilityEvent.observed_at.asc(),
-        )
-        .all()
-    )
-    # Group by device_id
-    grouped: "Dict[int, list]" = {did: [] for did in device_ids}
-    for ev in all_events:
-        if ev.device_id in grouped:
-            grouped[ev.device_id].append(ev)
-    return {
-        did: _compute_uptime_from_events(evs, start, end)
-        for did, evs in grouped.items()
-    }
-
-
-def _mttr_mtbf(incidents: List[dict]) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Returns (mttr_min, mtbf_hours).
-    MTTR = mean incident duration.
-    MTBF = mean time between incident start times.
-    """
-    if not incidents:
-        return None, None
-
-    mttr = _safe_round(sum(inc["duration_min"] for inc in incidents) / len(incidents))
-
-    if len(incidents) < 2:
-        return mttr, None
-
-    starts: List[datetime] = []
-    for inc in incidents:
-        try:
-            starts.append(datetime.fromisoformat(inc["start"]))
-        except Exception:
-            pass
-    if len(starts) < 2:
-        return mttr, None
-
-    gaps_h = [(starts[i + 1] - starts[i]).total_seconds() / 3600.0 for i in range(len(starts) - 1)]
-    mtbf = _safe_round(sum(gaps_h) / len(gaps_h)) if gaps_h else None
-    return mttr, mtbf
 
 
 def _compute_focus_score(device_id: int, start: datetime, end: datetime) -> Optional[float]:
@@ -473,6 +254,7 @@ def _workstation_behavioral_metrics(
 
     # ── Policy violation count via unique_client_id → agent_key_id ────────────
     violation_count: Optional[int] = None
+    typed_text_count: Optional[int] = None
     try:
         dev = TrackedDevice.query.get(device_id)
         if dev and getattr(dev, "unique_client_id", None):
@@ -485,8 +267,23 @@ def _workstation_behavioral_metrics(
                 )
                 .scalar()
             ) or 0
+        # Typed text alerts are keyed by device_id directly
+        typed_text_count = (
+            db.session.query(func.count(TypedTextPolicyAlert.id))
+            .filter(
+                TypedTextPolicyAlert.device_id == device_id,
+                TypedTextPolicyAlert.detected_at >= start,
+                TypedTextPolicyAlert.detected_at <= end,
+            )
+            .scalar()
+        ) or 0
     except Exception as exc:
         logger.warning("[EnterpriseReport] violation count query failed for device %s: %s", device_id, exc)
+
+    # Weighted violation score: site violations (weight 5) + typed text (weight 10)
+    violation_score: Optional[int] = None
+    if violation_count is not None or typed_text_count is not None:
+        violation_score = (violation_count or 0) * 5 + (typed_text_count or 0) * 10
 
     # ── Focus score ───────────────────────────────────────────────────────────
     focus_score = _compute_focus_score(device_id, start, end)
@@ -500,6 +297,8 @@ def _workstation_behavioral_metrics(
         "avg_cpu_during_active": _safe_round(row.cpu, 1) if (has_rollup and row.cpu) else None,
         "top_app":               top_app,
         "policy_violations":     violation_count,
+        "typed_text_alerts":     typed_text_count,
+        "violation_score":       violation_score,
         "productivity_score":    productivity_score,
         "focus_score":           focus_score,
     }
@@ -559,6 +358,115 @@ def _fleet_violation_summary(
         ]
     except Exception as exc:
         logger.warning("[EnterpriseReport] _fleet_violation_summary failed: %s", exc)
+        return []
+
+
+def _fleet_typed_text_violations(
+    device_ids: List[int],
+    start: datetime,
+    end: datetime,
+) -> List[dict]:
+    """Fleet-wide typed-text policy alert breakdown grouped by (device, pattern_type, severity).
+
+    Returns a flat list of dicts ordered by alert_count DESC, capped at 500.
+    """
+    if not device_ids:
+        return []
+    try:
+        rows = (
+            db.session.query(
+                TrackedDevice.id.label("device_id"),
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
+                TypedTextPolicyAlert.pattern_type,
+                TypedTextPolicyAlert.severity,
+                func.count(TypedTextPolicyAlert.id).label("alert_count"),
+                func.max(TypedTextPolicyAlert.detected_at).label("last_detected"),
+            )
+            .join(TrackedDevice, TrackedDevice.id == TypedTextPolicyAlert.device_id)
+            .filter(
+                TypedTextPolicyAlert.device_id.in_(device_ids),
+                TypedTextPolicyAlert.detected_at >= start,
+                TypedTextPolicyAlert.detected_at <= end,
+            )
+            .group_by(
+                TrackedDevice.id,
+                TrackedDevice.device_name,
+                TrackedDevice.employee_name,
+                TypedTextPolicyAlert.pattern_type,
+                TypedTextPolicyAlert.severity,
+            )
+            .order_by(func.count(TypedTextPolicyAlert.id).desc())
+            .limit(500)
+            .all()
+        )
+        return [
+            {
+                "device_id": r.device_id,
+                "device_name": r.device_name or "—",
+                "employee_name": r.employee_name or "—",
+                "pattern_type": r.pattern_type,
+                "severity": r.severity,
+                "alert_count": int(r.alert_count),
+                "last_detected": r.last_detected.isoformat() if r.last_detected else None,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.warning("[EnterpriseReport] _fleet_typed_text_violations failed: %s", exc)
+        return []
+
+
+def _build_violation_trend(
+    device_ids: List[int],
+    start: datetime,
+    end: datetime,
+) -> List[dict]:
+    """Daily violation counts for trend chart."""
+    if not device_ids:
+        return []
+    try:
+        # Restricted site events by day
+        site_rows = (
+            db.session.query(
+                func.date(RestrictedSiteEvent.observed_at_utc).label("day"),
+                func.count(RestrictedSiteEvent.id).label("count"),
+            )
+            .filter(
+                RestrictedSiteEvent.device_id.in_(device_ids),
+                RestrictedSiteEvent.observed_at_utc >= start,
+                RestrictedSiteEvent.observed_at_utc <= end,
+            )
+            .group_by(func.date(RestrictedSiteEvent.observed_at_utc))
+            .all()
+        )
+        # Typed text alerts by day
+        text_rows = (
+            db.session.query(
+                func.date(TypedTextPolicyAlert.detected_at).label("day"),
+                func.count(TypedTextPolicyAlert.id).label("count"),
+            )
+            .filter(
+                TypedTextPolicyAlert.device_id.in_(device_ids),
+                TypedTextPolicyAlert.detected_at >= start,
+                TypedTextPolicyAlert.detected_at <= end,
+            )
+            .group_by(func.date(TypedTextPolicyAlert.detected_at))
+            .all()
+        )
+        # Merge into daily totals
+        daily: Dict[str, dict] = {}
+        for r in site_rows:
+            day_str = str(r.day)
+            daily.setdefault(day_str, {"date": day_str, "site_violations": 0, "typed_text_alerts": 0})
+            daily[day_str]["site_violations"] = int(r.count)
+        for r in text_rows:
+            day_str = str(r.day)
+            daily.setdefault(day_str, {"date": day_str, "site_violations": 0, "typed_text_alerts": 0})
+            daily[day_str]["typed_text_alerts"] = int(r.count)
+        return sorted(daily.values(), key=lambda d: d["date"])
+    except Exception as exc:
+        logger.warning("[EnterpriseReport] _build_violation_trend failed: %s", exc)
         return []
 
 
@@ -715,6 +623,142 @@ def _server_metrics_bulk(device_ids: list, start: datetime, end: datetime) -> di
     return result
 
 
+def _count_by_type(rows: List[dict]) -> Dict[str, int]:
+    """Count devices by type from row dicts."""
+    counts: Dict[str, int] = {}
+    for r in rows:
+        t = r.get("device_type", "Unknown")
+        counts[t] = counts.get(t, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+# ── PR 17: Classification, dedup, segmentation, gap diagnostics ─────────────
+
+_ASSET_CLASS_INFRASTRUCTURE = frozenset({'server', 'switch', 'router', 'firewall', 'access_point'})
+_ASSET_CLASS_ENDPOINT = frozenset({'workstation', 'mobile', 'printer'})
+
+
+def _compute_classification_flags(dev) -> List[str]:
+    """Compute classification quality flags for a device."""
+    flags = []
+    conf = (getattr(dev, "classification_confidence", None) or "").strip().lower()
+    if conf == "low":
+        flags.append("low_confidence_classification")
+    if hasattr(dev, "device_name") and dev.device_name and dev.device_name.startswith("Device-"):
+        flags.append("auto_named_needs_review")
+    score = getattr(dev, "confidence_score", None) or 0
+    if conf != "manual" and score < 70:
+        flags.append("classification_review_needed")
+    return flags
+
+
+def _dedup_rank(row: dict) -> tuple:
+    """Deterministic ranking for duplicate IP resolution.
+    Higher tuple = preferred row. Stable across runs."""
+    return (
+        1 if row.get("uptime_pct") is not None else 0,
+        row.get("sample_count") or 0,
+        1 if (row.get("classification_confidence") or "").lower() == "manual" else 0,
+        row.get("device_id", 0),
+    )
+
+
+def _deduplicate_server_rows(rows: List[dict]):
+    """If two rows share same device_ip, keep the higher-ranked one.
+    Deterministic: same input always produces same output.
+    Returns (deduplicated_rows, duplicate_entries)."""
+    seen_ips: Dict[str, dict] = {}
+    dupes = []
+    for row in rows:
+        ip = row.get("device_ip")
+        if not ip or ip == "—":
+            # No IP — keep the row, key by device_id
+            seen_ips[f"_id_{row.get('device_id', id(row))}"] = row
+            continue
+        if ip in seen_ips:
+            existing = seen_ips[ip]
+            if _dedup_rank(row) > _dedup_rank(existing):
+                dupes.append(existing)
+                seen_ips[ip] = row
+            else:
+                dupes.append(row)
+        else:
+            seen_ips[ip] = row
+    return list(seen_ips.values()), dupes
+
+
+def _segment_rows(rows: List[dict]) -> dict:
+    """Segment rows by asset class: infrastructure, endpoints, unclassified."""
+    infra, endpoints, unclassified = [], [], []
+    for r in rows:
+        dtype = (r.get("device_type") or "unknown").lower()
+        if dtype in _ASSET_CLASS_INFRASTRUCTURE:
+            infra.append(r)
+        elif dtype in _ASSET_CLASS_ENDPOINT:
+            endpoints.append(r)
+        else:
+            unclassified.append(r)
+
+    def _avg_uptime(subset):
+        vals = [float(r["uptime_pct"]) for r in subset if r.get("uptime_pct") is not None]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    return {
+        "infrastructure": {
+            "count": len(infra),
+            "avg_uptime": _avg_uptime(infra),
+            "worst_3": sorted(
+                [r for r in infra if r.get("uptime_pct") is not None],
+                key=lambda r: float(r["uptime_pct"])
+            )[:3],
+        },
+        "endpoints": {
+            "count": len(endpoints),
+            "avg_uptime": _avg_uptime(endpoints),
+        },
+        "unclassified": {
+            "count": len(unclassified),
+            "device_types": list({r.get("device_type", "unknown") for r in unclassified}),
+        },
+    }
+
+
+def _batch_scan_existence(device_ips: List[str], start: datetime, end: datetime) -> set:
+    """Single query: returns set of IPs that have at least one scan in the period.
+    Replaces per-device EXISTS check — no N+1."""
+    if not device_ips:
+        return set()
+    from models.scan_history import DeviceScanHistory
+    rows = (
+        db.session.query(DeviceScanHistory.device_ip)
+        .filter(
+            DeviceScanHistory.device_ip.in_(device_ips),
+            DeviceScanHistory.scan_timestamp >= start,
+            DeviceScanHistory.scan_timestamp <= end,
+        )
+        .distinct()
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def _compute_data_gaps(row: dict, ips_with_scans: set) -> Optional[dict]:
+    """Compute reasons why a device has missing/unknown data. Pure Python (no DB)."""
+    gaps = {}
+    if row.get("uptime_pct") is None:
+        ip = row.get("device_ip", "")
+        gaps["uptime"] = "rollup_missing" if ip in ips_with_scans else "no_scans_in_period"
+    if row.get("avg_cpu") is None and (row.get("sample_count") or 0) == 0:
+        dtype = (row.get("device_type") or "").lower()
+        if dtype in ('switch', 'access_point', 'router', 'firewall'):
+            gaps["telemetry"] = "device_type_unsupported_for_agent"
+        else:
+            gaps["telemetry"] = "no_agent_data"
+    if row.get("auto_named"):
+        gaps["identity"] = "auto_named_from_ip_only"
+    return gaps if gaps else None
+
+
 # ── Main builder ─────────────────────────────────────────────────────────────
 
 def build_enterprise_uptime_report(
@@ -747,38 +791,58 @@ def build_enterprise_uptime_report(
 
     # ── Inventory / Server fleet (server_agent.py devices) ───────────────────
     server_rows: List[dict] = []
+    _dup_entries: List[dict] = []  # PR 17: duplicate IP entries (populated only for server fleet)
     sla_profiles_used: Dict[str, int] = {}   # {profile_name: device_count}
     if fleet in (None, "server"):
+        # Filter by infrastructure device types from config (default: server, switch, AP, router, firewall)
+        try:
+            from flask import current_app
+            infra_types = [t.lower() for t in current_app.config.get(
+                'INFRASTRUCTURE_DEVICE_TYPES',
+                ['server', 'switch', 'access_point', 'router', 'firewall']
+            )]
+        except RuntimeError:
+            # Outside Flask app context (e.g. unit tests)
+            infra_types = ['server', 'switch', 'access_point', 'router', 'firewall']
+
         inv_devices = (
             Device.query
-            .filter(Device.is_active.isnot(False))
+            .filter(
+                Device.is_active.isnot(False),
+                func.lower(Device.device_type).in_(infra_types),
+            )
             .order_by(Device.device_name.asc())
             .all()
         )
         inv_device_ids = [dev.device_id for dev in inv_devices]
         all_metrics = _server_metrics_bulk(inv_device_ids, start_dt, end_dt)
+        icmp_cov = _bulk_icmp_coverage(inv_device_ids, start_dt, end_dt)
 
         # Bulk-load per-device SLA thresholds from ComplianceProfile
         inv_profile_map = {
             dev.device_id: getattr(dev, "compliance_profile_id", None)
             for dev in inv_devices
         }
-        inv_sla_thresholds = _bulk_load_sla_thresholds(inv_profile_map)
+        inv_sla_thresholds, inv_sla_profiles = _bulk_load_sla_thresholds(inv_profile_map)
+        sla_profiles_used.update(inv_sla_profiles)
 
         for dev in inv_devices:
             try:
-                up = _inventory_uptime(dev.device_ip, dev.device_id, start_dt, end_dt)
+                up = _inventory_uptime(dev.device_ip, dev.device_id, start_dt, end_dt,
+                                      device_name=dev.device_name)
                 metrics = all_metrics.get(dev.device_id, {})
                 net_stats = _inventory_network_stats(dev.device_id, start_dt, end_dt)
                 dev_thresholds = inv_sla_thresholds.get(dev.device_id)
                 tier = sla_tier(up, dev_thresholds)
-                server_rows.append({
+                dev_cov = icmp_cov.get(dev.device_id, {})
+                row = {
                     "device_id": dev.device_id,
                     "device_name": dev.device_name or f"Device-{dev.device_ip}",
                     "device_ip": dev.device_ip or "—",
                     "device_type": dev.device_type or "Unknown",
                     "uptime_pct": up,
-                    "downtime_hours": downtime_hours(up, period_hours),
+                    "downtime_hours": downtime_hours(up, period_hours,
+                                                     observed_hours=dev_cov.get("observed_hours")),
                     "sla_tier": tier,
                     # ServerHealthLog / rollup metrics
                     "avg_cpu": metrics.get("avg_cpu"),
@@ -799,10 +863,35 @@ def build_enterprise_uptime_report(
                     "max_latency_ms": net_stats.get("max_latency_ms"),
                     "avg_packet_loss_pct": net_stats.get("avg_packet_loss_pct"),
                     "total_alerts": net_stats.get("total_alerts", 0),
+                    "timeout_count": _count_no_response_scans(dev.device_ip, start_dt, end_dt),
                     "sla_thresholds": "custom" if dev_thresholds else "default",
-                })
+                    # PR 17: Classification confidence annotations
+                    "classification_confidence": getattr(dev, "classification_confidence", None) or "Low",
+                    "confidence_score": getattr(dev, "confidence_score", None) or 0,
+                    "auto_named": bool(dev.device_name and dev.device_name.startswith("Device-")),
+                    "_classification_flags": _compute_classification_flags(dev),
+                    "monitoring_coverage_pct": dev_cov.get("coverage_pct"),
+                    "observed_hours": dev_cov.get("observed_hours"),
+                    "coverage_level": coverage_level(dev_cov.get("coverage_pct")),
+                }
+                row["anomaly_flag"], row["anomaly_reason"] = _detect_anomaly(row)
+                server_rows.append(row)
             except Exception as exc:
                 logger.warning("[EnterpriseReport] server device_id=%s error=%s", dev.device_id, exc)
+
+        # PR 17: Report-level IP deduplication (deterministic)
+        server_rows, _dup_entries = _deduplicate_server_rows(server_rows)
+
+        # PR 17: Data gap diagnostics (batched — single query)
+        _gap_device_ips = [
+            r["device_ip"] for r in server_rows
+            if r.get("uptime_pct") is None and r.get("device_ip") and r["device_ip"] != "—"
+        ]
+        _ips_with_scans = _batch_scan_existence(_gap_device_ips, start_dt, end_dt)
+        for r in server_rows:
+            gaps = _compute_data_gaps(r, _ips_with_scans)
+            if gaps:
+                r["_data_gaps"] = gaps
 
     # ── Tracked / Employee fleet (service.py devices) ────────────────────────
     tracked_rows: List[dict] = []
@@ -832,14 +921,20 @@ def build_enterprise_uptime_report(
             db.session.execute(text("SET LOCAL statement_timeout = '5000'"))
         tracked_ids = [dev.id for dev in tracked_devices]
         bulk_uptime = _bulk_uptime_and_incidents(tracked_ids, start_dt, end_dt)
+        _bulk_violations = get_device_violations(tracked_ids, start_dt, end_dt)
 
         for dev in tracked_devices:
             try:
-                up, incidents = bulk_uptime.get(dev.id, (None, []))
-                mttr, mtbf = _mttr_mtbf(incidents)
-                tier = sla_tier(up)
+                up, raw_incidents, cov_meta = bulk_uptime.get(dev.id, (None, [], {}))
+                merged_incidents, flap_count = _merge_flapping_incidents(raw_incidents)
+                mttr, mtbf = _mttr_mtbf(merged_incidents)
+                tier = sla_tier(up)   # TrackedDevices use default SLA thresholds
                 beh = _workstation_behavioral_metrics(dev.id, start_dt, end_dt, _category_cache)
-                tracked_rows.append({
+                viol = _bulk_violations.get(dev.id, {})
+                _obs_s = cov_meta.get("observed_seconds", 0)
+                _obs_h = _safe_round(_obs_s / 3600.0) if _obs_s else None
+                _cov_pct = cov_meta.get("monitoring_coverage_pct")
+                _tracked_row = {
                     "device_id": dev.id,
                     "device_name": dev.device_name or dev.hostname or dev.mac_address,
                     "employee_name": dev.employee_name or "—",
@@ -852,9 +947,13 @@ def build_enterprise_uptime_report(
                         if getattr(dev, "last_agent_sync_at", None) else None
                     ),
                     "uptime_pct": up,
-                    "downtime_hours": downtime_hours(up, period_hours),
+                    "downtime_hours": downtime_hours(up, period_hours,
+                                                     observed_hours=_obs_h),
                     "sla_tier": tier,
-                    "incident_count": len(incidents),
+                    "incident_count": len(merged_incidents),
+                    "raw_incident_count": len(raw_incidents),
+                    "flap_suppressed": flap_count,
+                    "flapping_score": _safe_round(flap_count / max(1, len(raw_incidents)), 2) if raw_incidents else None,
                     "mttr_min": mttr,
                     "mtbf_hours": mtbf,
                     "last_seen": dev.last_seen.isoformat() if dev.last_seen else None,
@@ -870,14 +969,56 @@ def build_enterprise_uptime_report(
                     "policy_violations":     beh.get("policy_violations"),
                     "productivity_score":    beh.get("productivity_score"),
                     "focus_score":           beh.get("focus_score"),
-                })
+                    # Violation fields (bulk-fetched, single query for all devices)
+                    "violation_count":       viol.get("violation_count", 0),
+                    "has_violation":         viol.get("has_violation", False),
+                    "last_violation_time":   viol.get("last_violation_time"),
+                    "top_domains":           viol.get("top_domains", []),
+                    "monitoring_coverage_pct": _cov_pct,
+                    "observed_hours":         _obs_h,
+                    "coverage_level":         coverage_level(_cov_pct),
+                }
+                _tracked_row["anomaly_flag"], _tracked_row["anomaly_reason"] = _detect_anomaly(_tracked_row)
+                tracked_rows.append(_tracked_row)
             except Exception as exc:
                 logger.warning("[EnterpriseReport] tracked device_id=%s error=%s", dev.id, exc)
 
     # ── Website violation detail breakdown (workstation fleet only) ───────────
     website_violation_details: List[dict] = []
+    typed_text_violation_details: List[dict] = []
+    violation_trend: List[dict] = []
     if fleet in (None, "workstation") and tracked_ids:
         website_violation_details = _fleet_violation_summary(tracked_ids, start_dt, end_dt)
+        typed_text_violation_details = _fleet_typed_text_violations(tracked_ids, start_dt, end_dt)
+        violation_trend = _build_violation_trend(tracked_ids, start_dt, end_dt)
+
+    total_site_violations = sum(v["violation_count"] for v in website_violation_details)
+    total_typed_text_alerts = sum(v["alert_count"] for v in typed_text_violation_details)
+
+    # Top offenders by combined violation count
+    offender_map: Dict[int, dict] = {}
+    for v in website_violation_details:
+        did = v["device_id"]
+        offender_map.setdefault(did, {"device_id": did, "device_name": v["device_name"], "employee_name": v["employee_name"], "site_violations": 0, "typed_text_alerts": 0})
+        offender_map[did]["site_violations"] += v["violation_count"]
+    for v in typed_text_violation_details:
+        did = v["device_id"]
+        offender_map.setdefault(did, {"device_id": did, "device_name": v["device_name"], "employee_name": v["employee_name"], "site_violations": 0, "typed_text_alerts": 0})
+        offender_map[did]["typed_text_alerts"] += v["alert_count"]
+    top_offenders = sorted(
+        offender_map.values(),
+        key=lambda o: o["site_violations"] + o["typed_text_alerts"],
+        reverse=True,
+    )[:10]
+
+    violations_section = {
+        "restricted_site_events": website_violation_details,
+        "typed_text_alerts": typed_text_violation_details,
+        "total_site_violations": total_site_violations,
+        "total_typed_text_alerts": total_typed_text_alerts,
+        "top_offenders": top_offenders,
+        "trend": violation_trend,
+    }
 
     # ── Fleet resource averages (server fleet only, agent-equipped devices) ──
     agent_server_rows = [r for r in server_rows if (r.get("sample_count") or 0) > 0]
@@ -902,6 +1043,17 @@ def build_enterprise_uptime_report(
 
     worst_five = sorted(rows_with_data, key=lambda r: r["uptime_pct"])[:5]
     best_three = sorted(rows_with_data, key=lambda r: r["uptime_pct"], reverse=True)[:3]
+
+    # PR 17: Asset class segmentation
+    segments = _segment_rows(server_rows)
+
+    # PR 17: Data quality summary
+    gap_rows = [r for r in server_rows if r.get("_data_gaps")]
+    gap_reasons: Dict[str, int] = {}
+    for r in gap_rows:
+        for _key, reason in r["_data_gaps"].items():
+            gap_reasons[reason] = gap_reasons.get(reason, 0) + 1
+    review_count = sum(1 for r in server_rows if "low_confidence_classification" in r.get("_classification_flags", []))
 
     logger.info("[EnterpriseReport] Built report: fleet=%s, servers=%d, tracked=%d, tier=%s",
                 fleet, len(server_rows), len(tracked_rows),
@@ -957,12 +1109,53 @@ def build_enterprise_uptime_report(
             "fleet_avg_disk":   _fleet_avg("avg_disk"),
             "agent_deployed_count": len(agent_server_rows),
             "sla_distribution": sla_dist,
+            "device_type_breakdown": _count_by_type(server_rows),
             "worst_devices": worst_five,
             "best_devices": best_three,
+            "segments": segments,
+            "data_quality": {
+                "devices_with_gaps": len(gap_rows),
+                "gap_reasons": dict(sorted(gap_reasons.items(), key=lambda x: x[1], reverse=True)),
+                "devices_needing_review": review_count,
+            },
+            "_duplicate_ips_merged": len(_dup_entries),
+            # Monitoring coverage: fleet-level aggregates
+            "monitoring_coverage_pct": _safe_round(
+                sum(r["monitoring_coverage_pct"] for r in all_rows
+                    if r.get("monitoring_coverage_pct") is not None)
+                / max(1, sum(1 for r in all_rows if r.get("monitoring_coverage_pct") is not None))
+            ) if any(r.get("monitoring_coverage_pct") is not None for r in all_rows) else None,
+            "low_coverage_device_count": sum(
+                1 for r in all_rows
+                if r.get("coverage_level") in ("low", "unknown")
+            ),
         },
         "server_rows": server_rows,
         "tracked_rows": tracked_rows,
         "website_violation_details": website_violation_details,
+        "violations": violations_section,
+        "sla_profiles_used": sla_profiles_used if sla_profiles_used else None,
         "generated_at": datetime.utcnow().isoformat(),
         "_confidence": _confidence,
     }
+
+    # ── Generate insights (rule-based mandatory, Gemini optional) ──────────
+    try:
+        from services.report_insight_engine import ReportInsightEngine
+        engine = ReportInsightEngine()
+        report_dict = result  # alias for clarity
+        insights = engine.generate_insights(report_dict, "enterprise")
+        try:
+            from flask import current_app
+            if current_app.config.get("GEMINI_REPORT_INSIGHTS_ENABLED"):
+                insights = engine.enhance_with_gemini(insights, report_dict)
+        except RuntimeError:
+            pass  # Outside app context
+        result["insights"] = insights
+        result["_severities"] = insights.get("metric_severities", {})
+    except Exception as exc:
+        logger.warning("[EnterpriseReport] Insight generation failed: %s", exc)
+        result["insights"] = None
+        result["_severities"] = {}
+
+    return result

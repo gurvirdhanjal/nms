@@ -1,0 +1,9 @@
+{
+  "_comment": "NMS Core Agent config — place at C:\\ProgramData\\nms-agent\\config.json",
+  "nms_server_url": "http://172.16.2.103:5001/api/agent/metrics",
+  "agent_token": "",
+  "interval_seconds": 30,
+  "request_timeout": 5,
+  "top_processes_limit": 5,
+  "buffer_max_records": 1000
+}

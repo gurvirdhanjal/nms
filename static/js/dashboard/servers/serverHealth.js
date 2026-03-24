@@ -3,349 +3,632 @@ import { timeAgo } from '../utils.js';
 import { patchKeyedTableRows } from '../domPatch.js';
 
 let currentFilter = 'all';
+const chartRegistry = new Map();
 
-const statusColors = {
-    'Healthy': 'text-success',
-    'Warning': 'text-warning',
-    'Critical': 'text-danger',
-    'Offline': 'text-secondary',
-    'Unknown': 'text-muted'
+const STATE_TO_BADGE = {
+    Healthy: 'tactical-badge-success',
+    Warning: 'tactical-badge-warning',
+    Critical: 'tactical-badge-danger',
+    Offline: 'tactical-badge-danger',
+    Unknown: 'tactical-badge-secondary',
 };
 
-const statusDot = {
-    'Healthy': 'status-dot status-healthy',
-    'Warning': 'status-dot status-warning',
-    'Critical': 'status-dot status-critical',
-    'Offline': 'status-dot status-offline',
-    'Unknown': 'status-dot status-unknown'
-};
-
-const statusBadge = {
-    'Healthy': 'tactical-badge-success',
-    'Warning': 'tactical-badge-warning',
-    'Critical': 'tactical-badge-danger',
-    'Offline': 'tactical-badge-secondary',
-    'Unknown': 'tactical-badge-secondary'
-};
-
-export function renderServerHealthSummary(payload) {
-    const counts = payload?.counts;
-    if (!counts) return;
-
-    const set = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val;
-    };
-
-    set('val-servers-total', counts.total ?? 0);
-    set('val-servers-healthy', counts.healthy ?? 0);
-    set('val-servers-warning', counts.warning ?? 0);
-    set('val-servers-critical', counts.critical ?? 0);
-    set('val-servers-offline', counts.offline ?? 0);
+function safeText(id, value) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.textContent = value;
+    }
 }
 
-export function renderServerHealthTable(payload) {
-    const tableBody = document.getElementById('table-server-health-body');
-    if (!tableBody) return;
+function toNumber(value, fallback = null) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+}
 
-    let servers = payload?.servers || [];
-    if (currentFilter !== 'all') {
-        servers = servers.filter(s => (s.health || '').toLowerCase() === currentFilter);
+function formatPercent(value, digits = 1, empty = '-') {
+    const numeric = toNumber(value);
+    if (numeric === null) return empty;
+    return `${numeric.toFixed(digits)}%`;
+}
+
+function formatDelta(value) {
+    const numeric = toNumber(value);
+    if (numeric === null) return 'No 24h baseline yet';
+    const prefix = numeric >= 0 ? '+' : '';
+    return `${prefix}${numeric.toFixed(1)}% vs previous 24h`;
+}
+
+function formatMs(value, digits = 1, empty = '-') {
+    const numeric = toNumber(value);
+    if (numeric === null) return empty;
+    return `${numeric.toFixed(digits)} ms`;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizeSeverityLabel(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'offline') return 'Offline';
+    if (normalized === 'critical') return 'Critical';
+    if (normalized === 'warning') return 'Warning';
+    if (normalized === 'healthy') return 'Healthy';
+    return 'Unknown';
+}
+
+function normalizeSeverityClass(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'critical' || normalized === 'offline') return 'critical';
+    if (normalized === 'warning') return 'warning';
+    return 'healthy';
+}
+
+function severityRank(issue) {
+    return Number(issue?.severity_rank ?? 0);
+}
+
+function sortServers(servers) {
+    return [...(servers || [])].sort((left, right) => {
+        const leftIssue = left.primary_issue || {};
+        const rightIssue = right.primary_issue || {};
+        const bySeverity = severityRank(rightIssue) - severityRank(leftIssue);
+        if (bySeverity !== 0) return bySeverity;
+
+        const byScore = Number(rightIssue.breach_score || 0) - Number(leftIssue.breach_score || 0);
+        if (byScore !== 0) return byScore;
+
+        const leftHealth = normalizeSeverityClass(left.health);
+        const rightHealth = normalizeSeverityClass(right.health);
+        const byHealth = ['healthy', 'warning', 'critical'].indexOf(leftHealth) - ['healthy', 'warning', 'critical'].indexOf(rightHealth);
+        if (byHealth !== 0) return byHealth;
+
+        return String(left.hostname || left.device_name || left.ip || '').localeCompare(
+            String(right.hostname || right.device_name || right.ip || '')
+        );
+    });
+}
+
+function filteredServers(payload) {
+    const servers = sortServers(payload?.servers || []);
+    if (currentFilter === 'problem') {
+        return servers.filter((server) => Boolean(server.primary_issue) || server.health !== 'Healthy');
+    }
+    if (currentFilter === 'healthy') {
+        return servers.filter((server) => !server.primary_issue && server.health === 'Healthy');
+    }
+    return servers;
+}
+
+function updateFleetCardState(cardId, stateId, impactId, deltaId, card) {
+    const el = document.getElementById(cardId);
+    const stateClass = normalizeSeverityClass(card?.severity);
+    if (el) {
+        el.classList.remove('state-critical', 'state-warning');
+        if (stateClass === 'critical') {
+            el.classList.add('state-critical');
+        } else if (stateClass === 'warning') {
+            el.classList.add('state-warning');
+        }
     }
 
-    if (servers.length === 0) {
-        const msg = currentFilter === 'all'
-            ? 'No servers found'
-            : `No servers match "${currentFilter}"`;
-        patchKeyedTableRows(tableBody, [], {
-            emptyColSpan: 10,
-            emptyMessage: msg,
-            emptyClassName: 'text-center text-secondary p-3'
-        });
+    safeText(stateId, normalizeSeverityLabel(card?.severity_label || card?.severity));
+    safeText(impactId, `${card?.impacted_servers ?? 0} ${card?.impacted_servers === 1 ? 'server' : 'servers'} impacted`);
+    safeText(deltaId, formatDelta(card?.delta_24h));
+}
+
+function wireBannerActions(issue) {
+    const viewBtn = document.getElementById('btn-fleet-banner-view');
+    const ackBtn = document.getElementById('btn-fleet-banner-ack');
+    if (viewBtn) {
+        viewBtn.onclick = () => {
+            if (issue?.device_id) {
+                openServerModal(issue.device_id);
+                return;
+            }
+            document.getElementById('server-health-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+    }
+
+    if (ackBtn) {
+        ackBtn.disabled = !issue?.event_id;
+        ackBtn.textContent = issue?.is_acknowledged ? 'Acknowledged' : 'Acknowledge';
+        ackBtn.onclick = async () => {
+            if (!issue?.event_id || issue?.is_acknowledged) return;
+            ackBtn.disabled = true;
+            ackBtn.textContent = 'Acknowledging...';
+            try {
+                const response = await fetch(`/api/dashboard/alerts/${issue.event_id}/acknowledge`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Failed to acknowledge (${response.status})`);
+                }
+                ackBtn.textContent = 'Acknowledged';
+            } catch (_error) {
+                ackBtn.disabled = false;
+                ackBtn.textContent = 'Retry Ack';
+            }
+        };
+    }
+}
+
+function renderBanner(issue) {
+    const banner = document.getElementById('fleet-priority-banner');
+    if (!banner) return;
+
+    if (!issue) {
+        banner.classList.add('initially-hidden');
         return;
     }
 
-    const formatPct = (val) => (val !== null && val !== undefined) ? `${parseFloat(val).toFixed(1)}%` : '-';
-    const formatMs = (val) => (val !== null && val !== undefined) ? `${parseFloat(val).toFixed(2)} ms` : '-';
+    const severityClass = normalizeSeverityClass(issue.severity);
+    banner.classList.remove('initially-hidden', 'severity-critical', 'severity-warning');
+    if (severityClass === 'critical') {
+        banner.classList.add('severity-critical');
+    } else if (severityClass === 'warning') {
+        banner.classList.add('severity-warning');
+    }
 
-    patchKeyedTableRows(tableBody, servers, {
-        getKey: (server, index) => server.device_id || server.ip || `server-${index}`,
-        renderCells: (server) => {
-            const name = server.hostname || server.device_name || server.ip || 'Unknown';
-            const health = server.health || 'Unknown';
-            const healthClass = statusColors[health] || 'text-muted';
-            const dotClass = statusDot[health] || 'status-dot status-unknown';
-            const badgeClass = statusBadge[health] || 'tactical-badge-secondary';
-            const statusHint = health === 'Offline' ? 'Agent offline' : (health === 'Unknown' ? 'No data yet' : 'Agent reporting');
-            const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
-            const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
-
-            return `
-                <td>
-                    <div class="fw-bold text-truncate" style="max-width: 180px;">${name}</div>
-                    <div class="small text-secondary font-monospace">${server.ip || '-'}</div>
-                </td>
-                <td>
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="${dotClass}"></span>
-                        <span class="tactical-badge ${badgeClass}">${health}</span>
-                    </div>
-                </td>
-                <td>
-                    <div class="fw-bold">${formatPct(server.cpu_usage)}</div>
-                </td>
-                <td>
-                    <div class="fw-bold">${formatPct(server.memory_usage)}</div>
-                </td>
-                <td>
-                    <div class="fw-bold">${formatPct(server.disk_usage)}</div>
-                </td>
-                <td class="d-none d-xl-table-cell">
-                    <div class="fw-bold">${formatMs(server.latency)}</div>
-                </td>
-                <td class="d-none d-xl-table-cell">
-                    <div class="fw-bold text-secondary">${formatPct(server.packet_loss)}</div>
-                </td>
-                <td class="d-none d-xl-table-cell">
-                    <div class="fw-bold text-secondary">${formatMs(server.jitter)}</div>
-                </td>
-                <td>
-                    <div class="fw-bold text-nowrap">${lastSeenLabel}</div>
-                    <div class="small text-secondary text-nowrap">${lastSeenExact}</div>
-                </td>
-                <td class="text-end">
-                    <div class="dropdown">
-                        <button class="btn btn-xs tactical-btn-outline dropdown-toggle no-caret" data-bs-toggle="dropdown">
-                            <i class="fas fa-ellipsis-v"></i>
-                        </button>
-                        <ul class="dropdown-menu tactical-dropdown">
-                            <li><a class="dropdown-item" href="/device/${server.device_id}">View Details</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="#">Acknowledge</a></li>
-                        </ul>
-                    </div>
-                </td>
-            `;
-        },
-        applyRow: (row, server) => {
-            row.className = 'server-health-row';
-            row.dataset.id = server.device_id || '';
+    const pill = document.getElementById('fleet-banner-severity');
+    if (pill) {
+        pill.classList.remove('severity-critical', 'severity-warning');
+        if (severityClass === 'critical') {
+            pill.classList.add('severity-critical');
+        } else if (severityClass === 'warning') {
+            pill.classList.add('severity-warning');
         }
+        pill.textContent = normalizeSeverityLabel(issue.severity);
+    }
+
+    const issueLabel = issue.metric_label || 'Incident';
+    const issueValue = issue.formatted_value || '';
+    safeText('fleet-banner-message', `${issueLabel.toUpperCase()} - ${issue.hostname || issue.device_name} (${issueValue})`);
+    safeText(
+        'fleet-banner-subtext',
+        issue.message || `${issue.hostname || issue.device_name} requires investigation.`
+    );
+    wireBannerActions(issue);
+}
+
+function renderImpactSummary(summary = {}) {
+    const affected = Number(summary.affected_servers || 0);
+    const total = Number(summary.total_servers || 0);
+    const primaryLabel = summary.primary_issue_label || 'No active server issues';
+    const severity = summary.primary_issue_severity || 'Healthy';
+    const unaffected = Array.isArray(summary.unaffected_domains) && summary.unaffected_domains.length
+        ? summary.unaffected_domains.join(', ')
+        : 'None';
+
+    safeText('fleet-impact-title', `${primaryLabel} (${severity})`);
+    safeText(
+        'fleet-impact-footprint',
+        `${affected} of ${total} servers affected (${Number(summary.fleet_pct || 0).toFixed(1)}% of fleet)`
+    );
+    safeText('fleet-impact-unaffected', unaffected);
+}
+
+function renderActiveIssues(issues = []) {
+    const container = document.getElementById('fleet-active-issues-list');
+    safeText('fleet-active-issues-count', String(issues.length));
+    if (!container) return;
+
+    if (!issues.length) {
+        container.innerHTML = '<div class="fleet-empty-state">No active server incidents.</div>';
+        return;
+    }
+
+    container.innerHTML = issues.map((issue) => {
+        const severityClass = normalizeSeverityClass(issue.severity);
+        return `
+            <article class="fleet-issue-card severity-${severityClass}">
+                <div class="fleet-issue-head">
+                    <div>
+                        <div class="fleet-issue-title">${escapeHtml(issue.hostname || issue.device_name || issue.ip || 'Unknown')}</div>
+                        <div class="fleet-issue-sub">${escapeHtml(issue.ip || '-')}</div>
+                    </div>
+                    <span class="badge ${STATE_TO_BADGE[normalizeSeverityLabel(issue.severity)] || 'tactical-badge-secondary'}">${escapeHtml(normalizeSeverityLabel(issue.severity))}</span>
+                </div>
+                <div class="fleet-issue-metric">${escapeHtml(issue.metric_label || 'Issue')} ${escapeHtml(issue.formatted_value || '')}</div>
+                <div class="fleet-issue-stats">
+                    <div class="fleet-issue-stat">
+                        <span class="fleet-issue-stat-label">CPU</span>
+                        <strong>${formatPercent(issue.metrics?.cpu)}</strong>
+                    </div>
+                    <div class="fleet-issue-stat">
+                        <span class="fleet-issue-stat-label">Memory</span>
+                        <strong>${formatPercent(issue.metrics?.memory)}</strong>
+                    </div>
+                    <div class="fleet-issue-stat">
+                        <span class="fleet-issue-stat-label">Disk</span>
+                        <strong>${formatPercent(issue.metrics?.disk)}</strong>
+                    </div>
+                </div>
+                <div class="fleet-issue-actions">
+                    <button class="btn btn-sm tactical-btn-outline" type="button" data-issue-open="${escapeHtml(issue.device_id)}">Investigate</button>
+                    <a class="btn btn-sm tactical-btn-outline" href="/devices/${encodeURIComponent(issue.device_id)}/server-monitoring">Open Details</a>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    container.querySelectorAll('[data-issue-open]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const deviceId = Number(button.getAttribute('data-issue-open'));
+            if (Number.isFinite(deviceId)) {
+                openServerModal(deviceId);
+            }
+        });
     });
 }
 
-export function initServerHealthTable() {
-    const table = document.getElementById('table-server-health');
-    if (!table) return;
+function formatTrendLabel(label) {
+    if (!label) return '';
+    const parsed = new Date(label);
+    if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    }
+    return String(label).slice(11, 16) || String(label);
+}
 
-    table.addEventListener('click', (e) => {
-        const row = e.target.closest('tr.server-health-row');
-        if (!row) return;
-        const deviceId = row.dataset.id;
-        if (deviceId) openServerModal(deviceId);
+function buildTrendPlugin(metric) {
+    return {
+        id: `fleet-thresholds-${metric}`,
+        beforeDatasetsDraw(chart) {
+            const y = chart.scales.y;
+            const x = chart.chartArea;
+            if (!y || !x) return;
+
+            const ctx = chart.ctx;
+            const bands = chart.options.plugins?.fleetBands?.bands || [];
+            ctx.save();
+            bands.forEach((band) => {
+                const from = Number(band.from || 0);
+                const to = Number(band.to || 0);
+                const top = y.getPixelForValue(to);
+                const bottom = y.getPixelForValue(from);
+                ctx.fillStyle = band.color || 'rgba(255,255,255,0.04)';
+                ctx.fillRect(x.left, top, x.right - x.left, bottom - top);
+            });
+            ctx.restore();
+        },
+        afterDatasetsDraw(chart) {
+            const y = chart.scales.y;
+            const x = chart.chartArea;
+            if (!y || !x) return;
+
+            const ctx = chart.ctx;
+            const warning = chart.options.plugins?.fleetBands?.warning;
+            const critical = chart.options.plugins?.fleetBands?.critical;
+            ctx.save();
+            [warning, critical].forEach((value, index) => {
+                if (typeof value !== 'number' || value <= 0) return;
+                const py = y.getPixelForValue(value);
+                ctx.strokeStyle = index === 0 ? 'rgba(255, 193, 7, 0.85)' : 'rgba(220, 53, 69, 0.92)';
+                ctx.setLineDash([5, 4]);
+                ctx.beginPath();
+                ctx.moveTo(x.left, py);
+                ctx.lineTo(x.right, py);
+                ctx.stroke();
+            });
+            ctx.restore();
+        },
+    };
+}
+
+function renderTrendChart(metric, trend, metaId) {
+    const canvasId = `chart-fleet-trend-${metric}`;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    const labels = Array.isArray(trend?.labels) ? trend.labels.map(formatTrendLabel) : [];
+    const values = Array.isArray(trend?.values) ? trend.values : [];
+    const markers = Array.isArray(trend?.markers) ? trend.markers : [];
+    const metaText = trend?.delta === null || trend?.delta === undefined
+        ? 'Awaiting enough history for a 24h comparison'
+        : `${trend.delta >= 0 ? '+' : ''}${Number(trend.delta).toFixed(1)}% vs previous 24h`;
+
+    safeText(metaId, metaText);
+
+    const datasetColor = metric === 'cpu'
+        ? '#74c0fc'
+        : metric === 'memory'
+            ? '#ffd166'
+            : '#a7f3d0';
+
+    const chartData = {
+        labels,
+        datasets: [
+            {
+                type: 'line',
+                label: metric,
+                data: values,
+                borderColor: datasetColor,
+                backgroundColor: datasetColor,
+                pointRadius: 0,
+                borderWidth: 2,
+                tension: 0.3,
+                fill: false,
+            },
+            {
+                type: 'scatter',
+                label: `${metric}-markers`,
+                data: markers.map((marker) => ({
+                    x: labels[marker.index] ?? labels[labels.length - 1] ?? '',
+                    y: marker.value,
+                })),
+                pointRadius: 4,
+                pointHoverRadius: 4,
+                pointBackgroundColor: markers.map((marker) => marker.state === 'critical' ? '#dc3545' : '#ffc107'),
+                pointBorderColor: '#0f1720',
+                pointBorderWidth: 1.5,
+                showLine: false,
+            },
+        ],
+    };
+
+    const existing = chartRegistry.get(canvasId);
+    if (existing) {
+        existing.destroy();
+        chartRegistry.delete(canvasId);
+    }
+
+    const chart = new Chart(canvas, {
+        type: 'line',
+        data: chartData,
+        plugins: [buildTrendPlugin(metric)],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label(context) {
+                            return `${context.parsed.y?.toFixed?.(1) ?? context.parsed.y}%`;
+                        },
+                    },
+                },
+                fleetBands: {
+                    bands: trend?.bands || [],
+                    warning: toNumber(trend?.warning),
+                    critical: toNumber(trend?.critical),
+                },
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#8a97a6',
+                        maxTicksLimit: 6,
+                    },
+                    grid: {
+                        color: 'rgba(148, 163, 184, 0.08)',
+                    },
+                },
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        color: '#8a97a6',
+                        callback(value) {
+                            return `${value}%`;
+                        },
+                    },
+                    grid: {
+                        color: 'rgba(148, 163, 184, 0.08)',
+                    },
+                },
+            },
+        },
+    });
+
+    chartRegistry.set(canvasId, chart);
+}
+
+function renderTrendSection(trends = {}, p95 = {}) {
+    safeText('val-fleet-p95-cpu', `P95: ${formatPercent(p95.cpu)}`);
+    safeText('val-fleet-p95-mem', `P95: ${formatPercent(p95.memory)}`);
+    safeText('val-fleet-p95-disk', `P95: ${formatPercent(p95.disk)}`);
+
+    renderTrendChart('cpu', trends.cpu || {}, 'fleet-trend-cpu-meta');
+    renderTrendChart('memory', trends.memory || {}, 'fleet-trend-memory-meta');
+    renderTrendChart('disk', trends.disk || {}, 'fleet-trend-disk-meta');
+}
+
+function updateFilterButtonLabels(filters = {}) {
+    document.querySelectorAll('[data-server-filter]').forEach((button) => {
+        const filter = button.getAttribute('data-server-filter') || 'all';
+        let label = 'All';
+        if (filter === 'problem') label = 'Problems';
+        if (filter === 'healthy') label = 'Healthy';
+        const count = Number(filters[filter] ?? 0);
+        button.textContent = `${label} (${count})`;
+        button.classList.toggle('active', filter === currentFilter);
     });
 }
 
-export function setServerHealthFilter(filter) {
-    currentFilter = (filter || 'all').toLowerCase();
+export function renderServerHealthSummary(payload) {
+    const counts = payload?.counts || {};
+    safeText('val-servers-total', counts.total ?? 0);
+    safeText('val-servers-healthy', counts.healthy ?? 0);
+    safeText('val-servers-warning', counts.warning ?? 0);
+    safeText('val-servers-critical', counts.critical ?? 0);
+    safeText('val-servers-offline', counts.offline ?? 0);
+    updateFilterButtonLabels(payload?.filters || {});
 }
-
-// Global chart instances for sparklines
-let cpuSparkChart = null;
-let memSparkChart = null;
 
 export function renderFleetOverview(data) {
     if (!data) return;
 
-    // 1. Health Cards
     const health = data.health || {};
-    document.getElementById('val-fleet-health-percent').textContent =
-        health.total > 0 ? `${Math.round((health.healthy / health.total) * 100)}%` : '-';
-    document.getElementById('val-fleet-health-counts').textContent =
-        `${health.healthy}/${health.total} Servers Healthy`;
+    const countsText = `${health.healthy ?? 0} healthy, ${(health.warning ?? 0) + (health.critical ?? 0) + (health.offline ?? 0)} degraded`;
+    const fleetState = data?.dominant_issue
+        ? normalizeSeverityLabel(data.dominant_issue.severity)
+        : (data?.impact_summary?.affected_servers > 0 ? 'Warning' : 'Healthy');
 
-    // 2. Capacity Metrics
-    const agg = data.aggregates || {};
-    const p95 = data.p95 || {};
-    document.getElementById('val-fleet-avg-cpu').textContent = `${agg.cpu}%`;
-    document.getElementById('val-fleet-p95-cpu').textContent = p95.cpu;
-    document.getElementById('val-fleet-avg-mem').textContent = `${agg.memory}%`;
-    document.getElementById('val-fleet-p95-mem').textContent = p95.memory;
-    document.getElementById('val-fleet-avg-disk').textContent = `${agg.disk}%`;
+    safeText('val-fleet-health-percent', `${Number(data?.impact_summary?.fleet_pct || 0).toFixed(0)}%`);
+    safeText('val-fleet-health-state', fleetState);
+    safeText('val-fleet-health-counts', countsText);
 
-    // 3. Alerts Bar
-    const alertBar = document.getElementById('fleet-alerts-bar');
-    const alertText = document.getElementById('fleet-alerts-text');
-    const criticals = data.alerts || [];
-
-    // Count disk warnings locally if needed, or rely on backend
-    // For now, just show critical servers
-    if (criticals.length > 0) {
-        alertBar.style.display = 'block';
-        const serverNames = criticals.map(c => c.name).slice(0, 3).join(', ');
-        const more = criticals.length > 3 ? ` and ${criticals.length - 3} more` : '';
-        alertText.innerHTML = `<strong>Attention Needed:</strong> High load detected on ${serverNames}${more}.`;
-    } else {
-        alertBar.style.display = 'none';
+    const healthCard = document.getElementById('card-fleet-health');
+    if (healthCard) {
+        healthCard.classList.remove('state-critical', 'state-warning');
+        if (fleetState === 'Critical') {
+            healthCard.classList.add('state-critical');
+        } else if (fleetState === 'Warning') {
+            healthCard.classList.add('state-warning');
+        }
     }
 
-    // 4. Sparklines
-    renderSparkline('chart-spark-cpu', data.trends?.labels, data.trends?.cpu, '#0d6efd', 'cpu');
-    renderSparkline('chart-spark-mem', data.trends?.labels, data.trends?.memory, '#6610f2', 'mem');
+    const cpuCard = data.metric_cards?.cpu || {};
+    const memoryCard = data.metric_cards?.memory || {};
+    const diskCard = data.metric_cards?.disk || {};
+
+    safeText('val-fleet-avg-cpu', formatPercent(cpuCard.value));
+    safeText('val-fleet-avg-mem', formatPercent(memoryCard.value));
+    safeText('val-fleet-avg-disk', formatPercent(diskCard.value));
+
+    updateFleetCardState('fleet-card-cpu', 'val-fleet-cpu-state', 'val-fleet-cpu-impact', 'val-fleet-cpu-delta', cpuCard);
+    updateFleetCardState('fleet-card-memory', 'val-fleet-memory-state', 'val-fleet-memory-impact', 'val-fleet-memory-delta', memoryCard);
+    updateFleetCardState('fleet-card-disk', 'val-fleet-disk-state', 'val-fleet-disk-impact', 'val-fleet-disk-delta', diskCard);
+
+    safeText(
+        'val-fleet-uptime',
+        `${formatPercent(data?.uptime?.current_24h_pct)} last 24h (${(Number(data?.uptime?.delta_pct || 0) >= 0 ? '+' : '') + Number(data?.uptime?.delta_pct || 0).toFixed(1)}% vs yesterday)`
+    );
+
+    renderBanner(data.dominant_issue);
+    renderImpactSummary(data.impact_summary || {});
+    renderActiveIssues(data.active_issues || []);
+    renderTrendSection(data.trends || {}, data.p95 || {});
+    updateFilterButtonLabels(data.filters || {});
 }
 
-function renderSparkline(canvasId, labels, data, color, type) {
-    const ctx = document.getElementById(canvasId);
-    if (!ctx) return;
-
-    const chartRef = type === 'cpu' ? cpuSparkChart : memSparkChart;
-    if (chartRef && chartRef.canvas === ctx) {
-        chartRef.data.labels = labels || [];
-        chartRef.data.datasets[0].data = data || [];
-        chartRef.data.datasets[0].borderColor = color;
-        chartRef.update('none');
-        return;
-    }
-
-    // Canvas might have been re-rendered; recreate only in that case.
-    if (chartRef) chartRef.destroy();
-
-    const nextChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels || [],
-            datasets: [{
-                data: data || [],
-                borderColor: color,
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: false,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { enabled: false } },
-            scales: {
-                x: { display: false },
-                y: { display: false, min: 0, max: 100 }
-            },
-            animation: false
-        }
-    });
-
-    if (type === 'cpu') {
-        cpuSparkChart = nextChart;
-    } else {
-        memSparkChart = nextChart;
-    }
+export function renderServerHealthTable(payload) {
+    renderEnhancedServerTable(payload);
 }
 
 export function renderEnhancedServerTable(payload) {
     const tableBody = document.getElementById('table-server-health-body');
     if (!tableBody) return;
 
-    let servers = payload?.servers || [];
-
-    // Apply Filter
-    if (currentFilter !== 'all') {
-        if (currentFilter === 'problem') {
-            servers = servers.filter(s => s.health !== 'Healthy');
-        } else {
-            servers = servers.filter(s => (s.health || '').toLowerCase() === currentFilter);
-        }
-    }
-
-    if (servers.length === 0) {
+    const servers = filteredServers(payload);
+    if (!servers.length) {
         patchKeyedTableRows(tableBody, [], {
             emptyColSpan: 10,
-            emptyMessage: 'No servers match filter',
-            emptyClassName: 'text-center text-secondary p-3'
+            emptyMessage: currentFilter === 'healthy' ? 'No healthy servers in current scope' : 'No servers match filter',
+            emptyClassName: 'text-center text-secondary p-3',
         });
         return;
     }
 
     patchKeyedTableRows(tableBody, servers, {
-        getKey: (server, index) => server.device_id || server.ip || `server-enhanced-${index}`,
+        getKey: (server, index) => server.device_id || server.ip || `server-${index}`,
         renderCells: (server) => {
             const name = server.hostname || server.device_name || server.ip || 'Unknown';
-            const health = server.health || 'Unknown';
-
-            let dotClass = 'bg-secondary';
-            if (health === 'Healthy') dotClass = 'bg-success';
-            else if (health === 'Warning') dotClass = 'bg-warning';
-            else if (health === 'Critical') dotClass = 'bg-danger';
-
-            const cpu = server.cpu_usage ?? 0;
-            const mem = server.memory_usage ?? 0;
-            const disk = server.disk_usage ?? 0;
-            const latency = server.latency;
-            const packetLoss = server.packet_loss;
-            const jitter = server.jitter;
+            const stateLabel = normalizeSeverityLabel(server.health);
+            const stateBadge = STATE_TO_BADGE[stateLabel] || 'tactical-badge-secondary';
+            const issueLabel = server.primary_issue?.metric_label || (stateLabel === 'Healthy' ? 'Nominal' : 'Attention Required');
+            const issueValue = server.primary_issue?.formatted_value || formatPercent(server.memory_usage, 1, 'N/A');
             const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
             const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';
 
-            const getValClass = (val) => val > 90 ? 'text-danger fw-bold' : (val > 75 ? 'text-warning fw-bold' : '');
-            const formatPct = (val) => (val !== null && val !== undefined) ? `${Number(val).toFixed(1)}%` : '-';
-            const formatMs = (val) => (val !== null && val !== undefined) ? `${Number(val).toFixed(1)} ms` : '-';
-
             return `
                 <td>
-                    <div class="d-flex align-items-center">
-                        <div class="rounded-circle ${dotClass} me-3" style="width: 10px; height: 10px;"></div>
-                        <div>
-                            <div class="fw-bold text-light">${name}</div>
-                            <div class="small text-secondary" style="font-size: 0.75rem;">${server.ip || ''}</div>
-                        </div>
+                    <div class="fw-bold text-truncate" style="max-width: 210px;">${escapeHtml(name)}</div>
+                    <div class="small text-secondary font-monospace">${escapeHtml(server.ip || '-')}</div>
+                </td>
+                <td>
+                    <div class="d-flex flex-column gap-1">
+                        <span class="badge ${stateBadge}">${escapeHtml(stateLabel)}</span>
+                        <div class="small text-secondary">${escapeHtml(issueLabel)}${issueValue && issueValue !== 'N/A' ? ` - ${escapeHtml(issueValue)}` : ''}</div>
                     </div>
                 </td>
-                <td>
-                    <span class="badge ${health === 'Healthy' ? 'bg-success-subtle text-success' : (health === 'Critical' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning')}">
-                        ${health}
-                    </span>
-                </td>
-                <td class="${getValClass(cpu)}">${cpu.toFixed(1)}%</td>
-                <td class="${getValClass(mem)}">${mem.toFixed(1)}%</td>
-                <td class="${getValClass(disk)}">${disk.toFixed(1)}%</td>
+                <td class="${(toNumber(server.cpu_usage, 0) >= 95 ? 'text-danger fw-bold' : toNumber(server.cpu_usage, 0) >= 80 ? 'text-warning fw-bold' : '')}">${formatPercent(server.cpu_usage)}</td>
+                <td class="${(toNumber(server.memory_usage, 0) >= 95 ? 'text-danger fw-bold' : toNumber(server.memory_usage, 0) >= 85 ? 'text-warning fw-bold' : '')}">${formatPercent(server.memory_usage)}</td>
+                <td class="${(toNumber(server.disk_usage, 0) >= 95 ? 'text-danger fw-bold' : toNumber(server.disk_usage, 0) >= 80 ? 'text-warning fw-bold' : '')}">${formatPercent(server.disk_usage)}</td>
                 <td class="d-none d-xl-table-cell">
-                    <div class="fw-semibold">${formatMs(latency)}</div>
+                    <div class="fw-semibold">${formatMs(server.latency)}</div>
                 </td>
                 <td class="d-none d-xl-table-cell">
-                    <div class="${packetLoss > 0 ? 'text-warning fw-semibold' : 'text-secondary'}">${formatPct(packetLoss)}</div>
+                    <div class="${toNumber(server.packet_loss, 0) > 0 ? 'text-warning fw-semibold' : 'text-secondary'}">${formatPercent(server.packet_loss, 1)}</div>
                 </td>
                 <td class="d-none d-xl-table-cell">
-                    <div class="text-secondary">${formatMs(jitter)}</div>
+                    <div class="text-secondary">${formatMs(server.jitter)}</div>
                 </td>
                 <td>
-                    <div class="fw-semibold text-nowrap">${lastSeenLabel}</div>
-                    <div class="small text-secondary text-nowrap">${lastSeenExact}</div>
+                    <div class="fw-semibold text-nowrap">${escapeHtml(lastSeenLabel)}</div>
+                    <div class="small text-secondary text-nowrap">${escapeHtml(lastSeenExact)}</div>
                 </td>
                 <td class="text-end">
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${server.device_id}" title="Quick View Modal">
+                    <div class="server-action-group">
+                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${escapeHtml(server.device_id)}" title="Investigate">
                             <i class="fas fa-chart-line"></i>
                         </button>
-                        <a href="/devices/${server.device_id}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2" title="Full Page Monitoring">
-                            <i class="fas fa-external-link-alt"></i>
+                        <a href="/devices/${encodeURIComponent(server.device_id)}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2" title="Open Details">
+                            <i class="fas fa-search"></i>
                         </a>
+                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2" title="Restart unavailable" disabled>
+                            <i class="fas fa-power-off"></i>
+                        </button>
                     </div>
                 </td>
             `;
         },
         applyRow: (row, server) => {
-            row.className = 'server-health-row';
+            const tone = normalizeSeverityClass(server.primary_issue?.severity || server.health);
+            row.className = `server-health-row row-${tone}`;
             row.dataset.id = server.device_id || '';
-            
-            // Add click handler for modal button
-            const modalBtn = row.querySelector('.server-modal-btn');
-            if (modalBtn) {
-                modalBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const deviceId = modalBtn.dataset.deviceId;
-                    if (deviceId) openServerModal(deviceId);
+            row.onclick = () => {
+                if (server.device_id) {
+                    openServerModal(server.device_id);
+                }
+            };
+
+            row.querySelectorAll('.server-modal-btn').forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    if (server.device_id) {
+                        openServerModal(server.device_id);
+                    }
                 });
-            }
-        }
+            });
+
+            row.querySelectorAll('a, button').forEach((control) => {
+                if (!control.classList.contains('server-modal-btn')) {
+                    control.addEventListener('click', (event) => event.stopPropagation());
+                }
+            });
+        },
+    });
+}
+
+export function initServerHealthTable() {
+    return;
+}
+
+export function setServerHealthFilter(filter) {
+    currentFilter = String(filter || 'all').toLowerCase();
+    if (typeof document === 'undefined') {
+        return;
+    }
+    document.querySelectorAll('[data-server-filter]').forEach((button) => {
+        button.classList.toggle('active', (button.getAttribute('data-server-filter') || 'all') === currentFilter);
     });
 }

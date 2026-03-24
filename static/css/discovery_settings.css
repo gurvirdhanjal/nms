@@ -1,0 +1,190 @@
+/*
+ * Discovery Settings Page — Enterprise v5.0 Dark Theme
+ * Scoped to .discovery-settings-page
+ */
+
+.discovery-settings-page {
+    --ui-accent: var(--accent-primary, #00e5a0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Panel / Header                                                       */
+/* ------------------------------------------------------------------ */
+.discovery-settings-page .page-header h1 {
+    font-family: 'Rajdhani', sans-serif;
+    letter-spacing: 0.1em;
+}
+
+.discovery-settings-page .enterprise-panel {
+    background: var(--e-bg-panel, rgba(16, 19, 27, 0.92));
+    border: 1px solid var(--e-border, rgba(148, 163, 184, 0.16));
+    border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Stat Labels                                                          */
+/* ------------------------------------------------------------------ */
+.discovery-settings-page .stat-label {
+    font-size: 10px;
+    color: var(--e-text-muted, #8a97a6);
+    letter-spacing: 0.1em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Status Dot                                                           */
+/* ------------------------------------------------------------------ */
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.dot-nominal {
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+    animation: ds-pulse 2s ease-in-out infinite;
+}
+
+.status-dot.dot-scanning {
+    background: var(--ui-accent);
+    box-shadow: 0 0 6px var(--ui-accent);
+    animation: ds-pulse 0.8s ease-in-out infinite;
+}
+
+.status-dot.dot-fault {
+    background: var(--s-critical, #dc3545);
+    box-shadow: 0 0 6px var(--s-critical, #dc3545);
+}
+
+.status-dot.dot-offline {
+    background: #475569;
+    box-shadow: none;
+}
+
+@keyframes ds-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                              */
+/* ------------------------------------------------------------------ */
+.ds-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.85rem;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    line-height: 1.4;
+    text-decoration: none;
+}
+
+.ds-btn-primary {
+    background: var(--ui-accent);
+    color: #000;
+    border-color: var(--ui-accent);
+}
+
+.ds-btn-primary:hover {
+    background: color-mix(in srgb, var(--ui-accent) 85%, #fff);
+    border-color: color-mix(in srgb, var(--ui-accent) 85%, #fff);
+    color: #000;
+}
+
+.ds-btn-ghost {
+    background: transparent;
+    color: var(--e-text-muted, #8a97a6);
+    border-color: var(--e-border, rgba(148, 163, 184, 0.16));
+}
+
+.ds-btn-ghost:hover {
+    border-color: var(--ui-accent);
+    color: var(--ui-accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Badges                                                               */
+/* ------------------------------------------------------------------ */
+.ds-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    line-height: 1.6;
+}
+
+.ds-badge-active {
+    background: rgba(0, 229, 160, 0.12);
+    color: var(--ui-accent);
+    border-color: rgba(0, 229, 160, 0.30);
+}
+
+.ds-badge-inactive {
+    background: rgba(220, 53, 69, 0.12);
+    color: var(--s-critical, #dc3545);
+    border-color: rgba(220, 53, 69, 0.30);
+}
+
+.ds-badge-pending {
+    background: rgba(245, 166, 35, 0.12);
+    color: #f5a623;
+    border-color: rgba(245, 166, 35, 0.30);
+}
+
+.ds-badge-scanning {
+    background: rgba(0, 229, 160, 0.18);
+    color: var(--ui-accent);
+    border-color: rgba(0, 229, 160, 0.50);
+    animation: ds-pulse 0.8s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scan Progress Panel                                                  */
+/* ------------------------------------------------------------------ */
+#scanProgressPanel {
+    display: none;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    background: rgba(0, 229, 160, 0.04);
+    border: 1px solid rgba(0, 229, 160, 0.25);
+    border-radius: 6px;
+}
+
+#scanProgressPanel.visible {
+    display: block;
+}
+
+.ds-progress-bar-track {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.ds-progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--ui-accent);
+    box-shadow: 0 0 6px var(--ui-accent);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+}
+
+.ds-progress-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--e-text-muted, #8a97a6);
+}

@@ -207,22 +207,22 @@ _ADMIN_SCOPE = {
 def _svc():
     """Build ReportingService with admin scope (no request context needed)."""
     from services.reporting_service import ReportingService
-    with patch('services.reporting_service.build_scope_context', return_value=_ADMIN_SCOPE):
+    with patch('services.reporting.base.build_scope_context', return_value=_ADMIN_SCOPE):
         return ReportingService()
 
 
 def _exec(svc, start, end):
-    with patch('services.reporting_service.scoped_query', side_effect=lambda m: m.query):
+    with patch('services.reporting.base.scoped_query', side_effect=lambda m: m.query):
         return svc.get_executive_fleet_health(start_date=start, end_date=end)
 
 
 def _alert(svc, start, end):
-    with patch('services.reporting_service.scoped_query', side_effect=lambda m: m.query):
+    with patch('services.reporting.base.scoped_query', side_effect=lambda m: m.query):
         return svc.get_alert_history_report(start_date=start, end_date=end)
 
 
 def _network(svc, start, end):
-    with patch('services.reporting_service.scoped_query', side_effect=lambda m: m.query):
+    with patch('services.reporting.base.scoped_query', side_effect=lambda m: m.query):
         return svc.get_network_performance_report(start_date=start, end_date=end)
 
 
@@ -312,7 +312,7 @@ class TestComputeUptimeFromEvents:
         from services.enterprise_report_service import _compute_uptime_from_events
         start = datetime(2026, 3, 1)
         end = datetime(2026, 3, 2)
-        uptime, incidents = _compute_uptime_from_events([], start, end)
+        uptime, incidents, cov = _compute_uptime_from_events([], start, end)
         assert uptime is None
         assert incidents == []
 
@@ -321,10 +321,11 @@ class TestComputeUptimeFromEvents:
         start = datetime(2026, 3, 1, 0, 0, 0)
         end = datetime(2026, 3, 1, 1, 0, 0)
         events = [_MockAvailabilityEvent("online", start)]
-        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        uptime, incidents, cov = _compute_uptime_from_events(events, start, end)
         # No offline event — no downtime recorded
         assert uptime == 100.0
         assert incidents == []
+        assert isinstance(cov, dict)
 
     def test_offline_then_online_counts_incident(self):
         from services.enterprise_report_service import _compute_uptime_from_events
@@ -335,11 +336,12 @@ class TestComputeUptimeFromEvents:
             _MockAvailabilityEvent("offline", start),
             _MockAvailabilityEvent("online", mid),
         ]
-        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        uptime, incidents, cov = _compute_uptime_from_events(events, start, end)
         assert len(incidents) == 1
         assert incidents[0]["duration_min"] == 30.0
         # 30 min down out of 60 min window → ~50 % uptime
         assert uptime == 50.0
+        assert isinstance(cov, dict)
 
     def test_open_incident_at_window_end(self):
         from services.enterprise_report_service import _compute_uptime_from_events
@@ -347,12 +349,14 @@ class TestComputeUptimeFromEvents:
         offline_at = datetime(2026, 3, 1, 0, 45, 0)
         end = datetime(2026, 3, 1, 1, 0, 0)
         events = [_MockAvailabilityEvent("offline", offline_at)]
-        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        uptime, incidents, cov = _compute_uptime_from_events(events, start, end)
         assert len(incidents) == 1
         assert incidents[0].get("open") is True
         assert incidents[0]["duration_min"] == 15.0
-        # 15 min down out of 60 min window → 75 % uptime
-        assert uptime == 75.0
+        # Observed window = (end - first_event) = 15 min.
+        # Device offline for all 15 observed minutes → 0% uptime.
+        assert uptime == 0.0
+        assert isinstance(cov, dict)
 
     def test_device_always_offline(self):
         from services.enterprise_report_service import _compute_uptime_from_events
@@ -362,11 +366,12 @@ class TestComputeUptimeFromEvents:
             _MockAvailabilityEvent("offline", start),
             _MockAvailabilityEvent("degraded", datetime(2026, 3, 1, 0, 20, 0)),
         ]
-        uptime, incidents = _compute_uptime_from_events(events, start, end)
+        uptime, incidents, cov = _compute_uptime_from_events(events, start, end)
         # Only the first offline event opens the incident; degraded while already
         # offline is ignored (offline_since already set).  Incident runs to end.
         assert len(incidents) == 1
         assert uptime == 0.0
+        assert isinstance(cov, dict)
 
 
 class TestReportingServiceDataHealth:

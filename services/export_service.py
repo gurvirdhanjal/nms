@@ -8,7 +8,7 @@ import csv
 import io
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,31 @@ def _utcnow() -> datetime:
 
 def _utc_label() -> str:
     return datetime.now().strftime("%dd-%mm-%YY %H:%M")
+
+
+_IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+
+def _fmt_ist(val) -> str:
+    """Format any timestamp/ISO string as IST for PDF display. Never outputs raw ISO 8601."""
+    if val is None or val == "":
+        return "—"
+    if isinstance(val, str):
+        if not val or val == "—":
+            return "—"
+        try:
+            val = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            try:
+                val = datetime.fromisoformat(val[:19])
+            except Exception:
+                return val[:16].replace("T", " ")
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=timezone.utc)
+        ist = val.astimezone(_IST_TZ)
+        return ist.strftime("%d %b %Y %H:%M IST")
+    return str(val)
 
 
 def _sanitize_export_value(value):
@@ -1408,7 +1433,7 @@ def _pdf_executive(report_data, report_type):
     else:
         table_data = [headers]
         for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
@@ -1431,7 +1456,7 @@ def _pdf_operational(report_data, report_type):
     else:
         table_data = [headers]
         for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
@@ -1453,7 +1478,7 @@ def _pdf_device_health(report_data, report_type):
     else:
         table_data = [headers]
         for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
@@ -1463,26 +1488,124 @@ def _pdf_device_health(report_data, report_type):
     return buf
 
 
+def _pdf_cell_value(val, col_name=""):
+    """Format a cell value for PDF display. Timestamps → IST, rest → sanitized."""
+    if val is None:
+        return "—"
+    col_lower = col_name.lower()
+    # Detect timestamp columns by name or ISO pattern
+    if col_lower in ("timestamp", "observed_at_utc", "last_seen", "resolved_at", "acknowledged_at",
+                      "created_at", "detected_at", "last_violation", "last_detected"):
+        return _fmt_ist(val)
+    if isinstance(val, str) and len(val) > 18 and "T" in val and val[4] == "-":
+        return _fmt_ist(val)  # Looks like ISO 8601
+    return str(_sanitize_export_value(val))
+
+
 def _pdf_alerts(report_data, report_type):
-    from reportlab.platypus import Spacer, Table
-    from services.enterprise_pdf_service import base_table_style, normal_paragraph
+    from reportlab.platypus import Spacer, Table, Paragraph as RLParagraph
+    from reportlab.lib.styles import ParagraphStyle
+    from services.enterprise_pdf_service import (
+        base_table_style, normal_paragraph, section_heading, hex_color,
+        _build_narrative_section,
+    )
 
     doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Alert History Report")
 
-    # Severity breakdown
+    # ── Narrative block (Master Spec) ─────────────────────────────────────
+    narrative = report_data.get("narrative")
+    story.extend(_build_narrative_section(narrative, styles))
+
+    # ── Intelligence annotations ──────────────────────────────────────────
+    annotations = report_data.get("intelligence_annotations", [])
+    for a in annotations[:5]:
+        sev_color = "#ef4444" if a.get("severity") == "critical" else "#f59e0b"
+        story.append(RLParagraph(
+            f'<font color="{sev_color}">&#x25CF;</font> <b>{a.get("text", "")}</b>'
+            f'{" — " + a.get("action", "") if a.get("action") else ""}',
+            ParagraphStyle('annotation', parent=styles['Normal'], fontSize=8, leading=11,
+                           spaceBefore=2, spaceAfter=2),
+        ))
+
+    # ── Severity breakdown ────────────────────────────────────────────────
     breakdown = report_data.get("severity_breakdown") or {}
     if breakdown:
         summary_parts = [f"{k}: {v}" for k, v in breakdown.items()]
         story.append(normal_paragraph(f"Severity Breakdown: {', '.join(summary_parts)}", styles))
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 4))
 
+    # ── Alert type breakdown (PR 18) ──────────────────────────────────────
+    type_breakdown = report_data.get("alert_type_breakdown", [])
+    if type_breakdown:
+        story.append(normal_paragraph("<b>Alert Type Breakdown</b>", styles))
+        tb_data = [["Type", "Count", "% of Total"]]
+        for tb in type_breakdown:
+            tb_data.append([tb.get("type", "—"), str(tb.get("count", 0)), f"{tb.get('pct_of_total', 0)}%"])
+        t = Table(tb_data, repeatRows=1)
+        t.setStyle(base_table_style())
+        story.append(t)
+        story.append(Spacer(1, 6))
+
+    # ── Top alerted devices ───────────────────────────────────────────────
+    top_devices = report_data.get("top_alerted_devices", [])
+    if top_devices:
+        story.append(normal_paragraph("<b>Most Impacted Devices</b>", styles))
+        td_data = [["Device", "IP", "Alert Count"]]
+        for d in top_devices[:10]:
+            td_data.append([d.get("device_name", "—"), d.get("device_ip", "—"), str(d.get("alert_count", 0))])
+        t = Table(td_data, repeatRows=1)
+        t.setStyle(base_table_style())
+        story.append(t)
+        story.append(Spacer(1, 6))
+
+    # ── Unresolved aging (PR 18) ──────────────────────────────────────────
+    aging = report_data.get("unresolved_aging", {})
+    if aging and any(v > 0 for v in aging.values()):
+        story.append(normal_paragraph("<b>Unresolved Alert Aging</b>", styles))
+        ag_data = [["Age Bucket", "Count"]]
+        for bucket, count in aging.items():
+            ag_data.append([bucket, str(count)])
+        t = Table(ag_data, repeatRows=1)
+        t.setStyle(base_table_style())
+        story.append(t)
+        story.append(Spacer(1, 6))
+
+    # ── Subnet analysis (PR 18) ───────────────────────────────────────────
+    subnets = report_data.get("subnet_analysis", [])
+    if subnets:
+        story.append(normal_paragraph("<b>Subnet Analysis</b>", styles))
+        sn_data = [["Subnet", "Total", "Offline", "Latency", "Pkt Loss", "Devices"]]
+        for s in subnets[:10]:
+            flag = " *" if s.get("flag") else ""
+            sn_data.append([
+                s.get("subnet", "—") + flag, str(s.get("total", 0)),
+                str(s.get("offline", 0)), str(s.get("latency", 0)),
+                str(s.get("pkt_loss", 0)), str(s.get("device_count", 0)),
+            ])
+        t = Table(sn_data, repeatRows=1)
+        t.setStyle(base_table_style())
+        story.append(t)
+        for s in subnets:
+            if s.get("flag"):
+                story.append(normal_paragraph(f"* {s['flag']}", styles, color="#EA580C"))
+        story.append(Spacer(1, 6))
+
+    # ── Recent alerts table (capped at 20) ────────────────────────────────
     headers, rows = _flatten_report_rows(report_data, report_type)
+    total_count = report_data.get("alerts_total_count", len(rows))
+    truncated = report_data.get("alerts_truncated", False)
+
     if not rows:
-        story.append(normal_paragraph("No data available for this period.", styles))
+        story.append(normal_paragraph("No alerts recorded for this period.", styles))
     else:
+        story.append(normal_paragraph(
+            f"<b>Recent Alerts</b> (showing {len(rows)} of {total_count})"
+            + (" — full list available via CSV/XLSX export" if truncated else ""),
+            styles,
+        ))
         table_data = [headers]
-        for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+        for row in rows[:50]:
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
@@ -1514,7 +1637,7 @@ def _pdf_network(report_data, report_type):
     else:
         table_data = [headers]
         for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
@@ -1543,7 +1666,7 @@ def _pdf_productivity(report_data, report_type):
     else:
         table_data = [headers]
         for row in rows[:250]:
-            table_data.append([str(_sanitize_export_value(row.get(h, "—"))) for h in headers])
+            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
         table = Table(table_data, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)

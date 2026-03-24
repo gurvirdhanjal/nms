@@ -252,36 +252,80 @@ def _count_devices(device_ids):
 
 
 def _estimate_report_rows(report_type, start_date, end_date, device_ids=None):
-    span_seconds = max((end_date - start_date).total_seconds(), 1)
-    minute_buckets = int(span_seconds // 60) + 1
-    hourly_buckets = int(span_seconds // 3600) + 1
-    daily_buckets = int(span_seconds // 86400) + 1
+    """Estimate result size to prevent runaway queries.
+
+    Summary-level reports return a fixed small estimate. Time-series reports
+    use a sample-based approach: query actual row count for one device and
+    extrapolate. This avoids the old formula (device_count × buckets) which
+    vastly overestimated on sparse data.
+    """
+    # Summary-level reports — small fixed estimates
+    # device-health and network return aggregated rows (not raw time-series),
+    # so sample×device_count estimation massively over-estimates — use fixed value.
+    _SUMMARY_TYPES = {
+        'executive': 500,
+        'operational': 500,
+        'device-health': 5000,
+        'network': 5000,
+        'alerts': 2000,
+        'maintenance-availability': 1500,
+        'security-compliance': 1500,
+        'inventory-assets': 2000,
+        'tracking-operations': 2000,
+        'printer-operations': 1500,
+    }
+    if report_type in _SUMMARY_TYPES:
+        return _SUMMARY_TYPES[report_type]
+
+    # Time-series reports — sample-based estimate
     device_count = _count_devices(device_ids)
+    if device_count == 0:
+        return 0
 
-    if report_type == 'executive':
-        return 200
-    if report_type == 'operational':
-        return 7 * 24 + 70
-    if report_type == 'alerts':
-        return 200
-    if report_type == 'device-health':
-        span = end_date - start_date
-        if span <= timedelta(hours=24):
-            return device_count * min(minute_buckets, 24 * 60)
-        if span <= timedelta(days=30):
-            return device_count * hourly_buckets
-        return device_count * daily_buckets
-    if report_type == 'network':
-        iface_factor = int(current_app.config.get('REPORT_ESTIMATED_INTERFACES_PER_DEVICE', 4))
-        return device_count * hourly_buckets * max(iface_factor, 1)
-    if report_type == 'productivity':
-        return device_count * hourly_buckets
-    if report_type in ('maintenance-availability', 'security-compliance'):
-        return 1000
-    if report_type in ('inventory-assets', 'tracking-operations', 'printer-operations'):
-        return 1500
+    sample = _sample_row_density(report_type, start_date, end_date)
+    return sample * device_count
 
-    return 5000
+
+def _sample_row_density(report_type, start_date, end_date):
+    """Query actual row count for one representative device, 1s timeout."""
+    try:
+        from models.server_health import ServerHealthLog
+        from models.device import Device
+
+        sample_device = Device.query.filter(Device.is_active.isnot(False)).first()
+        if not sample_device:
+            return 100
+
+        if report_type in ('device-health', 'network'):
+            count = (
+                db.session.query(func.count(ServerHealthLog.id))
+                .filter(
+                    ServerHealthLog.device_id == sample_device.device_id,
+                    ServerHealthLog.timestamp >= start_date,
+                    ServerHealthLog.timestamp <= end_date,
+                )
+                .scalar()
+            ) or 0
+            return max(count, 10)
+
+        if report_type == 'productivity':
+            from models.tracked_device import TrackingSample, TrackedDevice
+            sample_td = TrackedDevice.query.filter(TrackedDevice.is_archived.isnot(True)).first()
+            if not sample_td:
+                return 100
+            count = (
+                db.session.query(func.count(TrackingSample.id))
+                .filter(
+                    TrackingSample.device_id == sample_td.id,
+                    TrackingSample.received_at >= start_date,
+                    TrackingSample.received_at <= end_date,
+                )
+                .scalar()
+            ) or 0
+            return max(count, 10)
+    except Exception:
+        pass
+    return 500  # Safe fallback
 
 
 def _count_report_rows(report_type, payload):
@@ -441,8 +485,19 @@ def _enforce_rate_limit(report_type, is_export=False):
         _rate_limit_hits[key] = recent
 
 
-def _apply_statement_timeout():
-    timeout_ms = int(current_app.config.get('REPORT_STATEMENT_TIMEOUT_MS', 5000))
+_ENTERPRISE_REPORT_TYPES = frozenset({'executive', 'tracking-operations'})
+
+
+def _apply_statement_timeout(report_type=None):
+    """Apply per-report-type PostgreSQL statement timeout.
+
+    Enterprise reports (executive, tracking-operations) get a longer timeout
+    because they join across multiple fleet tables with heavy aggregation.
+    """
+    if report_type and report_type in _ENTERPRISE_REPORT_TYPES:
+        timeout_ms = int(current_app.config.get('REPORT_TIMEOUT_ENTERPRISE_MS', 20000))
+    else:
+        timeout_ms = int(current_app.config.get('REPORT_STATEMENT_TIMEOUT_MS', 15000))
     if timeout_ms <= 0:
         return
 
@@ -515,6 +570,20 @@ def _decorate_report_payload(report_type, payload, start_date, end_date, row_cou
         cache_ttl_seconds=int(cache_meta.get('cache_ttl_seconds', 0) or 0),
         cache_age_seconds=float(cache_meta.get('cache_age_seconds', 0.0) or 0.0),
     ))
+    # ── Narrative synthesis (Master Spec: progressive disclosure) ─────
+    try:
+        from services.report_narrative_service import ReportNarrativeService
+        enriched['narrative'] = ReportNarrativeService().generate_narrative(report_type, enriched)
+    except Exception as exc:
+        logger.warning('[REPORT] narrative generation failed for %s: %s', report_type, exc)
+        enriched['narrative'] = None
+    # ── Intelligence auto-annotations (Master Spec: 7 rules) ─────────
+    try:
+        from services.report_intelligence_rules import ReportIntelligenceRules
+        enriched['intelligence_annotations'] = ReportIntelligenceRules().annotate(report_type, enriched)
+    except Exception as exc:
+        logger.warning('[REPORT] intelligence annotation failed for %s: %s', report_type, exc)
+        enriched['intelligence_annotations'] = []
     return enriched
 
 
@@ -594,7 +663,7 @@ def _run_report(
     if generator is None:
         raise ReportValidationError(f'Unknown report type: {report_type}', 404)
 
-    _apply_statement_timeout()
+    _apply_statement_timeout(report_type)
     started = time.perf_counter()
     payload = generator()
     duration = time.perf_counter() - started
@@ -1095,6 +1164,98 @@ def get_printer_operations_report():
     return _run_report_endpoint('printer-operations')
 
 
+@reports_bp.route('/api/reports/devices', methods=['GET'])
+def get_devices_report():
+    """Unified device list using canonical 18-field row contract.
+
+    Query params:
+      range / start+end  — date range (default 7d, max 90d)
+      fleet              — server | workstation | (omit for both)
+      device_ids         — comma-separated TrackedDevice IDs (workstation filter)
+    """
+    try:
+        start_date, end_date = _parse_date_range(max_days=90)
+        fleet = _parse_fleet_param()
+        device_ids = _parse_device_ids()
+    except ReportValidationError as exc:
+        return _json_error(str(exc), exc.status_code)
+
+    try:
+        # ── 60-second cache ──────────────────────────────────────────────
+        _range_key = request.args.get('range', '7d')
+        _cache_key  = f"devices_report_{_range_key}"
+        _cached     = _get_cached_report(_cache_key)
+        if _cached:
+            return jsonify(_cached['payload'])
+
+        from services.core_metrics_service import (
+            get_server_metrics_bulk, get_workstation_metrics_bulk,
+        )
+        from models.device import Device
+
+        period_hours = (end_date - start_date).total_seconds() / 3600.0
+        rows = []
+
+        if fleet in (None, "server"):
+            try:
+                infra_types = [t.lower() for t in current_app.config.get(
+                    'INFRASTRUCTURE_DEVICE_TYPES',
+                    ['server', 'switch', 'access_point', 'router', 'firewall'],
+                )]
+            except RuntimeError:
+                infra_types = ['server', 'switch', 'access_point', 'router', 'firewall']
+            inv_devices = (
+                Device.query
+                .filter(
+                    Device.is_active.isnot(False),
+                    func.lower(Device.device_type).in_(infra_types),
+                )
+                .order_by(Device.device_name.asc())
+                .all()
+            )
+            rows.extend(get_server_metrics_bulk(inv_devices, start_date, end_date, period_hours))
+
+        if fleet in (None, "workstation"):
+            td_query = (
+                TrackedDevice.query
+                .filter(TrackedDevice.is_archived.isnot(True))
+                .order_by(TrackedDevice.device_name.asc())
+            )
+            if device_ids:
+                td_query = td_query.filter(TrackedDevice.id.in_(device_ids))
+            rows.extend(get_workstation_metrics_bulk(
+                td_query.all(), start_date, end_date, period_hours,
+            ))
+
+        uptime_vals = [r["uptime_pct"] for r in rows if r["uptime_pct"] is not None]
+        fleet_avg = round(sum(uptime_vals) / len(uptime_vals), 2) if uptime_vals else None
+
+        # Total all active devices (across all types) for the header counter
+        total_all_active = Device.query.filter(Device.is_active.isnot(False)).count()
+
+        _payload = {
+            "period": {
+                "start": start_date.isoformat(),
+                "end":   end_date.isoformat(),
+                "days":  (end_date - start_date).days,
+            },
+            "row_count": len(rows),
+            "devices":   rows,
+            "summary": {
+                "total":            len(rows),
+                "total_all":        total_all_active,
+                "anomaly_count":    sum(1 for r in rows if r["anomaly_flag"]),
+                "violation_count":  sum(r["violation_count"] for r in rows),
+                "fleet_avg_uptime": fleet_avg,
+            },
+        }
+        _set_cached_report(_cache_key, _payload, ttl=60)
+        return jsonify(_payload)
+    except Exception as exc:
+        logger.exception("[DevicesReport] build failed: %s", exc)
+        return _json_error("Failed to build devices report.", 500)
+
+
 _PREVIEW_COLUMNS = {
     "executive": ["Device", "Type", "IP", "Uptime %", "Status"],
     "alerts": ["Timestamp", "Device", "IP", "Severity", "Type", "Message", "Resolved"],
@@ -1503,6 +1664,24 @@ def enterprise_uptime_report():
     try:
         from services.enterprise_report_service import build_enterprise_uptime_report
         data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet, device_ids=device_ids)
+        # Add narrative + intelligence annotations (Master Spec)
+        try:
+            from services.report_narrative_service import ReportNarrativeService
+            svc = ReportNarrativeService()
+            data['narratives'] = {
+                'executive': svc.generate_narrative('executive', data),
+                'server_fleet': svc.generate_narrative('server-fleet', data),
+                'tracked_fleet': svc.generate_narrative('tracked-fleet', data),
+            }
+        except Exception as exc:
+            logger.warning("[EnterpriseUptime] narrative failed: %s", exc)
+            data['narratives'] = {}
+        try:
+            from services.report_intelligence_rules import ReportIntelligenceRules
+            data['intelligence_annotations'] = ReportIntelligenceRules().annotate('enterprise', data)
+        except Exception as exc:
+            logger.warning("[EnterpriseUptime] intelligence annotation failed: %s", exc)
+            data['intelligence_annotations'] = []
         return jsonify(data)
     except Exception as exc:
         logger.exception("[EnterpriseUptime] JSON build failed: %s", exc)

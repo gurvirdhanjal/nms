@@ -11,6 +11,7 @@
     let deleteInFlight = false;
     let actionBannerTimer = null;
     let listSyncFrame = null;
+    const PAGINATION = { page: 1, perPage: 50 };
     const surfaceFlags = window.__UI_SURFACE_FLAGS__ || {};
     const toastApi = surfaceFlags.sharedToast !== false && window.UI?.Toast?.show
         ? window.UI.Toast
@@ -176,6 +177,7 @@
         if (searchInput) {
             searchInput.addEventListener('input', () => {
                 if (searchClear) searchClear.classList.toggle('visible', searchInput.value.length > 0);
+                PAGINATION.page = 1;
                 applyDeviceFilters();
             });
         }
@@ -185,6 +187,7 @@
                 searchInput.value = '';
                 searchClear.classList.remove('visible');
                 searchInput.focus();
+                PAGINATION.page = 1;
                 applyDeviceFilters();
             });
         }
@@ -200,6 +203,7 @@
                         button.classList.toggle('active', button.getAttribute('data-chip-filter') === 'all');
                     });
                 }
+                PAGINATION.page = 1;
                 applyDeviceFilters();
             });
         }
@@ -212,6 +216,7 @@
                 if (statusFilterSelect) {
                     statusFilterSelect.value = 'all';
                 }
+                PAGINATION.page = 1;
                 applyDeviceFilters();
             });
         });
@@ -983,7 +988,8 @@
         const searchTerm = (document.getElementById('deviceSearchInput')?.value || '').trim().toLowerCase();
         const statusFilter = document.getElementById('deviceStatusFilter')?.value || 'all';
 
-        let visibleCount = 0;
+        // Step 1: collect rows that pass all filters
+        const matchedRows = [];
         rows.forEach((row) => {
             const rowStatus = row.dataset.deviceStatus || 'offline';
             const rowSearch = row.dataset.searchIndex || '';
@@ -999,38 +1005,85 @@
                 (activeQuickFilter === 'unassigned' && isUnassigned) ||
                 (activeQuickFilter === 'needs_sync' && needsSync)
             );
-            const shouldShow = matchesSearch && matchesStatus && matchesChip;
-
-            const isCurrentlyHidden = row.classList.contains('d-none');
-            const shouldBeHidden = !shouldShow;
-
-            if (isCurrentlyHidden !== shouldBeHidden) {
-                row.classList.toggle('d-none', shouldBeHidden);
-            }
-
-            if (shouldShow) {
-                visibleCount += 1;
-            }
+            if (matchesSearch && matchesStatus && matchesChip) matchedRows.push(row);
         });
+
+        // Step 2: apply pagination — show only current page slice, hide rest
+        const total = matchedRows.length;
+        const start = (PAGINATION.page - 1) * PAGINATION.perPage;
+        const end = start + PAGINATION.perPage;
+        rows.forEach((row) => row.classList.add('d-none'));
+        matchedRows.forEach((row, i) => {
+            if (i >= start && i < end) row.classList.remove('d-none');
+        });
+
+        const visibleCount = Math.min(end, total) - start;
 
         const visibleCountElement = document.getElementById('deviceVisibleCount');
         if (visibleCountElement) {
-            visibleCountElement.textContent = String(rows.length ? visibleCount : 0);
+            visibleCountElement.textContent = String(rows.length ? total : 0);
         }
 
         const resultsCount = document.getElementById('trackingResultsCount');
         if (resultsCount) {
-            const total = rows.length;
-            resultsCount.textContent = visibleCount < total ? `${visibleCount}/${total}` : `${total}`;
+            resultsCount.textContent = total < rows.length ? `${total}/${rows.length}` : `${rows.length}`;
         }
 
         const filterEmptyState = document.getElementById('deviceFilterEmptyState');
         if (filterEmptyState) {
-            const showFilteredEmptyState = rows.length > 0 && visibleCount === 0;
-            filterEmptyState.classList.toggle('d-none', !showFilteredEmptyState);
+            filterEmptyState.classList.toggle('d-none', !(rows.length > 0 && total === 0));
         }
 
+        _renderPaginationControls(total);
         updateTableHealthCounters(rows);
+    }
+
+    function _renderPaginationControls(total) {
+        const container = document.getElementById('trackingPagination');
+        if (!container) return;
+
+        const totalPages = Math.ceil(total / PAGINATION.perPage);
+        if (totalPages <= 1) {
+            container.classList.add('d-none');
+            return;
+        }
+        container.classList.remove('d-none');
+
+        const p = PAGINATION.page;
+        const start = (p - 1) * PAGINATION.perPage + 1;
+        const end = Math.min(p * PAGINATION.perPage, total);
+
+        // Build page number chips (max 5 shown)
+        let pagesHtml = '';
+        const maxChips = 5;
+        let lo = Math.max(1, p - Math.floor(maxChips / 2));
+        let hi = Math.min(totalPages, lo + maxChips - 1);
+        if (hi - lo < maxChips - 1) lo = Math.max(1, hi - maxChips + 1);
+        for (let i = lo; i <= hi; i++) {
+            pagesHtml += `<button type="button" class="ops-btn ops-btn-ghost px-2 py-1${i === p ? ' ops-btn-primary' : ''}"
+                style="min-width:32px;font-size:12px" data-page="${i}">${i}</button>`;
+        }
+
+        container.innerHTML = `
+            <span class="text-muted" style="font-size:11px">${start}–${end} of ${total}</span>
+            <div class="d-flex gap-1 align-items-center">
+                <button type="button" class="ops-btn ops-btn-ghost px-2 py-1" style="font-size:12px"
+                    data-page="${p - 1}" ${p <= 1 ? 'disabled' : ''}>← Prev</button>
+                ${pagesHtml}
+                <button type="button" class="ops-btn ops-btn-ghost px-2 py-1" style="font-size:12px"
+                    data-page="${p + 1}" ${p >= totalPages ? 'disabled' : ''}>Next →</button>
+            </div>`;
+
+        container.querySelectorAll('button[data-page]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const newPage = parseInt(btn.dataset.page, 10);
+                if (newPage >= 1 && newPage <= totalPages) {
+                    PAGINATION.page = newPage;
+                    applyDeviceFilters();
+                    document.getElementById('deviceList')?.closest('.table-responsive')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
     }
 
     function updateTableHealthCounters(rows = getStoredDeviceRows()) {

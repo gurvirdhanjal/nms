@@ -1,156 +1,313 @@
 {% extends "base.html" %}
 
-{% block title %}Server Operations Dashboard{% endblock %}
+{% block title %}Server Dashboard{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
 <style>
-    .server-ops-dashboard {
-        --sod-bg: rgba(16, 19, 27, 0.92);
-        --sod-border: rgba(148, 163, 184, 0.12);
-        --sod-surface: rgba(24, 30, 42, 0.95);
-        min-height: 100vh;
+    .srv {
+        --srv-border: rgba(148, 163, 184, 0.13);
+        --srv-surface: rgba(14, 17, 25, 0.92);
+        --srv-deep: rgba(8, 11, 18, 0.97);
+        --srv-label: 0.62rem;
+        --srv-mono: 'IBM Plex Mono', monospace;
     }
 
-    .server-ops-dashboard .page-header {
-        background: rgba(16, 19, 27, 0.98);
-        backdrop-filter: blur(12px);
-        border-bottom: 1px solid var(--sod-border);
-        padding: 1.5rem 0;
-        margin-bottom: 1.5rem;
+    /* ── Header ── */
+    .srv-header {
+        background: var(--srv-deep);
+        border-bottom: 1px solid var(--srv-border);
+        padding: 0.75rem 0;
+        margin-bottom: 1.1rem;
     }
-
-    .server-ops-dashboard .page-title {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 20px;
-        font-weight: 600;
-        color: #fff;
-        margin: 0;
-        letter-spacing: 0.01em;
-    }
-
-    .server-ops-dashboard .page-subtitle {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin-top: 4px;
-    }
-
-    .server-ops-dashboard .kpi-card {
-        background: var(--sod-surface);
-        border: 1px solid var(--sod-border);
-        border-radius: 8px;
-        padding: 1.25rem;
-        transition: border-color 0.2s;
-    }
-
-    .server-ops-dashboard .kpi-card:hover {
-        border-color: rgba(148, 163, 184, 0.24);
-    }
-
-    .server-ops-dashboard .kpi-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-        margin-bottom: 8px;
-    }
-
-    .server-ops-dashboard .kpi-value {
-        font-size: 32px;
+    .srv-header-title {
+        font-family: var(--srv-mono);
+        font-size: 0.88rem;
         font-weight: 700;
-        font-family: 'IBM Plex Mono', monospace;
-        color: #fff;
+        color: #e6edf5;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin: 0;
+    }
+    .srv-header-sub {
+        font-size: 0.68rem;
+        color: #7a8898;
+        margin-top: 2px;
+    }
+
+    /* ── Hidden utility ── */
+    .initially-hidden { display: none !important; }
+
+    /* ── Status strip (top bar) ── */
+    .srv-strip {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        background: var(--srv-surface);
+        border: 1px solid var(--srv-border);
+        border-radius: 6px;
+        margin-bottom: 0.9rem;
+        flex-wrap: wrap;
+    }
+    .srv-strip-divider { width: 1px; height: 18px; background: var(--srv-border); margin: 0 0.25rem; }
+    .srv-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.22rem 0.55rem;
+        border-radius: 4px;
+        border: 1px solid var(--srv-border);
+        background: rgba(255,255,255,0.03);
+        font-size: var(--srv-label);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #9db0c1;
+        white-space: nowrap;
+    }
+    .srv-pill-val {
+        font-family: var(--srv-mono);
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #e6edf5;
+    }
+    .srv-pill.pill-healthy .srv-pill-val { color: #20c997; }
+    .srv-pill.pill-warning .srv-pill-val { color: #ffc107; }
+    .srv-pill.pill-critical .srv-pill-val { color: #dc3545; }
+    .srv-pill.pill-offline .srv-pill-val { color: #8b949e; }
+
+    /* ── KPI metric grid ── */
+    .srv-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 0.9rem;
+    }
+    .srv-kpi {
+        background: var(--srv-surface);
+        border: 1px solid var(--srv-border);
+        border-left: 3px solid transparent;
+        border-radius: 6px;
+        padding: 0.8rem 0.95rem;
+        transition: border-color 130ms ease;
+    }
+    .srv-kpi.state-warning {
+        border-left-color: rgba(255, 193, 7, 0.82);
+        background: linear-gradient(180deg, rgba(255, 193, 7, 0.06), var(--srv-surface));
+    }
+    .srv-kpi.state-critical {
+        border-left-color: rgba(220, 53, 69, 0.9);
+        background: linear-gradient(180deg, rgba(220, 53, 69, 0.08), var(--srv-surface));
+        box-shadow: inset 0 0 0 1px rgba(220, 53, 69, 0.14);
+    }
+    .srv-kpi-label {
+        font-size: var(--srv-label);
+        font-weight: 700;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: #8a97a6;
+        margin-bottom: 0.3rem;
+    }
+    .srv-kpi-val {
+        font-family: var(--srv-mono);
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: #e6edf5;
         line-height: 1;
     }
-
-    .server-ops-dashboard .kpi-trend {
-        font-size: 11px;
-        color: var(--text-secondary);
-        margin-top: 6px;
-    }
-
-    .server-ops-dashboard .tactical-card {
-        background: var(--sod-surface);
-        border: 1px solid var(--sod-border);
-        border-radius: 8px;
-    }
-
-    .server-ops-dashboard .card-header {
-        background: transparent;
-        border-bottom: 1px solid var(--sod-border);
-        padding: 14px 18px;
-        font-size: 12px;
-        font-weight: 600;
+    .srv-kpi-state {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-secondary);
+        color: #7fd4b0;
+        margin-top: 0.22rem;
+    }
+    .srv-kpi.state-warning .srv-kpi-state { color: #f5d27a; }
+    .srv-kpi.state-critical .srv-kpi-state { color: #f0a1ad; }
+    .srv-kpi-meta { font-size: 0.65rem; color: #6a7a88; margin-top: 0.2rem; }
+
+    /* ── Priority banner ── */
+    .srv-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        padding: 0.65rem 0.85rem;
+        margin-bottom: 0.9rem;
+        border: 1px solid rgba(32, 201, 151, 0.2);
+        border-left: 4px solid rgba(32, 201, 151, 0.65);
+        border-radius: 6px;
+        background: linear-gradient(90deg, rgba(32, 201, 151, 0.09), transparent 32%);
+    }
+    .srv-banner.severity-warning {
+        border-color: rgba(255, 193, 7, 0.22);
+        border-left-color: rgba(255, 193, 7, 0.82);
+        background: linear-gradient(90deg, rgba(255, 193, 7, 0.09), transparent 32%);
+    }
+    .srv-banner.severity-critical {
+        border-color: rgba(220, 53, 69, 0.22);
+        border-left-color: rgba(220, 53, 69, 0.9);
+        background: linear-gradient(90deg, rgba(220, 53, 69, 0.1), transparent 32%);
+    }
+    .srv-banner-severity {
+        font-size: var(--srv-label);
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 0.18rem 0.5rem;
+        border-radius: 3px;
+        background: rgba(32, 201, 151, 0.13);
+        border: 1px solid rgba(32, 201, 151, 0.28);
+        color: #8fd6b5;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .srv-banner.severity-warning .srv-banner-severity { background: rgba(255,193,7,.13); border-color: rgba(255,193,7,.28); color: #f5d27a; }
+    .srv-banner.severity-critical .srv-banner-severity { background: rgba(220,53,69,.13); border-color: rgba(220,53,69,.28); color: #f0a1ad; }
+    .srv-banner-title { font-size: 0.86rem; font-weight: 700; color: #e6edf5; }
+    .srv-banner-sub { font-size: 0.7rem; color: #9db0c1; }
+
+    /* ── Mid: issues + trends ── */
+    .srv-mid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+        gap: 0.8rem;
+        margin-bottom: 0.9rem;
     }
 
-    .server-ops-dashboard .resource-gauge {
-        height: 8px;
-        background: rgba(255,255,255,0.06);
+    /* issues panel */
+    .srv-issues {
+        background: var(--srv-surface);
+        border: 1px solid var(--srv-border);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+    }
+    .srv-panel-hd {
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid var(--srv-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+    .srv-panel-title {
+        font-size: var(--srv-label);
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #c3cfdb;
+    }
+    .srv-panel-meta { font-size: 0.68rem; color: #7a8898; }
+    .srv-issues-body {
+        padding: 0.65rem;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        overflow-y: auto;
+        max-height: 340px;
+    }
+    .srv-empty {
+        font-size: 0.75rem;
+        color: #6a7a88;
+        text-align: center;
+        padding: 1rem;
+        border: 1px dashed rgba(148,163,184,0.18);
         border-radius: 4px;
-        overflow: hidden;
-        margin-top: 8px;
     }
-
-    .server-ops-dashboard .resource-gauge-fill {
-        height: 100%;
-        transition: width 0.3s ease;
-    }
-
-    .server-ops-dashboard .chart-container {
-        height: 180px;
-        position: relative;
-    }
-
-    /* Skeleton Loading States */
-    .skeleton-text {
-        background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
-        background-size: 200% 100%;
-        animation: skeleton-loading 1.5s ease-in-out infinite;
+    #fleet-active-issues-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .fleet-issue-card {
+        padding: 0.65rem 0.75rem;
+        border: 1px solid var(--srv-border);
+        border-left: 3px solid rgba(255, 193, 7, 0.75);
         border-radius: 4px;
-        display: inline-block;
-        height: 1em;
+        background: rgba(8,11,18,0.95);
     }
-
-    .skeleton-row td {
-        padding: 12px 16px;
+    .fleet-issue-card.severity-critical { border-left-color: rgba(220,53,69,0.9); }
+    .fleet-issue-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem; }
+    .fleet-issue-title { font-size: 0.82rem; font-weight: 700; color: #e6edf5; }
+    .fleet-issue-sub { font-size: 0.68rem; color: #7a8898; }
+    .fleet-issue-metric { font-size: 0.76rem; font-weight: 700; color: #f4d27e; margin-bottom: 0.3rem; }
+    .fleet-issue-card.severity-critical .fleet-issue-metric { color: #f0b3bc; }
+    .fleet-issue-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; margin-bottom: 0.35rem; }
+    .fleet-issue-stat {
+        padding: 0.3rem 0.45rem;
+        border-radius: 3px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(148,163,184,0.08);
     }
+    .fleet-issue-stat-label { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6a7a88; }
+    .fleet-issue-stat strong { font-size: 0.76rem; color: #e6edf5; display: block; font-family: var(--srv-mono); }
+    .fleet-issue-actions { display: flex; gap: 0.35rem; }
+    .fleet-empty-state { font-size: 0.75rem; color: #6a7a88; text-align: center; padding: 1rem; border: 1px dashed rgba(148,163,184,0.18); border-radius: 4px; }
 
-    @keyframes skeleton-loading {
-        0% { background-position: 200% 0; }
-        100% { background-position: -200% 0; }
+    /* trends panel */
+    .srv-trends {
+        background: var(--srv-surface);
+        border: 1px solid var(--srv-border);
+        border-radius: 6px;
     }
-
-    /* Smooth Transitions */
-    .server-ops-dashboard .kpi-value,
-    .server-ops-dashboard .resource-gauge-fill {
-        transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    .srv-trends-body { padding: 0.65rem; }
+    .srv-trends-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+    .fleet-trend-card {
+        background: rgba(8,11,18,0.92);
+        border: 1px solid var(--srv-border);
+        border-radius: 4px;
+        padding: 0.65rem 0.75rem;
     }
+    .fleet-trend-head { display: flex; justify-content: space-between; align-items: center; font-size: var(--srv-label); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #8a97a6; }
+    .fleet-trend-meta { font-size: 0.65rem; color: #6a7a88; margin-top: 0.18rem; margin-bottom: 0.4rem; }
+    .fleet-trend-canvas { position: relative; height: 110px; }
 
-    .server-ops-dashboard .tactical-table tbody tr {
-        transition: background-color 0.2s ease;
+    /* ── Full fleet table ── */
+    .srv-table-card {
+        background: var(--srv-surface);
+        border: 1px solid var(--srv-border);
+        border-radius: 6px;
+    }
+    .server-health-row { cursor: pointer; }
+    .server-health-row.row-warning > td { background: rgba(255,193,7,0.05) !important; }
+    .server-health-row.row-critical > td { background: rgba(220,53,69,0.06) !important; }
+    .server-health-row.row-warning > td:first-child { border-left: 2px solid rgba(255,193,7,0.75); }
+    .server-health-row.row-critical > td:first-child { border-left: 2px solid rgba(220,53,69,0.9); }
+    .server-action-group { display: flex; gap: 0.3rem; align-items: center; }
+    .fleet-filter-group .btn.active { background: rgba(148,163,184,0.18); border-color: rgba(148,163,184,0.36); }
+
+    /* ── Responsive ── */
+    @media (max-width: 1199.98px) {
+        .srv-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .srv-mid { grid-template-columns: 1fr; }
+        .srv-trends-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 767.98px) {
+        .srv-kpi-grid, .srv-trends-row { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
 
-
 {% block content %}
-<div class="server-ops-dashboard">
-    <div class="page-header">
+<div class="srv">
+
+    <!-- Header -->
+    <div class="srv-header">
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h1 class="page-title">
-                        <i class="fas fa-server me-2" style="color: var(--teal);"></i>
-                        Server Operations
+                    <h1 class="srv-header-title">
+                        <i class="fas fa-server me-2" style="color: var(--teal);"></i>Server Dashboard
                     </h1>
-                    <div class="page-subtitle">Fleet-wide server monitoring and resource management</div>
+                    <div class="srv-header-sub">Fleet health · resource telemetry · active incidents</div>
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="small text-secondary d-none d-md-inline">
+                        <span id="server-last-check">-</span>
+                    </span>
                     <a href="{{ url_for('monitoring_bp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-arrow-left me-1"></i>NOC Dashboard
+                        <i class="fas fa-arrow-left me-1"></i>Dashboard
                     </a>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshDashboard">
                         <i class="fas fa-sync-alt me-1"></i>Refresh
@@ -160,528 +317,171 @@
         </div>
     </div>
 
-    <div class="container-fluid">
-        <!-- Row 1: Fleet Health KPIs -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-2">
-                <div class="kpi-card">
-                    <div class="kpi-label">Total Servers</div>
-                    <div class="kpi-value" id="kpi-total-servers">-</div>
-                    <div class="kpi-trend" id="kpi-total-trend">Loading...</div>
-                </div>
-            </div>
-            <div class="col-md-2">
-                <div class="kpi-card" style="border-left: 3px solid var(--teal);">
-                    <div class="kpi-label">Healthy</div>
-                    <div class="kpi-value" style="color: var(--teal);" id="kpi-healthy">-</div>
-                    <div class="kpi-trend" id="kpi-healthy-pct">-</div>
-                </div>
-            </div>
+    <div class="container-fluid" data-premium-tabs-root="server-dashboard">
 
-            <div class="col-md-2">
-                <div class="kpi-card" style="border-left: 3px solid var(--amber);">
-                    <div class="kpi-label">Warning</div>
-                    <div class="kpi-value" style="color: var(--amber);" id="kpi-warning">-</div>
-                    <div class="kpi-trend" id="kpi-warning-pct">-</div>
-                </div>
+        <!-- Status strip -->
+        <div class="srv-strip">
+            <div class="srv-pill">
+                Total <span class="srv-pill-val" id="val-servers-total">0</span>
             </div>
-            <div class="col-md-2">
-                <div class="kpi-card" style="border-left: 3px solid var(--red);">
-                    <div class="kpi-label">Critical</div>
-                    <div class="kpi-value" style="color: var(--red);" id="kpi-critical">-</div>
-                    <div class="kpi-trend" id="kpi-critical-pct">-</div>
-                </div>
+            <div class="srv-pill pill-healthy">
+                Healthy <span class="srv-pill-val" id="val-servers-healthy">0</span>
             </div>
-            <div class="col-md-2">
-                <div class="kpi-card" style="border-left: 3px solid var(--text-muted);">
-                    <div class="kpi-label">Offline</div>
-                    <div class="kpi-value" style="color: var(--text-muted);" id="kpi-offline">-</div>
-                    <div class="kpi-trend" id="kpi-offline-pct">-</div>
-                </div>
+            <div class="srv-pill pill-warning">
+                Warning <span class="srv-pill-val" id="val-servers-warning">0</span>
             </div>
-            <div class="col-md-2">
-                <div class="kpi-card">
-                    <div class="kpi-label">Above Threshold</div>
-                    <div class="kpi-value" style="color: var(--amber); font-size: 28px;" id="kpi-above-threshold">-</div>
-                    <div class="kpi-trend">Servers needing attention</div>
-                </div>
+            <div class="srv-pill pill-critical">
+                Critical <span class="srv-pill-val" id="val-servers-critical">0</span>
+            </div>
+            <div class="srv-pill pill-offline">
+                Offline <span class="srv-pill-val" id="val-servers-offline">0</span>
+            </div>
+            <div class="srv-strip-divider"></div>
+            <div class="btn-group fleet-filter-group ms-auto" role="group">
+                <button class="btn btn-sm tactical-btn-outline active" data-server-filter="all">All (0)</button>
+                <button class="btn btn-sm tactical-btn-outline" data-server-filter="problem">Problems (0)</button>
+                <button class="btn btn-sm tactical-btn-outline" data-server-filter="healthy">Healthy (0)</button>
             </div>
         </div>
 
-        <!-- Row 2: Resource Pressure -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="tactical-card">
-                    <div class="card-header">Average CPU</div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-baseline">
-                            <div style="font-size: 36px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;" id="avg-cpu">-</div>
-                            <div style="font-size: 12px; color: var(--text-muted);">P95: <span id="p95-cpu">-</span></div>
-                        </div>
-                        <div class="resource-gauge">
-                            <div class="resource-gauge-fill" id="avg-cpu-gauge" style="width: 0%; background: linear-gradient(90deg, var(--teal), var(--blue));"></div>
-                        </div>
-                    </div>
-                </div>
+        <!-- KPI metric cards -->
+        <div class="srv-kpi-grid">
+            <div class="srv-kpi" id="card-fleet-health">
+                <div class="srv-kpi-label">Fleet Health</div>
+                <div class="srv-kpi-val" id="val-fleet-health-percent">-%</div>
+                <div class="srv-kpi-state" id="val-fleet-health-state">Healthy</div>
+                <div class="srv-kpi-meta" id="val-fleet-health-counts">—</div>
             </div>
-
-            <div class="col-md-3">
-                <div class="tactical-card">
-                    <div class="card-header">Average Memory</div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-baseline">
-                            <div style="font-size: 36px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;" id="avg-mem">-</div>
-                            <div style="font-size: 12px; color: var(--text-muted);">P95: <span id="p95-mem">-</span></div>
-                        </div>
-                        <div class="resource-gauge">
-                            <div class="resource-gauge-fill" id="avg-mem-gauge" style="width: 0%; background: linear-gradient(90deg, var(--purple), var(--pink));"></div>
-                        </div>
-                    </div>
-                </div>
+            <div class="srv-kpi" id="fleet-card-cpu">
+                <div class="srv-kpi-label">CPU</div>
+                <div class="srv-kpi-val" id="val-fleet-avg-cpu">-%</div>
+                <div class="srv-kpi-state" id="val-fleet-cpu-state">Healthy</div>
+                <div class="srv-kpi-meta" id="val-fleet-cpu-delta">—</div>
+                <div class="srv-kpi-meta" id="val-fleet-cpu-impact">0 impacted</div>
             </div>
-            <div class="col-md-3">
-                <div class="tactical-card">
-                    <div class="card-header">Average Disk</div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-baseline">
-                            <div style="font-size: 36px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;" id="avg-disk">-</div>
-                            <div style="font-size: 12px; color: var(--text-muted);">P95: <span id="p95-disk">-</span></div>
-                        </div>
-                        <div class="resource-gauge">
-                            <div class="resource-gauge-fill" id="avg-disk-gauge" style="width: 0%; background: linear-gradient(90deg, var(--amber), var(--red));"></div>
-                        </div>
-                    </div>
-                </div>
+            <div class="srv-kpi" id="fleet-card-memory">
+                <div class="srv-kpi-label">Memory</div>
+                <div class="srv-kpi-val" id="val-fleet-avg-mem">-%</div>
+                <div class="srv-kpi-state" id="val-fleet-memory-state">Healthy</div>
+                <div class="srv-kpi-meta" id="val-fleet-memory-delta">—</div>
+                <div class="srv-kpi-meta" id="val-fleet-memory-impact">0 impacted</div>
             </div>
-            <div class="col-md-3">
-                <div class="tactical-card">
-                    <div class="card-header">Fleet Uptime</div>
-                    <div class="card-body">
-                        <div style="font-size: 36px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;" id="fleet-uptime">-</div>
-                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">Average across all servers</div>
-                    </div>
-                </div>
+            <div class="srv-kpi" id="fleet-card-disk">
+                <div class="srv-kpi-label">Disk</div>
+                <div class="srv-kpi-val" id="val-fleet-avg-disk">-%</div>
+                <div class="srv-kpi-state" id="val-fleet-disk-state">Healthy</div>
+                <div class="srv-kpi-meta" id="val-fleet-disk-delta">—</div>
+                <div class="srv-kpi-meta" id="val-fleet-disk-impact">0 impacted</div>
             </div>
         </div>
 
-
-        <!-- Row 3: Priority Panels -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-6">
-                <div class="tactical-card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>Top Problematic Servers</span>
-                        <span class="badge bg-danger" id="problem-count">0</span>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="tactical-table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Server</th>
-                                        <th>Health</th>
-                                        <th>CPU</th>
-                                        <th>Memory</th>
-                                        <th>Disk</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="problem-servers-body">
-                                    <tr><td colspan="6" class="text-center text-secondary p-3">Loading...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+        <!-- Priority banner (hidden until there's an incident) -->
+        <div id="fleet-priority-banner" class="srv-banner initially-hidden" aria-live="polite">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <span class="srv-banner-severity" id="fleet-banner-severity">Healthy</span>
+                <div>
+                    <div class="srv-banner-title" id="fleet-banner-message">No active fleet incidents.</div>
+                    <div class="srv-banner-sub" id="fleet-banner-subtext">Server telemetry is within defined operating bands.</div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="tactical-card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>Recent Server Alerts</span>
-                        <span class="badge bg-warning" id="alert-count">0</span>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="tactical-table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Server</th>
-                                        <th>Alert</th>
-                                        <th>Severity</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="server-alerts-body">
-                                    <tr><td colspan="4" class="text-center text-secondary p-3">Loading...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm tactical-btn-outline" id="btn-fleet-banner-view" type="button">View</button>
+                <button class="btn btn-sm tactical-btn-outline" id="btn-fleet-banner-ack" type="button">Ack</button>
             </div>
         </div>
 
+        <!-- Mid: active issues + trend charts -->
+        <div class="srv-mid" data-premium-panels-host>
 
-        <!-- Row 4: Resource Trends -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-4">
-                <div class="tactical-card">
-                    <div class="card-header">CPU Trend (24h)</div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="chart-cpu-trend"></canvas>
+            <!-- Active issues -->
+            <div class="srv-issues" data-premium-panel>
+                <div class="srv-panel-hd">
+                    <span class="srv-panel-title">Active Issues</span>
+                    <span class="srv-panel-meta"><span id="fleet-active-issues-count">0</span> incidents</span>
+                </div>
+                <div class="srv-issues-body">
+                    <div id="fleet-active-issues-list">
+                        <div class="fleet-empty-state">No active server incidents.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trend charts -->
+            <div class="srv-trends">
+                <div class="srv-panel-hd">
+                    <span class="srv-panel-title">Metric Trends — 24h</span>
+                    <span class="srv-panel-meta">Uptime: <span id="val-fleet-uptime">-</span></span>
+                </div>
+                <div class="srv-trends-body">
+                    <div class="srv-trends-row">
+                        <div class="fleet-trend-card">
+                            <div class="fleet-trend-head">
+                                <span>CPU</span>
+                                <span id="val-fleet-p95-cpu">P95: -</span>
+                            </div>
+                            <div class="fleet-trend-meta" id="fleet-trend-cpu-meta">No data</div>
+                            <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-cpu"></canvas></div>
+                        </div>
+                        <div class="fleet-trend-card">
+                            <div class="fleet-trend-head">
+                                <span>Memory</span>
+                                <span id="val-fleet-p95-mem">P95: -</span>
+                            </div>
+                            <div class="fleet-trend-meta" id="fleet-trend-memory-meta">No data</div>
+                            <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-memory"></canvas></div>
+                        </div>
+                        <div class="fleet-trend-card">
+                            <div class="fleet-trend-head">
+                                <span>Disk</span>
+                                <span id="val-fleet-p95-disk">P95: -</span>
+                            </div>
+                            <div class="fleet-trend-meta" id="fleet-trend-disk-meta">No data</div>
+                            <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-disk"></canvas></div>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="tactical-card">
-                    <div class="card-header">Memory Trend (24h)</div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="chart-mem-trend"></canvas>
-                        </div>
-                    </div>
-                </div>
+
+        </div>
+
+        <!-- Full fleet table -->
+        <div class="srv-table-card" id="server-health-detail">
+            <div class="srv-panel-hd">
+                <span class="srv-panel-title">Full Fleet</span>
+                <span class="srv-panel-meta">Degraded servers sorted first</span>
             </div>
-            <div class="col-md-4">
-                <div class="tactical-card">
-                    <div class="card-header">Disk Trend (24h)</div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="chart-disk-trend"></canvas>
-                        </div>
-                    </div>
-                </div>
+            <div class="table-responsive">
+                <table class="tactical-table table-hover mb-0" id="table-server-health">
+                    <thead>
+                        <tr>
+                            <th>Server</th>
+                            <th>Status</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Disk</th>
+                            <th class="d-none d-xl-table-cell">Ping</th>
+                            <th class="d-none d-xl-table-cell">Loss %</th>
+                            <th class="d-none d-xl-table-cell">Jitter</th>
+                            <th>Last Seen</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-server-health-body" aria-live="polite" aria-relevant="additions removals">
+                        <tr><td colspan="10" class="text-center text-secondary p-3">Loading server fleet…</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Row 5: Operational Table -->
-        <div class="row g-3">
-            <div class="col-12">
-                <div class="tactical-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>Server Fleet</span>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-sm tactical-btn-primary active" data-filter="all">All</button>
-                            <button type="button" class="btn btn-sm tactical-btn-ghost" data-filter="problem">Problems</button>
-                            <button type="button" class="btn btn-sm tactical-btn-ghost" data-filter="healthy">Healthy</button>
-                            <button type="button" class="btn btn-sm tactical-btn-ghost" data-filter="warning">Warning</button>
-                            <button type="button" class="btn btn-sm tactical-btn-ghost" data-filter="critical">Critical</button>
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="tactical-table table-hover mb-0" id="server-fleet-table">
-                                <thead>
-                                    <tr>
-                                        <th>Server</th>
-                                        <th>Status</th>
-                                        <th>CPU</th>
-                                        <th>Memory</th>
-                                        <th>Disk</th>
-                                        <th>Ping</th>
-                                        <th>Loss</th>
-                                        <th>Last Seen</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="server-fleet-body">
-                                    <tr><td colspan="9" class="text-center text-secondary p-3">Loading server fleet...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
 {% include 'partials/server_details_modal.html' %}
 {% endblock %}
 
-
 {% block extra_js %}
-<script>
-    window.__UI_SURFACE_FLAGS__ = Object.assign({}, window.__UI_SURFACE_FLAGS__, {
-        sharedToast: true,
-        sharedLoading: true,
-        sharedRefresh: true
-    });
-</script>
 <script type="module">
-    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
-    import { initServerModal, openServerModal } from "{{ url_for('static', filename='js/dashboard/modals/serverDetailModal.js') }}?v=2.13";
-    import { timeAgo } from "{{ url_for('static', filename='js/dashboard/utils.js') }}?v=2.13";
-    const serverLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false && window.UI?.Loading
-        ? window.UI.Loading
-        : null;
-
-    // Initialize modal
-    initServerModal();
-
-    let currentFilter = 'all';
-    let serverData = [];
-
-    // Fetch server health data
-    async function fetchServerData() {
-        try {
-            const response = await fetch('/api/server/health');
-            const data = await response.json();
-            serverData = data.servers || [];
-            updateDashboard(data);
-        } catch (error) {
-            console.error('Failed to fetch server data:', error);
-            const fleetBody = document.getElementById('server-fleet-body');
-            if (fleetBody && serverLoadingApi && !fleetBody.querySelector('tr')) {
-                serverLoadingApi.setTableState(fleetBody, {
-                    state: 'error',
-                    colspan: 9,
-                    title: 'Unable to load server fleet',
-                    detail: 'Retry when the server health API becomes available.'
-                });
-            }
-        }
-    }
-
-    function updateDashboard(data) {
-        updateKPIs(data);
-        updateResourcePressure(data);
-        updateProblemServers(data);
-        updateServerAlerts(data);
-        updateFleetTable(data);
-    }
-
-    function updateKPIs(data) {
-        const servers = data.servers || [];
-        const total = servers.length;
-        const healthy = servers.filter(s => s.health === 'Healthy').length;
-        const warning = servers.filter(s => s.health === 'Warning').length;
-        const critical = servers.filter(s => s.health === 'Critical').length;
-        const offline = servers.filter(s => !s.last_seen || s.health === 'Offline').length;
-        const aboveThreshold = servers.filter(s => 
-            s.cpu_usage > 80 || s.memory_usage > 85 || s.disk_usage > 90
-        ).length;
-
-        document.getElementById('kpi-total-servers').textContent = total;
-        document.getElementById('kpi-total-trend').textContent = `${servers.filter(s => s.is_monitored).length} monitored`;
-        
-        document.getElementById('kpi-healthy').textContent = healthy;
-        document.getElementById('kpi-healthy-pct').textContent = `${((healthy/total)*100).toFixed(1)}%`;
-        
-        document.getElementById('kpi-warning').textContent = warning;
-        document.getElementById('kpi-warning-pct').textContent = `${((warning/total)*100).toFixed(1)}%`;
-        
-        document.getElementById('kpi-critical').textContent = critical;
-        document.getElementById('kpi-critical-pct').textContent = `${((critical/total)*100).toFixed(1)}%`;
-        
-        document.getElementById('kpi-offline').textContent = offline;
-        document.getElementById('kpi-offline-pct').textContent = `${((offline/total)*100).toFixed(1)}%`;
-        
-        document.getElementById('kpi-above-threshold').textContent = aboveThreshold;
-    }
-
-
-    function updateResourcePressure(data) {
-        const servers = data.servers || [];
-        if (servers.length === 0) return;
-
-        const avgCpu = servers.reduce((sum, s) => sum + (s.cpu_usage || 0), 0) / servers.length;
-        const avgMem = servers.reduce((sum, s) => sum + (s.memory_usage || 0), 0) / servers.length;
-        const avgDisk = servers.reduce((sum, s) => sum + (s.disk_usage || 0), 0) / servers.length;
-
-        const cpuValues = servers.map(s => s.cpu_usage || 0).sort((a, b) => a - b);
-        const memValues = servers.map(s => s.memory_usage || 0).sort((a, b) => a - b);
-        const diskValues = servers.map(s => s.disk_usage || 0).sort((a, b) => a - b);
-
-        const p95Index = Math.floor(servers.length * 0.95);
-        const p95Cpu = cpuValues[p95Index] || 0;
-        const p95Mem = memValues[p95Index] || 0;
-        const p95Disk = diskValues[p95Index] || 0;
-
-        document.getElementById('avg-cpu').textContent = `${avgCpu.toFixed(1)}%`;
-        document.getElementById('p95-cpu').textContent = `${p95Cpu.toFixed(1)}%`;
-        document.getElementById('avg-cpu-gauge').style.width = `${avgCpu}%`;
-
-        document.getElementById('avg-mem').textContent = `${avgMem.toFixed(1)}%`;
-        document.getElementById('p95-mem').textContent = `${p95Mem.toFixed(1)}%`;
-        document.getElementById('avg-mem-gauge').style.width = `${avgMem}%`;
-
-        document.getElementById('avg-disk').textContent = `${avgDisk.toFixed(1)}%`;
-        document.getElementById('p95-disk').textContent = `${p95Disk.toFixed(1)}%`;
-        document.getElementById('avg-disk-gauge').style.width = `${avgDisk}%`;
-
-        // Calculate average uptime
-        const uptimes = servers.filter(s => s.uptime).map(s => {
-            // Handle both numeric (seconds) and string formats
-            if (typeof s.uptime === 'number') {
-                return s.uptime;
-            } else if (typeof s.uptime === 'string') {
-                // Try to parse if it's a numeric string
-                const parsed = parseFloat(s.uptime);
-                return isNaN(parsed) ? 0 : parsed;
-            }
-            return 0;
-        }).filter(u => u > 0);
-        
-        if (uptimes.length > 0) {
-            const avgUptime = uptimes.reduce((sum, u) => sum + u, 0) / uptimes.length;
-            const days = Math.floor(avgUptime / 86400);
-            const hours = Math.floor((avgUptime % 86400) / 3600);
-            document.getElementById('fleet-uptime').textContent = `${days}d ${hours}h`;
-        } else {
-            document.getElementById('fleet-uptime').textContent = 'N/A';
-        }
-    }
-
-    function updateProblemServers(data) {
-        const servers = data.servers || [];
-        const problems = servers.filter(s => s.health !== 'Healthy').slice(0, 10);
-        
-        document.getElementById('problem-count').textContent = problems.length;
-
-        const tbody = document.getElementById('problem-servers-body');
-        if (problems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-success p-3">No problematic servers</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = problems.map(server => `
-            <tr>
-                <td>
-                    <div class="fw-bold">${server.hostname || server.device_name || server.ip}</div>
-                    <div class="small text-secondary">${server.ip}</div>
-                </td>
-                <td><span class="badge ${server.health === 'Critical' ? 'bg-danger' : 'bg-warning'}">${server.health}</span></td>
-                <td class="${(server.cpu_usage || 0) > 80 ? 'text-danger fw-bold' : ''}">${server.cpu_usage ? server.cpu_usage.toFixed(1) : '0.0'}%</td>
-                <td class="${(server.memory_usage || 0) > 85 ? 'text-danger fw-bold' : ''}">${server.memory_usage ? server.memory_usage.toFixed(1) : '0.0'}%</td>
-                <td class="${(server.disk_usage || 0) > 90 ? 'text-danger fw-bold' : ''}">${server.disk_usage ? server.disk_usage.toFixed(1) : '0.0'}%</td>
-                <td>
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${server.device_id}">
-                            <i class="fas fa-chart-line"></i>
-                        </button>
-                        <a href="/devices/${server.device_id}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2">
-                            <i class="fas fa-external-link-alt"></i>
-                        </a>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-
-        // Add event listeners
-        tbody.querySelectorAll('.server-modal-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const deviceId = btn.dataset.deviceId;
-                if (deviceId) openServerModal(deviceId);
-            });
-        });
-    }
-
-
-    function updateServerAlerts(data) {
-        // This would fetch from alerts API - placeholder for now
-        const tbody = document.getElementById('server-alerts-body');
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary p-3">No recent alerts</td></tr>';
-        document.getElementById('alert-count').textContent = '0';
-    }
-
-    function updateFleetTable(data) {
-        const servers = data.servers || [];
-        let filtered = servers;
-
-        if (currentFilter !== 'all') {
-            if (currentFilter === 'problem') {
-                filtered = servers.filter(s => s.health !== 'Healthy');
-            } else {
-                filtered = servers.filter(s => s.health.toLowerCase() === currentFilter);
-            }
-        }
-
-        const tbody = document.getElementById('server-fleet-body');
-        if (filtered.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-secondary p-3">No servers match filter</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = filtered.map(server => {
-            const lastSeen = server.last_seen ? timeAgo(server.last_seen) : 'Never';
-            return `
-                <tr>
-                    <td>
-                        <div class="fw-bold">${server.hostname || server.device_name || server.ip}</div>
-                        <div class="small text-secondary">${server.ip}</div>
-                    </td>
-                    <td><span class="badge ${
-                        server.health === 'Healthy' ? 'bg-success' : 
-                        server.health === 'Critical' ? 'bg-danger' : 'bg-warning'
-                    }">${server.health}</span></td>
-                    <td class="${(server.cpu_usage || 0) > 80 ? 'text-danger fw-bold' : ''}">${server.cpu_usage ? server.cpu_usage.toFixed(1) : '0.0'}%</td>
-                    <td class="${(server.memory_usage || 0) > 85 ? 'text-danger fw-bold' : ''}">${server.memory_usage ? server.memory_usage.toFixed(1) : '0.0'}%</td>
-                    <td class="${(server.disk_usage || 0) > 90 ? 'text-danger fw-bold' : ''}">${server.disk_usage ? server.disk_usage.toFixed(1) : '0.0'}%</td>
-                    <td>${server.latency ? server.latency.toFixed(1) + ' ms' : '-'}</td>
-                    <td class="${server.packet_loss > 0 ? 'text-warning' : ''}">${server.packet_loss ? server.packet_loss.toFixed(1) + '%' : '-'}</td>
-                    <td>${lastSeen}</td>
-                    <td>
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${server.device_id}">
-                                <i class="fas fa-chart-line"></i>
-                            </button>
-                            <a href="/devices/${server.device_id}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2">
-                                <i class="fas fa-external-link-alt"></i>
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        // Add event listeners
-        tbody.querySelectorAll('.server-modal-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const deviceId = btn.dataset.deviceId;
-                if (deviceId) openServerModal(deviceId);
-            });
-        });
-    }
-
-    // Filter buttons
-    document.querySelectorAll('[data-filter]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            currentFilter = btn.dataset.filter;
-            document.querySelectorAll('[data-filter]').forEach(b => {
-                b.classList.toggle('active', b === btn);
-                b.classList.toggle('tactical-btn-primary', b === btn);
-                b.classList.toggle('tactical-btn-ghost', b !== btn);
-            });
-            updateFleetTable({ servers: serverData });
-        });
-    });
-
-    // Refresh button
-    document.getElementById('btnRefreshDashboard').addEventListener('click', async () => {
-        const refreshButton = document.getElementById('btnRefreshDashboard');
-        if (serverLoadingApi && refreshButton) {
-            serverLoadingApi.setButtonBusy(refreshButton, {
-                busy: true,
-                labelBusy: 'Refreshing...',
-                labelIdle: '<i class="fas fa-sync-alt me-1"></i>Refresh'
-            });
-        }
-        await fetchServerData();
-        if (serverLoadingApi && refreshButton) {
-            serverLoadingApi.setButtonBusy(refreshButton, {
-                busy: false,
-                labelIdle: '<i class="fas fa-sync-alt me-1"></i>Refresh'
-            });
-        }
-    });
-
-    // Initial load
-    fetchServerData();
-
-    // Auto-refresh every 30 seconds
-    setInterval(fetchServerData, 30000);
+    import { initServerOperationsPage } from "{{ url_for('static', filename='js/dashboard/servers/serverOperationsPage.js') }}?v=2.16";
+    initServerOperationsPage();
 </script>
 {% endblock %}

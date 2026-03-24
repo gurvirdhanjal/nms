@@ -282,10 +282,18 @@ class Config:
     MAX_REPORT_RANGE_DAYS = int(os.environ.get('MAX_REPORT_RANGE_DAYS', 90))
     MAX_NETWORK_REPORT_RANGE_DAYS = int(os.environ.get('MAX_NETWORK_REPORT_RANGE_DAYS', 30))
     MAX_PRODUCTIVITY_REPORT_RANGE_DAYS = int(os.environ.get('MAX_PRODUCTIVITY_REPORT_RANGE_DAYS', 30))
-    MAX_REPORT_ROWS = int(os.environ.get('MAX_REPORT_ROWS', 50000))
-    MAX_EXPORT_ROWS = int(os.environ.get('MAX_EXPORT_ROWS', 50000))
+    MAX_REPORT_ROWS = int(os.environ.get('MAX_REPORT_ROWS', 200000))
+    MAX_EXPORT_ROWS = int(os.environ.get('MAX_EXPORT_ROWS', 200000))
     REPORT_CACHE_TTL_SECONDS = int(os.environ.get('REPORT_CACHE_TTL_SECONDS', 180))
-    REPORT_STATEMENT_TIMEOUT_MS = int(os.environ.get('REPORT_STATEMENT_TIMEOUT_MS', 5000))
+    REPORT_STATEMENT_TIMEOUT_MS = int(os.environ.get('REPORT_STATEMENT_TIMEOUT_MS', 15000))
+    REPORT_TIMEOUT_ENTERPRISE_MS = int(os.environ.get('REPORT_TIMEOUT_ENTERPRISE_MS', 20000))
+    # Infrastructure device types for Server Fleet reports (lowercase, comma-separated in .env)
+    INFRASTRUCTURE_DEVICE_TYPES = [
+        t.strip().lower() for t in
+        os.environ.get('INFRASTRUCTURE_DEVICE_TYPES', 'server,switch,access_point,router,firewall').split(',')
+    ]
+    # Gemini-powered insight enhancement (Layer 2, optional)
+    GEMINI_REPORT_INSIGHTS_ENABLED = os.environ.get('GEMINI_REPORT_INSIGHTS_ENABLED', 'false').lower() == 'true'
     REPORT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('REPORT_RATE_LIMIT_PER_MINUTE', 5))
     REPORT_EXPORT_RATE_LIMIT_PER_MINUTE = int(
         os.environ.get('REPORT_EXPORT_RATE_LIMIT_PER_MINUTE', 3)
