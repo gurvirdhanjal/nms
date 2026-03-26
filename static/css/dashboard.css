@@ -1,0 +1,2784 @@
+/* Dashboard — extracted from templates/dashboard.html, Phase 3A */
+
+/* Smooth tab transitions for Network Intelligence */
+.tab-content {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 220ms ease, transform 220ms ease;
+    will-change: opacity, transform;
+}
+
+.tab-content.is-active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.tab-content.is-leaving {
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tactical-stat-card {
+    position: relative;
+}
+
+/* Left accent bar replaces removed eye icon */
+.device-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background: var(--ui-accent);
+    opacity: 0.45;
+    border-radius: 4px 0 0 4px;
+    transition: opacity 150ms ease;
+}
+.device-kpi-card:hover::before {
+    opacity: 0.85;
+}
+
+.kpi-view-icon {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.35);
+    transition: color 130ms ease;
+    pointer-events: none;
+}
+
+.tactical-stat-card:hover .kpi-view-icon {
+    color: rgba(211, 220, 230, 0.72);
+    /* v5.0: no scale, no green */
+}
+
+
+.tabs button {
+    background: transparent;
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text-muted);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: border-color 130ms ease, background 130ms ease, color 130ms ease;
+}
+
+/* v5.0: active tabs are NEVER green */
+.tabs button.active {
+    color: var(--ui-text-secondary);
+    border-color: var(--ui-border-strong);
+    background: var(--ui-active);
+}
+
+.tabs button:hover {
+    color: var(--ui-text-secondary);
+    border-color: var(--ui-border-strong);
+}
+
+/* Global dashboard horizontal breathing space */
+.tactical-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--ui-surface-1);
+    z-index: 2;
+}
+
+
+.overall-health-card {
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 0;
+    background: transparent;
+    margin-bottom: 0;
+}
+
+/* === KPI CARD BASELINE (Network + Fleet) === */
+.tactical-stat-card {
+    min-height: 136px;
+    padding: 24px 22px 26px;
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* v5.0: max -2px lift with depth shadow */
+.tactical-stat-card:hover {
+    border-color: var(--ui-border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+/* v5.0: KPI label typography */
+.tactical-stat-card .stat-label {
+    font-family: var(--ui-font-sans);
+    font-size: 0.60rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+}
+
+/* v5.0: KPI value — IBM Plex Mono, max 1.65rem */
+.tactical-stat-card .stat-value {
+    font-family: var(--ui-font-mono);
+    font-size: 1.65rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-text);
+}
+
+.tactical-stat-card .metric-sub {
+    margin-top: 6px;
+    font-size: 0.69rem;
+    color: var(--ui-text-muted);
+}
+
+.section-divider {
+    margin: 20px 0 16px;
+    border-top: 1px solid var(--ui-border);
+}
+
+.dashboard-enterprise .enterprise-divider-fade {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg,
+            transparent,
+            var(--ui-border-strong) 20%,
+            var(--ui-border-strong) 80%,
+            transparent);
+    margin: 1.15rem 0;
+}
+
+.overall-health-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--ui-text-muted);
+}
+
+.overall-health-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.overall-health-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.overall-health-subtext {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--ui-text-muted);
+}
+
+.overall-health-card.health-healthy {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.10), transparent 40%);
+}
+
+.overall-health-card.health-degraded {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.10), transparent 40%);
+}
+
+.overall-health-card.health-critical {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.10), transparent 40%);
+}
+
+.overall-health-card.health-healthy .overall-health-dot {
+    background: var(--status-success);
+}
+
+.overall-health-card.health-degraded .overall-health-dot {
+    background: var(--status-warning);
+}
+
+.overall-health-card.health-critical .overall-health-dot {
+    background: var(--status-critical);
+}
+
+
+
+
+#device-kpi-row .stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--ui-text);
+}
+
+#device-kpi-row .stat-label {
+    font-size: 0.60rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+}
+
+#device-kpi-row .stat-icon {
+    display: none;
+}
+
+
+.server-health-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: var(--ui-text-muted);
+}
+
+.section-block {
+    padding-inline: 10px;
+}
+
+
+
+.breakdown-panel {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.breakdown-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.breakdown-left,
+.breakdown-right {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.breakdown-subcard {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.breakdown-subcard .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.breakdown-left .table-responsive {
+    max-height: 420px;
+    overflow: auto;
+    box-shadow: inset 0 -24px 20px -20px rgba(0, 0, 0, 0.55);
+}
+
+@media (max-width: 992px) {
+    .breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .breakdown-left .table-responsive {
+        max-height: none;
+    }
+}
+
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.status-healthy {
+    background: var(--status-success);
+}
+
+.status-warning {
+    background: var(--status-warning);
+}
+
+.status-critical {
+    background: var(--status-critical);
+}
+
+.status-offline {
+    background: var(--status-offline);
+}
+
+.status-unknown {
+    background: var(--status-unknown);
+}
+
+.server-health-row {
+    cursor: pointer;
+}
+
+.chart-empty {
+    display: none;
+    text-align: center;
+    color: var(--ui-text-muted);
+    font-size: 0.9rem;
+    padding: 2rem 0;
+}
+
+.device-kpi-card:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    transform: translateY(-1px);
+    transition: transform 130ms ease, border-color 130ms ease;
+}
+
+#card-network-avail canvas {
+    opacity: 0.6;
+}
+
+#device-kpi-row,
+#fleet-overview-row {
+    margin-bottom: 24px !important;
+}
+
+.alerts-filters {
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.alerts-filters select,
+.alerts-filters input {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.alerts-filters select {
+    appearance: none;
+    -webkit-appearance: none;
+    line-height: 1.4;
+    padding-right: 32px;
+}
+
+.alerts-filters select {
+    background-position: right 10px center;
+}
+
+
+
+
+#server-health-detail .tactical-card {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+#server-health-detail .tactical-table th,
+#server-health-detail .tactical-table td {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+
+
+/* FLEET OVERVIEW STYLES (MATCHING NETWORK OVERVIEW) */
+#fleet-overview-row .tactical-stat-card {
+    border-color: var(--ui-border);
+}
+
+/* Mute P95 and secondary metrics */
+#fleet-overview-row .metric-sub .text-secondary {
+    opacity: 0.6;
+    font-size: 0.85rem;
+}
+
+/* Visually attach the table to the overview (inset look) */
+.fleet-table-card {
+    background: var(--ui-surface-2);
+    /* Slightly darker/different to show hierarchy but blend */
+    border: 1px solid var(--ui-border);
+    box-shadow: none;
+    /* Flatten it to look like a sub-panel */
+}
+
+.fleet-table-card .card-body {
+    padding: 0;
+}
+
+
+
+.alert-row-critical:hover {
+    box-shadow: none;
+    /* v5.0: no glow */
+}
+
+.dashboard-enterprise #table-alerts-body tr.alert-row-warning>td {
+    background: rgba(199, 160, 89, 0.16) !important;
+    border-bottom: 1px solid rgba(199, 160, 89, 0.32) !important;
+}
+
+.dashboard-enterprise #table-alerts-body tr.alert-row-warning>td:first-child {
+    border-left: 3px solid var(--status-warning);
+}
+
+.dashboard-enterprise #table-alerts-body tr.alert-row-warning:hover>td {
+    background: rgba(199, 160, 89, 0.22) !important;
+}
+
+/* Fix 6: Separation */
+#device-breakdown {
+    margin-bottom: 32px;
+}
+
+#device-breakdown .breakdown-panel {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 20px;
+}
+
+/* ============================================================
+   ENTERPRISE COMPACT OVERRIDES (Dashboard-only)
+   ============================================================ */
+
+.dashboard-enterprise.tactical-theme {
+    line-height: 1.38;
+}
+
+.dashboard-enterprise .enterprise-section-title {
+    font-size: 0.92rem;
+    letter-spacing: 0.11em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--ui-text-primary);
+}
+
+.dashboard-enterprise .enterprise-section-sub {
+    font-size: 0.74rem;
+    color: var(--ui-text-muted);
+    line-height: 1.4;
+}
+
+.dashboard-enterprise h2.enterprise-section-title {
+    font-size: 1.12rem;
+    letter-spacing: 0.08em;
+}
+
+.dashboard-enterprise .tactical-card,
+.dashboard-enterprise .tactical-stat-card,
+.dashboard-enterprise .breakdown-panel,
+.dashboard-enterprise .breakdown-subcard,
+.dashboard-enterprise .alerts-container,
+.dashboard-enterprise .fleet-table-card,
+.dashboard-enterprise .enterprise-panel,
+.dashboard-enterprise .overall-health-card {
+    background: var(--ui-surface-2) !important;
+    border: 1px solid var(--ui-border-strong) !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+}
+
+.dashboard-enterprise .tactical-card::before,
+.dashboard-enterprise .tactical-stat-card::before,
+.dashboard-enterprise .alerts-container::before {
+    display: none !important;
+}
+
+.dashboard-enterprise .tactical-card:hover,
+.dashboard-enterprise .tactical-stat-card:hover,
+.dashboard-enterprise .breakdown-subcard:hover,
+.dashboard-enterprise .alerts-container:hover {
+    border-color: var(--ui-border-strong) !important;
+    transform: translateY(-1px);
+    /* v5.0: no shadow expansion on hover */
+    box-shadow: none !important;
+}
+
+.dashboard-enterprise .text-success {
+    color: var(--status-success) !important;
+}
+
+.dashboard-enterprise .text-warning {
+    color: var(--status-warning) !important;
+}
+
+.dashboard-enterprise .text-danger {
+    color: var(--status-critical) !important;
+}
+
+.dashboard-enterprise .text-secondary,
+.dashboard-enterprise .tactical-text-muted {
+    color: var(--ui-text-muted) !important;
+}
+
+#device-kpi-row,
+#fleet-overview-row {
+    display: grid;
+    gap: 0.62rem;
+    --bs-gutter-x: 0;
+    --bs-gutter-y: 0;
+    margin-bottom: 0.82rem !important;
+}
+
+#device-kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+#device-kpi-row>.col:nth-child(-n+3) {
+    grid-column: span 2;
+}
+
+#device-kpi-row>.col:nth-child(n+4) {
+    grid-column: span 3;
+}
+
+#fleet-overview-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#device-kpi-row>.col,
+#fleet-overview-row>.col {
+    padding: 0;
+    width: auto !important;
+    max-width: none;
+    flex: 1 1 auto;
+}
+
+#device-kpi-row .tactical-stat-card,
+#fleet-overview-row .tactical-stat-card {
+    min-height: 108px;
+    padding: 0.74rem 0.82rem 0.72rem;
+}
+
+.dashboard-enterprise .enterprise-kpi .stat-label,
+#fleet-overview-row .stat-label,
+.dashboard-enterprise .alerts-kpi .stat-label {
+    font-size: 0.60rem !important;
+    letter-spacing: 0.14em;
+    color: var(--ui-text-muted) !important;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+}
+
+.dashboard-enterprise .enterprise-kpi .stat-label::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 0.42rem;
+    vertical-align: middle;
+    background: color-mix(in srgb, var(--ui-text-muted) 70%, transparent);
+}
+
+#card-devices-online .stat-label::before {
+    background: color-mix(in srgb, var(--ui-accent) 76%, transparent);
+}
+
+#card-devices-healthy .stat-label::before {
+    background: color-mix(in srgb, var(--status-success) 78%, transparent);
+}
+
+#card-devices-maintenance .stat-label::before {
+    background: color-mix(in srgb, var(--status-warning) 76%, transparent);
+}
+
+#card-devices-offline .stat-label::before {
+    background: color-mix(in srgb, var(--status-critical) 72%, transparent);
+}
+
+#card-network-avail .stat-label::before {
+    background: color-mix(in srgb, var(--ui-accent) 75%, transparent);
+}
+
+.dashboard-enterprise .enterprise-kpi .stat-value,
+#fleet-overview-row .stat-value,
+.dashboard-enterprise .alerts-kpi .stat-value {
+    font-size: 1.65rem !important;
+    line-height: 1.15;
+    font-weight: 700;
+    color: var(--ui-text) !important;
+}
+
+.dashboard-enterprise .enterprise-kpi .metric-sub,
+#fleet-overview-row .metric-sub,
+#device-kpi-row .metric-sub {
+    margin-top: 0.2rem;
+    font-size: 0.69rem !important;
+    line-height: 1.25;
+    color: var(--ui-text-muted) !important;
+}
+
+#val-devices-online .anim-online {
+    font-size: 1.56rem;
+    font-weight: 700;
+    color: var(--ui-text-primary);
+}
+
+#val-devices-online .anim-total {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--ui-text-muted);
+    margin-left: 2px;
+}
+
+.freshness-ok {
+    color: var(--ui-text-muted) !important;
+}
+
+.freshness-warn {
+    color: var(--status-warning) !important;
+}
+
+.freshness-stale {
+    color: var(--status-critical) !important;
+}
+
+.dashboard-enterprise .kpi-view-icon {
+    top: 8px;
+    right: 10px;
+    font-size: 0.58rem;
+    color: rgba(179, 192, 206, 0.45);
+}
+
+.dashboard-enterprise .tactical-stat-card:hover .kpi-view-icon {
+    transform: none;
+    color: rgba(211, 220, 230, 0.72);
+}
+
+.dashboard-enterprise .tabs {
+    gap: 0.28rem;
+}
+
+.dashboard-enterprise .tabs button {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.6rem;
+    line-height: 1.2;
+    letter-spacing: 0.1em;
+    border-radius: 3px;
+    color: var(--ui-text-muted);
+    border: 1px solid var(--ui-border-strong);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* v5.0: active tabs are NEVER green */
+.dashboard-enterprise .tabs button.active {
+    color: var(--ui-text-primary);
+    border-color: var(--ui-border-strong);
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.dashboard-enterprise .tabs button:hover {
+    color: var(--ui-text-primary);
+    border-color: rgba(173, 186, 201, 0.45);
+}
+
+.dashboard-enterprise .tactical-btn-outline,
+.dashboard-enterprise .btn-outline-secondary,
+.dashboard-enterprise .btn-dark.border-secondary {
+    border-color: rgba(255, 255, 255, 0.34);
+    color: var(--ui-text-secondary);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: none !important;
+}
+
+.dashboard-enterprise .tactical-btn-outline:hover,
+.dashboard-enterprise .tactical-btn-outline.active,
+.dashboard-enterprise .btn-outline-secondary:hover,
+.dashboard-enterprise .btn-dark.border-secondary:hover {
+    border-color: rgba(173, 186, 201, 0.52);
+    color: var(--ui-text-primary);
+    background: var(--ui-border);
+}
+
+.dashboard-enterprise .tactical-select {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--ui-text-secondary);
+    background: rgba(0, 0, 0, 0.78);
+}
+
+.dashboard-enterprise .tactical-select:hover,
+.dashboard-enterprise .tactical-select:focus {
+    border-color: rgba(173, 186, 201, 0.48);
+    box-shadow: none;
+}
+
+.dashboard-enterprise .breakdown-panel {
+    padding: 0.62rem;
+    background: var(--ui-surface-2) !important;
+}
+
+.dashboard-enterprise .breakdown-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 0.62rem;
+}
+
+.dashboard-enterprise .breakdown-left,
+.dashboard-enterprise .breakdown-right {
+    gap: 0.62rem;
+}
+
+.dashboard-enterprise .breakdown-subcard .card-header {
+    padding: 0.5rem 0.72rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--ui-text-secondary);
+}
+
+.dashboard-enterprise .alerts-container {
+    margin-top: 0.62rem;
+    padding: 0.82rem;
+}
+
+.dashboard-enterprise .alerts-header {
+    margin-bottom: 0.62rem;
+}
+
+.dashboard-enterprise .alerts-kpi-grid {
+    gap: 0.62rem;
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.65rem;
+    border-bottom: 1px solid var(--ui-border-strong);
+}
+
+.dashboard-enterprise .alerts-kpi-left {
+    grid-template-columns: repeat(4, minmax(90px, 1fr));
+    gap: 0.62rem;
+}
+
+.dashboard-enterprise .alerts-kpi-right {
+    font-size: 0.7rem;
+    line-height: 1.32;
+    color: var(--ui-text-muted);
+}
+
+.dashboard-enterprise .alerts-divider {
+    margin: 0.55rem 0 0.78rem;
+    border-color: var(--ui-border-strong);
+}
+
+.dashboard-enterprise .alerts-filters {
+    padding: 0.52rem 0.62rem;
+    border-radius: 4px;
+    border: 1px solid var(--ui-border-strong);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-enterprise .alerts-filters .tactical-select,
+.dashboard-enterprise .alerts-filters .tactical-input {
+    height: 30px;
+    border-radius: 8px;
+    font-size: 0.74rem;
+    background: rgba(0, 0, 0, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: var(--ui-text-primary);
+    padding: 0 0.58rem;
+}
+
+.dashboard-enterprise .alerts-filters .tactical-select:hover,
+.dashboard-enterprise .alerts-filters .tactical-input:hover {
+    border-color: rgba(173, 186, 201, 0.42);
+}
+
+
+/* v5.0: KPI card top accent line by status */
+.dashboard-enterprise .tactical-stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+.dashboard-enterprise .tactical-stat-card.critical::after {
+    background: var(--status-critical);
+}
+
+.dashboard-enterprise .tactical-stat-card.warning::after {
+    background: var(--status-warning);
+}
+
+.dashboard-enterprise .tactical-stat-card.healthy::after {
+    background: rgba(16, 185, 129, 0.35);
+}
+
+.dashboard-enterprise .tactical-table {
+    font-size: 0.79rem;
+}
+
+.dashboard-enterprise .tactical-table thead th {
+    background: var(--ui-surface-1) !important;
+    color: var(--ui-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.48rem 0.56rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dashboard-enterprise .tactical-table tbody tr {
+    background: rgba(255, 255, 255, 0.012);
+    transition: background-color 140ms ease;
+}
+
+.dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.022);
+}
+
+.dashboard-enterprise .tactical-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.13);
+    box-shadow: none;
+    color: var(--ui-text-primary);
+}
+
+.dashboard-enterprise .tactical-table tbody td {
+    padding: 0.42rem 0.56rem;
+    line-height: 1.24;
+    color: var(--ui-text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.dashboard-enterprise .badge,
+.dashboard-enterprise .tactical-badge {
+    border-radius: 3px;
+    border: 1px solid transparent;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.42rem;
+    box-shadow: none !important;
+}
+
+.dashboard-enterprise .tactical-badge-danger,
+.dashboard-enterprise .badge.tactical-badge-danger,
+.dashboard-enterprise .bg-danger-subtle {
+    background: rgba(201, 92, 104, 0.16) !important;
+    border-color: rgba(201, 92, 104, 0.34) !important;
+    color: var(--status-critical) !important;
+}
+
+.dashboard-enterprise .tactical-badge-warning,
+.dashboard-enterprise .badge.tactical-badge-warning,
+.dashboard-enterprise .bg-warning-subtle {
+    background: rgba(199, 160, 89, 0.16) !important;
+    border-color: rgba(199, 160, 89, 0.34) !important;
+    color: var(--status-warning) !important;
+}
+
+.dashboard-enterprise .tactical-badge-success,
+.dashboard-enterprise .badge.tactical-badge-success,
+.dashboard-enterprise .bg-success-subtle {
+    background: rgba(93, 171, 130, 0.16) !important;
+    border-color: rgba(93, 171, 130, 0.34) !important;
+    color: var(--status-success) !important;
+}
+
+.dashboard-enterprise .tactical-badge-info,
+.dashboard-enterprise .badge.tactical-badge-info {
+    background: rgba(95, 151, 194, 0.16) !important;
+    border-color: rgba(95, 151, 194, 0.34) !important;
+    color: var(--ui-text-secondary) !important;
+}
+
+.dashboard-enterprise .tactical-badge-secondary {
+    background: rgba(255, 255, 255, 0.14) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    color: var(--ui-text-muted) !important;
+}
+
+.dashboard-enterprise .availability-cell {
+    height: 20px;
+    border-radius: 4px;
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.26);
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.dashboard-enterprise .availability-cell:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: rgba(173, 186, 201, 0.46);
+}
+
+.dashboard-enterprise .availability-cell.avail-excellent,
+.dashboard-enterprise .legend-swatch.avail-excellent {
+    background: rgba(84, 153, 118, 0.8);
+    border-color: rgba(120, 184, 150, 0.62);
+}
+
+.dashboard-enterprise .availability-cell.avail-good,
+.dashboard-enterprise .legend-swatch.avail-good {
+    background: rgba(79, 137, 170, 0.8);
+    border-color: rgba(109, 165, 196, 0.62);
+}
+
+.dashboard-enterprise .availability-cell.avail-warning,
+.dashboard-enterprise .legend-swatch.avail-warning {
+    background: rgba(170, 141, 85, 0.8);
+    border-color: rgba(206, 172, 108, 0.62);
+}
+
+.dashboard-enterprise .availability-cell.avail-bad,
+.dashboard-enterprise .legend-swatch.avail-bad {
+    background: rgba(173, 90, 101, 0.82);
+    border-color: rgba(204, 118, 129, 0.62);
+}
+
+.dashboard-enterprise .availability-cell.avail-unknown,
+.dashboard-enterprise .legend-swatch.avail-unknown {
+    background: repeating-linear-gradient(45deg,
+            var(--ui-border),
+            var(--ui-border) 5px,
+            rgba(255, 255, 255, 0.06) 5px,
+            rgba(255, 255, 255, 0.06) 10px);
+    border-color: rgba(255, 255, 255, 0.38);
+}
+
+.dashboard-enterprise .network-segments-panel .subnet-panel-divider {
+    margin: 0;
+}
+
+.dashboard-enterprise .network-segments-panel .subnet-table-scroll {
+    max-height: 340px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.dashboard-enterprise .network-segments-panel .subnet-table-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.dashboard-enterprise .network-segments-panel .subnet-table-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.26);
+    border-radius: 4px;
+}
+
+.dashboard-enterprise .subnet-row-clickable {
+    cursor: pointer;
+}
+
+.dashboard-enterprise .subnet-row-clickable:focus-visible {
+    outline: 1px solid var(--ui-border-strong);
+    outline-offset: -1px;
+}
+
+.dashboard-enterprise .subnet-row-hint {
+    margin-left: 0.45rem;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ui-text-muted);
+}
+
+.dashboard-enterprise .subnet-health-badge {
+    min-width: 84px;
+    text-align: center;
+}
+
+#subnetDetailsModal .modal-content,
+#subnetDetailsModal .subnet-details-modal {
+    background: var(--bg-surface, #0a0c0f) !important;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06)) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9) !important;
+}
+
+#subnetDetailsModal .modal-header {
+    padding: 0.56rem 0.74rem 0.46rem;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04));
+    border-top: none !important;
+}
+
+#subnetDetailsModal .modal-title {
+    font-size: 0.79rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ui-text-primary);
+}
+
+#subnetDetailsModal .modal-title i {
+    color: var(--ui-text-secondary);
+    font-size: 0.74rem;
+    opacity: 0.6;
+}
+
+#subnetDetailsModal .modal-body.subnet-details-modal-body {
+    padding: 0.48rem 0.74rem 0.66rem !important;
+}
+
+#subnetDetailsModal .subnet-modal-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    margin-bottom: 0.34rem;
+}
+
+#subnetDetailsModal #subnet-modal-updated {
+    margin-bottom: 0;
+    font-size: 0.66rem;
+    color: var(--ui-text-muted);
+}
+
+#subnetDetailsModal .subnet-modal-health-pill {
+    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.08));
+    border-radius: 4px;
+    padding: 0.18rem 0.44rem;
+    background: rgba(255, 255, 255, 0.02);
+    font-family: var(--ui-font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.64rem;
+    color: var(--ui-text-secondary);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+#subnetDetailsModal .subnet-modal-health-pill.health-critical {
+    color: var(--status-critical);
+    border-color: var(--status-critical-bd);
+    background: var(--status-critical-bg);
+}
+
+#subnetDetailsModal .subnet-modal-health-pill.health-warning {
+    color: var(--status-warning);
+    border-color: var(--status-warning-bd);
+    background: var(--status-warning-bg);
+}
+
+#subnetDetailsModal .subnet-modal-health-pill.health-healthy {
+    color: var(--status-success);
+    border-color: var(--status-success-bd);
+    background: var(--status-success-bg);
+}
+
+#subnetDetailsModal .subnet-detail-kpis {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.28rem;
+    margin-bottom: 0.36rem;
+}
+
+#subnetDetailsModal .subnet-detail-kpi {
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    padding: 0.24rem 0.4rem;
+    background: rgba(255, 255, 255, 0.045);
+    min-height: 46px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.14rem;
+}
+
+#subnetDetailsModal .subnet-detail-kpi .label {
+    font-size: 0.52rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: var(--ui-text-muted);
+    line-height: 1.1;
+}
+
+#subnetDetailsModal .subnet-detail-kpi .value {
+    font-family: var(--ui-font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ui-text-primary);
+    line-height: 1.1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#subnetDetailsModal .subnet-detail-kpi .value.value-critical {
+    color: var(--status-critical);
+}
+
+#subnetDetailsModal .subnet-detail-kpi .value.value-warning {
+    color: var(--status-warning);
+}
+
+#subnetDetailsModal .subnet-detail-kpi .value.value-healthy {
+    color: var(--status-success);
+}
+
+#subnetDetailsModal .subnet-modal-breakdown {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.28rem;
+    margin-bottom: 0.42rem;
+}
+
+#subnetDetailsModal .subnet-modal-breakdown-item {
+    display: grid;
+    grid-template-columns: minmax(0, 92px) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.28rem;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    padding: 0.24rem 0.4rem;
+    background: rgba(255, 255, 255, 0.03);
+    min-height: 34px;
+}
+
+#subnetDetailsModal .subnet-modal-breakdown-label {
+    font-size: 0.56rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ui-text-muted);
+    white-space: nowrap;
+}
+
+#subnetDetailsModal .subnet-modal-breakdown-value {
+    font-size: 0.66rem;
+    color: var(--ui-text-secondary);
+    text-align: right;
+    line-height: 1.28;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#subnetDetailsModal .subnet-modal-device-scroll {
+    max-height: min(52vh, 420px);
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#subnetDetailsModal .subnet-modal-device-scroll .tactical-table tbody td {
+    padding: 0.34rem 0.52rem;
+    font-size: 0.74rem;
+    line-height: 1.2;
+}
+
+#subnetDetailsModal .subnet-modal-device-scroll .tactical-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.36rem 0.52rem;
+    font-size: 0.66rem;
+}
+
+#subnetDetailsModal .subnet-device-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ui-text-primary);
+    line-height: 1.2;
+}
+
+#subnetDetailsModal .subnet-device-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.24rem;
+    font-size: 0.61rem;
+    line-height: 1.15;
+    color: var(--ui-text-muted);
+    margin-top: 0.15rem;
+}
+
+#subnetDetailsModal .subnet-device-status {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+}
+
+#subnetDetailsModal .subnet-device-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--ui-font-mono);
+    font-size: 0.62rem;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 0;
+}
+
+#subnetDetailsModal .subnet-device-status.status-online {
+    color: var(--status-success);
+}
+
+#subnetDetailsModal .subnet-device-status.status-degraded {
+    color: var(--status-warning);
+}
+
+#subnetDetailsModal .subnet-device-status.status-offline {
+    color: var(--status-critical);
+}
+
+#subnetDetailsModal .subnet-device-status.status-unknown {
+    color: var(--status-unknown);
+}
+
+#subnetDetailsModal .subnet-device-status-chip.status-online {
+    color: var(--status-success);
+}
+
+#subnetDetailsModal .subnet-device-status-chip.status-degraded {
+    color: var(--status-warning);
+}
+
+#subnetDetailsModal .subnet-device-status-chip.status-offline {
+    color: var(--status-critical);
+}
+
+#subnetDetailsModal .subnet-device-status-chip.status-unknown {
+    color: var(--ui-text-muted);
+}
+
+#subnetDetailsModal .subnet-ip-pill {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.08rem 0.34rem;
+    font-family: var(--ui-font-mono);
+    font-size: 0.66rem;
+    line-height: 1;
+    color: var(--ui-text-secondary);
+}
+
+#subnetDetailsModal .subnet-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: 0 0 auto;
+    margin-right: 2px;
+}
+
+#subnetDetailsModal .subnet-status-dot.status-online {
+    background: var(--status-success);
+}
+
+#subnetDetailsModal .subnet-status-dot.status-degraded {
+    background: var(--status-warning);
+}
+
+#subnetDetailsModal .subnet-status-dot.status-offline {
+    background: var(--status-critical);
+}
+
+#subnetDetailsModal .subnet-status-dot.status-unknown {
+    background: var(--status-unknown);
+}
+
+#subnetDetailsModal .subnet-monitored-chip {
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid var(--ui-border-strong);
+    padding: 0.06rem 0.24rem;
+    font-size: 0.54rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+#subnetDetailsModal .subnet-monitored-chip.is-on {
+    color: var(--status-success);
+    border-color: var(--status-success-bd);
+    background: var(--status-success-bg);
+}
+
+#subnetDetailsModal .subnet-monitored-chip.is-off {
+    color: var(--ui-text-muted);
+    border-color: var(--ui-border-strong);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#overall-health-card.enterprise-header-strip {
+    margin-bottom: 0.62rem;
+    padding: 0.5rem 0.74rem;
+}
+
+.dashboard-enterprise .enterprise-strip-left,
+.dashboard-enterprise .enterprise-strip-right {
+    gap: 0.62rem;
+}
+
+.dashboard-enterprise .enterprise-strip-item {
+    gap: 0.34rem;
+    font-size: 0.73rem;
+    color: var(--ui-text-secondary);
+}
+
+.dashboard-enterprise .enterprise-strip-item .strip-label {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    color: var(--ui-text-muted);
+}
+
+.dashboard-enterprise .section-block {
+    margin-top: 0.82rem;
+    padding-inline: 0;
+}
+
+.dashboard-enterprise .initially-hidden,
+#serverDetailsModal .initially-hidden {
+    display: none;
+}
+
+.dashboard-enterprise .sparkline-wrap {
+    height: 30px;
+    position: relative;
+    margin-top: 0.25rem;
+}
+
+.dashboard-enterprise .chart-wrap-90,
+.dashboard-enterprise .chart-wrap-220 {
+    position: relative;
+}
+
+.dashboard-enterprise .chart-wrap-90 {
+    height: 90px;
+}
+
+.dashboard-enterprise .chart-wrap-220 {
+    height: 220px;
+}
+
+.dashboard-enterprise .server-col-fixed {
+    width: 250px;
+}
+
+.dashboard-enterprise .alert-banner-critical {
+    display: none;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-left: 4px solid var(--status-critical);
+    border-radius: 8px;
+}
+
+#serverDetailsModal .modal-chart-200 {
+    height: 200px;
+}
+
+#serverDetailsModal .modal-chart-220 {
+    height: 220px;
+}
+
+#serverDetailsModal .server-modal-action-link {
+    background: var(--ui-border) !important;
+    border-color: rgba(125, 211, 252, 0.28) !important;
+    color: #e6f7ff !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+#serverDetailsModal .server-modal-action-link:hover {
+    background: rgba(56, 189, 248, 0.18) !important;
+    border-color: rgba(125, 211, 252, 0.42) !important;
+    color: #f8feff !important;
+}
+
+.dashboard-enterprise .server-range-toggle .btn,
+#serverDetailsModal .server-range-toggle .btn {
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    background: rgba(15, 23, 42, 0.72);
+    color: rgba(226, 232, 240, 0.82);
+}
+
+.dashboard-enterprise .server-range-toggle .tactical-btn-ghost,
+#serverDetailsModal .server-range-toggle .tactical-btn-ghost {
+    background: rgba(15, 23, 42, 0.72) !important;
+    color: rgba(226, 232, 240, 0.82) !important;
+    border-color: rgba(125, 211, 252, 0.18) !important;
+}
+
+.dashboard-enterprise .server-range-toggle .btn:hover,
+#serverDetailsModal .server-range-toggle .btn:hover {
+    background: rgba(34, 211, 238, 0.16) !important;
+    color: #f8feff !important;
+    border-color: rgba(103, 232, 249, 0.34) !important;
+}
+
+.dashboard-enterprise .server-range-toggle .tactical-btn-primary,
+.dashboard-enterprise .server-range-toggle .btn.active,
+#serverDetailsModal .server-range-toggle .tactical-btn-primary,
+#serverDetailsModal .server-range-toggle .btn.active {
+    background: linear-gradient(135deg, rgba(45, 212, 191, 0.95), rgba(34, 197, 94, 0.88)) !important;
+    color: #000000 !important;
+    border-color: rgba(94, 234, 212, 0.58) !important;
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.14), 0 10px 24px rgba(6, 182, 212, 0.18);
+}
+
+#serverDetailsModal .load-avg-row {
+    height: 80px;
+}
+
+#serverDetailsModal .swap-progress-shell {
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+#serverDetailsModal #swap-progress-bar {
+    width: 0%;
+}
+
+#serverDetailsModal .alert-banner-warning {
+    display: none;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-left: 4px solid var(--status-warning);
+    border-radius: 8px;
+}
+
+#device-breakdown {
+    margin-bottom: 0.82rem;
+}
+
+#device-breakdown .breakdown-panel {
+    border-bottom: 1px solid var(--ui-border-strong);
+    padding-bottom: 0.62rem;
+}
+
+@media (max-width: 1200px) {
+    .dashboard-enterprise .alerts-kpi-left {
+        grid-template-columns: repeat(2, minmax(100px, 1fr));
+    }
+
+    #subnetDetailsModal .subnet-detail-kpis {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    #device-kpi-row,
+    #fleet-overview-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #device-kpi-row>.col:nth-child(-n+3),
+    #device-kpi-row>.col:nth-child(n+4) {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 992px) {
+    .dashboard-enterprise.tactical-theme {
+        padding-left: 0.82rem;
+        padding-right: 0.82rem;
+    }
+
+    .dashboard-enterprise .breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-enterprise .alerts-kpi-grid {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    #overall-health-card.enterprise-header-strip {
+        padding: 0.48rem 0.66rem;
+        gap: 0.36rem;
+    }
+
+    #subnetDetailsModal .subnet-modal-meta-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown {
+        grid-template-columns: 1fr;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown-item {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.22rem;
+    }
+
+    #subnetDetailsModal .subnet-modal-breakdown-value {
+        text-align: left;
+    }
+}
+
+@media (max-width: 576px) {
+    .dashboard-enterprise.tactical-theme {
+        padding-left: 0.62rem;
+        padding-right: 0.62rem;
+    }
+
+    #device-kpi-row,
+    #fleet-overview-row {
+        grid-template-columns: 1fr;
+    }
+
+    #device-kpi-row .tactical-stat-card,
+    #fleet-overview-row .tactical-stat-card {
+        min-height: 90px;
+        padding: 0.68rem 0.72rem;
+    }
+
+    #subnetDetailsModal .modal-header {
+        padding: 0.58rem 0.66rem 0.48rem;
+    }
+
+    #subnetDetailsModal .modal-body.subnet-details-modal-body {
+        padding: 0.48rem 0.66rem 0.68rem !important;
+    }
+
+    #subnetDetailsModal .subnet-detail-kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── Quick-Add Device modal (dashboard) ── */
+.dash-config-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--ui-text-secondary);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+
+.dash-config-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.42);
+    color: var(--ui-text-primary);
+}
+
+.dash-modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(8, 11, 17, 0.78);
+    z-index: 1080;
+    animation: sw-fade-in 140ms ease-out;
+}
+
+.dash-modal-card {
+    width: min(520px, 100%);
+    max-height: 85vh;
+    overflow-y: auto;
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+    color: var(--ui-text-primary);
+    animation: sw-slide-in 180ms ease-out;
+}
+
+.dash-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.82rem 1rem;
+    border-bottom: 1px solid var(--ui-border-strong);
+}
+
+.dash-modal-header h5 {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.dash-modal-header .close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--ui-text-muted);
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+.dash-modal-body {
+    padding: 0.82rem 1rem;
+}
+
+.dash-modal-body label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ui-text-secondary);
+    margin-bottom: 0.2rem;
+}
+
+.dash-modal-body input,
+.dash-modal-body select,
+.dash-modal-body textarea {
+    font-size: 0.79rem;
+    background: rgba(0, 0, 0, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: var(--ui-text-primary);
+    padding: 0.38rem 0.58rem;
+    width: 100%;
+    margin-bottom: 0.6rem;
+}
+
+.dash-modal-body input:focus,
+.dash-modal-body select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.50);
+}
+
+.dash-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.62rem 1rem;
+    border-top: 1px solid var(--ui-border-strong);
+}
+
+.dash-modal-footer button {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 6px;
+    padding: 0.36rem 0.82rem;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+
+.dash-modal-footer .btn-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    color: var(--ui-text-secondary);
+}
+
+.dash-modal-footer .btn-save {
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    color: var(--ui-text-primary);
+}
+
+.dash-modal-footer .btn-save:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.dash-cred-divider {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ui-text-muted);
+    margin: 0.4rem 0 0.3rem;
+}
+
+.dash-cred-hint {
+    font-size: 0.66rem;
+    color: var(--ui-text-muted);
+    margin-top: -0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+@keyframes sw-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sw-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Light theme compatibility layer (dashboard only, non-invasive) */
+html[data-theme="light"] .dashboard-enterprise {
+    --e-bg-base: var(--ui-bg);
+    --e-bg-panel: color-mix(in srgb, var(--ui-surface-1) 96%, var(--ui-surface-2) 4%);
+    --e-bg-panel-soft: color-mix(in srgb, var(--ui-surface-1) 88%, var(--ui-surface-2) 12%);
+    --e-bg-row-alt: color-mix(in srgb, var(--ui-text) 2%, transparent);
+    --e-bg-row-hover: color-mix(in srgb, var(--ui-text) 6%, transparent);
+    --e-border: var(--ui-border);
+    --e-border-strong: var(--ui-border-strong);
+    --e-border-panel: var(--ui-border-strong);
+    --e-text-primary: var(--ui-text);
+    --e-text-secondary: color-mix(in srgb, var(--ui-text) 88%, var(--ui-text-muted) 12%);
+    --e-text-muted: var(--ui-text-muted);
+    --e-text-dim: color-mix(in srgb, var(--ui-text-muted) 78%, transparent);
+}
+
+html[data-theme="light"] .dashboard-enterprise.tactical-theme {
+    background: var(--ui-bg) !important;
+    background-image:
+        linear-gradient(var(--ui-bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--ui-bg-grid) 1px, transparent 1px) !important;
+    background-size: 50px 50px !important;
+    color: var(--ui-text) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise {
+    color: var(--ui-text);
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-divider,
+html[data-theme="light"] .dashboard-enterprise .enterprise-divider-fade {
+    border-color: color-mix(in srgb, var(--ui-text) 10%, transparent);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-table thead th {
+    background: var(--ui-surface-4) !important;
+    color: var(--ui-text) !important;
+    border-bottom-color: var(--ui-border-strong);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr {
+    background: color-mix(in srgb, var(--ui-text) 1%, transparent);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--ui-text) 2.5%, transparent);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-select,
+html[data-theme="light"] .dashboard-enterprise .tactical-input,
+html[data-theme="light"] .dash-modal-body input,
+html[data-theme="light"] .dash-modal-body select,
+html[data-theme="light"] .dash-modal-body textarea {
+    background: var(--ui-surface-1) !important;
+    color: var(--ui-text) !important;
+    border-color: var(--ui-border-strong) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-section-title {
+    color: var(--ui-text);
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-section-sub {
+    color: color-mix(in srgb, var(--ui-text) 72%, var(--ui-text-muted) 28%);
+    font-size: 0.9rem;
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-card,
+html[data-theme="light"] .dashboard-enterprise .tactical-stat-card,
+html[data-theme="light"] .dashboard-enterprise .breakdown-panel,
+html[data-theme="light"] .dashboard-enterprise .breakdown-subcard,
+html[data-theme="light"] .dashboard-enterprise .alerts-container,
+html[data-theme="light"] .dashboard-enterprise .fleet-table-card,
+html[data-theme="light"] .dashboard-enterprise .enterprise-panel,
+html[data-theme="light"] .dashboard-enterprise .overall-health-card {
+    background: linear-gradient(180deg, var(--ui-surface-1) 0%, var(--ui-surface-2) 100%) !important;
+    border-color: var(--ui-border-soft) !important;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-card:hover,
+html[data-theme="light"] .dashboard-enterprise .tactical-stat-card:hover,
+html[data-theme="light"] .dashboard-enterprise .breakdown-subcard:hover,
+html[data-theme="light"] .dashboard-enterprise .alerts-container:hover {
+    border-color: var(--ui-border-strong) !important;
+    box-shadow: var(--ui-shadow) !important;
+}
+
+/* Premium light depth for KPI cards (avoid flat white blocks) */
+html[data-theme="light"] .dashboard-enterprise .tactical-stat-card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--ui-accent-soft) 26%, var(--ui-surface-1) 74%) 0%, var(--ui-surface-2) 100%) !important;
+    border-color: var(--ui-border-soft) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-healthy {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--status-success) 14%, white), var(--ui-surface-1) 42%) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-degraded {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--status-warning) 16%, white), var(--ui-surface-1) 42%) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-critical {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--status-critical) 14%, white), var(--ui-surface-1) 42%) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-value,
+html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .stat-value {
+    color: var(--ui-text) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-label,
+html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .stat-label,
+html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .metric-sub,
+html[data-theme="light"] .dashboard-enterprise #fleet-overview-row .metric-sub {
+    color: var(--ui-text-muted) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .text-white,
+html[data-theme="light"] .dashboard-enterprise .text-light {
+    color: color-mix(in srgb, var(--ui-text) 90%, var(--ui-text-muted) 10%) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .alerts-filters {
+    background: color-mix(in srgb, var(--ui-text) 3%, transparent);
+    border-color: var(--ui-border);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-select,
+html[data-theme="light"] .dashboard-enterprise .tactical-btn-outline,
+html[data-theme="light"] .dashboard-enterprise .btn-outline-secondary,
+html[data-theme="light"] .dashboard-enterprise .btn-dark.border-secondary {
+    background: var(--ui-surface-1) !important;
+    color: var(--ui-text-muted) !important;
+    border-color: var(--ui-border-strong) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-select:hover,
+html[data-theme="light"] .dashboard-enterprise .tactical-select:focus,
+html[data-theme="light"] .dashboard-enterprise .tactical-btn-outline:hover,
+html[data-theme="light"] .dashboard-enterprise .btn-outline-secondary:hover,
+html[data-theme="light"] .dashboard-enterprise .btn-dark.border-secondary:hover {
+    color: var(--ui-text) !important;
+    border-color: var(--ui-border-strong) !important;
+    background: var(--ui-surface-2) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-table tbody td {
+    color: color-mix(in srgb, var(--ui-text) 92%, var(--ui-text-muted) 8%);
+    border-bottom-color: var(--ui-border);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-table tbody tr:hover {
+    background: color-mix(in srgb, var(--ui-text) 5%, transparent);
+}
+
+/* Force all dashboard tables to light surfaces (header/body/cells) */
+html[data-theme="light"] .dashboard-enterprise .table,
+html[data-theme="light"] .dashboard-enterprise .table td,
+html[data-theme="light"] .dashboard-enterprise .table th {
+    color: #1e293b !important;
+    border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .table-dark,
+html[data-theme="light"] .dashboard-enterprise .table-dark thead,
+html[data-theme="light"] .dashboard-enterprise .table-dark tbody,
+html[data-theme="light"] .dashboard-enterprise .table-dark tr {
+    background-color: #f7fafd !important;
+    color: #1e293b !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .table-dark th {
+    background: #edf2f8 !important;
+    color: #0f172a !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.14) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .table-dark td {
+    background: #ffffff !important;
+    color: #1e293b !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .table-hover tbody tr:hover td {
+    background: #f4f8fc !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .kpi-view-icon {
+    color: rgba(15, 23, 42, 0.24);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tactical-stat-card:hover .kpi-view-icon {
+    color: rgba(15, 23, 42, 0.45);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tabs button {
+    background: rgba(15, 23, 42, 0.04);
+    color: #475569;
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .dashboard-enterprise .tabs button.active {
+    background: rgba(15, 23, 42, 0.08);
+    color: #0f172a;
+    border-color: rgba(15, 23, 42, 0.24);
+}
+
+html[data-theme="light"] .dashboard-enterprise .text-secondary,
+html[data-theme="light"] .dashboard-enterprise .tactical-text-muted,
+html[data-theme="light"] .dashboard-enterprise .text-muted {
+    color: #64748b !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .dash-config-btn {
+    background: #ffffff;
+    color: #334155;
+    border-color: rgba(15, 23, 42, 0.2);
+}
+
+html[data-theme="light"] .dashboard-enterprise .dash-config-btn:hover {
+    background: #f8fafc;
+    color: #0f172a;
+    border-color: rgba(15, 23, 42, 0.3);
+}
+
+html[data-theme="light"] .dashboard-enterprise #global-error {
+    color: #b42332 !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+    border-color: rgba(239, 68, 68, 0.24) !important;
+}
+
+html[data-theme="light"] .dashboard-enterprise .dash-modal-overlay {
+    background: rgba(15, 23, 42, 0.32);
+}
+
+html[data-theme="light"] .dashboard-enterprise .dash-modal-card {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.14);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.dashboard-dense {
+    padding-top: 0.45rem;
+    padding-inline: 0.85rem;
+}
+
+.dashboard-dense .dashboard-header {
+    margin-bottom: 0.72rem !important;
+    gap: 0.75rem;
+}
+
+.dashboard-dense .dashboard-toolbar {
+    gap: 0.45rem !important;
+    flex-wrap: wrap;
+}
+
+.dashboard-dense .dashboard-toolbar .btn,
+.dashboard-dense .dashboard-toolbar .dash-config-btn,
+.dashboard-dense .dashboard-toolbar .dropdown-toggle {
+    min-height: 34px;
+    padding: 0.34rem 0.72rem;
+    font-size: 0.74rem;
+}
+
+.dashboard-dense .dashboard-toolbar .dash-config-btn {
+    width: 34px;
+    padding-inline: 0;
+}
+
+.dashboard-dense .enterprise-section-sub {
+    line-height: 1.25;
+}
+
+.dashboard-dense #overall-health-card.enterprise-header-strip {
+    padding: 0.42rem 0.62rem;
+    margin-bottom: 0.45rem;
+}
+
+.dashboard-dense .enterprise-strip-item {
+    gap: 0.28rem;
+    font-size: 0.7rem;
+}
+
+.dashboard-dense .enterprise-strip-item .strip-label {
+    font-size: 0.54rem;
+}
+
+.dashboard-dense #device-kpi-row,
+.dashboard-dense #fleet-overview-row {
+    gap: 0.52rem;
+    margin-bottom: 0.72rem !important;
+}
+
+.dashboard-dense #device-kpi-row .tactical-stat-card,
+.dashboard-dense #fleet-overview-row .tactical-stat-card {
+    min-height: 96px;
+    padding: 0.62rem 0.72rem 0.64rem;
+}
+
+.dashboard-dense #device-kpi-row .stat-value {
+    font-size: 1.38rem;
+}
+
+.dashboard-dense #fleet-overview-row .stat-value,
+.dashboard-dense .tactical-stat-card .stat-value {
+    font-size: 1.05rem;
+}
+
+.dashboard-dense .tactical-stat-card .metric-sub {
+    margin-top: 0.22rem;
+    line-height: 1.25;
+}
+
+.dashboard-dense .section-block {
+    margin-top: 0.6rem;
+}
+
+.dashboard-dense .breakdown-panel {
+    padding: 0.8rem;
+}
+
+.dashboard-dense .breakdown-grid,
+.dashboard-dense .breakdown-left,
+.dashboard-dense .breakdown-right {
+    gap: 0.7rem;
+}
+
+.dashboard-dense .card-header {
+    padding: 0.56rem 0.76rem;
+}
+
+.dashboard-dense .card-body:not(.p-0) {
+    padding: 0.74rem;
+}
+
+.dashboard-dense .alerts-container {
+    margin-bottom: 0.8rem !important;
+}
+
+.dashboard-dense .alerts-filters {
+    padding: 0.58rem 0.72rem;
+}
+
+.dashboard-dense .alerts-filters select,
+.dashboard-dense .alerts-filters input {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+}
+
+.dashboard-dense .tactical-table {
+    font-size: 0.76rem;
+}
+
+.dashboard-dense .tactical-table thead th {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.6rem;
+}
+
+.dashboard-dense .tactical-table tbody td {
+    padding: 0.34rem 0.5rem;
+}
+
+.dashboard-dense .dash-modal-card {
+    max-width: 500px;
+}
+
+.dashboard-dense .dash-modal-header {
+    padding: 0.72rem 0.9rem;
+}
+
+.dashboard-dense .dash-modal-body {
+    padding: 0.9rem;
+}
+
+.dashboard-dense .dash-modal-body label {
+    margin-bottom: 0.24rem;
+    font-size: 0.66rem;
+}
+
+.dashboard-dense .dash-modal-body input,
+.dashboard-dense .dash-modal-body select,
+.dashboard-dense .dash-modal-body textarea {
+    min-height: 36px;
+    padding: 0.52rem 0.7rem;
+    font-size: 0.82rem;
+}
+
+.dashboard-dense .dash-modal-footer {
+    padding: 0.72rem 0.9rem;
+}
+
+/* ── Second block: device-breakdown & availability modal ── */
+
+#device-breakdown {
+    display: none;
+    margin-top: 0.65rem;
+}
+
+#device-breakdown.is-active {
+    display: block;
+}
+
+#device-breakdown::before {
+    content: '';
+    display: block;
+    height: 1px;
+    margin-bottom: 0.72rem;
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.05),
+            rgba(255, 255, 255, 0.5),
+            rgba(255, 255, 255, 0.05));
+}
+
+#device-breakdown .breakdown-panel {
+    background: var(--ui-surface-2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
+}
+
+/* v5.0: focus pulse removed — state changes are instant */
+.device-kpi-card {
+    cursor: pointer;
+}
+
+.device-kpi-card.breakdown-active {
+    border-color: rgba(173, 186, 201, 0.62) !important;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+    transform: translateY(-1px);
+}
+
+.device-kpi-card.breakdown-active .kpi-view-icon {
+    color: rgba(214, 223, 232, 0.9);
+}
+
+.breakdown-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.36rem;
+    font-size: 0.72rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.breakdown-collapse-btn i {
+    font-size: 0.68rem;
+}
+
+#availability-modal .modal-dialog {
+    max-width: min(1320px, calc(100vw - 1rem));
+}
+
+#availability-modal .modal-content {
+    background:
+        var(--ui-surface-2);
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
+}
+
+#availability-modal .modal-header {
+    padding: 0.82rem 1rem 0.36rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+#availability-modal .modal-body {
+    padding: 0.55rem 1rem 1rem;
+}
+
+#availability-modal .breakdown-subcard {
+    overflow: hidden;
+}
+
+#availability-modal .breakdown-subcard .card-header {
+    padding: 0.58rem 0.82rem;
+    background: linear-gradient(90deg, rgba(0, 224, 196, 0.05), transparent 62%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+#availability-modal .breakdown-subcard .card-body {
+    padding: 0.78rem 0.82rem;
+}
+
+#availability-modal .breakdown-subcard .card-body.p-0 {
+    padding: 0 !important;
+}
+
+#availability-modal .availability-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.72rem;
+}
+
+#availability-modal .availability-range-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.22rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(12, 12, 12, 0.82);
+}
+
+#availability-modal .availability-range-btn {
+    border: 0;
+    background: transparent;
+    color: #8ea0b6;
+    padding: 0.34rem 0.68rem;
+    border-radius: 999px;
+    font-family: var(--ui-font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+#availability-modal .availability-range-btn:hover {
+    color: #eef5ff;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+#availability-modal .availability-range-btn.is-active {
+    color: #eef5ff;
+    background: linear-gradient(180deg, rgba(0, 224, 196, 0.24), rgba(27, 108, 132, 0.18));
+    box-shadow: inset 0 0 0 1px rgba(84, 236, 214, 0.16);
+}
+
+#availability-modal .availability-range-meta {
+    font-size: 0.68rem;
+    color: #90a1b7;
+    letter-spacing: 0.03em;
+}
+
+#availability-modal .availability-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.48rem;
+    margin-bottom: 0.72rem;
+}
+
+#availability-modal .availability-summary-kpi,
+#availability-modal .availability-summary-empty {
+    min-height: 64px;
+    padding: 0.56rem 0.66rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: var(--ui-surface-2);
+}
+
+#availability-modal .availability-summary-empty {
+    display: flex;
+    align-items: center;
+    color: var(--ui-text-muted);
+    font-size: 0.76rem;
+}
+
+#availability-modal .availability-summary-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6f8198;
+}
+
+#availability-modal .availability-summary-value {
+    margin-top: 0.28rem;
+    font-family: var(--ui-font-mono);
+    font-size: 1.02rem;
+    line-height: 1;
+    color: #eef5ff;
+}
+
+#availability-modal .availability-summary-meta {
+    margin-top: 0.28rem;
+    font-size: 0.68rem;
+    color: #90a1b7;
+    line-height: 1.35;
+}
+
+#availability-modal .availability-heatmap-shell {
+    padding: 0.62rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: var(--ui-surface-2);
+    overflow-x: auto;
+}
+
+#availability-modal .availability-heatmap-axis,
+#availability-modal .availability-heatmap {
+    display: grid;
+    gap: 4px;
+}
+
+#availability-modal .availability-heatmap-axis {
+    margin-bottom: 4px;
+}
+
+#availability-modal .availability-axis-label {
+    min-height: 12px;
+    font-family: var(--ui-font-mono);
+    font-size: 0.56rem;
+    line-height: 1;
+    text-align: center;
+    color: #607286;
+    letter-spacing: 0.05em;
+}
+
+#availability-modal .availability-axis-label.is-major {
+    color: #a8b7ca;
+}
+
+#availability-modal .availability-axis-label.is-minor {
+    opacity: 0.48;
+}
+
+#availability-modal .availability-cell {
+    position: relative;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(118, 136, 166, 0.18);
+    background: rgba(18, 18, 18, 0.75);
+    overflow: hidden;
+    box-shadow: none;
+    transition: border-color 120ms ease, filter 120ms ease;
+}
+
+#availability-modal .availability-cell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 48%, transparent 100%);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+#availability-modal .availability-cell:hover {
+    transform: none;
+    filter: brightness(1.06);
+    border-color: rgba(200, 214, 235, 0.42);
+}
+
+#availability-modal .availability-cell.avail-excellent,
+#availability-modal .legend-swatch.avail-excellent {
+    background: linear-gradient(180deg, rgba(24, 212, 176, 0.86), rgba(12, 108, 100, 0.76));
+    border-color: rgba(91, 241, 209, 0.38);
+}
+
+#availability-modal .availability-cell.avail-good,
+#availability-modal .legend-swatch.avail-good {
+    background: linear-gradient(180deg, rgba(74, 140, 255, 0.84), rgba(40, 74, 168, 0.76));
+    border-color: rgba(133, 178, 255, 0.36);
+}
+
+#availability-modal .availability-cell.avail-warning,
+#availability-modal .legend-swatch.avail-warning {
+    background: linear-gradient(180deg, rgba(242, 181, 76, 0.84), rgba(154, 94, 27, 0.76));
+    border-color: rgba(255, 213, 132, 0.38);
+}
+
+#availability-modal .availability-cell.avail-bad,
+#availability-modal .legend-swatch.avail-bad {
+    background: linear-gradient(180deg, rgba(237, 90, 111, 0.86), rgba(136, 39, 57, 0.8));
+    border-color: rgba(255, 154, 168, 0.4);
+}
+
+#availability-modal .availability-cell.avail-unknown,
+#availability-modal .legend-swatch.avail-unknown {
+    background: repeating-linear-gradient(45deg,
+            rgba(108, 122, 144, 0.26),
+            rgba(108, 122, 144, 0.26) 4px,
+            rgba(35, 43, 55, 0.78) 4px,
+            rgba(35, 43, 55, 0.78) 8px);
+    border-color: rgba(126, 141, 164, 0.28);
+}
+
+#availability-modal .availability-cell.avail-unknown::after,
+#availability-modal .legend-swatch.avail-unknown::after {
+    display: none;
+}
+
+#availability-modal .availability-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.44rem;
+}
+
+#availability-modal .availability-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.3rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(14, 14, 14, 0.72);
+    font-size: 0.67rem;
+    line-height: 1;
+    color: #9cafc4;
+}
+
+#availability-modal .availability-legend .legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    position: relative;
+    overflow: hidden;
+}
+
+#availability-modal .availability-table-wrap {
+    max-height: 272px;
+    overflow: auto;
+}
+
+#availability-modal .tactical-table th {
+    padding: 0.56rem 0.72rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    color: #7fd7d5;
+}
+
+#availability-modal .tactical-table td {
+    padding: 0.7rem 0.72rem;
+    font-size: 0.82rem;
+    vertical-align: middle;
+}
+
+#availability-modal .availability-device-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #eef5ff;
+}
+
+#availability-modal .availability-device-meta {
+    margin-top: 0.18rem;
+    font-size: 0.63rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6f8198;
+}
+
+#availability-modal .availability-inline-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 0.28rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(18, 18, 18, 0.84);
+    font-family: var(--ui-font-mono);
+    font-size: 0.73rem;
+    line-height: 1;
+    color: #d7e5f7;
+}
+
+#availability-modal .availability-inline-pill-ip {
+    justify-content: flex-start;
+    min-width: 0;
+    color: #63e0d2;
+}
+
+#availability-modal .availability-inline-pill-count {
+    color: #cdd8e5;
+}
+
+#availability-modal .availability-inline-pill.tone-excellent {
+    color: #aaf5df;
+    border-color: rgba(24, 212, 176, 0.26);
+    background: rgba(17, 101, 89, 0.3);
+}
+
+#availability-modal .availability-inline-pill.tone-good {
+    color: #bfd8ff;
+    border-color: rgba(74, 140, 255, 0.26);
+    background: rgba(34, 70, 146, 0.26);
+}
+
+#availability-modal .availability-inline-pill.tone-warning {
+    color: #ffe0a6;
+    border-color: rgba(242, 181, 76, 0.28);
+    background: rgba(116, 70, 23, 0.3);
+}
+
+#availability-modal .availability-inline-pill.tone-bad {
+    color: #ffc0cb;
+    border-color: rgba(237, 90, 111, 0.3);
+    background: rgba(110, 32, 46, 0.34);
+}
+
+@media (max-width: 1199px) {
+    #availability-modal .availability-range-meta {
+        width: 100%;
+    }
+}
+
+@media (max-width: 767px) {
+    #availability-modal .modal-header {
+        padding-inline: 0.82rem;
+    }
+
+    #availability-modal .modal-body {
+        padding-inline: 0.82rem;
+    }
+
+    #availability-modal .availability-summary-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #availability-modal .availability-controls {
+        align-items: flex-start;
+    }
+}
+
+/* Dense layout + enhanced tables for expanded breakdown row */
+#device-breakdown .expanded-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+#device-breakdown .breakdown-panel {
+    padding: 0.56rem 0.62rem 0.64rem;
+    /* v5.0: no backdrop-filter blur */
+
+}
+
+#device-breakdown .breakdown-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 0.56rem;
+}
+
+#device-breakdown .breakdown-left,
+#device-breakdown .breakdown-right {
+    gap: 0.56rem;
+}
+
+#device-breakdown .breakdown-subcard .card-header {
+    min-height: 30px;
+    padding: 0.36rem 0.56rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.07em;
+}
+
+#device-breakdown .breakdown-subcard .card-body {
+    padding: 0.44rem 0.56rem;
+}
+
+#device-breakdown .breakdown-subcard .card-body.p-0 {
+    padding: 0 !important;
+}
+
+#device-breakdown .breakdown-section-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.1rem 0.06rem 0.04rem;
+    border-bottom: 1px solid var(--ui-border);
+    margin-bottom: 0.12rem;
+}
+
+#device-breakdown .breakdown-section-heading h6 {
+    margin: 0;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #d7e1ec;
+}
+
+#device-breakdown .breakdown-section-heading span {
+    font-size: 0.58rem;
+    color: #98a7b6;
+    white-space: nowrap;
+}
+
+#device-breakdown .enterprise-section-sub {
+    font-size: 0.64rem;
+}
+
+#device-breakdown .tabs {
+    gap: 0.22rem;
+}
+
+#device-breakdown .tabs button {
+    padding: 0.14rem 0.42rem;
+    font-size: 0.56rem;
+    letter-spacing: 0.09em;
+}
+
+#device-breakdown .table-responsive {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+#device-breakdown .table-responsive::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+#device-breakdown .table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.35);
+    border-radius: 3px;
+}
+
+#device-breakdown .breakdown-left .table-responsive {
+    max-height: 322px;
+}
+
+#device-breakdown .breakdown-right .table-responsive {
+    max-height: 220px;
+}
+
+#device-breakdown .service-impact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 0.56rem;
+}
+
+#device-breakdown .service-impact-row .table-responsive {
+    max-height: 220px;
+}
+
+#device-breakdown .tactical-table {
+    font-size: 0.74rem;
+}
+
+#device-breakdown .tactical-table thead th {
+    padding: 0.34rem 0.52rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.075em;
+    font-weight: 700;
+    color: #b9c8d8;
+    background: var(--ui-surface-1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+#device-breakdown .tactical-table tbody tr {
+    background: rgba(255, 255, 255, 0.012);
+    transition: background-color 120ms ease;
+}
+
+#device-breakdown .tactical-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+#device-breakdown .tactical-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.11);
+}
+
+#device-breakdown .tactical-table tbody td {
+    padding: 0.36rem 0.52rem;
+    line-height: 1.22;
+    color: #c6d1dc;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+#device-breakdown .tactical-table tbody td:first-child {
+    font-weight: 600;
+    color: #e2eaf2;
+}
+
+#device-breakdown .tactical-table td,
+#device-breakdown .tactical-table th {
+    font-variant-numeric: tabular-nums;
+}
+
+#device-breakdown #table-inventory th:first-child,
+#device-breakdown #table-inventory td:first-child {
+    width: 34px !important;
+    text-align: center;
+    padding-left: 0.38rem;
+    padding-right: 0.38rem;
+}
+
+#device-breakdown .tactical-input,
+#device-breakdown .tactical-select {
+    min-height: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+    padding: 0.18rem 0.42rem;
+    border-radius: 6px;
+}
+
+@media (max-width: 992px) {
+    #device-breakdown .breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #device-breakdown .service-impact-row {
+        grid-template-columns: 1fr;
+    }
+
+    #device-breakdown .breakdown-section-heading {
+        flex-wrap: wrap;
+        gap: 0.22rem;
+    }
+
+    #device-breakdown .breakdown-section-heading span {
+        white-space: normal;
+    }
+
+    #device-breakdown .breakdown-left .table-responsive,
+    #device-breakdown .breakdown-right .table-responsive {
+        max-height: none;
+    }
+
+    #device-breakdown .service-impact-row .table-responsive {
+        max-height: none;
+    }
+}
+
+html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-value,
+html[data-theme="light"] #fleet-overview-row .stat-value {
+    color: #18181B !important;
+}
+html[data-theme="light"] .tactical-stat-card .stat-label {
+    color: #52525B !important;
+}
+
+/* ── Light Theme Additions (spec 2026-03-26) ── */
+html[data-theme="light"] .enterprise-header-strip {
+    background: #FFFFFF !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .device-kpi-card {
+    background: #FFFFFF !important;
+    border: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .device-kpi-card::before {
+    opacity: 0.55;
+}
+html[data-theme="light"] .stat-value {
+    color: #18181B !important;
+}
+html[data-theme="light"] .stat-label {
+    color: #71717A !important;
+}
+html[data-theme="light"] .metric-success-light {
+    background: rgba(5, 150, 105, 0.10) !important;
+    color: #059669 !important;
+}
+html[data-theme="light"] .metric-warning-light {
+    background: rgba(217, 119, 6, 0.10) !important;
+    color: #D97706 !important;
+}
+html[data-theme="light"] .metric-danger-light {
+    background: rgba(220, 38, 38, 0.10) !important;
+    color: #DC2626 !important;
+}
