@@ -2,7 +2,7 @@
    TACTICAL CLOCK
    ============================================================ */
 .tactical-clock {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     background: rgba(0, 0, 0, 0.4);
     padding: 0.5rem 1rem;
     border: 1px solid var(--tactical-border-accent);
@@ -46,52 +46,53 @@
    CSS VARIABLES - TACTICAL COLOR PALETTE
    ============================================================ */
 :root {
-    /* Background Colors */
-    --tactical-bg-darkest: #0a0a0f;
-    --tactical-bg-dark: #0d0d14;
-    --tactical-bg-medium: #12121a;
-    --tactical-bg-light: #1a1a24;
-    --tactical-bg-surface: #1e1e2a;
-    --tactical-bg-elevated: #252532;
-    --tactical-bg-card: linear-gradient(145deg, #1e1e2a 0%, #252532 100%);
+    /* Background Colors — aliased to --ui-* tokens */
+    --tactical-bg-darkest: var(--ui-bg);
+    --tactical-bg-dark:    var(--ui-surface-1);
+    --tactical-bg-medium:  var(--ui-surface-2);
+    --tactical-bg-light:   var(--ui-surface-3);
+    --tactical-bg-surface: var(--ui-surface-3);
+    --tactical-bg-elevated:var(--ui-surface-4);
+    --tactical-bg-card:    var(--ui-surface-3);
 
     /* Accent Colors */
-    --tactical-accent: #00d4aa;
-    --tactical-accent-dim: #00a080;
-    --tactical-accent-glow: rgba(0, 212, 170, 0.25);
-    --tactical-accent-subtle: rgba(0, 212, 170, 0.1);
+    --tactical-accent: var(--ui-accent);
+    --tactical-accent-bright: var(--ui-accent-strong);
+    --tactical-accent-dim: #0D9488;
+    --tactical-accent-glow: rgba(20, 184, 166, 0.22);
+    --tactical-accent-subtle: rgba(20, 184, 166, 0.10);
 
-    /* Status Colors */
-    --tactical-success: #00ff88;
-    --tactical-success-dim: #00cc6a;
-    --tactical-success-glow: rgba(0, 255, 136, 0.2);
+    /* Status Colors — aliased to canonical --status-* tokens */
+    --tactical-success: var(--status-success);
+    --tactical-success-dim: #059669;
+    --tactical-success-glow: rgba(16, 185, 129, 0.20);
 
-    --tactical-danger: #ff3b5c;
-    --tactical-danger-dim: #cc2f4a;
-    --tactical-danger-glow: rgba(255, 59, 92, 0.2);
+    --tactical-danger: var(--status-critical);
+    --tactical-danger-dim: #DC2626;
+    --tactical-danger-glow: rgba(239, 68, 68, 0.20);
 
-    --tactical-warning: #ffaa00;
-    --tactical-warning-dim: #cc8800;
-    --tactical-warning-glow: rgba(255, 170, 0, 0.2);
+    --tactical-warning: var(--status-warning);
+    --tactical-warning-dim: #D97706;
+    --tactical-warning-glow: rgba(245, 158, 11, 0.20);
 
-    --tactical-info: #00aaff;
+    --tactical-info: var(--status-info, #00aaff);
     --tactical-info-dim: #0088cc;
     --tactical-info-glow: rgba(0, 170, 255, 0.2);
 
     /* Text Colors */
-    --tactical-text-primary: #ffffff;
-    --tactical-text-secondary: #ffffff;
-    --tactical-text-muted: #00ffc8;
-    --tactical-text-dim: #b8b8c8;
+    --tactical-text-primary: var(--ui-text-primary);
+    --tactical-text-secondary: var(--ui-text-secondary);
+    --tactical-text-muted: var(--ui-text-muted);  /* was #00ffc8 (neon teal) — fixed */
+    --tactical-text-dim: var(--ui-text-dim);
 
     /* Border Colors */
-    --tactical-border: rgba(255, 255, 255, 0.08);
-    --tactical-border-accent: rgba(0, 212, 170, 0.3);
-    --tactical-border-bright: rgba(0, 212, 170, 0.6);
+    --tactical-border: var(--ui-border);
+    --tactical-border-accent: rgba(20, 184, 166, 0.30);
+    --tactical-border-bright: rgba(20, 184, 166, 0.60);
 
     /* Shadows */
     --tactical-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    --tactical-shadow-accent: 0 0 15px rgba(0, 212, 170, 0.15);
+    --tactical-shadow-accent: 0 0 15px rgba(20, 184, 166, 0.12);
     --tactical-glow-sm: 0 0 8px;
     --tactical-glow-md: 0 0 15px;
     --tactical-glow-lg: 0 0 30px;
@@ -113,93 +114,15 @@
     --tactical-small: 0.8rem;
     --tactical-tiny: 0.7rem;
 
-    /* Minimal Ops Variables */
-    --mo-bg-void: #0B0E14;
-    --mo-surface: #151A22;
-    --mo-border: #2A3241;
-    --mo-teal: #00E5A0;
-    --mo-amber: #FF9B05;
-    --mo-red: #FF3366;
-    --mo-blue: #3DB2FF;
-    --mo-muted: #64748B;
 
-    /* Tactical Ops Design V2 */
-    --bg-base: #0a0c0f;
-    --bg-surface: #111418;
-    --bg-elevated: #181c22;
-    --accent-primary: #00e5a0;
-    --accent-warn: #f5a623;
-    --accent-danger: #ff4d4d;
-    --accent-info: #4d9fff;
-    --text-primary: #e8edf2;
-    --text-muted: #556070;
-    --border: rgba(255, 255, 255, 0.07);
-    --border-subtle: var(--border);
-    --border-medium: var(--border);
-
-    --teal: var(--accent-primary);
-    --amber: var(--accent-warn);
-    --red: var(--accent-danger);
-    --blue: var(--accent-info);
-
-    --font-sans: 'IBM Plex Sans', sans-serif;
-    --font-mono: 'IBM Plex Mono', 'Geist Mono', 'DM Mono', monospace;
-
-    /* ============================================================
-       ENTERPRISE DESIGN SYSTEM v5.0 — Global Tokens
-       Source of truth: docs/FRONTEND.md
-       ============================================================ */
-
-    /* ── Status Colors (theme-independent) ── */
-    --s-critical:    #dc3545;
-    --s-warning:     #ffc107;
-    --s-degraded:    #fd7e14;
-    --s-healthy:     #20c997;
-    --s-offline:     #6c757d;
-    --s-unknown:     #adb5bd;
-
-    /* ── Status Backgrounds (muted, for badges/rows) ── */
-    --s-critical-bg: rgba(220, 53, 69, 0.12);
-    --s-critical-bd: rgba(220, 53, 69, 0.30);
-    --s-warning-bg:  rgba(255, 193, 7, 0.10);
-    --s-warning-bd:  rgba(255, 193, 7, 0.28);
-    --s-healthy-bg:  rgba(32, 201, 151, 0.10);
-    --s-healthy-bd:  rgba(32, 201, 151, 0.24);
-    --s-offline-bg:  rgba(108, 117, 125, 0.12);
-    --s-offline-bd:  rgba(108, 117, 125, 0.28);
-
-    /* ── Surfaces (dark mode defaults, light overrides in base.html) ── */
-    --e-bg-base:       #070a10;
-    --e-bg-panel:      rgba(16, 19, 27, 0.92);
-    --e-bg-panel-soft: rgba(16, 19, 27, 0.72);
-    --e-bg-row-alt:    rgba(255, 255, 255, 0.018);
-    --e-bg-row-hover:  rgba(148, 163, 184, 0.10);
-
-    /* ── Borders ── */
-    --e-border:        rgba(148, 163, 184, 0.16);
-    --e-border-strong: rgba(148, 163, 184, 0.32);
-    --e-border-panel:  rgba(148, 163, 184, 0.20);
-
-    /* ── Typography Colors ── */
-    --e-text-primary:   #e6edf5;
-    --e-text-secondary: #c3cfdb;
-    --e-text-muted:     #8a97a6;
-    --e-text-dim:       #5e6b78;
-
-    /* ── Spacing Scale ── */
-    --e-space-1: 0.4rem;
-    --e-space-2: 0.62rem;
-    --e-space-3: 0.82rem;
-    --e-space-4: 1.15rem;
-    --e-space-5: 1.55rem;
 
     /* ── Typography Scale ── */
-    --t-kpi-value:    1.2rem;
-    --t-kpi-label:    0.63rem;
+    --t-kpi-value:    1.65rem;
+    --t-kpi-label:    0.60rem;
     --t-table-header: 0.62rem;
     --t-body:         0.82rem;
-    --t-mono:         'IBM Plex Mono', monospace;
-    --t-sans:         'IBM Plex Sans', sans-serif;
+    --t-mono:         var(--ui-font-mono);
+    --t-sans:         var(--ui-font-sans);
 
     /* ── Animation Durations ── */
     --a-micro:      130ms;
@@ -209,13 +132,26 @@
 }
 
 /* ============================================================
+   SURFACE DEPTH — cards, panels, modals
+   Creates perceived elevation without gradients
+   ============================================================ */
+.card,
+.enterprise-panel,
+.modal-content,
+.tactical-panel {
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.03),
+        0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ============================================================
    BASE STYLES
    ============================================================ */
 body.tactical-theme {
-    background-color: var(--bg-base) !important;
+    background-color: var(--ui-bg) !important;
     background-image: none !important;
     color: var(--text-primary);
-    font-family: var(--font-sans);
+    font-family: var(--ui-font-sans);
     min-height: 100vh;
 }
 
@@ -225,7 +161,7 @@ body.tactical-theme {
 .tactical-navbar {
     background: linear-gradient(180deg, var(--tactical-bg-medium) 0%, var(--tactical-bg-dark) 100%) !important;
     border-bottom: 1px solid var(--tactical-border-accent);
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 212, 170, 0.1);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(20, 184, 166, 0.1);
     padding: 0.5rem 1rem;
     position: relative;
 }
@@ -242,7 +178,7 @@ body.tactical-theme {
 
 .tactical-navbar .navbar-brand {
     color: var(--tactical-accent-bright) !important;
-    font-family: 'Orbitron', 'Rajdhani', monospace;
+    font-family: var(--ui-font-display);
     font-weight: 700;
     font-size: 1.4rem;
     letter-spacing: 2px;
@@ -276,7 +212,7 @@ body.tactical-theme {
 
 .tactical-navbar .nav-link.active {
     color: var(--tactical-accent-bright) !important;
-    background: rgba(0, 212, 170, 0.15);
+    background: rgba(20, 184, 166, 0.15);
     border: 1px solid var(--tactical-border-accent);
 }
 
@@ -337,6 +273,7 @@ body.tactical-theme {
     height: 2px;
     background: linear-gradient(90deg, transparent, var(--tactical-accent), transparent);
     opacity: 0.5;
+    display: none !important;
 }
 
 .tactical-card:hover {
@@ -348,7 +285,7 @@ body.tactical-theme {
 /* Stale data indicator — applied by dashboard/utils.js:checkStale() when data >5min old */
 .card-stale {
     opacity: 0.72;
-    border-left: 2px solid var(--s-warn, var(--ui-warning, #f0a500));
+    border-left: 2px solid var(--status-warning);
     position: relative;
 }
 
@@ -358,16 +295,16 @@ body.tactical-theme {
     top: 0.4rem;
     right: 0.6rem;
     font-size: 0.6rem;
-    font-family: 'IBM Plex Mono', monospace;
-    color: var(--s-warn, var(--ui-warning, #f0a500));
+    font-family: var(--ui-font-mono);
+    color: var(--status-warning);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     pointer-events: none;
 }
 
 .tactical-card .card-header {
-    background: rgba(0, 0, 0, 0.3);
-    border-bottom: 1px solid var(--tactical-border);
+    background: transparent;
+    border-bottom: 1px solid var(--ui-border);
     color: var(--tactical-text-primary);
     font-weight: 600;
     text-transform: uppercase;
@@ -382,7 +319,7 @@ body.tactical-theme {
 }
 
 .tactical-card .card-body {
-    padding: 0.75rem 1rem;
+    padding: 1.25rem 1.5rem;
     color: var(--tactical-text-secondary);
 }
 
@@ -415,6 +352,7 @@ body.tactical-theme {
     width: 4px;
     height: 100%;
     background: var(--tactical-accent);
+    display: none !important;
 }
 
 .tactical-stat-card.success::before {
@@ -432,7 +370,7 @@ body.tactical-theme {
 .tactical-stat-card .stat-value {
     font-size: 2.5rem;
     font-weight: 700;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     color: var(--tactical-text-primary);
     line-height: 1;
     margin-bottom: 0.5rem;
@@ -465,18 +403,18 @@ body.tactical-theme {
     font-size: 1.5rem;
     color: var(--tactical-accent);
     opacity: 0.8;
-    background: rgba(0, 212, 170, 0.1);
+    background: rgba(20, 184, 166, 0.1);
     padding: 0.5rem;
     border-radius: 8px;
-    border: 1px solid rgba(0, 212, 170, 0.2);
-    box-shadow: 0 0 15px rgba(0, 212, 170, 0.1);
+    border: 1px solid rgba(20, 184, 166, 0.2);
+    box-shadow: 0 0 15px rgba(20, 184, 166, 0.1);
 }
 
 /* ============================================================
    TACTICAL BUTTONS
    ============================================================ */
 .tactical-btn {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     font-weight: 600;
     font-size: 0.875rem;
     text-transform: uppercase;
@@ -486,22 +424,6 @@ body.tactical-theme {
     border: 1px solid transparent;
     transition: var(--tactical-transition);
     position: relative;
-    overflow: hidden;
-}
-
-.tactical-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-    transition: left 0.5s;
-}
-
-.tactical-btn:hover::before {
-    left: 100%;
 }
 
 .tactical-btn-primary {
@@ -519,14 +441,14 @@ body.tactical-theme {
 
 .tactical-btn-ghost {
     background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(148, 163, 184, 0.28);
+    border-color: rgba(255, 255, 255, 0.28);
     color: var(--tactical-text-secondary);
 }
 
 .tactical-btn-ghost:hover,
 .tactical-btn-ghost.active {
-    background: rgba(0, 212, 170, 0.12);
-    border-color: rgba(0, 212, 170, 0.42);
+    background: rgba(20, 184, 166, 0.12);
+    border-color: rgba(20, 184, 166, 0.42);
     color: var(--tactical-text-primary);
 }
 
@@ -552,8 +474,8 @@ body.tactical-theme {
 .tactical-btn-outline.active {
     border-color: var(--tactical-accent);
     color: var(--tactical-accent);
-    background: rgba(0, 212, 170, 0.05);
-    box-shadow: 0 0 10px rgba(0, 212, 170, 0.1);
+    background: rgba(20, 184, 166, 0.05);
+    box-shadow: 0 0 10px rgba(20, 184, 166, 0.1);
 }
 
 /* ============================================================
@@ -566,7 +488,7 @@ body.tactical-theme {
     padding: 0.5rem 1rem;
     font-size: 0.75rem;
     font-weight: 700;
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--ui-font-sans);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-radius: 2px;
@@ -584,37 +506,37 @@ body.tactical-theme {
 }
 
 .mo-btn-primary {
-    background: var(--mo-teal);
+    background: var(--ui-accent);
     color: #000;
     box-shadow: 0 0 15px rgba(0, 229, 160, 0.15);
 }
 
 .mo-btn-primary:hover {
-    background: #00c98d;
+    background: #10B981;
     box-shadow: 0 0 20px rgba(0, 229, 160, 0.25);
     color: #000;
 }
 
 .mo-btn-destructive {
     background: transparent;
-    border-color: color-mix(in srgb, var(--mo-red) 50%, transparent);
-    color: var(--mo-red);
+    border-color: color-mix(in srgb, var(--status-critical) 50%, transparent);
+    color: var(--status-critical);
 }
 
 .mo-btn-destructive:hover {
-    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
-    border-color: var(--mo-red);
-    color: var(--mo-red);
+    background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+    border-color: var(--status-critical);
+    color: var(--status-critical);
     box-shadow: 0 0 15px rgba(255, 51, 102, 0.2);
 }
 
 .mo-btn-ghost {
     background: transparent;
-    color: var(--mo-muted);
+    color: var(--ui-text-muted);
 }
 
 .mo-btn-ghost:hover {
-    background: var(--mo-border);
+    background: var(--ui-border);
     color: #fff;
 }
 
@@ -627,7 +549,7 @@ body.tactical-theme {
     border-bottom: 2px solid transparent;
     border-radius: 0;
     color: var(--text-muted);
-    font-family: 'IBM Plex Sans', var(--t-sans, sans-serif);
+    font-family: var(--ui-font-sans);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -657,8 +579,8 @@ body.tactical-theme {
 .tactical-btn-outline.active {
     border-color: var(--tactical-accent);
     color: var(--tactical-accent);
-    background: rgba(0, 212, 170, 0.05);
-    box-shadow: 0 0 10px rgba(0, 212, 170, 0.1);
+    background: rgba(20, 184, 166, 0.05);
+    box-shadow: 0 0 10px rgba(20, 184, 166, 0.1);
 }
 
 
@@ -744,14 +666,15 @@ body.tactical-theme {
 }
 
 .tactical-table thead th {
-    background: var(--tactical-bg-dark);
-    color: var(--tactical-accent);
+    background: transparent;
+    color: var(--tactical-text-muted);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
     font-size: 0.8rem;
     padding: 1rem;
-    border-bottom: 2px solid var(--tactical-border-accent);
+    border-bottom: 1px solid var(--tactical-border-accent);
+    border-top: none;
     text-align: left;
 }
 
@@ -761,8 +684,8 @@ body.tactical-theme {
 }
 
 .tactical-table tbody tr:hover {
-    background: rgba(0, 212, 170, 0.15);
-    box-shadow: inset 0 0 15px rgba(0, 212, 170, 0.05);
+    background: rgba(20, 184, 166, 0.15);
+    box-shadow: inset 0 0 15px rgba(20, 184, 166, 0.05);
     color: var(--tactical-text-primary);
 }
 
@@ -794,7 +717,7 @@ body.tactical-theme {
     border-radius: var(--tactical-radius-sm);
     color: var(--tactical-text-primary);
     padding: 0.75rem 1rem;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     font-size: 1rem;
     transition: var(--tactical-transition);
     width: 100%;
@@ -827,7 +750,7 @@ body.tactical-theme {
     border-radius: var(--tactical-radius-sm);
     color: var(--tactical-text-primary);
     padding: 0.75rem 1rem;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     cursor: pointer;
 }
 
@@ -851,7 +774,7 @@ body.tactical-theme {
     letter-spacing: 0.08em;
     border-radius: 3px;
     border: 1px solid transparent;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--ui-font-mono);
     line-height: 1;
 }
 
@@ -867,27 +790,27 @@ body.tactical-theme {
     font-weight: 700;
     text-transform: uppercase;
     border-radius: 2px;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--ui-font-mono);
     line-height: 1.2;
     border: 1px solid transparent;
 }
 
 .mo-badge-online {
-    background: color-mix(in srgb, var(--mo-teal) 10%, transparent);
-    color: var(--mo-teal);
-    border-color: color-mix(in srgb, var(--mo-teal) 20%, transparent);
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
+    border-color: color-mix(in srgb, var(--ui-accent) 20%, transparent);
 }
 
 .mo-badge-risk {
-    background: color-mix(in srgb, var(--mo-amber) 10%, transparent);
-    color: var(--mo-amber);
-    border-color: color-mix(in srgb, var(--mo-amber) 30%, transparent);
+    background: color-mix(in srgb, var(--status-warning) 10%, transparent);
+    color: var(--status-warning);
+    border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
 }
 
 .mo-badge-policy {
-    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
-    color: var(--mo-red);
-    border-color: color-mix(in srgb, var(--mo-red) 30%, transparent);
+    background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+    color: var(--status-critical);
+    border-color: color-mix(in srgb, var(--status-critical) 30%, transparent);
 }
 
 .mo-badge-pulse-dot {
@@ -954,7 +877,7 @@ body.tactical-theme {
     background: var(--tactical-bg-surface);
     border: 1px solid var(--tactical-border-accent);
     border-radius: var(--tactical-radius-lg);
-    box-shadow: var(--tactical-shadow), 0 0 60px rgba(0, 212, 170, 0.1);
+    box-shadow: var(--tactical-shadow), 0 0 60px rgba(20, 184, 166, 0.1);
 }
 
 .tactical-modal .modal-header {
@@ -965,7 +888,7 @@ body.tactical-theme {
 
 .tactical-modal .modal-title {
     color: var(--tactical-accent-bright);
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -1069,7 +992,10 @@ body.tactical-theme {
 .tactical-progress-bar {
     height: 100%;
     border-radius: var(--tactical-radius-sm);
-    transition: width 0.5s ease;
+    transform: scaleX(0);
+    transform-origin: left;
+    will-change: transform;
+    transition: transform 0.5s ease;
     position: relative;
 }
 
@@ -1223,6 +1149,39 @@ body.tactical-theme {
     animation: tactical-scan 4s infinite;
 }
 
+/* Pause scan animation when element is off-screen (toggled by IntersectionObserver) */
+.tactical-scan-paused.tactical-scan-effect::after {
+    animation-play-state: paused;
+}
+
+/* ── Skeleton shimmer — reusable loading placeholder ───────── */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position:  400px 0; }
+}
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--ui-surface-2) 25%,
+        var(--ui-surface-3) 50%,
+        var(--ui-surface-2) 75%
+    );
+    background-size: 800px 100%;
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+    border-radius: 3px;
+    color: transparent !important;
+    pointer-events: none;
+    user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton {
+        animation: none;
+        background: var(--ui-surface-3);
+    }
+}
+
 /* ============================================================
    RESPONSIVE ADJUSTMENTS
    ============================================================ */
@@ -1253,7 +1212,7 @@ body.tactical-theme {
 }
 
 .status-indicator.status-online {
-    background-color: var(--s-healthy);
+    background-color: var(--status-success);
 }
 
 .status-indicator.status-online i,
@@ -1263,7 +1222,7 @@ body.tactical-theme {
 }
 
 .status-indicator.status-offline {
-    background-color: var(--s-critical);
+    background-color: var(--status-critical);
 }
 
 .metric-status {
@@ -1279,35 +1238,54 @@ body.tactical-theme {
 }
 
 .metric-status.status-healthy {
-    color: var(--s-healthy);
-    border-color: var(--s-healthy-bd);
-    background: var(--s-healthy-bg);
+    color: var(--status-success);
+    border-color: var(--status-success-bd);
+    background: var(--status-success-bg);
 }
 
 .metric-status.status-warning {
-    color: var(--s-warning);
-    border-color: var(--s-warning-bd);
-    background: var(--s-warning-bg);
+    color: var(--status-warning);
+    border-color: var(--status-warning-bd);
+    background: var(--status-warning-bg);
 }
 
 .metric-status.status-critical {
-    color: var(--s-critical);
-    border-color: var(--s-critical-bd);
-    background: var(--s-critical-bg);
+    color: var(--status-critical);
+    border-color: var(--status-critical-bd);
+    background: var(--status-critical-bg);
 }
 
 .status-indicator.status-maintenance {
-    background-color: var(--s-warning);
+    background-color: var(--status-warning);
 }
 
 .status-indicator.status-unknown {
-    background-color: var(--s-offline);
+    background-color: var(--status-offline);
 }
 
 .status-indicator.status-checking {
-    background-color: var(--s-offline);
+    background-color: var(--status-offline);
     width: 10px;
     height: 10px;
+}
+
+/* ============================================================
+   ACCESSIBILITY
+   ============================================================ */
+:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.55);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
+/* ── Table row teal accent on hover ── */
+.tactical-theme .table-hover tbody tr {
+    transition: background 120ms ease;
+    border-left: 2px solid transparent;
+}
+.tactical-theme .table-hover tbody tr:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-left-color: var(--ui-accent);
 }
 
 /* ============================================================
@@ -1417,8 +1395,8 @@ html {
    TACTICAL DROPDOWNS (Bootstrap Overrides)
    ============================================================ */
 .tactical-dropdown {
-    background: #11151c;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--ui-surface-3);
+    border: 1px solid var(--ui-border);
     border-radius: 10px;
     margin-top: 4px;
     /* Slight offset */
@@ -1426,20 +1404,20 @@ html {
 }
 
 .tactical-dropdown .dropdown-item {
-    color: #cfe7f3;
+    color: var(--ui-text-secondary);
     font-size: 0.85rem;
     padding: 0.6rem 1rem;
     transition: all 0.15s ease;
 }
 
 .tactical-dropdown .dropdown-item:hover {
-    background: rgba(32, 201, 151, 0.1);
-    color: #20c997;
+    background: rgba(16, 185, 129, 0.1);
+    color: #10B981;
 }
 
 .tactical-dropdown .dropdown-item.active {
-    background: rgba(32, 201, 151, 0.15);
-    color: #20c997;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10B981;
     font-weight: 600;
 }
 
@@ -1454,9 +1432,9 @@ html {
     border-radius: 16px;
     /* Visual Hierarchy Refinement */
     background: linear-gradient(to bottom,
-            rgba(18, 22, 32, 0.85),
-            rgba(12, 16, 24, 0.85));
-    border: 1px solid rgba(32, 201, 151, 0.15);
+            rgba(18, 18, 18, 0.85),
+            rgba(12, 12, 12, 0.85));
+    border: 1px solid rgba(16, 185, 129, 0.15);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 
     position: relative;
@@ -1481,7 +1459,7 @@ html {
     display: flex;
     align-items: center;
     border-radius: 10px;
-    color: #cfe7f3;
+    color: var(--ui-text-secondary);
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.12);
     width: 100%;
@@ -1503,8 +1481,8 @@ html {
 .alerts-filters input:focus,
 .alerts-filters .dropdown-toggle:focus,
 .alerts-filters .dropdown-toggle.show {
-    border-color: rgba(32, 201, 151, 0.6);
-    box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.15);
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
     /* Focus Glow */
     outline: none;
 }
@@ -1546,7 +1524,7 @@ html {
     font-size: 0.72rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #8b949e;
+    color: #A1A1AA;
 }
 
 .alerts-kpi .stat-value {
@@ -1556,11 +1534,11 @@ html {
 }
 
 .alerts-kpi.critical .stat-value {
-    color: #dc3545;
+    color: #EF4444;
 }
 
 .alerts-kpi.warning .stat-value {
-    color: #ffc107;
+    color: #F59E0B;
 }
 
 .alerts-kpi.info .stat-value {
@@ -1575,9 +1553,9 @@ html {
 .alert-panel .tactical-table thead th {
     color: #6be6d3;
     background: linear-gradient(to bottom,
-            rgba(15, 18, 26, 0.95),
-            rgba(12, 15, 22, 0.95));
-    border-bottom: 1px solid rgba(32, 201, 151, 0.2);
+            rgba(0, 0, 0, 0.95),
+            rgba(12, 12, 12, 0.95));
+    border-bottom: 1px solid rgba(16, 185, 129, 0.2);
     text-transform: uppercase;
     font-weight: 600;
 }
@@ -1594,14 +1572,14 @@ html {
 }
 
 .alert-row-critical {
-    border-left: 3px solid #dc3545;
-    background: rgba(220, 53, 69, 0.08);
+    border-left: 3px solid #EF4444;
+    background: rgba(239, 68, 68, 0.08);
     /* Careful with opacity */
 }
 
 .alert-row-warning {
-    border-left: 3px solid #ffc107;
-    background: rgba(255, 193, 7, 0.04);
+    border-left: 3px solid #F59E0B;
+    background: rgba(245, 158, 11, 0.04);
 }
 
 .alert-row-info,
@@ -1629,15 +1607,15 @@ html {
 
 /* Hover Effect */
 .alert-panel tbody tr:hover {
-    background: rgba(32, 201, 151, 0.06);
+    background: rgba(16, 185, 129, 0.06);
     transform: translateX(4px);
     transition: transform 0.2s ease, background 0.2s ease;
 }
 
 /* Agent Row (Scanning) */
 .tactical-agent-row {
-    box-shadow: inset 4px 0 0 #00ffc8 !important;
-    background: rgba(0, 255, 200, 0.05) !important;
+    box-shadow: inset 4px 0 0 var(--ui-accent-strong) !important;
+    background: var(--ui-accent-dim) !important;
 }
 
 /* Responsive adjustments for Alerts KPI */
@@ -1656,9 +1634,9 @@ html {
     padding: 28px 28px 20px;
     border-radius: var(--tactical-radius-lg);
     background: linear-gradient(to bottom,
-            rgba(18, 22, 32, 0.85),
-            rgba(12, 16, 24, 0.9));
-    border: 1px solid rgba(32, 201, 151, 0.12);
+            rgba(18, 18, 18, 0.85),
+            rgba(12, 12, 12, 0.9));
+    border: 1px solid rgba(16, 185, 129, 0.12);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
     margin-top: 24px;
     position: relative;
@@ -1690,10 +1668,7 @@ html {
     font-size: 1rem;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--tactical-accent-bright);
-    /* Ensure this var exists or fallback */
-    color: #00ffc8;
-    /* Fallback based on typical tactical bright accent */
+    color: var(--ui-accent-strong);
     margin-bottom: 4px;
     font-weight: 600;
 }
@@ -1730,7 +1705,7 @@ html {
     justify-content: space-between;
     gap: 16px;
     padding: 14px 20px;
-    background: rgba(14, 15, 22, 0.85);
+    background: rgba(14, 14, 14, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 8px;
     margin-bottom: 48px;
@@ -1751,7 +1726,7 @@ html {
     gap: 32px;
     flex-wrap: wrap;
     font-size: 0.72rem;
-    color: #8b949e;
+    color: #A1A1AA;
 }
 
 .enterprise-strip-item {
@@ -1764,7 +1739,7 @@ html {
 }
 
 .enterprise-strip-item .strip-label {
-    color: #8b949e;
+    color: #A1A1AA;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.75rem;
@@ -1780,24 +1755,24 @@ html {
 }
 
 .enterprise-strip-item .strip-dot.green {
-    background: #3fb950;
+    background: var(--status-success);
 }
 
 .enterprise-strip-item .strip-dot.yellow {
-    background: #d29922;
+    background: var(--status-warning);
 }
 
 .enterprise-strip-item .strip-dot.red {
-    background: #f85149;
+    background: var(--status-critical);
 }
 
 .enterprise-strip-item .strip-dot.gray {
-    background: #6e7681;
+    background: var(--status-offline);
 }
 
 /* ---------- Enterprise Card (Base) ---------- */
 .enterprise-card {
-    background: rgba(22, 24, 33, 0.82);
+    background: rgba(22, 22, 22, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -1810,8 +1785,8 @@ html {
 }
 
 .enterprise-card .card-header {
-    background: rgba(0, 0, 0, 0.18);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: transparent;
+    border-bottom: 1px solid var(--ui-border);
     padding: 10px 16px;
     font-size: 0.78rem;
     font-weight: 600;
@@ -1829,7 +1804,7 @@ html {
     position: relative;
     min-height: 110px;
     padding: 18px 20px;
-    background: rgba(22, 24, 33, 0.82);
+    background: rgba(22, 22, 22, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -1846,7 +1821,7 @@ html {
     font-size: 0.7rem !important;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #8b949e !important;
+    color: #A1A1AA !important;
     font-weight: 600;
     margin-bottom: 4px;
 }
@@ -1854,14 +1829,14 @@ html {
 .enterprise-kpi .stat-value {
     font-size: 1.8rem !important;
     font-weight: 700;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--ui-font-display);
     color: #e6edf3;
     line-height: 1.1;
 }
 
 .enterprise-kpi .metric-sub {
     font-size: 0.72rem !important;
-    color: #8b949e !important;
+    color: #A1A1AA !important;
     opacity: 1 !important;
     margin-top: 6px;
     display: block !important;
@@ -1883,10 +1858,12 @@ html {
 
 /* ---------- Enterprise Panel (Layer 3) ---------- */
 .enterprise-panel {
-    background: rgba(22, 24, 33, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
     border-radius: 8px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.03),
+        0 8px 24px rgba(0, 0, 0, 0.35);
     overflow: hidden;
     margin-bottom: 20px;
 }
@@ -1911,7 +1888,7 @@ html {
 
 .enterprise-panel .panel-header .panel-meta {
     font-size: 0.7rem;
-    color: #8b949e;
+    color: #A1A1AA;
 }
 
 .enterprise-panel .panel-body {
@@ -1955,12 +1932,12 @@ html {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: rgba(15, 17, 24, 0.98);
+    background: rgba(0, 0, 0, 0.98);
     padding: 8px 12px;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #8b949e;
+    color: #A1A1AA;
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -2057,7 +2034,7 @@ html {
 
 .enterprise-section-sub {
     font-size: 0.72rem;
-    color: #8b949e;
+    color: #A1A1AA;
 }
 
 /* Chart containers — consistent padding and height */
@@ -2070,7 +2047,7 @@ html {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #8b949e;
+    color: #A1A1AA;
     margin-bottom: 8px;
     font-weight: 600;
 }
@@ -2254,8 +2231,8 @@ html {
 /* Flatten card backgrounds */
 .dashboard-enterprise .tactical-card,
 .dashboard-enterprise .tactical-stat-card {
-    background: var(--e-bg-panel) !important;
-    border: 1px solid var(--e-border-panel) !important;
+    background: var(--ui-surface-2) !important;
+    border: 1px solid var(--ui-border) !important;
     border-radius: 6px !important;
 }
 
@@ -2273,43 +2250,18 @@ html {
 /* Flatten alert/filter container backgrounds */
 .dashboard-enterprise .alerts-container,
 .dashboard-enterprise .alerts-filters {
-    background: var(--e-bg-panel) !important;
-    border: 1px solid var(--e-border-panel) !important;
+    background: var(--ui-surface-2) !important;
+    border: 1px solid var(--ui-border) !important;
 }
 
 /* Flatten navbar gradient if visible on dashboard pages */
 .dashboard-enterprise .tactical-navbar {
-    background: var(--e-bg-panel) !important;
+    background: var(--ui-surface-2) !important;
     box-shadow: none !important;
-    border-bottom: 1px solid var(--e-border) !important;
+    border-bottom: 1px solid var(--ui-border) !important;
 }
 
-/* ── 5. FIX THE INVERTED TEXT MUTED COLOR ────────────────────
-   --tactical-text-muted is neon teal (#00ffc8) in tactical.css.
-   In enterprise mode, muted text must be dark/neutral — never
-   the brightest color in the palette.
-   ──────────────────────────────────────────────────────────── */
-.dashboard-enterprise {
-    --tactical-text-muted: var(--e-text-muted);
-    /* #8a97a6 */
-    --tactical-text-dim: var(--e-text-dim);
-    /* #5e6b78 */
-    --tactical-text-secondary: var(--e-text-secondary);
-    /* #c3cfdb */
-    --tactical-text-primary: var(--e-text-primary);
-    /* #e6edf5 */
-}
-
-/* Override any component that hardcodes the neon muted color */
-.dashboard-enterprise .stat-label,
-.dashboard-enterprise .enterprise-section-sub,
-.dashboard-enterprise .panel-meta,
-.dashboard-enterprise .alerts-subtitle,
-.dashboard-enterprise .kpi-label,
-.dashboard-enterprise .strip-label,
-.dashboard-enterprise .tactical-text-muted {
-    color: var(--e-text-muted) !important;
-}
+/* ── 5. (NEON TEXT MUTED FIX — resolved at root; block removed) ── */
 
 /* ── 6. NEUTRALISE GREEN ACTIVE TABS ─────────────────────────
    Green active tabs are explicitly prohibited — they create
@@ -2318,11 +2270,11 @@ html {
 .dashboard-enterprise .tactical-tab.active,
 .dashboard-enterprise .tabs button.active,
 .dashboard-enterprise .nav-link.active {
-    color: var(--e-text-primary) !important;
-    border-color: var(--e-border-strong) !important;
-    background: rgba(148, 163, 184, 0.16) !important;
+    color: var(--ui-text-primary) !important;
+    border-color: var(--ui-border-strong) !important;
+    background: rgba(255, 255, 255, 0.16) !important;
     /* Kill the green underline */
-    border-bottom-color: var(--e-border-strong) !important;
+    border-bottom-color: var(--ui-border-strong) !important;
     /* Kill the green background gradient */
     background-image: none !important;
     text-shadow: none !important;
@@ -2330,8 +2282,8 @@ html {
 
 .dashboard-enterprise .tactical-tab:hover,
 .dashboard-enterprise .tabs button:hover {
-    color: var(--e-text-primary) !important;
-    background: rgba(148, 163, 184, 0.10) !important;
+    color: var(--ui-text-primary) !important;
+    background: rgba(255, 255, 255, 0.10) !important;
     text-shadow: none !important;
 }
 
@@ -2360,47 +2312,43 @@ html {
 }
 
 .dashboard-enterprise .alert-danger {
-    background: var(--s-critical-bg) !important;
-    border-color: var(--s-critical-bd) !important;
-    color: #f5a0a8 !important;
-    border-left: 3px solid var(--s-critical) !important;
+    background: var(--status-critical-bg) !important;
+    border-color: var(--status-critical-bd) !important;
+    color: #FCA5A5 !important;
+    border-left: 3px solid var(--status-critical) !important;
 }
 
 .dashboard-enterprise .alert-warning {
-    background: var(--s-warning-bg) !important;
-    border-color: var(--s-warning-bd) !important;
-    color: #f2d47a !important;
-    border-left: 3px solid var(--s-warning) !important;
+    background: var(--status-warning-bg) !important;
+    border-color: var(--status-warning-bd) !important;
+    color: #FCD34D !important;
+    border-left: 3px solid var(--status-warning) !important;
 }
 
 .dashboard-enterprise .alert-success {
-    background: var(--s-healthy-bg) !important;
-    border-color: var(--s-healthy-bd) !important;
-    color: #7acfb8 !important;
-    border-left: 3px solid rgba(32, 201, 151, 0.50) !important;
+    background: var(--status-success-bg) !important;
+    border-color: var(--status-success-bd) !important;
+    color: #6EE7B7 !important;
+    border-left: 3px solid rgba(16, 185, 129, 0.50) !important;
 }
 
 /* ── 9. NORMALISE BUTTON STYLES ──────────────────────────────
-   Remove glow, shimmer sweep (::before), and scale transforms.
+   Remove glow and scale transforms on enterprise surface.
    ──────────────────────────────────────────────────────────── */
-.dashboard-enterprise .tactical-btn::before {
-    display: none !important;
-}
-
 .dashboard-enterprise .tactical-btn-outline,
 .dashboard-enterprise .tactical-btn-outline:hover,
 .dashboard-enterprise .tactical-btn-outline.active {
-    background: rgba(148, 163, 184, 0.06) !important;
-    border-color: var(--e-border) !important;
-    color: var(--e-text-secondary) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: var(--ui-border) !important;
+    color: var(--ui-text-secondary) !important;
     box-shadow: none !important;
 }
 
 .dashboard-enterprise .tactical-btn-outline:hover,
 .dashboard-enterprise .tactical-btn-outline.active {
-    border-color: var(--e-border-strong) !important;
-    background: rgba(148, 163, 184, 0.14) !important;
-    color: var(--e-text-primary) !important;
+    border-color: var(--ui-border-strong) !important;
+    background: rgba(255, 255, 255, 0.14) !important;
+    color: var(--ui-text-primary) !important;
 }
 
 /* ── 10. TABLE OVERRIDES ─────────────────────────────────────
@@ -2408,9 +2356,9 @@ html {
    enforce tabular-nums on all cells.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-table thead th {
-    color: var(--e-text-secondary) !important;
-    background: rgba(10, 13, 20, 0.96) !important;
-    border-bottom: 1px solid var(--e-border-strong) !important;
+    color: var(--ui-text-secondary) !important;
+    background: rgba(0, 0, 0, 0.96) !important;
+    border-bottom: 1px solid var(--ui-border-strong) !important;
     font-size: var(--t-table-header) !important;
     letter-spacing: 0.09em !important;
     box-shadow: none !important;
@@ -2420,8 +2368,8 @@ html {
 .dashboard-enterprise .tactical-table tbody td,
 .dashboard-enterprise .tactical-table tbody th {
     font-variant-numeric: tabular-nums;
-    color: var(--e-text-secondary) !important;
-    border-bottom: 1px solid var(--e-border) !important;
+    color: var(--ui-text-secondary) !important;
+    border-bottom: 1px solid var(--ui-border) !important;
     padding: 0.42rem 0.64rem !important;
 }
 
@@ -2430,25 +2378,25 @@ html {
 }
 
 .dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
-    background: var(--e-bg-row-alt) !important;
+    background: rgba(255,255,255,0.018) !important;
 }
 
 .dashboard-enterprise .tactical-table tbody tr:hover {
-    background: var(--e-bg-row-hover) !important;
+    background: var(--ui-hover) !important;
     box-shadow: none !important;
-    color: var(--e-text-primary) !important;
+    color: var(--ui-text-primary) !important;
 }
 
 /* ── 11. SCROLLBAR REFINEMENT FOR ENTERPRISE ─────────────────
    Use muted neutral, not teal hover.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.22) !important;
+    background: rgba(255, 255, 255, 0.22) !important;
     border: none !important;
 }
 
 .dashboard-enterprise ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.38) !important;
+    background: rgba(255, 255, 255, 0.38) !important;
 }
 
 .dashboard-enterprise ::-webkit-scrollbar-track {
@@ -2491,21 +2439,21 @@ html {
 }
 
 .dashboard-enterprise .status-indicator.status-online {
-    background: var(--s-healthy) !important;
+    background: var(--status-success) !important;
 }
 
 .dashboard-enterprise .status-indicator.status-offline {
-    background: var(--s-offline) !important;
+    background: var(--status-offline) !important;
     opacity: 1 !important;
 }
 
 .dashboard-enterprise .status-indicator.status-maintenance {
-    background: var(--s-warning) !important;
+    background: var(--status-warning) !important;
 }
 
 .dashboard-enterprise .status-indicator.status-unknown,
 .dashboard-enterprise .status-indicator.status-checking {
-    background: var(--s-unknown) !important;
+    background: var(--status-unknown) !important;
 }
 
 /* ── 14. FORM INPUT NORMALISATION ────────────────────────────
@@ -2514,7 +2462,7 @@ html {
 .dashboard-enterprise .tactical-input:focus,
 .dashboard-enterprise .tactical-select:focus {
     box-shadow: none !important;
-    border-color: var(--e-border-strong) !important;
+    border-color: var(--ui-border-strong) !important;
     background: rgba(9, 13, 19, 0.88) !important;
     outline: none !important;
 }
@@ -2524,17 +2472,17 @@ html {
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-modal .modal-content {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55) !important;
-    border-color: var(--e-border-panel) !important;
-    background: var(--e-bg-panel) !important;
+    border-color: var(--ui-border) !important;
+    background: var(--ui-surface-2) !important;
 }
 
 .dashboard-enterprise .tactical-modal .modal-header {
-    background: rgba(10, 13, 20, 0.80) !important;
-    border-bottom: 1px solid var(--e-border) !important;
+    background: rgba(0, 0, 0, 0.80) !important;
+    border-bottom: 1px solid var(--ui-border) !important;
 }
 
 .dashboard-enterprise .tactical-modal .modal-title {
-    color: var(--e-text-primary) !important;
+    color: var(--ui-text-primary) !important;
     text-shadow: none !important;
     font-size: 0.88rem !important;
     letter-spacing: 0.10em;
@@ -2547,7 +2495,7 @@ html {
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-badge {
     border-radius: 3px !important;
-    font-family: var(--t-mono) !important;
+    font-family: var(--ui-font-mono) !important;
     font-size: 0.60rem !important;
     padding: 0.18rem 0.46rem !important;
     letter-spacing: 0.08em !important;
@@ -2555,34 +2503,34 @@ html {
 }
 
 .dashboard-enterprise .tactical-badge-success {
-    background: var(--s-healthy-bg) !important;
-    border-color: var(--s-healthy-bd) !important;
-    color: #7acfb8 !important;
+    background: var(--status-success-bg) !important;
+    border-color: var(--status-success-bd) !important;
+    color: #6EE7B7 !important;
 }
 
 .dashboard-enterprise .tactical-badge-danger {
-    background: var(--s-critical-bg) !important;
-    border-color: var(--s-critical-bd) !important;
-    color: #f5a0a8 !important;
+    background: var(--status-critical-bg) !important;
+    border-color: var(--status-critical-bd) !important;
+    color: #FCA5A5 !important;
 }
 
 .dashboard-enterprise .tactical-badge-warning {
-    background: var(--s-warning-bg) !important;
-    border-color: var(--s-warning-bd) !important;
-    color: #f2d47a !important;
+    background: var(--status-warning-bg) !important;
+    border-color: var(--status-warning-bd) !important;
+    color: #FCD34D !important;
 }
 
 .dashboard-enterprise .tactical-badge-secondary {
-    background: rgba(148, 163, 184, 0.10) !important;
-    border-color: rgba(148, 163, 184, 0.24) !important;
-    color: var(--e-text-muted) !important;
+    background: rgba(255, 255, 255, 0.10) !important;
+    border-color: rgba(255, 255, 255, 0.24) !important;
+    color: var(--ui-text-muted) !important;
 }
 
 /* ── 17. PROGRESS BAR CLEANUP ────────────────────────────────
    Remove shimmer animation. Flatten to simple fill bars.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-progress {
-    background: rgba(148, 163, 184, 0.10) !important;
+    background: rgba(255, 255, 255, 0.10) !important;
     border: none !important;
     height: 3px !important;
     border-radius: 2px !important;
@@ -2597,24 +2545,24 @@ html {
 }
 
 .dashboard-enterprise .tactical-progress-bar.success {
-    background: rgba(32, 201, 151, 0.55) !important;
+    background: rgba(16, 185, 129, 0.55) !important;
     /* muted — healthy recedes */
 }
 
 .dashboard-enterprise .tactical-progress-bar.danger {
-    background: var(--s-critical) !important;
+    background: var(--status-critical) !important;
 }
 
 .dashboard-enterprise .tactical-progress-bar.warning {
-    background: var(--s-warning) !important;
+    background: var(--status-warning) !important;
 }
 
 /* ── 18. SELECTION COLOR ─────────────────────────────────────
    Neutral selection, not neon.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise ::selection {
-    background: rgba(148, 163, 184, 0.30) !important;
-    color: var(--e-text-primary) !important;
+    background: rgba(255, 255, 255, 0.30) !important;
+    color: var(--ui-text-primary) !important;
 }
 
 /* ── 19. FOOTER CLEANUP ──────────────────────────────────────
@@ -2625,9 +2573,9 @@ html {
 }
 
 .dashboard-enterprise .tactical-footer {
-    background: var(--e-bg-panel) !important;
-    border-top: 1px solid var(--e-border) !important;
-    color: var(--e-text-muted) !important;
+    background: var(--ui-surface-2) !important;
+    border-top: 1px solid var(--ui-border) !important;
+    color: var(--ui-text-muted) !important;
 }
 
 /* ── 20. PHASE 2: DEEP POLISH REFINEMENTS ────────────────────
@@ -2642,33 +2590,33 @@ html {
     border-radius: 4px;
     font-size: 0.64rem;
     font-weight: 700;
-    font-family: var(--e-sans-font);
-    background: rgba(148, 163, 184, 0.08);
-    border: 1px solid var(--e-border);
-    color: var(--e-text-secondary);
+    font-family: var(--ui-font-sans);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text-secondary);
 }
 
 .dashboard-enterprise .status-chip[data-status="active"] {
-    color: #4ade80;
-    border-color: rgba(74, 222, 128, 0.2);
-    background: rgba(74, 222, 128, 0.04);
+    color: #10B981;
+    border-color: rgba(16, 185, 129, 0.2);
+    background: rgba(16, 185, 129, 0.04);
 }
 
 .dashboard-enterprise .status-chip[data-status="disabled"] {
-    color: #f87171;
-    border-color: rgba(248, 113, 113, 0.2);
-    background: rgba(248, 113, 113, 0.04);
+    color: #EF4444;
+    border-color: rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.04);
 }
 
 .dashboard-enterprise .status-chip[data-status="pending"] {
-    color: #fbbf24;
-    border-color: rgba(251, 191, 36, 0.2);
-    background: rgba(251, 191, 36, 0.04);
+    color: #F59E0B;
+    border-color: rgba(245, 158, 11, 0.2);
+    background: rgba(245, 158, 11, 0.04);
 }
 
 /* Specific Role Badge Coding */
 .dashboard-enterprise .role-badge-elite {
-    font-family: var(--e-mono-font);
+    font-family: var(--ui-font-mono);
     font-size: 0.62rem;
     padding: 0.1rem 0.5rem;
     border-radius: 2px;
@@ -2677,7 +2625,7 @@ html {
 
 .dashboard-enterprise .role-badge-admin {
     background: rgba(239, 68, 68, 0.1);
-    color: #f87171;
+    color: #EF4444;
     border-color: rgba(239, 68, 68, 0.2);
 }
 
@@ -2688,15 +2636,15 @@ html {
 }
 
 .dashboard-enterprise .role-badge-operator {
-    background: rgba(32, 201, 151, 0.1);
+    background: rgba(16, 185, 129, 0.1);
     color: #5eead4;
-    border-color: rgba(32, 201, 151, 0.2);
+    border-color: rgba(16, 185, 129, 0.2);
 }
 
 .dashboard-enterprise .role-badge-viewer {
-    background: rgba(148, 163, 184, 0.1);
-    color: var(--e-text-muted);
-    border-color: var(--e-border);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--ui-text-muted);
+    border-color: var(--ui-border);
 }
 
 /* Action Menu (Vertical Ellipsis) */
@@ -2707,14 +2655,14 @@ html {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    color: var(--e-text-muted);
+    color: var(--ui-text-muted);
     cursor: pointer;
     transition: all 0.1s ease;
 }
 
 .dashboard-enterprise .action-menu-trigger:hover {
-    background: rgba(148, 163, 184, 0.15);
-    color: var(--e-text-primary);
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--ui-text-primary);
 }
 
 /* Table Filter Suite */
@@ -2723,7 +2671,7 @@ html {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     background: rgba(9, 11, 16, 0.4);
-    border-bottom: 1px solid var(--e-border);
+    border-bottom: 1px solid var(--ui-border);
     align-items: center;
 }
 
@@ -2737,7 +2685,7 @@ html {
     left: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--e-text-muted);
+    color: var(--ui-text-muted);
     font-size: 0.75rem;
 }
 
@@ -2749,9 +2697,9 @@ html {
 
 .dashboard-enterprise .filter-select {
     height: 32px;
-    background: var(--e-bg-panel);
-    border: 1px solid var(--e-border);
-    color: var(--e-text-secondary);
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text-secondary);
     font-size: 0.72rem;
     padding-inline: 0.5rem;
     border-radius: 4px;
@@ -2759,20 +2707,20 @@ html {
 }
 
 .dashboard-enterprise .filter-select:focus {
-    border-color: var(--e-border-strong);
+    border-color: var(--ui-border-strong);
     outline: none;
 }
 
 /* Navigation Links */
 .dashboard-enterprise .entity-link {
-    color: var(--e-text-primary);
+    color: var(--ui-text-primary);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: border-color 0.1s ease;
 }
 
 .dashboard-enterprise .entity-link:hover {
-    border-bottom-color: var(--e-text-muted);
+    border-bottom-color: var(--ui-text-muted);
 }
 
 /* Table Font Reduction */
@@ -2783,25 +2731,12 @@ html {
 /* ── END OF ENTERPRISE OVERRIDE BLOCK ──────────────────────── */
 /* -- Dashboard: Network Intelligence / Availability Modal ------- */
 #device-breakdown {
-    display: block;
-    max-height: 0;
-    opacity: 0;
-    transform: translateY(-10px);
-    margin-top: 0;
-    overflow: hidden;
-    pointer-events: none;
-    transition: max-height 360ms cubic-bezier(0.4, 0, 0.2, 1),
-        opacity 260ms ease,
-        transform 320ms ease,
-        margin-top 260ms ease;
+    display: none;
+    margin-top: 0.65rem;
 }
 
 #device-breakdown.is-active {
-    max-height: 2800px;
-    opacity: 1;
-    transform: translateY(0);
-    margin-top: 0.65rem;
-    pointer-events: auto;
+    display: block;
 }
 
 #device-breakdown::before {
@@ -2810,22 +2745,14 @@ html {
     height: 1px;
     margin-bottom: 0.72rem;
     background: linear-gradient(90deg,
-            rgba(148, 163, 184, 0.05),
-            rgba(148, 163, 184, 0.5),
-            rgba(148, 163, 184, 0.05));
-    opacity: 0;
-    transform: scaleX(0.96);
-    transition: opacity 220ms ease, transform 260ms ease;
-}
-
-#device-breakdown.is-active::before {
-    opacity: 1;
-    transform: scaleX(1);
+            rgba(255, 255, 255, 0.05),
+            rgba(255, 255, 255, 0.5),
+            rgba(255, 255, 255, 0.05));
 }
 
 #device-breakdown .breakdown-panel {
-    background: var(--e-bg-panel);
-    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: var(--ui-surface-2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
 }
 
@@ -2866,7 +2793,7 @@ html {
 #availability-modal .modal-content {
     background:
         radial-gradient(circle at top right, rgba(23, 59, 107, 0.22), transparent 38%),
-        linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(11, 15, 24, 0.98));
+        linear-gradient(180deg, rgba(0, 0, 0, 0.98), rgba(0, 0, 0, 0.98));
     border: 1px solid rgba(96, 118, 154, 0.34);
     box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
 }
@@ -2914,7 +2841,7 @@ html {
     padding: 0.22rem;
     border-radius: 999px;
     border: 1px solid rgba(96, 118, 154, 0.22);
-    background: rgba(12, 18, 28, 0.82);
+    background: rgba(12, 12, 12, 0.82);
 }
 
 #availability-modal .availability-range-btn {
@@ -2923,7 +2850,7 @@ html {
     color: #8ea0b6;
     padding: 0.34rem 0.68rem;
     border-radius: 999px;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--ui-font-mono);
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     line-height: 1;
@@ -2960,13 +2887,13 @@ html {
     padding: 0.56rem 0.66rem;
     border-radius: 8px;
     border: 1px solid rgba(96, 118, 154, 0.22);
-    background: linear-gradient(180deg, rgba(17, 24, 36, 0.9), rgba(11, 16, 26, 0.84));
+    background: linear-gradient(180deg, rgba(17, 17, 17, 0.9), rgba(11, 11, 11, 0.84));
 }
 
 #availability-modal .availability-summary-empty {
     display: flex;
     align-items: center;
-    color: var(--e-text-muted);
+    color: var(--ui-text-muted);
     font-size: 0.76rem;
 }
 
@@ -2980,7 +2907,7 @@ html {
 
 #availability-modal .availability-summary-value {
     margin-top: 0.28rem;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--ui-font-mono);
     font-size: 1.02rem;
     line-height: 1;
     color: #eef5ff;
@@ -2997,7 +2924,7 @@ html {
     padding: 0.62rem;
     border-radius: 10px;
     border: 1px solid rgba(96, 118, 154, 0.2);
-    background: linear-gradient(180deg, rgba(9, 14, 22, 0.92), rgba(10, 14, 22, 0.68));
+    background: linear-gradient(180deg, rgba(9, 9, 9, 0.92), rgba(10, 10, 10, 0.68));
     overflow-x: auto;
 }
 
@@ -3013,7 +2940,7 @@ html {
 
 #availability-modal .availability-axis-label {
     min-height: 12px;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--ui-font-mono);
     font-size: 0.56rem;
     line-height: 1;
     text-align: center;
@@ -3034,7 +2961,7 @@ html {
     height: 16px;
     border-radius: 4px;
     border: 1px solid rgba(118, 136, 166, 0.18);
-    background: rgba(18, 24, 32, 0.75);
+    background: rgba(18, 18, 18, 0.75);
     overflow: hidden;
     box-shadow: none;
     transition: border-color 120ms ease, filter 120ms ease;
@@ -3107,7 +3034,7 @@ html {
     padding: 0.3rem 0.5rem;
     border-radius: 999px;
     border: 1px solid rgba(96, 118, 154, 0.18);
-    background: rgba(14, 20, 31, 0.72);
+    background: rgba(14, 14, 14, 0.72);
     font-size: 0.67rem;
     line-height: 1;
     color: #9cafc4;
@@ -3162,8 +3089,8 @@ html {
     padding: 0.28rem 0.5rem;
     border-radius: 6px;
     border: 1px solid rgba(96, 118, 154, 0.2);
-    background: rgba(18, 25, 39, 0.84);
-    font-family: 'IBM Plex Mono', monospace;
+    background: rgba(18, 18, 18, 0.84);
+    font-family: var(--ui-font-mono);
     font-size: 0.73rem;
     line-height: 1;
     color: #d7e5f7;
@@ -3271,7 +3198,7 @@ html {
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.1rem 0.06rem 0.04rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
     margin-bottom: 0.12rem;
 }
 
@@ -3305,12 +3232,12 @@ html {
 }
 
 #device-breakdown .table-responsive {
-    border: 1px solid rgba(148, 163, 184, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 8px;
-    background: rgba(11, 15, 21, 0.5);
+    background: rgba(0, 0, 0, 0.5);
     overflow: auto;
     scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
 }
 
 #device-breakdown .table-responsive::-webkit-scrollbar {
@@ -3319,7 +3246,7 @@ html {
 }
 
 #device-breakdown .table-responsive::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.35);
+    background: rgba(255, 255, 255, 0.35);
     border-radius: 3px;
 }
 
@@ -3351,8 +3278,8 @@ html {
     letter-spacing: 0.075em;
     font-weight: 700;
     color: #b9c8d8;
-    background: rgba(14, 19, 27, 0.98);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+    background: rgba(0, 0, 0, 0.98);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.24);
 }
 
 #device-breakdown .tactical-table tbody tr {
@@ -3365,14 +3292,14 @@ html {
 }
 
 #device-breakdown .tactical-table tbody tr:hover {
-    background: rgba(148, 163, 184, 0.11);
+    background: rgba(255, 255, 255, 0.11);
 }
 
 #device-breakdown .tactical-table tbody td {
     padding: 0.36rem 0.52rem;
     line-height: 1.22;
     color: #c6d1dc;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 #device-breakdown .tactical-table tbody td:first-child {
@@ -3439,5 +3366,185 @@ html {
 
 .dash-col-span-2 {
     grid-column: span 2;
+}
+
+/* ── Status Dot Utility ──────────────────────────────────── */
+.status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.status-dot.success { background: var(--status-success); box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
+.status-dot.warning { background: var(--status-warning); box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+.status-dot.critical { background: var(--status-critical); box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+.status-dot.offline  { background: var(--status-offline); }
+.status-dot.teal     { background: var(--ui-accent); box-shadow: 0 0 6px rgba(20, 184, 166, 0.4); }
+.status-dot.pulse    { animation: dot-pulse 2s infinite; }
+@keyframes dot-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+}
+
+/* === ACCESSIBILITY: Reduced Motion — single global block ===
+   Covers all pages since tactical.css is loaded globally via base.html.
+   Do NOT duplicate this in per-page CSS files. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* ============================================================
+   LIGHT THEME — Shell & Global Component Overrides
+   All rules scoped to html[data-theme="light"].
+   Dark theme (:root) is untouched.
+   NOTE: .table overrides intentionally have NO !important —
+   dashboard.css scoped rules win on the dashboard page.
+   ============================================================ */
+
+html[data-theme="light"] {
+    /* Override --tactical-* tokens that are declared at :root (dark-biased) */
+    --tactical-shadow:        0 4px 15px rgba(0, 0, 0, 0.08);
+    --tactical-shadow-depth:  0 2px 8px rgba(0, 0, 0, 0.10);
+    --tactical-border:        rgba(0, 0, 0, 0.10);
+    --tactical-accent-glow:   rgba(13, 148, 136, 0.15);
+    --tactical-success-glow:  rgba(5, 150, 105, 0.15);
+    --tactical-critical-glow: rgba(220, 38, 38, 0.15);
+}
+
+/* App frame */
+html[data-theme="light"] .app-header {
+    background: #FFFFFF !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .app-sidebar {
+    background: #FFFFFF !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .app-content {
+    background: #F4F4F5 !important;
+}
+
+/* Sidebar navigation */
+html[data-theme="light"] .sidebar-link {
+    color: #52525B;
+}
+html[data-theme="light"] .sidebar-link:hover {
+    background: #F0F0F1 !important;
+    color: #18181B !important;
+}
+html[data-theme="light"] .sidebar-link.active {
+    background: rgba(13, 148, 136, 0.10) !important;
+    color: #0D9488 !important;
+    border-right: 2px solid #0D9488;
+}
+html[data-theme="light"] .sidebar-section-label {
+    color: #A1A1AA !important;
+}
+
+/* Tables — NO !important (see note above) */
+html[data-theme="light"] .table thead th {
+    background: #FAFAFA;
+    color: #71717A;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.10);
+}
+html[data-theme="light"] .table tbody tr {
+    background: #FFFFFF;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+html[data-theme="light"] .table-striped tbody tr:nth-of-type(odd) {
+    background: #FAFAFA;
+}
+html[data-theme="light"] .table tbody tr:hover,
+html[data-theme="light"] .table-hover tbody tr:hover {
+    background: rgba(13, 148, 136, 0.05);
+    border-left: 2px solid #0D9488;
+}
+
+/* Cards */
+html[data-theme="light"] .card,
+html[data-theme="light"] .tactical-card,
+html[data-theme="light"] .enterprise-card {
+    background: #FFFFFF !important;
+    border: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .card-header,
+html[data-theme="light"] .tactical-card .card-header,
+html[data-theme="light"] .enterprise-card .card-header {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+    color: #18181B !important;
+}
+
+/* Buttons */
+html[data-theme="light"] .btn-outline-secondary {
+    color: #52525B !important;
+    border-color: rgba(0, 0, 0, 0.14) !important;
+    background: transparent !important;
+}
+html[data-theme="light"] .btn-outline-secondary:hover {
+    background: #F0F0F1 !important;
+    color: #18181B !important;
+}
+html[data-theme="light"] .btn-primary {
+    background: #0D9488 !important;
+    border-color: #0D9488 !important;
+    color: #FFFFFF !important;
+}
+html[data-theme="light"] .btn-primary:hover {
+    background: #0F766E !important;
+    border-color: #0F766E !important;
+}
+
+/* Status badges — tinted backgrounds, semantic text color */
+html[data-theme="light"] .badge.bg-success {
+    background: rgba(5, 150, 105, 0.12) !important;
+    color: #059669 !important;
+}
+html[data-theme="light"] .badge.bg-warning {
+    background: rgba(217, 119, 6, 0.12) !important;
+    color: #D97706 !important;
+}
+html[data-theme="light"] .badge.bg-danger {
+    background: rgba(220, 38, 38, 0.12) !important;
+    color: #DC2626 !important;
+}
+html[data-theme="light"] .badge.bg-secondary {
+    background: rgba(0, 0, 0, 0.08) !important;
+    color: #71717A !important;
+}
+html[data-theme="light"] .badge.bg-info {
+    background: rgba(13, 148, 136, 0.12) !important;
+    color: #0D9488 !important;
+}
+
+/* Form controls */
+html[data-theme="light"] .form-control,
+html[data-theme="light"] .form-select {
+    background: #FFFFFF !important;
+    border: 1px solid rgba(0, 0, 0, 0.14) !important;
+    color: #18181B !important;
+}
+html[data-theme="light"] .form-control:focus,
+html[data-theme="light"] .form-select:focus {
+    border-color: #0D9488 !important;
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.20) !important;
+}
+html[data-theme="light"] .form-control::placeholder,
+html[data-theme="light"] .form-select::placeholder {
+    color: #A1A1AA !important;
+}
+
+/* Code blocks */
+html[data-theme="light"] code {
+    background: rgba(0, 0, 0, 0.05);
+    color: #18181B;
+}
+html[data-theme="light"] pre {
+    background: #FAFAFA;
+    border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
