@@ -4,6 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Safety Rules
+
+- **Never run destructive git commands** (`git reset --hard`, `git clean -fd`, `git checkout -- .`, `git restore .`, etc.) without explicit user approval. Always confirm before any operation that could destroy uncommitted work.
+- **Do not attempt git operations unless explicitly asked.** The user manages their own git workflow.
+
+---
+
+## Project Context
+
+This is a Python/Flask device monitoring application with PostgreSQL, Redis, Docker, and HTML templates.
+- Always run existing tests after making changes.
+- Test files use SQLite, so avoid PostgreSQL-specific syntax (e.g., `statement_timeout`) in production code paths that tests exercise.
+
+---
+
+## Workflow Rules
+
+- Before implementing fixes or features, verify the current state of the codebase first.
+- Check if planned changes are already implemented before making edits.
+- Run grep/read on target files before assuming what needs to change.
+
+---
+
+## Code Quality
+
+- When editing JavaScript embedded in HTML templates, always verify syntax correctness before finishing.
+- Use bash to check for unclosed brackets/braces. A single JS syntax error can break entire dashboards.
+
+---
+
 ## 1. What This App Is
 
 On-premise Network Monitoring System (NMS) for IT ops: SNMP/ICMP/agent-based monitoring,
@@ -456,6 +486,19 @@ Blockers (still open):
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
   - SESSION_COOKIE_SECURE=True will break login on plain HTTP — set SESSION_COOKIE_SECURE=false
     in .env until HTTPS/self-signed cert is in place
+
+Hardening Sprint 1 complete (2026-03-26):
+  [Data Correctness — 402 unit tests passing, 0 failures]
+  - services/enterprise_pdf_service.py — SLA tier assignment now uses canonical SLA_GOLD/SLA_SILVER/
+    SLA_BRONZE/SLA_WARNING constants imported from core_metrics_service.py instead of hardcoded 99.5/99.0/95.0.
+    Devices at 99.5–99.9% uptime now correctly show Silver (not Gold) in PDF reports.
+  - services/enterprise_report_service.py — Productivity score now returns None (renders as "--")
+    when all app_rows have total_s=0, instead of returning 0.0 (which was indistinguishable from
+    "zero productivity"). Focus score already correctly returned None for no-qualifying-streaks case.
+  - services/core_metrics_service.py — Added logger.warning when incident overlap clamps duration
+    to zero; surface data-gap incidents that would otherwise silently hide downtime.
+  - routes/reports.py, routes/dashboard.py — Added inline SCOPE comments to device count queries
+    documenting which filter contract each count uses (all vs. scoped, monitored vs. all-active).
 ```
 
 ---
@@ -517,3 +560,4 @@ This project uses `gstack` for advanced AI assistance. Follow these rules for we
   - `/qa` — Run automated quality assurance tests.
   - `/setup-browser-cookies` — Configure browser cookies for authenticated browsing.
   - `/retro` — Conduct an engineering retrospective on completed work.
+

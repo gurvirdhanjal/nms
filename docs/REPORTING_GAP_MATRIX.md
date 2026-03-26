@@ -72,3 +72,15 @@ Current state for the reporting stack as implemented in March 2026. This matrix 
 - Rollup coverage gaps are surfaced through `completeness_warnings` using `rollup_coverage_low`.
 - `PDF` export is part of the supported format contract for enterprise reports.
 - XLSX export is report-specific for `executive`, `network`, and `alerts`; the remaining report types use typed sectioned workbooks with a shared summary/meta contract.
+
+## Hardening Sprint 1 Fixes (2026-03-26)
+
+- **SLA tier thresholds are now canonical**: `enterprise_pdf_service.py` imports `SLA_GOLD=99.9`,
+  `SLA_SILVER=99.5`, `SLA_BRONZE=99.0`, `SLA_WARNING=95.0` from `core_metrics_service.py`. Previously
+  the PDF used hardcoded `99.5` for Gold, causing devices at 99.5–99.9% uptime to be falsely shown as Gold.
+- **Productivity Score semantic fix**: Returns `None` (renders "--") when all application rows have
+  zero recorded duration. Previously returned `0.0` which was indistinguishable from "actively unproductive".
+- **Focus Score**: Already correctly returns `None` when no qualifying 25-min sustained streaks exist.
+- **Device count scopes documented**: See inline comments in `routes/reports.py:_count_devices()` and
+  `routes/dashboard.py` SNMP Stats section. Reports size row limits using scoped device count (visible
+  to current user); inventory totals count all active devices regardless of `is_monitored` flag.

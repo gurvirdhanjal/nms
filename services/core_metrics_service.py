@@ -322,9 +322,14 @@ def _compute_uptime_from_events(
                 inc_overlap_s += (overlap_end - overlap_start).total_seconds()
         if inc_overlap_s > 0:
             gap_overlap_s += inc_overlap_s
-            inc["duration_min"] = max(0.0, _safe_round(
-                (inc["duration_min"] or 0.0) - inc_overlap_s / 60.0
-            ))
+            original_dur = inc["duration_min"] or 0.0
+            if inc_overlap_s / 60.0 > original_dur:
+                logger.warning(
+                    "[metrics] incident overlap (%.1f min) exceeds incident duration (%.1f min); "
+                    "clamping to 0. Likely a data gap. inc_start=%s",
+                    inc_overlap_s / 60.0, original_dur, inc.get("start", "?"),
+                )
+            inc["duration_min"] = max(0.0, _safe_round(original_dur - inc_overlap_s / 60.0))
 
     # ── Phase 4: Adjusted uptime ─────────────────────────────────────────
     monitored_seconds = max(0.0, window_seconds - total_gap_s)
@@ -796,7 +801,7 @@ def get_server_metrics_bulk(
             cov = bulk_cov.get(dev.device_id, {})
             row = {
                 "device_id":           dev.device_id,
-                "device_name":         dev.device_name or f"Device-{dev.device_ip}",
+                "device_name":         (dev.device_name or "").strip().rstrip("-").strip() or f"Device-{dev.device_ip}",
                 "device_ip":           dev.device_ip or "—",
                 "fleet":               "server",
                 "uptime_pct":          up,

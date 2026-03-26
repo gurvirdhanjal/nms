@@ -245,12 +245,16 @@ def _workstation_behavioral_metrics(
             category_cache = {r.app_name: r.category for r in AppCategoryCache.query.all()}
         # Return None (not 0.0 or 50.0) when cache is empty — no data to score
         if category_cache:
-            total_s = sum(r.total_s for r in app_rows) or 1
-            weighted = sum(
-                r.total_s * CATEGORY_WEIGHTS.get(category_cache.get(r.application_name, "Unknown"), 0.5)
-                for r in app_rows
-            )
-            productivity_score = _safe_round((weighted / total_s) * 100.0, 1)
+            total_s = sum(r.total_s for r in app_rows)
+            if total_s == 0:
+                # App rows exist but all have zero duration — no meaningful score
+                productivity_score = None
+            else:
+                weighted = sum(
+                    r.total_s * CATEGORY_WEIGHTS.get(category_cache.get(r.application_name, "Unknown"), 0.5)
+                    for r in app_rows
+                )
+                productivity_score = _safe_round((weighted / total_s) * 100.0, 1)
 
     # ── Policy violation count via unique_client_id → agent_key_id ────────────
     violation_count: Optional[int] = None
@@ -691,7 +695,7 @@ def _segment_rows(rows: List[dict]) -> dict:
     """Segment rows by asset class: infrastructure, endpoints, unclassified."""
     infra, endpoints, unclassified = [], [], []
     for r in rows:
-        dtype = (r.get("device_type") or "unknown").lower()
+        dtype = (r.get("device_type") or "unknown").lower().replace(' ', '_')
         if dtype in _ASSET_CLASS_INFRASTRUCTURE:
             infra.append(r)
         elif dtype in _ASSET_CLASS_ENDPOINT:
@@ -749,7 +753,7 @@ def _compute_data_gaps(row: dict, ips_with_scans: set) -> Optional[dict]:
         ip = row.get("device_ip", "")
         gaps["uptime"] = "rollup_missing" if ip in ips_with_scans else "no_scans_in_period"
     if row.get("avg_cpu") is None and (row.get("sample_count") or 0) == 0:
-        dtype = (row.get("device_type") or "").lower()
+        dtype = (row.get("device_type") or "").lower().replace(' ', '_')
         if dtype in ('switch', 'access_point', 'router', 'firewall'):
             gaps["telemetry"] = "device_type_unsupported_for_agent"
         else:
@@ -809,7 +813,7 @@ def build_enterprise_uptime_report(
             Device.query
             .filter(
                 Device.is_active.isnot(False),
-                func.lower(Device.device_type).in_(infra_types),
+                func.replace(func.lower(Device.device_type), ' ', '_').in_(infra_types),
             )
             .order_by(Device.device_name.asc())
             .all()
@@ -837,7 +841,7 @@ def build_enterprise_uptime_report(
                 dev_cov = icmp_cov.get(dev.device_id, {})
                 row = {
                     "device_id": dev.device_id,
-                    "device_name": dev.device_name or f"Device-{dev.device_ip}",
+                    "device_name": (dev.device_name or "").strip().rstrip("-").strip() or f"Device-{dev.device_ip}",
                     "device_ip": dev.device_ip or "—",
                     "device_type": dev.device_type or "Unknown",
                     "uptime_pct": up,
@@ -983,6 +987,12 @@ def build_enterprise_uptime_report(
             except Exception as exc:
                 logger.warning("[EnterpriseReport] tracked device_id=%s error=%s", dev.id, exc)
 
+    # ── Cross-fleet deduplication: server fleet takes precedence ─────────────
+    # A device enrolled in both Device and TrackedDevice tables must appear
+    # only in the server fleet.  O(1) set lookup scales with device count.
+    _server_ips = {r['device_ip'] for r in server_rows if r.get('device_ip')}
+    tracked_rows = [r for r in tracked_rows if r.get('device_ip') not in _server_ips]
+
     # ── Website violation detail breakdown (workstation fleet only) ───────────
     website_violation_details: List[dict] = []
     typed_text_violation_details: List[dict] = []
@@ -1076,18 +1086,31 @@ def build_enterprise_uptime_report(
             return "MEDIUM"
         return "LOW"
 
+    _SOURCE_LABELS = {
+        "rollup":              "daily rollup aggregates",
+        "daily_rollup":        "daily rollup aggregates",
+        "hourly_rollup":       "hourly rollup aggregates",
+        "availability_events": "availability event stream",
+        "scan_history":        "raw scan history",
+        "unknown":             "source unknown",
+    }
+    def _fmt_sources(sources: set) -> str | None:
+        if not sources:
+            return None
+        return ", ".join(_SOURCE_LABELS.get(s, s) for s in sorted(sources))
+
     _confidence = {
         "fleet_avg_uptime": {
             "level": "HIGH" if rows_with_data else "NO_DATA",
-            "source": "computed_from_device_rows",
+            "source": "Computed from device availability records",
         },
         "server_fleet": {
             "level": _confidence_level(server_data_sources),
-            "source": ", ".join(sorted(server_data_sources)) if server_data_sources else None,
+            "source": _fmt_sources(server_data_sources),
         },
         "tracked_fleet": {
             "level": _confidence_level(tracked_data_sources),
-            "source": ", ".join(sorted(tracked_data_sources)) if tracked_data_sources else None,
+            "source": _fmt_sources(tracked_data_sources),
         },
     }
 

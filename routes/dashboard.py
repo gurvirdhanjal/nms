@@ -1191,8 +1191,11 @@ def get_availability_details():
     range_config = _get_availability_range_config(request.args.get('range'))
     force_fresh = request.args.get('fresh', '').lower() in ('1', 'true', 'yes')
     scoped_cache_key = f"availability-details:{range_config['key']}:{_scope_cache_suffix()}"
+    # Longer TTL for wider ranges — 30d data changes slowly, no need to recompute every 60s
+    _AVAILABILITY_CACHE_TTL = {'24h': 60, '7d': 300, '30d': 600}
+    cache_ttl = _AVAILABILITY_CACHE_TTL.get(range_config['key'], 60)
     if not force_fresh:
-        cached = get_cached(scoped_cache_key, 60)
+        cached = get_cached(scoped_cache_key, cache_ttl)
         if cached:
             return jsonify(cached)
 
@@ -1233,7 +1236,7 @@ def get_availability_details():
             ).group_by(
                 DeviceScanHistory.device_ip,
                 hour_bucket
-            ).all()
+            ).limit(50000).all()
         else:
             hourly_rows = []
 
@@ -1402,6 +1405,8 @@ def get_inventory_stats():
             by_type[label] = by_type.get(label, 0) + 1
         
         # 3. SNMP Stats
+        # SCOPE: total_devices here is scoped to user's site/dept and includes ALL active devices
+        # (not filtered by is_monitored). Dashboard KPI uses this as the inventory total.
         total_devices = len(scoped_device_ids)
         snmp_enabled = DeviceSnmpConfig.query.filter(
             DeviceSnmpConfig.device_id.in_(scoped_device_ids) if scoped_device_ids else False,

@@ -246,6 +246,9 @@ def _count_devices(device_ids):
     from models.device import Device
     from middleware.rbac import scoped_query
 
+    # SCOPE: out-of-request context counts ALL devices (background jobs, exports).
+    # In-request context counts only devices visible to the current user's site/dept scope.
+    # Reports use this to size row limits — not as a user-visible total_devices figure.
     if not has_request_context():
         return max(Device.query.count(), 1)
     return max(scoped_query(Device).count(), 1)
@@ -967,7 +970,8 @@ def get_device_statistics_pdf():
     from services.enterprise_pdf_service import generate_device_inspector_pdf
     try:
         buf = generate_device_inspector_pdf(
-            stats, device.device_name, device_ip, period_label
+            stats, device.device_name, device_ip, period_label,
+            period_hours=hours,
         )
     except Exception:
         logger.exception(
@@ -1208,7 +1212,7 @@ def get_devices_report():
                 Device.query
                 .filter(
                     Device.is_active.isnot(False),
-                    func.lower(Device.device_type).in_(infra_types),
+                    func.replace(func.lower(Device.device_type), ' ', '_').in_(infra_types),
                 )
                 .order_by(Device.device_name.asc())
                 .all()
