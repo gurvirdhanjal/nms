@@ -476,7 +476,7 @@ Reports Phase 3 — Enterprise Spec Conformance (2026-03-23):
 Discovered gaps (still open):
   - 72 print() calls remain in services/ — de-prioritised, not customer-visible
   - No CSRF protection on any POST routes — needs Flask-WTF (Phase 5)
-  - SESSION_COOKIE_SECURE=False in app.py line 63 — keep until HTTPS cert in place
+  - SESSION_COOKIE_SECURE now reads from config (fixed in Sprint 2); set SESSION_COOKIE_SECURE=false in .env until HTTPS cert in place
   - Remote view double-buffer swap logic not yet wired in device_live.js
   - PR 20B (reports.html JS split into per-tab modules) deferred — new JS went into new functions
   - PDF narrative rendering (_build_narrative_section) not yet done — PDF still uses old format
@@ -499,7 +499,26 @@ Hardening Sprint 1 complete (2026-03-26):
     to zero; surface data-gap incidents that would otherwise silently hide downtime.
   - routes/reports.py, routes/dashboard.py — Added inline SCOPE comments to device count queries
     documenting which filter contract each count uses (all vs. scoped, monitored vs. all-active).
-```
+
+Hardening Sprint 2 complete (2026-03-27):
+  [Security Hardening — 592 tests passing, 0 new failures introduced]
+  - app.py — SESSION_COOKIE_SECURE now reads from app.config instead of hardcoded False.
+    Set SESSION_COOKIE_SECURE=true in .env when HTTPS is enabled.
+  - routes/subnets.py — subnets_page() and get_subnets() now use scoped_query(Subnet);
+    previously all users could see all subnets regardless of site scope.
+  - routes/departments.py — department_profile() uses scoped_query(Department).get_or_404()
+    instead of bare Department.query.get_or_404(); RBAC scope now enforced on profile page.
+  - routes/user_management.py — user_profile() now enforces ownership:
+    users can only view their own profile; admins may view any.
+  - routes/reports.py + services/export_service.py — export endpoint now routes based on
+    ?format=csv/xlsx/pdf parameter (was hardcoded PDF-only). CSV export applies context headers
+    (Report Type, Period Start, Granularity) and drops brand-header comments for clean parsing.
+  - Pre-existing failure fixed: test_productivity_report_and_exports_include_freshness_fields
+    (was failing due to PDF being returned for ?format=csv requests)
+
+  Remaining for Sprint 2 (deferred):
+  - Rate limiting on write endpoints (bulk_add, bulk_delete, scan_network, save_user)
+  - CSRF protection (Flask-WTF install + template meta tag + JS headers)
 
 ---
 
