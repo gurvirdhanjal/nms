@@ -61,14 +61,28 @@ def test_empty_rows_produces_pdf():
     assert result.getvalue().startswith(b'%PDF')
 
 
-def test_always_pdf_via_buffer():
-    """export_report_buffer should always return PDF regardless of format arg."""
+def test_export_buffer_routes_by_format():
+    """export_report_buffer routes to the correct format based on the format arg."""
     from services.export_service import export_report_buffer
 
-    for fmt in (None, 'csv', 'xlsx', 'pdf', 'json'):
+    # PDF (default and explicit)
+    for fmt in (None, 'pdf', 'json'):
         result = export_report_buffer(_sample_report_data(), 'executive', fmt)
         assert isinstance(result, io.BytesIO)
-        assert result.getvalue().startswith(b'%PDF'), f"format={fmt} did not produce PDF"
+        assert result.getvalue().startswith(b'%PDF'), f"format={fmt!r} did not produce PDF"
+
+    # CSV — starts with column headers (plain text)
+    csv_result = export_report_buffer(_sample_report_data(), 'executive', 'csv')
+    assert isinstance(csv_result, io.BytesIO)
+    csv_bytes = csv_result.getvalue()
+    assert not csv_bytes.startswith(b'%PDF'), "format=csv should not produce PDF"
+    # Content should be decodable UTF-8 text
+    csv_bytes.decode('utf-8')
+
+    # XLSX — ZIP-based format (starts with PK magic)
+    xlsx_result = export_report_buffer(_sample_report_data(), 'executive', 'xlsx')
+    assert isinstance(xlsx_result, io.BytesIO)
+    assert xlsx_result.getvalue().startswith(b'PK'), "format=xlsx should produce XLSX (ZIP-based)"
 
 
 def test_unknown_report_type_uses_generic():

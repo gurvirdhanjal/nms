@@ -1466,7 +1466,10 @@ def export_report(report_type):
     if report_type == 'productivity' and not _is_productivity_report_enabled():
         return _productivity_disabled_response()
 
-    export_format = 'pdf'  # PDF-only export
+    export_format = request.args.get('format', 'pdf').lower()
+    _VALID_EXPORT_FORMATS = {'pdf', 'csv', 'xlsx'}
+    if export_format not in _VALID_EXPORT_FORMATS:
+        export_format = 'pdf'
 
     try:
         _validate_report_type(report_type)
@@ -1490,12 +1493,21 @@ def export_report(report_type):
 
         timestamp = _utcnow().strftime('%Y%m%d_%H%M')
         filename = f'{report_type}_report_{timestamp}'
-        buf = export_report_buffer(payload, report_type)
+        buf = export_report_buffer(payload, report_type, export_format=export_format)
+        if export_format == 'csv':
+            mimetype = 'text/csv'
+            ext = 'csv'
+        elif export_format == 'xlsx':
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ext = 'xlsx'
+        else:
+            mimetype = 'application/pdf'
+            ext = 'pdf'
         return send_file(
             buf,
-            mimetype='application/pdf',
+            mimetype=mimetype,
             as_attachment=True,
-            download_name=f'{filename}.pdf',
+            download_name=f'{filename}.{ext}',
         )
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)

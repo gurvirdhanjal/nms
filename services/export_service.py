@@ -1153,9 +1153,11 @@ def _flatten_printer_operations(data):
 
 def export_to_csv(report_data, report_type):
     headers, rows = _flatten_report_rows(report_data, report_type)
+    # Apply context headers (Report Type, Period Start, Granularity, etc.) to every row.
+    # Brand-header comments are omitted here so csv.DictReader can parse the file correctly.
+    headers, rows = _apply_export_context(report_data, report_type, headers, rows)
     display_headers = [_COLUMN_DISPLAY_NAMES.get(h, h) for h in headers]
     text_buf = io.StringIO()
-    _write_brand_header_csv(text_buf, report_data, report_type)
     writer = csv.DictWriter(text_buf, fieldnames=display_headers, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
@@ -1164,8 +1166,7 @@ def export_to_csv(report_data, report_type):
             for h in headers
         }
         writer.writerow(display_row)
-    # Prepend UTF-8 BOM so Excel opens the file without encoding corruption
-    buf = io.BytesIO(b"\xef\xbb\xbf" + text_buf.getvalue().encode("utf-8"))
+    buf = io.BytesIO(text_buf.getvalue().encode("utf-8"))
     buf.seek(0)
     return buf
 
@@ -1504,6 +1505,7 @@ def _pdf_cell_value(val, col_name=""):
 
 def _pdf_alerts(report_data, report_type):
     from reportlab.platypus import Spacer, Table, Paragraph as RLParagraph
+    from reportlab.lib.pagesizes import landscape, A4
     from reportlab.lib.styles import ParagraphStyle
     from services.enterprise_pdf_service import (
         base_table_style, normal_paragraph, section_heading, hex_color,
@@ -1511,6 +1513,16 @@ def _pdf_alerts(report_data, report_type):
     )
 
     doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Alert History Report")
+
+    # Landscape A4 usable width (page width minus left+right margins)
+    _W = landscape(A4)[0] - 56  # ~773pt
+
+    # Cell style with word-wrap for long strings (URLs, error messages)
+    _cs = ParagraphStyle('alertcell', fontName='Helvetica', fontSize=7.5,
+                         leading=9, wordWrap='CJK')
+
+    def _cell(val):
+        return RLParagraph(str(val if val not in (None, '') else '—'), _cs)
 
     # ── Narrative block (Master Spec) ─────────────────────────────────────
     narrative = report_data.get("narrative")
@@ -1538,10 +1550,12 @@ def _pdf_alerts(report_data, report_type):
     type_breakdown = report_data.get("alert_type_breakdown", [])
     if type_breakdown:
         story.append(normal_paragraph("<b>Alert Type Breakdown</b>", styles))
+        _tb_w = [_W * p for p in [0.40, 0.30, 0.30]]
         tb_data = [["Type", "Count", "% of Total"]]
         for tb in type_breakdown:
-            tb_data.append([tb.get("type", "—"), str(tb.get("count", 0)), f"{tb.get('pct_of_total', 0)}%"])
-        t = Table(tb_data, repeatRows=1)
+            tb_data.append([_cell(tb.get("type", "—")), _cell(tb.get("count", 0)),
+                            _cell(f"{tb.get('pct_of_total', 0)}%")])
+        t = Table(tb_data, colWidths=_tb_w, repeatRows=1)
         t.setStyle(base_table_style())
         story.append(t)
         story.append(Spacer(1, 6))
@@ -1550,10 +1564,13 @@ def _pdf_alerts(report_data, report_type):
     top_devices = report_data.get("top_alerted_devices", [])
     if top_devices:
         story.append(normal_paragraph("<b>Most Impacted Devices</b>", styles))
+        _td_w = [_W * p for p in [0.40, 0.35, 0.25]]
         td_data = [["Device", "IP", "Alert Count"]]
         for d in top_devices[:10]:
-            td_data.append([d.get("device_name", "—"), d.get("device_ip", "—"), str(d.get("alert_count", 0))])
-        t = Table(td_data, repeatRows=1)
+            td_data.append([_cell(d.get("device_name", "—")),
+                            _cell(d.get("device_ip", "—")),
+                            _cell(d.get("alert_count", 0))])
+        t = Table(td_data, colWidths=_td_w, repeatRows=1)
         t.setStyle(base_table_style())
         story.append(t)
         story.append(Spacer(1, 6))
@@ -1562,10 +1579,11 @@ def _pdf_alerts(report_data, report_type):
     aging = report_data.get("unresolved_aging", {})
     if aging and any(v > 0 for v in aging.values()):
         story.append(normal_paragraph("<b>Unresolved Alert Aging</b>", styles))
+        _ag_w = [_W * p for p in [0.60, 0.40]]
         ag_data = [["Age Bucket", "Count"]]
         for bucket, count in aging.items():
-            ag_data.append([bucket, str(count)])
-        t = Table(ag_data, repeatRows=1)
+            ag_data.append([_cell(bucket), _cell(count)])
+        t = Table(ag_data, colWidths=_ag_w, repeatRows=1)
         t.setStyle(base_table_style())
         story.append(t)
         story.append(Spacer(1, 6))
@@ -1574,39 +1592,59 @@ def _pdf_alerts(report_data, report_type):
     subnets = report_data.get("subnet_analysis", [])
     if subnets:
         story.append(normal_paragraph("<b>Subnet Analysis</b>", styles))
-        sn_data = [["Subnet", "Total", "Offline", "Latency", "Pkt Loss", "Devices"]]
+        _sn_w = [_W * p for p in [0.20, 0.12, 0.12, 0.14, 0.14, 0.14, 0.14]]
+        sn_data = [["Subnet", "Total", "Offline", "Latency", "Pkt Loss", "Devices", "Flag"]]
         for s in subnets[:10]:
-            flag = " *" if s.get("flag") else ""
             sn_data.append([
-                s.get("subnet", "—") + flag, str(s.get("total", 0)),
-                str(s.get("offline", 0)), str(s.get("latency", 0)),
-                str(s.get("pkt_loss", 0)), str(s.get("device_count", 0)),
+                _cell(s.get("subnet", "—")), _cell(s.get("total", 0)),
+                _cell(s.get("offline", 0)), _cell(s.get("latency", 0)),
+                _cell(s.get("pkt_loss", 0)), _cell(s.get("device_count", 0)),
+                _cell(s.get("flag", "")),
             ])
-        t = Table(sn_data, repeatRows=1)
+        t = Table(sn_data, colWidths=_sn_w, repeatRows=1)
         t.setStyle(base_table_style())
         story.append(t)
-        for s in subnets:
-            if s.get("flag"):
-                story.append(normal_paragraph(f"* {s['flag']}", styles, color="#EA580C"))
         story.append(Spacer(1, 6))
 
-    # ── Recent alerts table (capped at 20) ────────────────────────────────
-    headers, rows = _flatten_report_rows(report_data, report_type)
-    total_count = report_data.get("alerts_total_count", len(rows))
+    # ── Recent alerts table (capped at 50) ────────────────────────────────
+    _, flat_rows = _flatten_report_rows(report_data, report_type)
+    total_count = report_data.get("alerts_total_count", len(flat_rows))
     truncated = report_data.get("alerts_truncated", False)
 
-    if not rows:
+    if not flat_rows:
         story.append(normal_paragraph("No alerts recorded for this period.", styles))
     else:
         story.append(normal_paragraph(
-            f"<b>Recent Alerts</b> (showing {len(rows)} of {total_count})"
+            f"<b>Recent Alerts</b> (showing {min(len(flat_rows), 50)} of {total_count})"
             + (" — full list available via CSV/XLSX export" if truncated else ""),
             styles,
         ))
-        table_data = [headers]
-        for row in rows[:50]:
-            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
-        table = Table(table_data, repeatRows=1)
+        # 8 visible columns — merge Label/Value into Message for audit traceability
+        alert_headers = ["Timestamp", "Device", "IP", "Severity", "Type",
+                         "Message", "Ack", "Resolved"]
+        _al_w = [_W * p for p in [0.13, 0.14, 0.10, 0.08, 0.10, 0.25, 0.08, 0.08]]
+        # Remaining 4% absorbed by rounding; fits within page
+        table_data = [alert_headers]
+        for row in flat_rows[:50]:
+            if row.get("Section") != "alerts":
+                continue
+            # Merge Label/Value into Message to preserve forensic info
+            msg = str(row.get("Message") or "—")
+            label = row.get("Label", "")
+            value = row.get("Value", "")
+            if label and value:
+                msg = f"{msg} [{label}: {value}]"
+            table_data.append([
+                _cell(row.get("Timestamp", "—")),
+                _cell(row.get("Device", "—")),
+                _cell(row.get("IP", "—")),
+                _cell(row.get("Severity", "—")),
+                _cell(row.get("Type", "—")),
+                _cell(msg),
+                _cell(row.get("Acknowledged", "—")),
+                _cell(row.get("Resolved", "—")),
+            ])
+        table = Table(table_data, colWidths=_al_w, repeatRows=1)
         table.setStyle(base_table_style())
         story.append(table)
 
@@ -1687,4 +1725,8 @@ _PDF_BUILDERS = {
 
 
 def export_report_buffer(report_data, report_type, export_format=None):
+    if export_format == 'csv':
+        return export_to_csv(report_data, report_type)
+    if export_format == 'xlsx':
+        return export_to_excel(report_data, report_type)
     return export_to_pdf(report_data, report_type)

@@ -85,7 +85,7 @@ def create_app(test_config=None):
         SESSION_TIMEOUT_MINUTES=_timeout_min,
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=_timeout_min),
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SECURE=False,   # True only if HTTPS
+        SESSION_COOKIE_SECURE=app.config.get('SESSION_COOKIE_SECURE', False),
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_REFRESH_EACH_REQUEST=True,
         SESSION_PERMANENT=False

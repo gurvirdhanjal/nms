@@ -36,8 +36,11 @@ def user_management():
 @user_management_bp.route('/users/<int:user_id>')
 @require_login
 def user_profile(user_id):
-    """View detailed user profile."""
+    """View detailed user profile. Users may only view their own profile; admins see all."""
+    from flask import abort
     user = User.query.get_or_404(user_id)
+    if user.id != session.get('user_id') and session.get('role') not in ('admin',):
+        abort(403)
     return render_template('users/profile.html', user=user)
 
 @user_management_bp.route('/user_management/save', methods=['POST'])

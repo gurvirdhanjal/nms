@@ -40,7 +40,8 @@ def departments_list_page():
 @require_login
 def department_profile(dept_id):
     """View detailed department profile."""
-    department = Department.query.get_or_404(dept_id)  # FIXME: SCOPING — bypasses scoped_query; any user can access any department
+    from middleware.rbac import scoped_query
+    department = scoped_query(Department).get_or_404(dept_id)
     return render_template('departments/profile.html', department=department)
 
 
