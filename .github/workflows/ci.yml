@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Python unit tests (SQLite, no Docker needed)
+  # ─────────────────────────────────────────────
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run unit tests
+        env:
+          FLASK_ENV: testing
+          DATABASE_URL: sqlite:///test.db
+          SECRET_KEY: ci-test-secret
+          SESSION_COOKIE_SECURE: "false"
+        run: |
+          pytest tests/ -m unit --tb=short -q
+
+      - name: Run integration tests
+        env:
+          FLASK_ENV: testing
+          DATABASE_URL: sqlite:///test.db
+          SECRET_KEY: ci-test-secret
+          SESSION_COOKIE_SECURE: "false"
+        run: |
+          pytest tests/ -m integration --tb=short -q
+
+  # ─────────────────────────────────────────────
+  # JavaScript unit tests (Vitest)
+  # ─────────────────────────────────────────────
+  js-tests:
+    name: JS Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Run JS tests
+        run: npm run test:js
+
+  # ─────────────────────────────────────────────
+  # Lint (quick sanity — no hard block)
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check (non-blocking)
+        run: ruff check . --exit-zero --statistics
