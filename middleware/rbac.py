@@ -92,6 +92,7 @@ ENDPOINT_PERMISSIONS = {
     "devices_bp.toggle_device_monitoring": "devices.edit",
     "devices_bp.bulk_add_devices": "devices.edit",
     "devices_bp.bulk_delete_devices": "devices.edit",
+    "devices_bp.bulk_set_compliance_profile": "admin",
     "devices_bp.update_device_type": "devices.edit",
     "devices_bp.update_device": "devices.edit",
     
@@ -212,7 +213,21 @@ ENDPOINT_PERMISSIONS = {
     "subnets.delete_subnet": "admin",
     
     # API v1 endpoints
-    "api_v1.set_maintenance": "maintenance.edit"
+    "api_v1.set_maintenance": "maintenance.edit",
+
+    # Settings endpoints (admin only)
+    "settings_bp.api_get_smtp": "admin",
+    "settings_bp.api_save_smtp": "admin",
+    "settings_bp.api_test_smtp": "admin",
+    "settings_bp.api_get_monitoring": "admin",
+    "settings_bp.api_save_monitoring": "admin",
+    "settings_bp.api_get_retention": "admin",
+    "settings_bp.api_test_alert_flow": "admin",
+    "settings_bp.api_list_channels": "admin",
+    "settings_bp.api_create_channel": "admin",
+    "settings_bp.api_update_channel": "admin",
+    "settings_bp.api_delete_channel": "admin",
+    "settings_bp.api_test_channel": "admin",
 }
 
 _UI_DEFAULT_CAPABILITIES = {
@@ -363,6 +378,7 @@ def build_ui_capabilities(role=None):
     capabilities['departments'] = normalized_role in {'admin', 'manager'}
     capabilities['subnets'] = normalized_role in {'admin', 'manager'}
     capabilities['discovery'] = normalized_role in {'admin', 'manager'}
+    capabilities['admin'] = normalized_role == 'admin'
     return capabilities
 
 

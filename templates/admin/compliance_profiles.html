@@ -2,93 +2,10 @@
 {% from "components/ui_components.html" import ui_page_header, ui_table_container, ui_badge, ui_empty_state %}
 
 {% block title %}Compliance Profiles{% endblock %}
-{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<style>
-    .metric-strip {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background: rgba(16, 19, 27, 0.92);
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 6px;
-        padding: 1rem;
-    }
-    .metric-card .stat-label {
-        font-size: 0.65rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: #8a97a6;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-    }
-    .metric-card .stat-value {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #e6edf5;
-        line-height: 1.1;
-    }
-    .threshold-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.5rem 1rem;
-    }
-    .threshold-group-label {
-        grid-column: span 2;
-        font-size: 0.64rem;
-        font-weight: 700;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: #64748b;
-        padding-top: 0.5rem;
-    }
-    .cp-field-label {
-        display: block;
-        margin-bottom: 0.3rem;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        color: #94a3b8;
-    }
-    .cp-rule-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-        border-radius: 3px;
-        padding: 0.14rem 0.42rem;
-        font-size: 0.59rem;
-        font-family: monospace;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        border: 1px solid;
-        margin: 0.1rem 0.1rem 0 0;
-    }
-    .cp-rule-chip.warning {
-        color: #f2c06e;
-        border-color: rgba(255, 165, 0, 0.28);
-        background: rgba(255, 165, 0, 0.08);
-    }
-    .cp-rule-chip.critical {
-        color: #f5a0a8;
-        border-color: rgba(255, 59, 92, 0.28);
-        background: rgba(255, 59, 92, 0.08);
-    }
-    .cp-rule-chip.default {
-        color: #8a97a6;
-        border-color: rgba(148, 163, 184, 0.20);
-        background: rgba(148, 163, 184, 0.06);
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -118,8 +35,8 @@
                 <div style="margin-top:.45rem;display:flex;flex-wrap:wrap;gap:.25rem;">
                     <span class="cp-rule-chip warning" title="CPU Warning threshold">CPU W {{ global_defaults.cpu_warning|int }}%</span>
                     <span class="cp-rule-chip critical" title="CPU Critical threshold">CPU C {{ global_defaults.cpu_critical|int }}%</span>
-                    <span class="cp-rule-chip warning" title="Memory Warning threshold">MEM W {{ global_defaults.mem_warning|int }}%</span>
-                    <span class="cp-rule-chip critical" title="Memory Critical threshold">MEM C {{ global_defaults.mem_critical|int }}%</span>
+                    <span class="cp-rule-chip warning" title="Memory Warning threshold">MEM W {{ global_defaults.memory_warning|int }}%</span>
+                    <span class="cp-rule-chip critical" title="Memory Critical threshold">MEM C {{ global_defaults.memory_critical|int }}%</span>
                     <span class="cp-rule-chip warning" title="Disk Warning threshold">DISK W {{ global_defaults.disk_warning|int }}%</span>
                     <span class="cp-rule-chip critical" title="Disk Critical threshold">DISK C {{ global_defaults.disk_critical|int }}%</span>
                 </div>
@@ -158,6 +75,11 @@
                                         {% if r.get('memory_critical') is not none %}<span class="cp-rule-chip critical">MEM C {{ r.get('memory_critical') }}%</span>{% endif %}
                                         {% if r.get('disk_warning') is not none %}<span class="cp-rule-chip warning">DISK W {{ r.get('disk_warning') }}%</span>{% endif %}
                                         {% if r.get('disk_critical') is not none %}<span class="cp-rule-chip critical">DISK C {{ r.get('disk_critical') }}%</span>{% endif %}
+                                        {% if r.get('latency_warning_ms') is not none %}<span class="cp-rule-chip warning">LAT W {{ r.get('latency_warning_ms') }}ms</span>{% endif %}
+                                        {% if r.get('latency_critical_ms') is not none %}<span class="cp-rule-chip critical">LAT C {{ r.get('latency_critical_ms') }}ms</span>{% endif %}
+                                        {% if r.get('packet_loss_warning_pct') is not none %}<span class="cp-rule-chip warning">LOSS W {{ r.get('packet_loss_warning_pct') }}%</span>{% endif %}
+                                        {% if r.get('packet_loss_critical_pct') is not none %}<span class="cp-rule-chip critical">LOSS C {{ r.get('packet_loss_critical_pct') }}%</span>{% endif %}
+                                        {% if r.get('applicable_device_types') %}<span class="cp-rule-chip default">{{ r.get('applicable_device_types') | join(', ') }}</span>{% endif %}
                                     {% else %}
                                         <span class="cp-rule-chip default">Global defaults</span>
                                     {% endif %}
@@ -188,7 +110,7 @@
 </div>
 
 <!-- ── Create / Edit Modal ─────────────────────────────────────────────────── -->
-<div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="profileModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
             <div class="modal-header" style="border-color:rgba(148,163,184,.14);">
@@ -216,8 +138,8 @@
                     <span style="font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8a97a6;margin-right:.4rem;">Global defaults:</span>
                     <span class="cp-rule-chip warning">CPU W {{ global_defaults.cpu_warning|int }}%</span>
                     <span class="cp-rule-chip critical">CPU C {{ global_defaults.cpu_critical|int }}%</span>
-                    <span class="cp-rule-chip warning">MEM W {{ global_defaults.mem_warning|int }}%</span>
-                    <span class="cp-rule-chip critical">MEM C {{ global_defaults.mem_critical|int }}%</span>
+                    <span class="cp-rule-chip warning">MEM W {{ global_defaults.memory_warning|int }}%</span>
+                    <span class="cp-rule-chip critical">MEM C {{ global_defaults.memory_critical|int }}%</span>
                     <span class="cp-rule-chip warning">DISK W {{ global_defaults.disk_warning|int }}%</span>
                     <span class="cp-rule-chip critical">DISK C {{ global_defaults.disk_critical|int }}%</span>
                 </div>
@@ -241,13 +163,13 @@
                         <label class="cp-field-label" for="ruleMemWarning">Warning %</label>
                         <input type="number" id="ruleMemWarning" min="0" max="100" step="1"
                                class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
-                               placeholder="Global: {{ global_defaults.mem_warning|int }}%">
+                               placeholder="Global: {{ global_defaults.memory_warning|int }}%">
                     </div>
                     <div>
                         <label class="cp-field-label" for="ruleMemCritical">Critical %</label>
                         <input type="number" id="ruleMemCritical" min="0" max="100" step="1"
                                class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
-                               placeholder="Global: {{ global_defaults.mem_critical|int }}%">
+                               placeholder="Global: {{ global_defaults.memory_critical|int }}%">
                     </div>
 
                     <div class="threshold-group-label"><i class="fas fa-hard-drive me-1"></i> Disk</div>
@@ -263,6 +185,41 @@
                                class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
                                placeholder="Global: {{ global_defaults.disk_critical|int }}%">
                     </div>
+
+                    <!-- ICMP Thresholds (Phase 6) -->
+                    <div class="threshold-group-label" style="grid-column:1/-1;margin-top:.5rem;"><i class="fas fa-wifi me-1"></i> ICMP / Ping Thresholds <span style="font-size:.58rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b;">(leave blank to use global default)</span></div>
+                    <div>
+                        <label class="cp-field-label" for="ruleLatWarn">Latency Warning (ms)</label>
+                        <input type="number" id="ruleLatWarn" min="1" max="60000" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: 200ms">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleLatCrit">Latency Critical (ms)</label>
+                        <input type="number" id="ruleLatCrit" min="1" max="60000" step="1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: 200ms">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleLossWarn">Packet Loss Warning (%)</label>
+                        <input type="number" id="ruleLossWarn" min="0.1" max="99.9" step="0.1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: 10%">
+                    </div>
+                    <div>
+                        <label class="cp-field-label" for="ruleLossCrit">Packet Loss Critical (%)</label>
+                        <input type="number" id="ruleLossCrit" min="0.1" max="99.9" step="0.1"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="Global: 10%">
+                    </div>
+
+                    <!-- Applicable Device Types -->
+                    <div style="grid-column:1/-1;margin-top:.5rem;">
+                        <label class="cp-field-label" for="ruleDeviceTypes">Applicable Device Types <span style="font-size:.58rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b;">(comma-separated; blank = all types)</span></label>
+                        <input type="text" id="ruleDeviceTypes"
+                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+                               placeholder="e.g. server, switch, workstation">
+                    </div>
                 </div>
             </div>
             <div class="modal-footer" style="border-color:rgba(148,163,184,.14);">
@@ -274,7 +231,7 @@
 </div>
 
 <!-- ── Delete Confirm Modal ────────────────────────────────────────────────── -->
-<div class="modal fade" id="deleteProfileModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="deleteProfileModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
             <div class="modal-header" style="border-color:rgba(148,163,184,.14);">
@@ -350,6 +307,12 @@
         setField('ruleMemCritical',  rules.memory_critical);
         setField('ruleDiskWarning',  rules.disk_warning);
         setField('ruleDiskCritical', rules.disk_critical);
+        setField('ruleLatWarn',      rules.latency_warning_ms);
+        setField('ruleLatCrit',      rules.latency_critical_ms);
+        setField('ruleLossWarn',     rules.packet_loss_warning_pct);
+        setField('ruleLossCrit',     rules.packet_loss_critical_pct);
+        var adt = rules.applicable_device_types;
+        setField('ruleDeviceTypes',  Array.isArray(adt) ? adt.join(', ') : '');
 
         profileModal.show();
     };
@@ -390,6 +353,19 @@
         addRule('memory_critical','ruleMemCritical');
         addRule('disk_warning',   'ruleDiskWarning');
         addRule('disk_critical',  'ruleDiskCritical');
+        // ICMP keys — latency as int, packet_loss as float
+        function addIntRule(key, fieldId) {
+            var v = document.getElementById(fieldId).value.trim();
+            if (v !== '') { rules[key] = parseInt(v, 10); }
+        }
+        addIntRule('latency_warning_ms',  'ruleLatWarn');
+        addIntRule('latency_critical_ms', 'ruleLatCrit');
+        addRule('packet_loss_warning_pct',  'ruleLossWarn');
+        addRule('packet_loss_critical_pct', 'ruleLossCrit');
+        var adtRaw = (document.getElementById('ruleDeviceTypes').value || '').trim();
+        if (adtRaw) {
+            rules.applicable_device_types = adtRaw.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean);
+        }
 
         var btn = document.getElementById('profileSaveBtn');
         btn.disabled = true;
@@ -463,7 +439,10 @@
         ['profileId', 'profileName', 'profileDescription',
          'ruleCpuWarning', 'ruleCpuCritical',
          'ruleMemWarning', 'ruleMemCritical',
-         'ruleDiskWarning', 'ruleDiskCritical'].forEach(function (id) {
+         'ruleDiskWarning', 'ruleDiskCritical',
+         'ruleLatWarn', 'ruleLatCrit',
+         'ruleLossWarn', 'ruleLossCrit',
+         'ruleDeviceTypes'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) { el.value = ''; }
         });

@@ -5,7 +5,7 @@
 {% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/discovery_settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/discovery_settings.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -244,7 +244,7 @@
                                 <div class="text-uppercase fw-bold text-muted mb-1"
                                     style="font-size: 9px; letter-spacing: 0.08em;">Nodes Updated</div>
                                 <div class="font-monospace fs-5 fw-bold"
-                                    style="color: var(--mo-teal, #00e5a0);" id="statUpdated">0</div>
+                                    style="color: var(--ui-accent);" id="statUpdated">0</div>
                             </div>
                         </div>
                     </div>
@@ -368,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const pctEl = document.getElementById('scanProgressPct');
         const detEl = document.getElementById('scanProgressDetail');
         const foundEl = document.getElementById('scanFoundCount');
-        if (fill)   fill.style.width = pct + '%';
+        if (fill)   fill.style.transform = 'scaleX(' + (pct / 100) + ')';
         if (pctEl)  pctEl.textContent = pct + '%';
         if (detEl)  detEl.textContent = detail || 'Probing subnet...';
         if (foundEl) foundEl.textContent = (found || 0) + ' devices found';

@@ -277,6 +277,13 @@ function sortProcesses(processes, mode) {
     });
 }
 
+function buildChartGradient(ctx, hexColor, chartArea) {
+    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    gradient.addColorStop(0, `${hexColor}40`);
+    gradient.addColorStop(1, `${hexColor}02`);
+    return gradient;
+}
+
 export function createServerMetricsView({ root, prefix }) {
     const charts = {};
     const payloadCache = new Map();
@@ -289,6 +296,38 @@ export function createServerMetricsView({ root, prefix }) {
     let currentLoadPromise = null;
     let currentLoadKey = null;
     let currentAbortController = null;
+    let initialDataLoaded = false;
+    let sharedHoveredIndex = null;
+    const registeredCharts = [];
+
+    // Disk I/O sparkline state
+    const diskReadHistory = [];
+    const diskWriteHistory = [];
+    const SPARK_MAX_POINTS = 30;
+    const sparkCharts = {};
+
+    const crosshairPlugin = {
+        id: `${prefix}-crosshair`,
+        afterDraw(chart) {
+            if (sharedHoveredIndex === null || !chart.chartArea) return;
+            const { ctx: c, chartArea, scales } = chart;
+            const xScale = scales?.x;
+            if (!xScale || !chart.data.labels.length) return;
+            const label = chart.data.labels[sharedHoveredIndex];
+            if (label == null) return;
+            const x = xScale.getPixelForValue(label);
+            if (x < chartArea.left || x > chartArea.right) return;
+            c.save();
+            c.setLineDash([4, 4]);
+            c.strokeStyle = 'rgba(255,255,255,0.18)';
+            c.lineWidth = 1;
+            c.beginPath();
+            c.moveTo(x, chartArea.top);
+            c.lineTo(x, chartArea.bottom);
+            c.stroke();
+            c.restore();
+        },
+    };
 
     const element = (name) => root?.querySelector(`#${prefix}-${name}`) || null;
 
@@ -375,11 +414,16 @@ export function createServerMetricsView({ root, prefix }) {
 
         const datasets = [];
         series.forEach((item) => {
+            const itemColor = item.color;
             datasets.push({
                 label: item.label,
                 data: item.data,
-                borderColor: item.color,
-                backgroundColor: `${item.color}10`,
+                borderColor: itemColor,
+                backgroundColor: (context) => {
+                    const { ctx: c, chartArea } = context.chart;
+                    if (!chartArea) return `${itemColor}10`;
+                    return buildChartGradient(c, itemColor, chartArea);
+                },
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
@@ -390,7 +434,7 @@ export function createServerMetricsView({ root, prefix }) {
                 labels,
                 values: item.data,
                 baseLabel: item.label,
-                color: item.color,
+                color: itemColor,
             }).forEach((markerDataset) => datasets.push(markerDataset));
         });
         buildThresholdLineDatasets(labels, thresholdConfig).forEach((dataset) => datasets.push(dataset));
@@ -416,10 +460,19 @@ export function createServerMetricsView({ root, prefix }) {
                 : `${ctx.dataset.label}: ${raw.toFixed(2)}${unit ? ` ${unit}` : ''}`.trim();
         });
 
+        const seriesStats = series.map((item) => calculateSeriesStats(item.data));
+
         const options = {
             responsive: true,
             maintainAspectRatio: false,
-            animation: false,
+            animation: initialDataLoaded ? false : { duration: 600, easing: 'easeOutQuart' },
+            onHover: (evt, elements, chart) => {
+                const newIndex = elements?.[0]?.index ?? null;
+                if (newIndex !== sharedHoveredIndex) {
+                    sharedHoveredIndex = newIndex;
+                    registeredCharts.forEach((c) => { if (c !== chart) c.update('none'); });
+                }
+            },
             plugins: {
                 legend: {
                     display: series.length > 1 || datasets.some((dataset) => dataset.isMarker),
@@ -430,6 +483,8 @@ export function createServerMetricsView({ root, prefix }) {
                     },
                 },
                 tooltip: {
+                    mode: 'index',
+                    intersect: false,
                     filter: (ctx) => !ctx.dataset?.isThresholdLine,
                     callbacks: {
                         title: (items) => {
@@ -437,6 +492,20 @@ export function createServerMetricsView({ root, prefix }) {
                             return formatDateTime(labels[index]);
                         },
                         label: formatTooltip,
+                        afterBody: () => {
+                            const lines = [];
+                            seriesStats.forEach((stats, i) => {
+                                if (stats.avg !== null) lines.push(`${series[i].label} Avg: ${stats.avg.toFixed(1)}${unit ? ` ${unit}` : ''}`);
+                                if (stats.max !== null) lines.push(`${series[i].label} Max: ${stats.max.toFixed(1)}${unit ? ` ${unit}` : ''}`);
+                            });
+                            if (thresholdConfig?.enabled) {
+                                const warn = toFiniteNumber(thresholdConfig?.warning);
+                                const crit = toFiniteNumber(thresholdConfig?.critical);
+                                if (warn !== null) lines.push(`⚠ Warn: ${warn}${unit ? ` ${unit}` : ''}`);
+                                if (crit !== null) lines.push(`⛔ Crit: ${crit}${unit ? ` ${unit}` : ''}`);
+                            }
+                            return lines;
+                        },
                     },
                 },
             },
@@ -447,6 +516,7 @@ export function createServerMetricsView({ root, prefix }) {
                     grid: { color: 'rgba(255,255,255,0.05)' },
                     ticks: {
                         color: '#888',
+                        maxTicksLimit: 5,
                         callback: formatTick,
                     },
                     title: {
@@ -462,6 +532,8 @@ export function createServerMetricsView({ root, prefix }) {
                     ticks: {
                         color: '#888',
                         maxTicksLimit: 6,
+                        autoSkip: true,
+                        maxRotation: 0,
                         callback: buildXTick,
                     },
                     title: {
@@ -477,7 +549,14 @@ export function createServerMetricsView({ root, prefix }) {
         if (charts[canvasId]) {
             charts[canvasId].data.labels = labels;
             charts[canvasId].data.datasets = datasets;
-            charts[canvasId].options = options;
+            // Only patch the y-axis label when it actually changes (e.g. KB/s→MB/s on network chart).
+            // Avoid reassigning the full options object — Chart.js re-parses all scales/plugins on every update.
+            if (yAxisLabel) {
+                const yTitle = charts[canvasId].options?.scales?.y?.title;
+                if (yTitle && yTitle.text !== yAxisLabel) {
+                    yTitle.text = yAxisLabel;
+                }
+            }
             charts[canvasId].update('none');
             return;
         }
@@ -485,9 +564,10 @@ export function createServerMetricsView({ root, prefix }) {
         charts[canvasId] = new window.Chart(ctx, {
             type: 'line',
             data: { labels, datasets },
-            plugins: [thresholdPlugin],
+            plugins: [thresholdPlugin, crosshairPlugin],
             options,
         });
+        registeredCharts.push(charts[canvasId]);
     }
 
     function updateMetricStatus(targetId, evaluation) {
@@ -549,14 +629,36 @@ export function createServerMetricsView({ root, prefix }) {
                     : 'CPU, memory, disk, and process health within thresholds';
                 return;
             }
-            summaryTarget.textContent = penalties
-                .slice(0, 3)
-                .map((penalty) => {
-                    const value = toFiniteNumber(penalty?.value);
-                    const renderedValue = value === null ? '' : ` ${value.toFixed(1)}${penalty?.unit || ''}`;
-                    return `${penalty?.label || penalty?.metric_key}${renderedValue}`;
-                })
-                .join(' | ');
+            const getPenaltyColor = (penalty) => {
+                const v = toFiniteNumber(penalty?.value);
+                if (v === null) return 'var(--ui-text-dim)';
+                const crit = toFiniteNumber(penalty?.critical);
+                const warn = toFiniteNumber(penalty?.warning);
+                if (crit !== null && v >= crit) return 'var(--ui-danger)';
+                if (warn !== null && v >= warn) return 'var(--ui-warning)';
+                return 'var(--ui-accent)';
+            };
+            const getPenaltyPct = (penalty) => {
+                const v = toFiniteNumber(penalty?.value);
+                const crit = toFiniteNumber(penalty?.critical) || 100;
+                return v === null ? 0 : Math.min(100, (v / crit) * 100);
+            };
+            summaryTarget.innerHTML = penalties.slice(0, 3).map((penalty) => {
+                const color = getPenaltyColor(penalty);
+                const width = getPenaltyPct(penalty);
+                const label = escapeHtml(penalty?.label || penalty?.metric_key || '');
+                const value = toFiniteNumber(penalty?.value);
+                const unit = escapeHtml(penalty?.unit || '');
+                const valStr = value !== null ? `${value.toFixed(1)}${unit}` : '-';
+                return `<div style="margin-bottom:4px;">` +
+                    `<div style="display:flex;justify-content:space-between;font-size:11px;">` +
+                    `<span>${label}</span>` +
+                    `<span style="color:${color};font-family:var(--ui-font-mono);">${escapeHtml(valStr)}</span>` +
+                    `</div>` +
+                    `<div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;">` +
+                    `<div style="height:100%;width:${width}%;background:${color};transition:width .4s ease;"></div>` +
+                    `</div></div>`;
+            }).join('');
         }
     }
 
@@ -665,6 +767,18 @@ export function createServerMetricsView({ root, prefix }) {
             target.textContent = isWindows && index === 2 ? formatCount(Math.round(numeric)) : numeric.toFixed(2);
             target.className = className;
         });
+
+        // Trend arrow on 1min vs 15min (Linux only)
+        if (!isWindows) {
+            const val1 = toFiniteNumber(values[0]);
+            const val15 = toFiniteNumber(values[2]);
+            const el1min = element('load-avg-1min');
+            if (el1min && val1 !== null && val15 !== null) {
+                const arrow = val1 > val15 + 0.2 ? '↑' : val1 < val15 - 0.2 ? '↓' : '→';
+                const arrowColor = val1 > val15 + 0.2 ? 'var(--ui-warning)' : val1 < val15 - 0.2 ? 'var(--ui-accent)' : 'var(--ui-text-dim)';
+                el1min.innerHTML = `${el1min.textContent}&thinsp;<span style="color:${arrowColor};font-size:0.7em;vertical-align:middle;">${arrow}</span>`;
+            }
+        }
     }
 
     function renderSwapUsage(swap, label) {
@@ -842,14 +956,20 @@ export function createServerMetricsView({ root, prefix }) {
             renderCells: (proc) => {
                 const cpu = toFiniteNumber(proc.cpu_percent);
                 const memory = toFiniteNumber(proc.memory_percent);
-                const cpuClass = cpu > 50 ? 'text-danger' : cpu > 25 ? 'text-warning' : '';
-                const memClass = memory > 50 ? 'text-danger' : memory > 25 ? 'text-warning' : '';
                 const path = proc.path || '-';
+                const inlineBar = (pct) => {
+                    if (pct === null) return '-';
+                    const bg = pct > 50 ? 'rgba(220,53,69,.25)' : pct > 25 ? 'rgba(255,193,7,.2)' : 'rgba(0,212,170,.15)';
+                    return `<div style="position:relative;display:inline-block;min-width:60px;">` +
+                        `<div style="position:absolute;left:0;top:0;height:100%;width:${Math.min(100, pct)}%;background:${bg};border-radius:2px;pointer-events:none;"></div>` +
+                        `<span style="position:relative;z-index:1;">${pct.toFixed(1)}%</span>` +
+                        `</div>`;
+                };
                 return `
                     <td title="${escapeHtml(path)}">${escapeHtml(proc.name || '-')}</td>
                     <td>${escapeHtml(proc.pid || '-')}</td>
-                    <td class="${cpuClass}">${cpu !== null ? `${cpu.toFixed(1)}%` : '-'}</td>
-                    <td class="${memClass}">${memory !== null ? `${memory.toFixed(1)}%` : '-'}</td>
+                    <td>${inlineBar(cpu)}</td>
+                    <td>${inlineBar(memory)}</td>
                     <td>${escapeHtml(proc.status || '-')}</td>
                     <td title="${escapeHtml(path)}">${escapeHtml(truncateMiddle(path))}</td>
                 `;
@@ -1046,6 +1166,45 @@ export function createServerMetricsView({ root, prefix }) {
         bindThresholdEditor();
     }
 
+    function renderDiskIOSparkline(canvasId, data, color) {
+        const canvas = root?.querySelector(`#${prefix}-${canvasId}`);
+        const ctx = canvas?.getContext('2d');
+        if (!ctx || !window.Chart) return;
+
+        if (sparkCharts[canvasId]) {
+            sparkCharts[canvasId].data.labels = data.map(() => '');
+            sparkCharts[canvasId].data.datasets[0].data = data;
+            sparkCharts[canvasId].update('none');
+            return;
+        }
+
+        sparkCharts[canvasId] = new window.Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(() => ''),
+                datasets: [{
+                    data,
+                    borderColor: color,
+                    backgroundColor: `${color}20`,
+                    borderWidth: 1.5,
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.3,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: {
+                    x: { display: false },
+                    y: { display: false, beginAtZero: true },
+                },
+            },
+        });
+    }
+
     function getCachedPayload(deviceId, range) {
         const cacheKey = buildTelemetryCacheKey(deviceId, range);
         const entry = payloadCache.get(cacheKey);
@@ -1137,6 +1296,20 @@ export function createServerMetricsView({ root, prefix }) {
         renderExtendedMetrics(data);
         renderThresholdEditor(thresholds.metrics || {}, data.threshold_profile || {});
 
+        // Disk I/O sparklines — ring buffers capped at SPARK_MAX_POINTS
+        const readRate = toFiniteNumber(data.disk_io_rates?.current_read_mb_s);
+        const writeRate = toFiniteNumber(data.disk_io_rates?.current_write_mb_s);
+        if (readRate !== null) {
+            diskReadHistory.push(readRate);
+            if (diskReadHistory.length > SPARK_MAX_POINTS) diskReadHistory.shift();
+        }
+        if (writeRate !== null) {
+            diskWriteHistory.push(writeRate);
+            if (diskWriteHistory.length > SPARK_MAX_POINTS) diskWriteHistory.shift();
+        }
+        if (diskReadHistory.length) renderDiskIOSparkline('chart-disk-read-spark', diskReadHistory, '#20c997');
+        if (diskWriteHistory.length) renderDiskIOSparkline('chart-disk-write-spark', diskWriteHistory, '#fd7e14');
+
         if (isEmpty) return data;
 
         renderChart({
@@ -1189,6 +1362,7 @@ export function createServerMetricsView({ root, prefix }) {
             },
         });
 
+        initialDataLoaded = true;
         return data;
     }
 
@@ -1223,6 +1397,9 @@ export function createServerMetricsView({ root, prefix }) {
         }
         Object.values(charts).forEach((chart) => chart?.destroy?.());
         Object.keys(charts).forEach((key) => delete charts[key]);
+        Object.values(sparkCharts).forEach((chart) => chart?.destroy?.());
+        Object.keys(sparkCharts).forEach((key) => delete sparkCharts[key]);
+        registeredCharts.length = 0;
         currentDeviceId = null;
         currentPayload = null;
         currentLoadPromise = null;
@@ -1287,11 +1464,17 @@ export function createServerMetricsView({ root, prefix }) {
         });
     }
 
+    function invalidateCache(deviceId, range) {
+        const key = buildTelemetryCacheKey(deviceId, range || currentRange);
+        payloadCache.delete(key);
+    }
+
     return {
         load,
         fetchConnectionSnapshot,
         prefetch,
         destroy,
+        invalidateCache,
         setOpenDetailsLink,
         getCurrentRange: () => currentRange,
         getCurrentDeviceId: () => currentDeviceId,

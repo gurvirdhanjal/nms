@@ -3,28 +3,1192 @@
 {% block title %}Device Management - Device Monitoring{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/devices.css') }}">
 <style>
-.snmp-toggle-btn{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:.18rem .52rem;border-radius:3px;border:1px solid;cursor:pointer;background:none;transition:background .15s;white-space:nowrap;}
-.snmp-toggle-btn.snmp-on{color:#4ade80;border-color:rgba(74,222,128,.32);background:rgba(74,222,128,.07);}
-.snmp-toggle-btn.snmp-on:hover{background:rgba(74,222,128,.14);}
-.snmp-toggle-btn.snmp-off{color:#64748b;border-color:rgba(100,116,139,.28);background:rgba(100,116,139,.05);}
-.snmp-toggle-btn.snmp-off:hover{background:rgba(100,116,139,.12);color:#94a3b8;}
-.snmp-toggle-btn.snmp-has-error{border-color:rgba(251,191,36,.5);color:#fbbf24;}
-.snmp-dot{width:5px;height:5px;border-radius:50%;display:inline-block;flex-shrink:0;}
-.snmp-dot-on{background:#4ade80;}.snmp-dot-off{background:#475569;}
-.cp-flat-table{width:100%;border-collapse:collapse;}
-.cp-flat-table th{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b;padding:.45rem .75rem;border-bottom:1px solid rgba(148,163,184,.14);white-space:nowrap;}
-.cp-flat-table td{padding:.52rem .75rem;font-size:.8rem;color:#cbd5e1;border-bottom:1px solid rgba(148,163,184,.07);vertical-align:middle;}
-.cp-flat-table tr:last-child td{border-bottom:none;}
-.cp-flat-table tr:hover td{background:rgba(148,163,184,.04);}
-.cp-flat-table .cp-name{font-weight:600;color:#e2e8f0;}
-.cp-flat-table .cp-desc{color:#64748b;font-size:.73rem;}
-.cp-chip{display:inline-flex;align-items:center;border-radius:2px;padding:.1rem .34rem;font-size:.59rem;font-family:monospace;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid;margin:.1rem .1rem 0 0;}
-.cp-chip.warn{color:#fbbf24;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.07);}
-.cp-chip.crit{color:#f87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.07);}
-.cp-chip.dflt{color:#64748b;border-color:rgba(100,116,139,.22);background:rgba(100,116,139,.06);}
-</style>
+    .devices-page {
+        --d-border: rgba(148, 163, 184, 0.2);
+        --d-border-soft: rgba(148, 163, 184, 0.14);
+        --d-text-main: #e6edf5;
+        --d-text-muted: #8a97a6;
+    }
+
+    .devices-page .lucide {
+        width: 15px;
+        height: 15px;
+        stroke-width: 1.9;
+        vertical-align: text-bottom;
+    }
+
+    .devices-page .page-header h1 {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 1.04rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--d-text-main);
+    }
+
+    .devices-page .page-header .lead {
+        margin: 0.32rem 0 0;
+        color: var(--d-text-muted);
+        font-size: 0.69rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+    }
+
+    .devices-page .card {
+        border-radius: 6px;
+        border-color: var(--d-border);
+        background: rgba(16, 19, 27, 0.86);
+    }
+
+    .devices-page .card-header {
+        padding: 0.58rem 0.78rem;
+        border-bottom-color: var(--d-border-soft);
+    }
+
+    .devices-page .card-body {
+        padding: 0.7rem 0.78rem;
+    }
+
+    .devices-page .devices-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.72rem;
+        flex-wrap: wrap;
+    }
+
+    .devices-page .devices-title {
+        display: flex;
+        align-items: center;
+        gap: 0.48rem;
+        margin: 0;
+        font-size: 0.8rem;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #c3cfdb;
+    }
+
+    .devices-page .devices-filters {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        flex: 1;
+    }
+
+    .devices-page .toolbar-select {
+        max-width: 135px;
+    }
+
+    .devices-page .toolbar-select.subnet {
+        max-width: 165px;
+    }
+
+    .devices-page .toolbar-search {
+        min-width: 220px;
+        max-width: 360px;
+    }
+
+    .devices-page .devices-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.38rem;
+    }
+
+    .devices-page .btn {
+        font-size: 0.73rem;
+        letter-spacing: 0.03em;
+    }
+
+    .devices-page .btn .lucide {
+        margin-right: 0.3rem;
+    }
+
+    .devices-page .btn.icon-only .lucide {
+        margin-right: 0;
+    }
+
+    .devices-page .form-control,
+    .devices-page .form-select,
+    .devices-page .input-group-text {
+        font-size: 0.74rem;
+    }
+
+    .devices-page .table-responsive {
+        border: 1px solid var(--d-border);
+        border-radius: 6px;
+        max-height: 70vh;
+        overflow-x: auto;
+        overflow-y: auto;
+    }
+
+    .devices-page .devices-table {
+        margin-bottom: 0;
+    }
+
+    .devices-page .devices-table thead th {
+        padding: 0.46rem 0.52rem;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.085em;
+        color: #b8c6d5;
+        white-space: nowrap;
+    }
+
+    .devices-page .devices-table tbody td {
+        padding: 0.44rem 0.52rem;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 0.75rem;
+        font-variant-numeric: tabular-nums;
+        vertical-align: middle;
+        line-height: 1.35;
+    }
+
+    .devices-page .devices-table tbody tr {
+        border-color: rgba(148, 163, 184, 0.1);
+    }
+
+    .devices-page .devices-table tbody tr[data-href] {
+        cursor: pointer;
+        transition: none;
+    }
+
+    .devices-page .devices-table tbody tr[data-href]:hover {
+        background: rgba(255, 255, 255, 0.025);
+    }
+
+    .devices-page .device-name-cell strong {
+        display: inline-block;
+        color: var(--d-text-main);
+        font-size: 0.78rem;
+        font-family: 'IBM Plex Sans', sans-serif;
+    }
+
+    .devices-page .device-mac {
+        margin-top: 0.16rem;
+        font-size: 0.66rem;
+        color: var(--d-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .devices-page .devices-table code {
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 0.72rem;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .devices-page .device-type-select {
+        min-width: 126px;
+        max-width: 140px;
+    }
+
+    .devices-page .devices-filter-chips {
+        display: flex;
+        align-items: center;
+        gap: 0.42rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.72rem;
+    }
+
+    .devices-page .filter-chip-kicker {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--d-text-muted);
+        margin-right: 0.12rem;
+    }
+
+    .devices-page .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.36rem;
+        padding: 0.28rem 0.52rem;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 999px;
+        background: rgba(12, 16, 22, 0.72);
+        color: #d7e4f3;
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        line-height: 1;
+    }
+
+    .devices-page .filter-chip button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.1rem;
+        height: 1.1rem;
+        padding: 0;
+        border: none;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.12);
+        color: #d7e4f3;
+        cursor: pointer;
+        transition: background 0.14s ease, color 0.14s ease;
+    }
+
+    .devices-page .filter-chip button:hover {
+        background: rgba(239, 68, 68, 0.18);
+        color: #ffd0d0;
+    }
+
+    .devices-page .filter-chip-clear {
+        border-style: dashed;
+        color: #9fb2c8;
+        background: rgba(11, 16, 24, 0.72);
+    }
+
+    .devices-page .btn-group.device-actions .btn {
+        padding: 0.22rem 0.38rem;
+    }
+
+    .devices-page .btn-group.device-actions .lucide {
+        width: 14px;
+        height: 14px;
+    }
+
+    .devices-page .alert-info {
+        margin-bottom: 0.6rem;
+        padding: 0.42rem 0.58rem;
+        background: rgba(95, 151, 194, 0.08);
+        border: 1px solid rgba(95, 151, 194, 0.18);
+        border-left: 3px solid rgba(95, 151, 194, 0.4);
+        border-radius: 4px;
+        color: #c3cfdb;
+        font-size: 0.73rem;
+    }
+
+    .devices-page #bulkActions {
+        font-size: 0.73rem;
+        padding: 0.68rem 0.82rem;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 10px;
+        background: rgba(12, 16, 22, 0.82);
+        box-shadow: none;
+    }
+
+    .devices-page .bulk-actions-layout {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+    }
+
+    .devices-page .bulk-actions-summary {
+        display: flex;
+        align-items: baseline;
+        gap: 0.36rem;
+        color: #dce7f3;
+        font-family: 'IBM Plex Sans', sans-serif;
+    }
+
+    .devices-page .bulk-actions-kicker {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--d-text-muted);
+    }
+
+    .devices-page .bulk-actions-count {
+        font-size: 1.02rem;
+        font-weight: 700;
+        color: #f3f8ff;
+        line-height: 1;
+    }
+
+    .devices-page .bulk-actions-label {
+        font-size: 0.72rem;
+        color: #b9c9da;
+    }
+
+    .devices-page .bulk-actions-controls {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .devices-page .device-actions-menu .dropdown-toggle::after {
+        display: none;
+    }
+
+    .devices-page .device-action-toggle {
+        width: 2.05rem;
+        height: 2.05rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+    }
+
+    .devices-page .device-actions-menu .dropdown-menu {
+        min-width: 12.5rem;
+        padding: 0.35rem;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: rgba(14, 18, 25, 0.98);
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+    }
+
+    .devices-page .device-actions-menu .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.6rem;
+        border-radius: 9px;
+        color: #dbe8f7;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+
+    .devices-page .device-actions-menu .dropdown-item:hover,
+    .devices-page .device-actions-menu .dropdown-item:focus {
+        background: rgba(28, 39, 56, 0.82);
+        color: #f6fbff;
+    }
+
+    .devices-page .device-actions-menu .dropdown-item.text-danger {
+        color: #f7a6a6 !important;
+    }
+
+    .devices-page .device-actions-menu .dropdown-item.text-danger:hover,
+    .devices-page .device-actions-menu .dropdown-item.text-danger:focus {
+        background: rgba(127, 29, 29, 0.28);
+        color: #ffd0d0 !important;
+    }
+
+    .devices-page .devices-table-shell {
+        max-height: calc(100vh - 280px);
+        min-height: 300px;
+        overflow-anchor: none;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable both-edges;
+        contain: layout paint;
+        isolation: isolate;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        will-change: scroll-position;
+    }
+
+    .devices-page .devices-table {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    .devices-page .devices-table th:nth-child(1),
+    .devices-page .devices-table td:nth-child(1) {
+        width: 40px;
+    }
+
+    .devices-page .devices-table th:nth-child(2),
+    .devices-page .devices-table td:nth-child(2) {
+        width: 31%;
+    }
+
+    .devices-page .devices-table th:nth-child(3),
+    .devices-page .devices-table td:nth-child(3) {
+        width: 17%;
+    }
+
+    .devices-page .devices-table th:nth-child(4),
+    .devices-page .devices-table td:nth-child(4) {
+        width: 18%;
+    }
+
+    .devices-page .devices-table th:nth-child(5),
+    .devices-page .devices-table td:nth-child(5) {
+        width: 14%;
+    }
+
+    .devices-page .devices-table th:nth-child(6),
+    .devices-page .devices-table td:nth-child(6) {
+        width: 8%;
+    }
+
+    .devices-page .devices-table th:nth-child(7),
+    .devices-page .devices-table td:nth-child(7) {
+        width: 88px;
+    }
+
+    .devices-page .device-name-cell,
+    .devices-page .devices-table td code,
+    .devices-page .snmp-trigger-copy {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .devices-page .device-name-cell strong,
+    .devices-page .devices-table td code,
+    .devices-page .snmp-trigger-state,
+    .devices-page .snmp-trigger-mode {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .devices-page .select-column {
+        width: 40px;
+    }
+
+    .devices-page .devices-hidden {
+        display: none;
+    }
+
+    .devices-page .devices-row-hidden {
+        display: none;
+    }
+
+    .devices-page .empty-state-icon {
+        width: 48px;
+        height: 48px;
+        color: var(--d-text-muted);
+    }
+
+    .devices-page .monitoring-fields-hidden {
+        display: none;
+    }
+
+    .devices-page .devices-notification-host {
+        position: fixed;
+        top: calc(52px + 1rem);
+        /* Avoid header overlap */
+        right: 1rem;
+        z-index: 1085;
+        max-width: 460px;
+        width: min(460px, calc(100vw - 2rem));
+    }
+
+    .devices-page .devices-notification {
+        box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.35);
+        border-color: rgba(148, 163, 184, 0.25);
+    }
+
+    .devices-page .selection-hint {
+        margin-left: 0.5rem;
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #8a97a6;
+    }
+
+    .devices-page .selection-progress {
+        margin-left: 0.45rem;
+        font-size: 0.68rem;
+        letter-spacing: 0.03em;
+        color: #b8c6d5;
+        text-transform: none;
+        white-space: nowrap;
+    }
+
+    .devices-page .devices-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        padding: 0.58rem 0.78rem;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 10px;
+        background: rgba(12, 16, 22, 0.82);
+        box-shadow: none;
+    }
+
+    .devices-page .devices-pagination-meta {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        color: var(--d-text-main);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.74rem;
+        letter-spacing: 0.02em;
+    }
+
+    .devices-page .devices-pagination-meta strong {
+        color: #eef7ff;
+        font-size: 0.95rem;
+    }
+
+    .devices-page .pagination-total {
+        color: #9fb2c8;
+        font-size: 0.72rem;
+    }
+
+    .devices-page .pagination-page {
+        color: #7f93ab;
+        font-size: 0.67rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .devices-page .pagination-kicker {
+        font-size: 0.63rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--d-text-muted);
+    }
+
+    .devices-page .devices-pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
+    .devices-page .devices-pagination .pagination {
+        margin-bottom: 0;
+        gap: 0.28rem;
+        flex-wrap: wrap;
+    }
+
+    .devices-page .devices-pagination .page-link {
+        min-width: 1.95rem;
+        padding: 0.28rem 0.46rem;
+        border-radius: 6px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(15, 23, 33, 0.88);
+        color: #d6e3f2;
+        font-size: 0.67rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-align: center;
+        box-shadow: none;
+        transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+    }
+
+    .devices-page .devices-pagination .page-link:hover {
+        border-color: rgba(148, 163, 184, 0.28);
+        background: rgba(21, 32, 46, 0.96);
+        color: #f8fbff;
+    }
+
+    .devices-page .devices-pagination .page-item.active .page-link {
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(36, 44, 56, 0.95);
+        color: #f4fdff;
+    }
+
+    .devices-page .devices-pagination .page-item.disabled .page-link {
+        border-color: rgba(148, 163, 184, 0.12);
+        background: rgba(12, 17, 24, 0.72);
+        color: rgba(138, 151, 166, 0.68);
+        box-shadow: none;
+        transform: none;
+    }
+
+    .devices-page .devices-pagination .page-item.devices-page-gap .page-link {
+        min-width: auto;
+        padding-inline: 0.45rem;
+    }
+
+    .devices-page .per-page-form {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+
+    .devices-page .per-page-form label {
+        font-size: 0.68rem;
+        color: var(--d-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0;
+    }
+
+    .devices-page .empty-state {
+        text-align: center;
+        padding: 2.1rem 1rem;
+    }
+
+    .devices-page .empty-state .lucide {
+        width: 44px;
+        height: 44px;
+        color: #8a97a6;
+        opacity: 0.42;
+    }
+
+    .devices-page .empty-state h5 {
+        margin-top: 0.7rem;
+        color: var(--d-text-main);
+        font-size: 0.95rem;
+    }
+
+    .devices-page .empty-state p {
+        color: var(--d-text-muted);
+        font-size: 0.77rem;
+    }
+
+    .devices-page .snmp-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #cbd5e1;
+        text-align: left;
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-weight: 600;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        transition: color 0.16s ease;
+    }
+
+    .devices-page .snmp-trigger:hover {
+        transform: none;
+        box-shadow: none;
+        opacity: 0.92;
+    }
+
+    .devices-page .snmp-trigger.is-enabled {
+        color: #22c55e;
+    }
+
+    .devices-page .snmp-trigger.is-disabled {
+        color: #ef4444;
+    }
+
+    .devices-page .snmp-trigger.has-error {
+        color: #f59e0b;
+    }
+
+    .devices-page .snmp-trigger-copy {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.1rem;
+        min-width: 0;
+        line-height: 1;
+    }
+
+    .devices-page .snmp-trigger-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: currentColor;
+        flex-shrink: 0;
+    }
+
+    .devices-page .snmp-trigger-state {
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+
+    .devices-page .snmp-trigger-mode {
+        font-size: 0.54rem;
+        line-height: 1;
+        letter-spacing: 0.11em;
+        opacity: 0.82;
+    }
+
+    .devices-page .status-indicator,
+    .devices-page .status-online,
+    .devices-page .status-offline,
+    .devices-page .status-maintenance {
+        box-shadow: none !important;
+    }
+
+    .devices-page .status-indicator::after {
+        display: none !important;
+    }
+
+    .devices-page .status-indicator {
+        width: 8px;
+        height: 8px;
+        margin-right: 0;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    .devices-page .device-status-cell {
+        vertical-align: middle;
+    }
+
+    .snmp-config-modal .modal-content {
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 14px;
+        overflow: hidden;
+        background: #111827;
+        box-shadow: 0 24px 56px rgba(2, 6, 23, 0.34);
+    }
+
+    .snmp-config-modal .snmp-config-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.9rem;
+        padding: 1rem 1.05rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(15, 23, 42, 0.82);
+    }
+
+    .snmp-config-modal .snmp-config-identity {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        min-width: 0;
+    }
+
+    .snmp-config-modal .snmp-config-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(30, 41, 59, 0.8);
+        color: #cbd5e1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .snmp-config-modal .snmp-config-name {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #f8fbff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .snmp-config-modal .snmp-config-sub {
+        margin-top: 0.14rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.7rem;
+        color: var(--d-text-muted);
+    }
+
+    .snmp-config-modal .snmp-config-body {
+        padding: 1rem 1.05rem 1.1rem;
+        background: #111827;
+    }
+
+    .snmp-config-modal .snmp-config-lead {
+        margin: 0 0 0.85rem;
+        color: #cbd5e1;
+        font-size: 0.75rem;
+        line-height: 1.55;
+    }
+
+    .snmp-config-modal .snmp-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.7rem;
+        margin-bottom: 0.95rem;
+    }
+
+    .snmp-config-modal .snmp-summary-card {
+        padding: 0.78rem 0.82rem;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.58);
+        min-width: 0;
+    }
+
+    .snmp-config-modal .snmp-summary-label {
+        font-size: 0.63rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--d-text-muted);
+        margin-bottom: 0.22rem;
+    }
+
+    .snmp-config-modal .snmp-summary-value {
+        color: #f8fafc;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        word-break: break-word;
+    }
+
+    .snmp-config-modal .snmp-summary-card.state-enabled {
+        border-color: rgba(34, 197, 94, 0.38);
+        background: rgba(6, 78, 59, 0.22);
+    }
+
+    .snmp-config-modal .snmp-summary-card.state-disabled {
+        border-color: rgba(239, 68, 68, 0.34);
+        background: rgba(127, 29, 29, 0.22);
+    }
+
+    .snmp-config-modal .snmp-state-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.26rem 0.52rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        width: fit-content;
+    }
+
+    .snmp-config-modal .snmp-state-badge::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow: 0 0 0 0.16rem rgba(148, 163, 184, 0.14);
+    }
+
+    .snmp-config-modal .snmp-state-badge.is-enabled {
+        color: #4ade80;
+        border-color: rgba(34, 197, 94, 0.38);
+        background: rgba(21, 128, 61, 0.18);
+    }
+
+    .snmp-config-modal .snmp-state-badge.is-disabled {
+        color: #f87171;
+        border-color: rgba(239, 68, 68, 0.34);
+        background: rgba(185, 28, 28, 0.18);
+    }
+
+    .snmp-config-modal .snmp-config-panel {
+        padding: 0.95rem;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.46);
+    }
+
+    .snmp-config-modal .snmp-config-panel.is-disabled {
+        opacity: 0.52;
+        pointer-events: none;
+    }
+
+    .snmp-config-modal .snmp-config-note {
+        margin-top: 0.7rem;
+        color: var(--d-text-muted);
+        font-size: 0.67rem;
+        line-height: 1.5;
+    }
+
+    .snmp-config-modal .form-label {
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: #cbd5e1;
+        margin-bottom: 0.35rem;
+    }
+
+    .snmp-config-modal .form-control,
+    .snmp-config-modal .form-select {
+        background: rgba(15, 23, 42, 0.92);
+        border-color: rgba(148, 163, 184, 0.18);
+        color: #f8fafc;
+    }
+
+    .snmp-config-modal .form-control::placeholder {
+        color: #64748b;
+    }
+
+    .snmp-config-modal .form-control:focus,
+    .snmp-config-modal .form-select:focus {
+        border-color: rgba(96, 165, 250, 0.55);
+        box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.14);
+    }
+
+    .snmp-config-modal .form-check-input {
+        background-color: rgba(15, 23, 42, 0.92);
+        border-color: rgba(148, 163, 184, 0.28);
+    }
+
+    .snmp-config-modal .form-check-input:checked {
+        background-color: #2563eb;
+        border-color: #2563eb;
+    }
+
+    .snmp-config-modal .form-check-label {
+        color: #e2e8f0;
+        font-size: 0.75rem;
+    }
+
+    .snmp-config-modal .modal-footer {
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
+        padding: 0.8rem 1.05rem 1rem;
+        background: rgba(15, 23, 42, 0.62);
+    }
+
+    .snmp-config-modal .btn-secondary {
+        background: rgba(51, 65, 85, 0.9);
+        border-color: rgba(100, 116, 139, 0.7);
+    }
+
+    .snmp-config-modal .btn-secondary:hover {
+        background: rgba(71, 85, 105, 0.95);
+        border-color: rgba(148, 163, 184, 0.7);
+    }
+
+    .snmp-config-modal #snmpConfigSubmitBtn {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #eff6ff;
+    }
+
+    .snmp-config-modal #snmpConfigSubmitBtn:hover {
+        background: #1d4ed8;
+        border-color: #1d4ed8;
+    }
+
+    .snmp-config-modal .snmp-last-error {
+        margin-top: 0.8rem;
+        padding: 0.72rem 0.82rem;
+        border-radius: 10px;
+        border: 1px solid rgba(239, 68, 68, 0.22);
+        background: rgba(127, 29, 29, 0.2);
+        color: #fecaca;
+        font-size: 0.7rem;
+        line-height: 1.45;
+    }
+
+    @media (max-width: 991.98px) {
+        .snmp-config-modal .snmp-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .devices-page .devices-pagination {
+            align-items: stretch;
+        }
+
+        .devices-page .devices-pagination-controls {
+            justify-content: space-between;
+        }
+
+        .snmp-config-modal .snmp-summary-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .devices-page .device-details-container .detail-item {
+        padding: 0.72rem;
+        border-left: 3px solid rgba(148, 163, 184, 0.36);
+        background: rgba(148, 163, 184, 0.05);
+        margin-bottom: 0.7rem;
+        border-radius: 4px;
+    }
+
+    .devices-page .device-details-container .detail-label {
+        display: flex;
+        align-items: center;
+        gap: 0.34rem;
+        color: var(--d-text-muted);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.2rem;
+    }
+
+    .devices-page .device-details-container .detail-value {
+        color: var(--d-text-main);
+        font-size: 0.84rem;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .devices-page .credential-section-label {
+        display: flex;
+        align-items: center;
+        gap: 0.34rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--d-text-muted);
+    }
+
+    .devices-page .credential-divider {
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+
+    .devices-page .icon-spin {
+        animation: devices-icon-spin 1s linear infinite;
+    }
+
+    .devices-page .operations-panel-card {
+        border: 1px solid var(--d-border);
+        border-radius: 6px;
+        background: rgba(148, 163, 184, 0.05);
+        padding: 0.88rem;
+    }
+
+    .devices-page .operations-panel-heading {
+        display: flex;
+        align-items: center;
+        gap: 0.36rem;
+        margin-bottom: 0.22rem;
+        color: var(--d-text-main);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .devices-page .operations-panel-copy {
+        color: var(--d-text-muted);
+        font-size: 0.72rem;
+        line-height: 1.45;
+        margin: 0;
+    }
+
+    .devices-page .compliance-preview-shell {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 6px;
+        background: rgba(2, 6, 23, 0.38);
+        overflow: hidden;
+    }
+
+    .devices-page .compliance-preview-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.62rem 0.78rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(15, 23, 42, 0.7);
+    }
+
+    .devices-page .compliance-preview-head .preview-heading {
+        color: var(--d-text-main);
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .devices-page .threshold-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.16rem 0.44rem;
+        border-radius: 999px;
+        border: 1px solid rgba(56, 189, 248, 0.24);
+        background: rgba(56, 189, 248, 0.09);
+        color: #bfe8ff;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.67rem;
+        letter-spacing: 0.03em;
+    }
+
+    .devices-page .threshold-preview-wrap {
+        border: 0;
+        border-radius: 0;
+        max-height: none;
+    }
+
+    .devices-page .threshold-preview-table {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+    }
+
+    .devices-page .threshold-preview-table thead th {
+        padding: 0.46rem 0.65rem;
+        color: #b8c6d5;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(15, 23, 42, 0.46);
+        white-space: nowrap;
+    }
+
+    .devices-page .threshold-preview-table tbody td {
+        padding: 0.52rem 0.65rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        color: var(--d-text-main);
+        font-size: 0.72rem;
+        vertical-align: top;
+    }
+
+    .devices-page .threshold-preview-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .devices-page .threshold-metric {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #d8e1ea;
+    }
+
+    .devices-page .threshold-pair {
+        display: grid;
+        gap: 0.14rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .devices-page .threshold-pair span {
+        color: #d8e1ea;
+    }
+
+    .devices-page .threshold-pair .text-muted {
+        color: var(--d-text-muted) !important;
+    }
+
+    .devices-page .threshold-effective {
+        font-weight: 700;
+    }
+
+    @keyframes devices-icon-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @media (max-width: 992px) {
+        .devices-page .devices-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .devices-page .devices-actions {
+            justify-content: flex-end;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .devices-page .toolbar-search {
+            min-width: 100%;
+            max-width: 100%;
+        }
+
+        .devices-page .toolbar-select,
+        .devices-page .toolbar-select.subnet {
+            max-width: none;
+            min-width: 120px;
+            flex: 1;
+        }
+
+        .devices-page .devices-pagination {
+            align-items: flex-start;
+        }
+
+        .devices-page .devices-pagination-controls {
+            width: 100%;
+            justify-content: space-between;
+        }
+    }
+</style>
 {% endblock %}
 {% block content %}
 <div class="devices-page">
@@ -38,25 +1202,6 @@
 
     <div class="row mt-3">
         <div class="col-md-12">
-            <!-- Page-level tab nav -->
-            <ul class="nav nav-tabs mb-0" id="deviceMgmtTabs" role="tablist"
-                style="border-bottom:1px solid rgba(148,163,184,.18);margin-bottom:0!important;">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#devicesPane"
-                            type="button" role="tab" aria-controls="devicesPane" aria-selected="true">
-                        <i class="fas fa-server me-1"></i> Devices
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#compliancePane"
-                            type="button" role="tab" id="complianceTabBtn"
-                            aria-controls="compliancePane" aria-selected="false">
-                        <i class="fas fa-shield-halved me-1"></i> Compliance Profiles
-                    </button>
-                </li>
-            </ul>
-            <div class="tab-content">
-            <div class="tab-pane show active" id="devicesPane" role="tabpanel">
             <div class="card">
                 <div class="card-header">
                     <div class="devices-toolbar">
@@ -154,20 +1299,44 @@
                 </div>
                 <div class="card-body">
                     <div id="devices-wrapper">
+                        <div id="devicesActiveFilters" class="devices-filter-chips devices-hidden" aria-live="polite"></div>
 
                         <!-- Bulk Actions -->
                         <div id="bulkActions"
-                            class="alert alert-dark p-2 mb-3 border border-secondary bulk-actions-layout devices-hidden">
-                            <div>
-                                <span class="text-white me-2"><i data-lucide="check-square"></i> <span
-                                        id="selectedCount">0</span> selected</span>
+                            class="bulk-actions-layout devices-hidden mb-3">
+                            <div class="bulk-actions-summary">
+                                <span class="bulk-actions-kicker">Selection</span>
+                                <span class="bulk-actions-count" id="selectedCount">0</span>
+                                <span class="bulk-actions-label">devices selected</span>
                                 <span id="crossPageSelectionHint" class="selection-hint d-none">cross-page selection
                                     active</span>
                             </div>
-                            <div>
-                                <button class="btn btn-outline-secondary btn-sm me-1" onclick="clearAllSelections()">
+                            <div class="bulk-actions-controls">
+                                <button class="btn btn-outline-secondary btn-sm" onclick="clearAllSelections()">
                                     <i data-lucide="x-circle"></i> Clear
                                 </button>
+                                <!-- Bulk assign compliance profile -->
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-info btn-sm dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i data-lucide="shield-check"></i> Assign Profile
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-dark">
+                                        {% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
+                                        <li><a class="dropdown-item" href="#"
+                                               onclick="bulkAssignProfile({{ profile.id }}, '{{ profile.name | e }}'); return false;">
+                                            {{ profile.name }}
+                                        </a></li>
+                                        {% else %}
+                                        <li><span class="dropdown-item text-muted" style="font-size:.8rem;">No profiles defined</span></li>
+                                        {% endfor %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item text-warning" href="#"
+                                               onclick="bulkAssignProfile(null, 'None (unassign)'); return false;">
+                                            Unassign Profile
+                                        </a></li>
+                                    </ul>
+                                </div>
                                 <button class="btn btn-danger btn-sm" id="bulkDeleteBtn"
                                     onclick="deleteSelectedDevices()">
                                     <i data-lucide="trash-2"></i> Delete Selected
@@ -204,21 +1373,24 @@
                             </table>
                         </div>
                         <div class="devices-pagination mt-2" id="devices-pagination-container">
-                            <form id="perPageForm" class="per-page-form">
-                                <label for="perPageSelect">Rows</label>
-                                <select id="perPageSelect"
-                                    class="form-select form-select-sm bg-dark text-light border-secondary"
-                                    onchange="clearCrossPageSelection(); scheduleFetchDevices();">
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
-                                    <option value="200">200</option>
-                                    <option value="500">500</option>
-                                </select>
-                            </form>
-                            <button type="button" class="btn btn-outline-secondary btn-sm"
-                                onclick="clearServerFilters()">
-                                <i data-lucide="filter-x"></i> Clear Filters
-                            </button>
+                            <div class="devices-pagination-meta" id="devicesPaginationMeta">
+                                <span class="pagination-kicker">Inventory</span>
+                                <strong>0-0</strong>
+                                <span>of</span>
+                                <strong>0</strong>
+                            </div>
+                            <div class="devices-pagination-controls">
+                                <form id="perPageForm" class="per-page-form">
+                                    <label for="perPageSelect">Rows</label>
+                                    <select id="perPageSelect"
+                                        class="form-select form-select-sm bg-dark text-light border-secondary"
+                                        onchange="clearCrossPageSelection(); scheduleFetchDevices();">
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="200">200</option>
+                                    </select>
+                                </form>
+                            </div>
                             <ul class="pagination pagination-sm" id="devices-pagination-list"></ul>
                         </div>
                     </div>
@@ -232,189 +1404,6 @@
                                 <i data-lucide="scan-search"></i> Go to Scanner
                             </a>
                         </div>
-                    </div>
-                </div>
-            </div>
-            </div><!-- /devicesPane -->
-
-            <div class="tab-pane fade" id="compliancePane" role="tabpanel" style="padding-top:1rem;">
-              <div class="card" style="background:var(--e-bg-panel,#1a1f2b);border:1px solid rgba(148,163,184,.16);">
-                <div class="card-header d-flex justify-content-between align-items-center"
-                     style="border-color:rgba(148,163,184,.12);padding:.55rem .78rem;">
-                    <span style="font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;">
-                        Compliance Profiles
-                    </span>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="openComplianceCreateModal()">
-                        <i class="fas fa-plus me-1"></i> New Profile
-                    </button>
-                </div>
-                <div class="card-body p-0">
-                    <div id="compliancePaneLoading" class="text-center text-muted py-4 small">
-                        <i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;
-                    </div>
-                    <div id="compliancePaneContent" class="d-none"></div>
-                    <div id="compliancePaneEmpty" class="text-center text-muted py-4 small d-none">
-                        No compliance profiles yet. Create one to get started.
-                    </div>
-                </div>
-              </div>
-            </div><!-- /compliancePane -->
-
-            </div><!-- /tab-content -->
-        </div>
-
-        <!-- Compliance Profile Create/Edit Modal -->
-        <div class="modal fade" id="complianceProfileModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content bg-dark text-white border-secondary">
-                    <div class="modal-header border-secondary">
-                        <h5 class="modal-title" id="complianceProfileModalTitle"><i class="fas fa-shield-halved me-1"></i> Compliance Profile</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <input type="hidden" id="cpModalProfileId">
-                        <div class="mb-3">
-                            <label class="form-label small text-muted">Profile Name <span class="text-danger">*</span></label>
-                            <input type="text" id="cpModalName" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                   placeholder="e.g. Workstation Standard" maxlength="120">
-                        </div>
-                        <div class="mb-4">
-                            <label class="form-label small text-muted">Description</label>
-                            <input type="text" id="cpModalDescription" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                   placeholder="Optional description" maxlength="255">
-                        </div>
-                        <p class="small text-muted text-uppercase fw-semibold" style="letter-spacing:.08em;font-size:.67rem;">
-                            Thresholds <span class="fw-normal text-secondary">(leave blank to use global defaults)</span>
-                        </p>
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">CPU Warning %</label>
-                                <input type="number" id="cpModalCpuWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 75">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">CPU Critical %</label>
-                                <input type="number" id="cpModalCpuCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 90">
-                            </div>
-                            <div class="col-md-4"></div>
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">Memory Warning %</label>
-                                <input type="number" id="cpModalMemWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 80">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">Memory Critical %</label>
-                                <input type="number" id="cpModalMemCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 95">
-                            </div>
-                            <div class="col-md-4"></div>
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">Disk Warning %</label>
-                                <input type="number" id="cpModalDiskWarning" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 80">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small text-muted">Disk Critical %</label>
-                                <input type="number" id="cpModalDiskCritical" class="form-control form-control-sm bg-dark text-white border-secondary"
-                                       min="0" max="100" step="1" placeholder="e.g. 90">
-                            </div>
-                        </div>
-                        <div id="cpModalError" class="alert alert-danger py-2 mt-3 d-none small"></div>
-                    </div>
-                    <div class="modal-footer border-secondary">
-                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary btn-sm" id="cpModalSaveBtn" onclick="saveComplianceProfile()">
-                            <i class="fas fa-save me-1"></i> Save Profile
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Compliance Profile Delete Confirm Modal -->
-        <div class="modal fade" id="complianceDeleteModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-sm modal-dialog-centered">
-                <div class="modal-content bg-dark text-white border-danger">
-                    <div class="modal-header border-danger">
-                        <h6 class="modal-title text-danger"><i class="fas fa-triangle-exclamation me-1"></i> Delete Profile</h6>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body small">
-                        <p>Delete profile <strong id="cpDeleteName"></strong>?</p>
-                        <p class="text-muted mb-0">Assigned devices will be unlinked but not deleted.</p>
-                    </div>
-                    <div class="modal-footer border-secondary">
-                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger btn-sm" id="cpDeleteConfirmBtn" onclick="executeComplianceDelete()">
-                            <i class="fas fa-trash me-1"></i> Delete
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SNMP Config Mini-Modal -->
-        <div class="modal fade" id="snmpConfigModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
-                <div class="modal-content" style="background:rgba(14,18,26,.98);border:1px solid rgba(148,163,184,.18);color:#e6edf5;">
-                    <div class="modal-header" style="border-color:rgba(148,163,184,.14);padding:.65rem .9rem;">
-                        <div>
-                            <h6 class="modal-title mb-0" style="font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;"><i class="fas fa-network-wired me-1"></i> SNMP Configuration</h6>
-                            <div id="snmpModalDeviceName" style="font-size:.82rem;color:#e2e8f0;margin-top:.15rem;font-weight:600;"></div>
-                        </div>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body" style="padding:.9rem;">
-                        <input type="hidden" id="snmpModalDeviceId">
-                        <input type="hidden" id="snmpModalDeviceIp">
-                        <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom:1px solid rgba(148,163,184,.1);">
-                            <div>
-                                <div style="font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;">SNMP Polling</div>
-                                <div style="font-size:.73rem;color:#64748b;margin-top:.1rem;">Enable SNMP polling for this device</div>
-                            </div>
-                            <div class="form-check form-switch mb-0">
-                                <input class="form-check-input" type="checkbox" id="snmpModalEnabled" style="width:2.4rem;height:1.2rem;cursor:pointer;">
-                            </div>
-                        </div>
-                        <div class="row g-2 mb-2">
-                            <div class="col-12">
-                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Community String</label>
-                                <input type="text" id="snmpModalCommunity" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="public" autocomplete="off">
-                            </div>
-                            <div class="col-6">
-                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Version</label>
-                                <select id="snmpModalVersion" class="form-select form-select-sm bg-dark text-white border-secondary">
-                                    <option value="1">v1</option>
-                                    <option value="2c" selected>v2c</option>
-                                    <option value="3">v3</option>
-                                </select>
-                            </div>
-                            <div class="col-6">
-                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Port</label>
-                                <input type="number" id="snmpModalPort" class="form-control form-control-sm bg-dark text-white border-secondary" value="161" min="1" max="65535">
-                            </div>
-                            <div class="col-12">
-                                <label style="font-size:.65rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;display:block;margin-bottom:.3rem;">Poll Interval</label>
-                                <select id="snmpModalInterval" class="form-select form-select-sm bg-dark text-white border-secondary">
-                                    <option value="60">Every 1 min</option>
-                                    <option value="300" selected>Every 5 min</option>
-                                    <option value="600">Every 10 min</option>
-                                    <option value="1800">Every 30 min</option>
-                                    <option value="3600">Every 1 hr</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="snmpModalTestResult" class="mt-2"></div>
-                    </div>
-                    <div class="modal-footer" style="border-color:rgba(148,163,184,.14);padding:.55rem .9rem;gap:.5rem;">
-                        <button type="button" id="snmpModalTestBtn" class="btn btn-sm me-auto" style="background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.22);color:#94a3b8;font-size:.72rem;" onclick="testSnmpFromModal()">
-                            <i class="fas fa-plug me-1"></i> Test Connection
-                        </button>
-                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" id="snmpModalSaveBtn" class="btn btn-sm btn-primary" onclick="saveSnmpConfig()">
-                            <i class="fas fa-save me-1"></i> Save
-                        </button>
                     </div>
                 </div>
             </div>
@@ -522,14 +1511,14 @@
                                                 placeholder="Optional notes..."></textarea>
                                         </div>
 
-                                        <!-- Organization & Compliance Assignment -->
+                                        <!-- Site & Department Assignment -->
                                         <div class="col-12 mt-2">
                                             <hr class="my-2 credential-divider">
                                             <h6 class="credential-section-label mb-1">
-                                                <i data-lucide="building-2"></i> Organization &amp; Compliance
+                                                <i data-lucide="building-2"></i> Site &amp; Department
                                             </h6>
                                             <p class="text-muted small mb-2">
-                                                Assign this device to a site, department, and compliance policy profile.
+                                                Assign this device to a site and department for organizational scoping.
                                             </p>
                                         </div>
                                         <div class="col-md-6">
@@ -546,20 +1535,6 @@
                                                 onchange="onDeviceDepartmentChange()">
                                                 <option value="">-- No Department --</option>
                                             </select>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label d-flex align-items-center gap-1">
-                                                <i data-lucide="shield-check" style="width:13px;height:13px;"></i>
-                                                Compliance Profile
-                                            </label>
-                                            <select class="form-select bg-dark text-light border-secondary"
-                                                name="compliance_profile_id" id="compliance_profile_id">
-                                                <option value="">— None (global thresholds) —</option>
-                                                {% for cp in compliance_profiles %}
-                                                <option value="{{ cp.id }}">{{ cp.name }}</option>
-                                                {% endfor %}
-                                            </select>
-                                            <div class="form-text text-muted">Override alert thresholds for this device.</div>
                                         </div>
 
                                         <!-- Device Credentials -->
@@ -773,13 +1748,58 @@
                                         <input class="form-check-input" type="checkbox" name="maintenance_mode"
                                             id="maintenance_mode">
                                         <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
-                                        <div class="form-text text-muted">Suppress alerts for this device.</div>
+                                        <div class="form-text text-muted">Suppress alerts for this device. Maintenance mode takes precedence over any compliance profile.</div>
                                     </div>
 
-                                    <div class="mt-3" style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.18);border-left:3px solid rgba(0,212,170,.35);border-radius:4px;padding:.42rem .62rem;font-size:0.72rem;color:#c3cfdb;">
-                                        <i data-lucide="info" style="width:13px;height:13px;vertical-align:text-bottom;margin-right:.3rem;"></i>
-                                        Per-device alert thresholds and discovery neighbors are available on the
-                                        <strong>Device Details</strong> page after saving.
+                                    <div class="operations-panel-card">
+                                        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+                                            <div>
+                                                <div class="operations-panel-heading">
+                                                    <i data-lucide="shield-check"></i>
+                                                    Compliance Profile
+                                                </div>
+                                                <p class="operations-panel-copy">Apply per-device CPU, memory, and disk alert thresholds using an existing profile. Only threshold overrides are shown here.</p>
+                                            </div>
+                                            {% if can_manage_compliance_profiles %}
+                                            <a href="/admin/compliance-profiles" class="btn btn-outline-info btn-sm">
+                                                <i data-lucide="sliders-horizontal"></i> Manage Profiles
+                                            </a>
+                                            {% endif %}
+                                        </div>
+
+                                        <label class="form-label" for="compliance_profile_id">Assigned Profile</label>
+                                        <select class="form-select bg-dark text-light border-secondary" name="compliance_profile_id"
+                                            id="compliance_profile_id">
+                                            <option value="">Global defaults</option>
+                                            {% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
+                                            <option value="{{ profile.id }}">{{ profile.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text text-muted">Effective thresholds below match the health alerts evaluated for this device.</div>
+
+                                        <div class="compliance-preview-shell mt-3" id="complianceThresholdPreview">
+                                            <div class="compliance-preview-head">
+                                                <span class="preview-heading">Alert Threshold Preview</span>
+                                                <span class="threshold-pill" id="complianceProfileLabel">Global defaults</span>
+                                            </div>
+                                            <div class="table-responsive threshold-preview-wrap">
+                                                <table class="threshold-preview-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Metric</th>
+                                                            <th>Global</th>
+                                                            <th>Profile Override</th>
+                                                            <th>Effective</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="complianceThresholdPreviewBody">
+                                                        <tr>
+                                                            <td colspan="4" class="text-muted">Loading threshold preview...</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -788,8 +1808,121 @@
                     </div>
                     <div class="modal-footer border-secondary">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" form="deviceForm" class="btn btn-primary">Save Device</button>
+                        <button type="submit" form="deviceForm" class="btn btn-primary" id="deviceFormSubmitBtn">Save Device</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade snmp-config-modal" id="snmpConfigModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content text-white">
+                    <div class="snmp-config-header">
+                        <div class="snmp-config-identity">
+                            <div class="snmp-config-icon">
+                                <i data-lucide="waypoints"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="snmp-config-name" id="snmpModalDeviceName">SNMP Configuration</div>
+                                <div class="snmp-config-sub">
+                                    <span id="snmpModalDeviceIp">-</span>
+                                    <span class="mx-2 opacity-50">|</span>
+                                    <span id="snmpModalDeviceMode">Ping Only</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form id="snmpConfigForm">
+                        <div class="snmp-config-body">
+                            <p class="snmp-config-lead">
+                                Use this panel only on devices that actually expose SNMP. Enabling SNMP here switches the device monitoring mode to SNMP. Disabling it falls back to ping-only monitoring when SNMP was the active mode.
+                            </p>
+
+                            <div class="snmp-summary-grid">
+                                <div class="snmp-summary-card state-disabled" id="snmpModalStateCard">
+                                    <div class="snmp-summary-label">SNMP State</div>
+                                    <div class="snmp-summary-value snmp-state-badge is-disabled" id="snmpModalStateValue">Disabled</div>
+                                </div>
+                                <div class="snmp-summary-card">
+                                    <div class="snmp-summary-label">Last Poll</div>
+                                    <div class="snmp-summary-value" id="snmpModalLastPollValue">Never</div>
+                                </div>
+                                <div class="snmp-summary-card">
+                                    <div class="snmp-summary-label">Current Mode</div>
+                                    <div class="snmp-summary-value" id="snmpModalCurrentModeValue">Ping</div>
+                                </div>
+                            </div>
+
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="snmpModalEnabled">
+                                <label class="form-check-label" for="snmpModalEnabled">Enable SNMP polling for this device</label>
+                            </div>
+
+                            <div class="snmp-config-panel" id="snmpConfigPanel">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="snmpModalVersion">Version</label>
+                                        <select class="form-select bg-dark text-light border-secondary" id="snmpModalVersion">
+                                            <option value="v2c">v2c</option>
+                                            <option value="v3">v3</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="snmpModalPort">Port</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="snmpModalPort" min="1" max="65535" value="161">
+                                    </div>
+                                    <div class="col-12" id="snmpModalV2Fields">
+                                        <label class="form-label" for="snmpModalCommunity">Community String</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary" id="snmpModalCommunity" value="public">
+                                    </div>
+                                    <div class="col-12 monitoring-fields-hidden" id="snmpModalV3Fields">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="snmpModalUsername">Username</label>
+                                                <input type="text" class="form-control bg-dark text-light border-secondary" id="snmpModalUsername">
+                                            </div>
+                                            <div class="col-md-6"></div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="snmpModalAuthProto">Auth Protocol</label>
+                                                <select class="form-select bg-dark text-light border-secondary" id="snmpModalAuthProto">
+                                                    <option value="">None</option>
+                                                    <option value="MD5">MD5</option>
+                                                    <option value="SHA">SHA</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="snmpModalAuthPassword">Auth Password</label>
+                                                <input type="password" class="form-control bg-dark text-light border-secondary" id="snmpModalAuthPassword">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="snmpModalPrivProto">Priv Protocol</label>
+                                                <select class="form-select bg-dark text-light border-secondary" id="snmpModalPrivProto">
+                                                    <option value="">None</option>
+                                                    <option value="DES">DES</option>
+                                                    <option value="AES">AES</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="snmpModalPrivPassword">Priv Password</label>
+                                                <input type="password" class="form-control bg-dark text-light border-secondary" id="snmpModalPrivPassword">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="snmp-config-note">
+                                    If SNMP stays disabled, the device will continue using its existing non-SNMP monitoring mode where applicable.
+                                </div>
+                            </div>
+
+                            <div class="snmp-last-error devices-hidden" id="snmpModalLastError"></div>
+                        </div>
+                        <div class="modal-footer border-secondary">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-info" id="snmpConfigSubmitBtn">Save SNMP</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -797,6 +1930,14 @@
     </div>
 
     <script>
+        {% set device_global_threshold_defaults = {
+            'cpu_warning': 80.0,
+            'cpu_critical': 95.0,
+            'memory_warning': 85.0,
+            'memory_critical': 95.0,
+            'disk_warning': 80.0,
+            'disk_critical': 95.0
+        } %}
         const devicesSurfaceFlags = window.__UI_SURFACE_FLAGS__ || {};
         const devicesToastApi = devicesSurfaceFlags.sharedToast !== false && window.UI?.Toast?.show
             ? window.UI.Toast
@@ -804,12 +1945,48 @@
         const devicesLoadingApi = devicesSurfaceFlags.sharedLoading !== false && window.UI?.Loading
             ? window.UI.Loading
             : null;
+        const DEVICE_GLOBAL_THRESHOLDS = {{ (global_thresholds if global_thresholds is defined else device_global_threshold_defaults)|tojson }};
+        const DEVICE_COMPLIANCE_PROFILES = {
+{% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
+            "{{ profile.id }}": {{ (profile.rules_json or {})|tojson }}{% if not loop.last %},{% endif %}
+{% endfor %}
+        };
+        const DEVICE_THRESHOLD_ROWS = [
+            { label: 'CPU', warningKey: 'cpu_warning', criticalKey: 'cpu_critical' },
+            { label: 'Memory', warningKey: 'memory_warning', criticalKey: 'memory_critical' },
+            { label: 'Disk', warningKey: 'disk_warning', criticalKey: 'disk_critical' },
+        ];
+        const DEVICE_TYPE_OPTIONS = Object.freeze([
+            { value: 'unknown', label: 'Unknown' },
+            { value: 'switch', label: 'Switch' },
+            { value: 'access_point', label: 'Access Point' },
+            { value: 'router', label: 'Router' },
+            { value: 'firewall', label: 'Firewall' },
+            { value: 'server', label: 'Server' },
+            { value: 'workstation', label: 'Workstation' },
+            { value: 'camera', label: 'Camera/IoT' },
+            { value: 'printer', label: 'Printer' },
+            { value: 'mobile', label: 'Mobile' },
+            { value: 'iot', label: 'IoT' }
+        ]);
+        const DEVICE_TYPE_OPTIONS_HTML = DEVICE_TYPE_OPTIONS
+            .map(({ value, label }) => `<option value="${value}">${label}</option>`)
+            .join('');
+        const DEVICE_ROW_INTERACTIVE_SELECTOR = '[data-no-row-nav], button, a, input, select, textarea, label, option, .form-check, .device-actions-menu, .dropdown-menu, .dropdown-toggle';
+
+        function normalizeSelectableDeviceType(rawType) {
+            const normalized = String(rawType || '').trim().toLowerCase();
+            if (normalized === 'camera/iot' || normalized === 'camera_iot') {
+                return 'camera';
+            }
+            return normalized || 'unknown';
+        }
 
         // Keyed DOM patch helper
         window.patchKeyedTableRows = function (tbody, items, options) {
             if (!tbody) return;
             const rows = Array.isArray(items) ? items : [];
-            const { getKey, renderCells, applyRow, emptyColSpan, emptyMessage, emptyClassName } = options || {};
+            const { getKey, getRenderKey, renderCells, applyRow, emptyColSpan, emptyMessage, emptyClassName } = options || {};
 
             if (!rows.length) {
                 tbody.innerHTML = `<tr><td colspan="${emptyColSpan || 1}" class="${emptyClassName || 'text-center'}">${emptyMessage || 'No data'}</td></tr>`;
@@ -834,9 +2011,26 @@
                     existing.delete(key);
                 }
 
-                const nextCells = renderCells ? renderCells(item, index) : '';
-                if (row.innerHTML !== nextCells) {
-                    row.innerHTML = nextCells;
+                const nextRenderKey = getRenderKey
+                    ? String(getRenderKey(item, index) ?? '').trim()
+                    : '';
+                const shouldRender = getRenderKey
+                    ? row.dataset.renderKey !== nextRenderKey
+                    : true;
+
+                if (shouldRender) {
+                    const nextCells = renderCells ? renderCells(item, index) : '';
+                    if (row.__cellsMarkup !== nextCells) {
+                        row.innerHTML = nextCells;
+                        row.__cellsMarkup = nextCells;
+                        row.__deviceCacheEntry = null;
+                        row.__deviceCheckbox = null;
+                        row.__deviceTypeSelect = null;
+                        row.__statusElement = null;
+                    }
+                    if (getRenderKey) {
+                        row.dataset.renderKey = nextRenderKey;
+                    }
                 }
 
                 if (applyRow) {
@@ -858,6 +2052,187 @@
 
         let currentPage = 1;
         let currentPerPage = 100;
+        let devicesFetchController = null;
+        let devicesFetchToken = 0;
+        let snmpModalInstance = null;
+        let currentSnmpDeviceId = null;
+        let lastSnmpModalTrigger = null;
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function truncateText(value, limit = 72) {
+            const text = String(value ?? '');
+            return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}...` : text;
+        }
+
+        function getDeviceDetailsHref(device) {
+            const normalizedType = normalizeSelectableDeviceType(device.device_type);
+            const hasMac = device.macaddress && device.macaddress !== 'N/A';
+            if (normalizedType === 'workstation' && hasMac) {
+                return '/tracking/live?mac=' + encodeURIComponent(device.macaddress);
+            }
+            if (normalizedType === 'printer') {
+                return '/printer/' + device.device_id;
+            }
+            return '/devices/' + device.device_id + '/details';
+        }
+
+        function renderDeviceTypeSelect(deviceId) {
+            return `
+                <select class="form-select form-select-sm bg-dark text-light border-secondary device-type-select" data-no-row-nav="true" onclick="event.stopPropagation()" onchange="updateDeviceType(${deviceId}, this.value, this)">
+                    ${DEVICE_TYPE_OPTIONS_HTML}
+                </select>
+            `;
+        }
+
+        function buildDeviceRowRenderKey(device) {
+            const selected = globalFilteredSelectionIds.has(device.device_id) ? '1' : '0';
+            return [
+                device.device_name,
+                device.device_ip,
+                normalizeSelectableDeviceType(device.device_type),
+                device.macaddress,
+                device.status,
+                device.subnet_cidr,
+                device.snmp_enabled ? '1' : '0',
+                device.snmp_last_error || '',
+                selected
+            ].join('|');
+        }
+
+        function formatSnmpLastPoll(value) {
+            if (!value) return 'Never';
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) return 'Never';
+            return parsed.toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getSelectDisplayText(selectId, rawValue, fallbackLabel = '') {
+            const select = document.getElementById(selectId);
+            if (!select) return rawValue || fallbackLabel;
+            const selectedOption = Array.from(select.options || []).find((option) => option.value === rawValue);
+            return (selectedOption?.textContent || rawValue || fallbackLabel || '').trim();
+        }
+
+        function renderActiveFilterChips(filters = getCurrentFilters()) {
+            const chipsHost = document.getElementById('devicesActiveFilters');
+            if (!chipsHost) return;
+
+            const activeChips = [];
+            if (filters.search) {
+                activeChips.push({
+                    key: 'search',
+                    label: `Search: ${escapeHtml(truncateText(filters.search, 28))}`
+                });
+            }
+            if (filters.status) {
+                activeChips.push({
+                    key: 'status',
+                    label: `Status: ${escapeHtml(getSelectDisplayText('statusFilter', filters.status, filters.status))}`
+                });
+            }
+            if (filters.type) {
+                activeChips.push({
+                    key: 'type',
+                    label: `Type: ${escapeHtml(getSelectDisplayText('typeFilter', filters.type, filters.type))}`
+                });
+            }
+            if (filters.subnet) {
+                activeChips.push({
+                    key: 'subnet',
+                    label: `Subnet: ${escapeHtml(filters.subnet)}`
+                });
+            }
+
+            if (!activeChips.length) {
+                chipsHost.classList.add('devices-hidden');
+                chipsHost.innerHTML = '';
+                return;
+            }
+
+            chipsHost.classList.remove('devices-hidden');
+            chipsHost.innerHTML = `
+                <span class="filter-chip-kicker">Active Filters</span>
+                ${activeChips.map((chip) => `
+                    <span class="filter-chip">
+                        <span>${chip.label}</span>
+                        <button type="button" onclick="clearSingleDeviceFilter('${chip.key}')" aria-label="Clear ${chip.key} filter">&times;</button>
+                    </span>
+                `).join('')}
+                <button type="button" class="filter-chip filter-chip-clear" onclick="clearServerFilters()">Clear all</button>
+            `;
+        }
+
+        function buildPaginationWindow(page, totalPages) {
+            const windowItems = [];
+            if (totalPages <= 7) {
+                for (let p = 1; p <= totalPages; p += 1) windowItems.push(p);
+                return windowItems;
+            }
+
+            windowItems.push(1);
+            const start = Math.max(2, page - 1);
+            const end = Math.min(totalPages - 1, page + 1);
+
+            if (start > 2) windowItems.push('gap-left');
+            for (let p = start; p <= end; p += 1) windowItems.push(p);
+            if (end < totalPages - 1) windowItems.push('gap-right');
+
+            windowItems.push(totalPages);
+            return windowItems;
+        }
+
+        function renderDevicesPagination(totalDevices, totalPages, pageDeviceCount) {
+            const pagList = document.getElementById('devices-pagination-list');
+            const pagCont = document.getElementById('devices-pagination-container');
+            const pagMeta = document.getElementById('devicesPaginationMeta');
+            if (!pagList || !pagCont) return;
+
+            const firstRow = totalDevices > 0 ? ((currentPage - 1) * currentPerPage) + 1 : 0;
+            const lastRow = totalDevices > 0 ? (firstRow + Math.max(0, pageDeviceCount - 1)) : 0;
+            if (pagMeta) {
+                pagMeta.innerHTML = `
+                    <span class="pagination-kicker">Showing</span>
+                    <strong>${firstRow}-${lastRow}</strong>
+                    <span class="pagination-total">of ${totalDevices}</span>
+                    <span class="pagination-page">Page ${currentPage}/${Math.max(totalPages, 1)}</span>
+                `;
+            }
+
+            if (totalDevices <= 0) {
+                pagCont.classList.add('devices-hidden');
+                pagList.innerHTML = '';
+                return;
+            }
+
+            pagCont.classList.remove('devices-hidden');
+            const parts = [];
+            parts.push(`<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${Math.max(1, currentPage - 1)});">Prev</a></li>`);
+
+            buildPaginationWindow(currentPage, totalPages).forEach((item) => {
+                if (typeof item === 'number') {
+                    parts.push(`<li class="page-item ${item === currentPage ? 'active' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${item});">${item}</a></li>`);
+                    return;
+                }
+                parts.push('<li class="page-item disabled devices-page-gap"><span class="page-link">...</span></li>');
+            });
+
+            parts.push(`<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${Math.min(totalPages, currentPage + 1)});">Next</a></li>`);
+            pagList.innerHTML = parts.join('');
+        }
 
         window.scheduleFetchDevices = function () {
             if (typeof filterDebounceTimer !== 'undefined' && filterDebounceTimer) {
@@ -892,21 +2267,38 @@
 
             const fetchUrl = `/api/devices?${params.toString()}`;
 
-            fetch(fetchUrl)
+            const tableShell = document.getElementById('devicesTableShell');
+            if (tableShell) tableShell.classList.add('ui-refreshing');
+
+            if (devicesFetchController) {
+                devicesFetchController.abort();
+            }
+            const requestToken = ++devicesFetchToken;
+            devicesFetchController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const fetchOptions = devicesFetchController ? { signal: devicesFetchController.signal } : {};
+
+            fetch(fetchUrl, fetchOptions)
                 .then(res => res.json())
                 .then(data => {
+                    if (requestToken !== devicesFetchToken) return;
+
+                    currentPage = Number(data.page || currentPage) || 1;
+                    currentPerPage = Number(data.per_page || currentPerPage) || 100;
+                    if (perPageSelect) perPageSelect.value = String(currentPerPage);
+
                     const totalDevices = data.total_devices || 0;
                     const totalPages = data.total_pages || 1;
                     const devices = data.devices || [];
                     const globalCount = data.global_device_count || totalDevices;
+                    renderActiveFilterChips(filters);
 
                     const wrapper = document.getElementById('devices-wrapper');
                     const emptyState = document.getElementById('devices-empty-state');
-                    const totalEl = document.getElementById('deviceTotalCount');
 
                     if (totalDevices === 0 && !filters.search && !filters.type && !filters.subnet && !filters.status) {
                         if (wrapper) wrapper.classList.add('devices-hidden');
                         if (emptyState) emptyState.classList.remove('devices-hidden');
+                        renderDevicesPagination(0, totalPages, 0);
                         return;
                     } else {
                         if (wrapper) wrapper.classList.remove('devices-hidden');
@@ -922,6 +2314,7 @@
                     if (tbody) {
                         window.patchKeyedTableRows(tbody, devices, {
                             getKey: (d) => d.device_id,
+                            getRenderKey: (d) => buildDeviceRowRenderKey(d),
                             emptyColSpan: 7,
                             emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
                             emptyClassName: 'text-center',
@@ -930,56 +2323,51 @@
                                 row.dataset.deviceIp = d.device_ip;
                                 row.dataset.subnet = d.subnet_cidr || '';
                                 row.dataset.liveStatus = normalizeDeviceStatusKey(d.status);
+                                row.dataset.href = getDeviceDetailsHref(d);
+                                row.setAttribute('tabindex', '0');
+                                row.setAttribute('role', 'link');
+                                row.classList.remove('devices-row-hidden');
 
-                                const isWorkstation = (d.device_type || '').toLowerCase() === 'workstation';
-                                const isPrinter = (d.device_type || '').toLowerCase() === 'printer';
-                                const hasMac = d.macaddress && d.macaddress !== 'N/A';
-                                const deviceHref = (isWorkstation && hasMac)
-                                    ? '/tracking/live?mac=' + encodeURIComponent(d.macaddress)
-                                    : isPrinter
-                                        ? '/printer/' + d.device_id
-                                        : '/devices/' + d.device_id + '/details';
-
-                                row.style.cursor = 'pointer';
-                                row.dataset.href = deviceHref;
-                                row.onclick = (e) => {
-                                    const target = e && e.target
-                                        ? (e.target.nodeType === 1 ? e.target : e.target.parentElement)
-                                        : null;
-                                    if (!target) {
-                                        window.location.assign(deviceHref);
-                                        return;
+                                const typeSelect = row.__deviceTypeSelect || row.querySelector('.device-type-select');
+                                if (typeSelect) {
+                                    row.__deviceTypeSelect = typeSelect;
+                                    const normalizedType = normalizeSelectableDeviceType(d.device_type);
+                                    if (typeSelect.value !== normalizedType) {
+                                        typeSelect.value = normalizedType;
                                     }
+                                }
 
-                                    const tagName = (target.tagName || '').toLowerCase();
-                                    if (
-                                        ['input', 'select', 'button', 'a', 'label', 'option'].includes(tagName) ||
-                                        target.closest('button, a, .form-check, .device-actions, select, input, label')
-                                    ) {
-                                        return;
-                                    }
-
-                                    window.location.assign(deviceHref);
-                                };
+                                refreshDeviceRowCacheEntry(row);
                             },
                             renderCells: (d) => {
-                                const isUnknown = !d.device_type || d.device_type.toLowerCase() === 'unknown';
+                                const typeSelectHtml = renderDeviceTypeSelect(d.device_id);
 
-                                const options = ['unknown', 'switch', 'access_point', 'router', 'firewall', 'server', 'workstation', 'camera', 'printer', 'mobile', 'iot'];
-                                const labels = ['Unknown', 'Switch', 'Access Point', 'Router', 'Firewall', 'Server', 'Workstation', 'Camera/IoT', 'Printer', 'Mobile', 'IoT'];
-
-                                let typeSelectHtml = `<select class="form-select form-select-sm bg-dark text-light border-secondary device-type-select" onchange="updateDeviceType(${d.device_id}, this.value, this)">`;
-                                options.forEach((opt, idx) => {
-                                    let selected = (d.device_type || '').toLowerCase() === opt || (opt === 'camera' && ['camera/iot', 'camera_iot'].includes((d.device_type || '').toLowerCase()));
-                                    typeSelectHtml += `<option value="${opt}" ${selected ? 'selected' : ''}>${labels[idx]}</option>`;
-                                });
-                                typeSelectHtml += `</select>`;
-
-                                const snmpErrAttr = d.snmp_last_error ? ` title="${String(d.snmp_last_error).replace(/"/g,'&quot;')}"` : '';
-                                const snmpErrCls  = d.snmp_last_error ? ' snmp-has-error' : '';
-                                let snmpHtml = d.snmp_enabled
-                                    ? `<button class="snmp-toggle-btn snmp-on${snmpErrCls}" onclick="event.stopPropagation();openSnmpModal(${d.device_id})"${snmpErrAttr}><span class="snmp-dot snmp-dot-on"></span>SNMP</button>`
-                                    : `<button class="snmp-toggle-btn snmp-off" onclick="event.stopPropagation();openSnmpModal(${d.device_id})"><span class="snmp-dot snmp-dot-off"></span>SNMP</button>`;
+                                const snmpStateClass = d.snmp_last_error
+                                    ? 'has-error'
+                                    : d.snmp_enabled
+                                        ? 'is-enabled'
+                                        : 'is-disabled';
+                                const snmpStateLabel = d.snmp_last_error
+                                    ? 'Error'
+                                    : d.snmp_enabled
+                                        ? 'Enabled'
+                                        : 'Disabled';
+                                const snmpStateTitle = d.snmp_last_error
+                                    ? `Configure SNMP (${d.snmp_last_error})`
+                                    : d.snmp_enabled
+                                        ? 'Configure SNMP (enabled)'
+                                        : 'Configure SNMP (disabled)';
+                                const snmpStateMeta = d.snmp_last_error ? 'Check SNMP' : 'SNMP';
+                                const snmpStateTitleAttr = escapeHtml(snmpStateTitle);
+                                const snmpHtml = `
+                                    <button type="button" class="snmp-trigger ${snmpStateClass}" data-no-row-nav="true" onclick="event.stopPropagation(); openSnmpConfigModal(${d.device_id})" title="${snmpStateTitleAttr}">
+                                        <span class="snmp-trigger-dot" aria-hidden="true"></span>
+                                        <span class="snmp-trigger-copy">
+                                            <span class="snmp-trigger-state">${escapeHtml(snmpStateLabel)}</span>
+                                            <span class="snmp-trigger-mode">${escapeHtml(snmpStateMeta)}</span>
+                                        </span>
+                                    </button>
+                                `;
 
                                 const statusKey = normalizeDeviceStatusKey(d.status);
                                 const statusClass = statusKey === 'online'
@@ -995,25 +2383,42 @@
 
                                 const isChecked = (typeof globalFilteredSelectionIds !== 'undefined' && globalFilteredSelectionIds.has(d.device_id)) ? 'checked' : '';
 
-                                const isWorkstation = (d.device_type || '').toLowerCase() === 'workstation';
-                                const isPrinter = (d.device_type || '').toLowerCase() === 'printer';
-                                const isServer = (d.device_type || '').toLowerCase() === 'server';
-                                const hasMac = d.macaddress && d.macaddress !== 'N/A';
-                                const deviceHref = (isWorkstation && hasMac)
-                                    ? '/tracking/live?mac=' + encodeURIComponent(d.macaddress)
-                                    : isPrinter
-                                        ? '/printer/' + d.device_id
-                                        : '/devices/' + d.device_id + '/details';
+                                const normalizedType = normalizeSelectableDeviceType(d.device_type);
+                                const isServer = normalizedType === 'server';
+                                const deviceHref = getDeviceDetailsHref(d);
                                 const serverMonitorActionHtml = isServer
-                                    ? `<a class="btn btn-outline-info" href="/devices/${d.device_id}/server-monitoring" title="Open Server Monitoring">
+                                    ? `<li><a class="dropdown-item" data-no-row-nav="true" onclick="event.stopPropagation()" href="/devices/${d.device_id}/server-monitoring">
                                             <i data-lucide="activity"></i>
-                                       </a>`
+                                            <span>Server Monitoring</span>
+                                       </a></li>`
                                     : '';
+                                const actionMenuHtml = `
+                                    <div class="dropdown device-actions-menu">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm device-action-toggle" data-no-row-nav="true" onclick="event.stopPropagation()" data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                            <i data-lucide="ellipsis"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+                                            <li><a class="dropdown-item" data-no-row-nav="true" onclick="event.stopPropagation()" href="${deviceHref}">
+                                                <i data-lucide="arrow-up-right"></i>
+                                                <span>Open Details</span>
+                                            </a></li>
+                                            ${serverMonitorActionHtml}
+                                            <li><button type="button" class="dropdown-item" data-no-row-nav="true" onclick="event.stopPropagation(); editDevice(${d.device_id})">
+                                                <i data-lucide="pencil"></i>
+                                                <span>Edit</span>
+                                            </button></li>
+                                            <li><button type="button" class="dropdown-item text-danger" data-no-row-nav="true" onclick="event.stopPropagation(); deleteDevice(${d.device_id}, this)">
+                                                <i data-lucide="trash-2"></i>
+                                                <span>Delete</span>
+                                            </button></li>
+                                        </ul>
+                                    </div>
+                                `;
 
                                 return `
                                  <td>
-                                     <div class="form-check">
-                                         <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" ${isChecked}>
+                                     <div class="form-check" data-no-row-nav="true" onclick="event.stopPropagation()">
+                                         <input class="form-check-input device-checkbox" type="checkbox" value="${d.device_id}" data-no-row-nav="true" onclick="event.stopPropagation()" onchange="handleDeviceSelection(this)" ${isChecked}>
                                      </div>
                                  </td>
                                  <td class="device-name-cell">
@@ -1028,59 +2433,45 @@
                                 <td><code>${d.device_ip}</code></td>
                                 <td>${typeSelectHtml}</td>
                                 <td>${snmpHtml}</td>
-                                <td>
-                                    <span id="status-${d.device_id}" class="status-indicator ${statusClass}" title="${statusText}"></span>
+                                <td class="device-status-cell">
+                                    <span id="status-${d.device_id}" class="status-indicator ${statusClass}" title="${statusText}" aria-hidden="true"></span>
                                     <span class="visually-hidden">${statusText}</span>
                                 </td>
                                 <td>
-                                    <div class="btn-group btn-group-sm device-actions">
-                                        ${serverMonitorActionHtml}
-                                        <button type="button" class="btn btn-outline-warning" data-action="edit" data-device-id="${d.device_id}" title="Edit Device">
-                                            <i data-lucide="pencil"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger" data-action="delete" data-device-id="${d.device_id}" title="Delete">
-                                            <i data-lucide="trash-2"></i>
-                                        </button>
-                                    </div>
+                                    ${actionMenuHtml}
                                 </td>
                             `;
                             }
                         });
                     }
 
-                    if (typeof rebuildDeviceRowsCache === 'function') rebuildDeviceRowsCache();
-                    if (window.lucide && tbody) window.lucide.createIcons({ root: tbody });
-                    else if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons();
+                    if (typeof syncDeviceRowsCacheFromTable === 'function') syncDeviceRowsCacheFromTable(tbody);
+                    if (typeof hydrateLucideIcons === 'function') {
+                        if (infoAlert) hydrateLucideIcons(infoAlert);
+                        if (tbody) hydrateLucideIcons(tbody);
+                    }
+                    bindDeviceTableNavigation();
                     if (typeof updateBulkUI === 'function') updateBulkUI();
 
                     // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
                     if (typeof fetchAllStatuses === 'function') fetchAllStatuses({ force: true });
-
-                    const pagList = document.getElementById('devices-pagination-list');
-                    const pagCont = document.getElementById('devices-pagination-container');
-                    if (pagList && pagCont) {
-                        if (totalPages > 1) {
-                            pagCont.classList.remove('devices-hidden');
-                            let html = '';
-                            html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(1);">First</a></li>`;
-                            html += `<li class="page-item ${currentPage <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage - 1});">Prev</a></li>`;
-                            html += `<li class="page-item disabled"><span class="page-link">${currentPage} / ${totalPages}</span></li>`;
-                            html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${currentPage + 1});">Next</a></li>`;
-                            html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="event.preventDefault(); goToPage(${totalPages});">Last</a></li>`;
-                            pagList.innerHTML = html;
-                        } else {
-                            pagCont.classList.add('devices-hidden');
-                        }
-                    }
+                    renderDevicesPagination(totalDevices, totalPages, devices.length);
                 })
                 .catch((error) => {
+                    if (error && error.name === 'AbortError') return;
                     console.error(error);
                     showDevicesNotification('Failed to load devices. Please retry.', 'danger');
+                })
+                .finally(() => {
+                    if (requestToken !== devicesFetchToken) return;
+                    devicesFetchController = null;
+                    if (tableShell) tableShell.classList.remove('ui-refreshing');
                 });
         };
 
         // Override the submitServerFilters function to not submit the form but trigger JS fetch
         window.submitServerFilters = function (options = {}) {
+            renderActiveFilterChips(getCurrentFilters());
             if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
             fetchDevices(1);
         };
@@ -1102,12 +2493,13 @@
             if (subnetSelect) subnetSelect.value = '';
             if (statusSelect) statusSelect.value = '';
 
+            renderActiveFilterChips({ search: '', status: '', type: '', subnet: '' });
             if (typeof clearCrossPageSelection === 'function') clearCrossPageSelection();
             fetchDevices(1);
         };
 
         window.filterTable = function () {
-            fetchDevices();
+            applyClientSideFilters();
         };
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1115,9 +2507,13 @@
         });
 
 
-        function hydrateLucideIcons(root) {
+        function hydrateLucideIcons(root = null) {
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons(root ? { root } : undefined);
+                if (root instanceof Element) {
+                    window.lucide.createIcons({ root });
+                    return;
+                }
+                window.lucide.createIcons();
             }
         }
 
@@ -1209,32 +2605,46 @@
             return 'offline';
         }
 
-        function rebuildDeviceRowsCache() {
-            const tableBody = document.querySelector('.devices-table tbody');
+        function refreshDeviceRowCacheEntry(row) {
+            if (!row) return null;
+
+            const typeSelect = row.__deviceTypeSelect || row.querySelector('.device-type-select');
+            const statusElement = row.__statusElement || row.querySelector('.status-indicator');
+            const checkbox = row.__deviceCheckbox || row.querySelector('.device-checkbox');
+            row.__deviceTypeSelect = typeSelect || null;
+            row.__statusElement = statusElement || null;
+            row.__deviceCheckbox = checkbox || null;
+            row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
+
+            const entry = row.__deviceCacheEntry || {};
+            entry.row = row;
+            entry.deviceId = row.dataset.deviceId || row.getAttribute('data-device-id') || '';
+            entry.nameText = (row.cells[1]?.textContent || '').toLowerCase();
+            entry.ipText = (row.cells[2]?.textContent || '').toLowerCase();
+            entry.subnet = row.dataset.subnet || row.getAttribute('data-subnet') || '';
+            entry.typeSelect = typeSelect || null;
+            entry.checkbox = checkbox || null;
+            entry.statusElement = statusElement || null;
+
+            row.__deviceCacheEntry = entry;
+            return entry;
+        }
+
+        function syncDeviceRowsCacheFromTable(tbody = null) {
+            const tableBody = tbody || document.getElementById('devices-table-body');
             if (!tableBody) {
                 deviceRowsCache = [];
                 deviceRowById = new Map();
                 return;
             }
 
-            const nextCache = Array.from(tableBody.querySelectorAll('tr')).map((row) => {
-                const typeSelect = row.querySelector('select');
-                const statusElement = row.querySelector('.status-indicator');
-                row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
-                return {
-                    row,
-                    deviceId: row.dataset.deviceId || row.getAttribute('data-device-id'),
-                    nameText: (row.cells[1]?.textContent || '').toLowerCase(),
-                    ipText: (row.cells[2]?.textContent || '').toLowerCase(),
-                    subnet: row.dataset.subnet || row.dataset.subnet || row.getAttribute('data-subnet') || '',
-                    typeSelect,
-                    checkbox: row.querySelector('.device-checkbox'),
-                    statusElement
-                };
-            });
-
+            const nextCache = [];
             const nextMap = new Map();
-            nextCache.forEach((entry) => {
+
+            Array.from(tableBody.querySelectorAll('tr[data-row-key]')).forEach((row) => {
+                const entry = refreshDeviceRowCacheEntry(row);
+                if (!entry) return;
+                nextCache.push(entry);
                 const key = String(entry.deviceId || '').trim();
                 if (key) {
                     nextMap.set(key, entry);
@@ -1243,6 +2653,10 @@
 
             deviceRowsCache = nextCache;
             deviceRowById = nextMap;
+        }
+
+        function rebuildDeviceRowsCache() {
+            syncDeviceRowsCacheFromTable();
         }
 
         function updateDeviceTotalCount(visibleCount = null) {
@@ -1268,10 +2682,19 @@
         }
 
         function getAllDeviceCheckboxes() {
+            if (deviceRowsCache.length) {
+                return deviceRowsCache.map(entry => entry.checkbox).filter(Boolean);
+            }
             return Array.from(document.querySelectorAll('.device-checkbox'));
         }
 
         function getVisibleDeviceCheckboxes() {
+            if (deviceRowsCache.length) {
+                return deviceRowsCache
+                    .filter(entry => !entry.row.classList.contains('devices-row-hidden'))
+                    .map(entry => entry.checkbox)
+                    .filter(Boolean);
+            }
             return Array.from(document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox'));
         }
 
@@ -1279,7 +2702,7 @@
             const selectAll = document.getElementById('selectAllCheckbox');
             if (!selectAll) return;
 
-            const visibleCheckboxes = document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox');
+            const visibleCheckboxes = getVisibleDeviceCheckboxes();
             if (!visibleCheckboxes.length) {
                 selectAll.checked = false;
                 selectAll.indeterminate = false;
@@ -1357,6 +2780,50 @@
             return `${search}|${status}|${type}|${subnet}`;
         }
 
+        function isInteractiveDeviceRowTarget(target) {
+            return Boolean(target && target.closest(DEVICE_ROW_INTERACTIVE_SELECTOR));
+        }
+
+        function navigateToDeviceRow(row) {
+            const href = row?.dataset?.href;
+            if (href) {
+                window.location.assign(href);
+            }
+        }
+
+        function bindDeviceTableNavigation() {
+            const tbody = document.getElementById('devices-table-body');
+            if (!tbody || tbody.dataset.rowNavBound === 'true') {
+                return;
+            }
+
+            tbody.dataset.rowNavBound = 'true';
+
+            tbody.addEventListener('click', (event) => {
+                const target = event.target instanceof HTMLElement ? event.target : null;
+                const row = target ? target.closest('tr[data-href]') : null;
+                if (!row || isInteractiveDeviceRowTarget(target)) {
+                    return;
+                }
+                navigateToDeviceRow(row);
+            });
+
+            tbody.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+
+                const target = event.target instanceof HTMLElement ? event.target : null;
+                const row = target ? target.closest('tr[data-href]') : null;
+                if (!row || target !== row) {
+                    return;
+                }
+
+                event.preventDefault();
+                navigateToDeviceRow(row);
+            });
+        }
+
         function setFilteredSelectionProgress(visible, message = '') {
             const progressContainer = document.getElementById('filteredSelectionProgress');
             const progressText = document.getElementById('filteredSelectionProgressText');
@@ -1367,7 +2834,7 @@
                     progressText.textContent = message;
                 }
                 progressContainer.classList.remove('d-none');
-                hydrateLucideIcons();
+                hydrateLucideIcons(progressContainer);
                 return;
             }
 
@@ -1445,17 +2912,41 @@
             if (typeSelect) typeSelect.value = '';
             if (subnetSelect) subnetSelect.value = '';
             if (statusSelect) statusSelect.value = '';
-            if (pageInput) pageInput.value = '1';
 
             clearCrossPageSelection();
-            form.submit();
+            renderActiveFilterChips({ search: '', status: '', type: '', subnet: '' });
+            fetchDevices(1);
         }
+
+        window.clearSingleDeviceFilter = function (filterKey) {
+            if (filterKey === 'search') {
+                const searchInput = document.getElementById('deviceSearch');
+                if (searchInput) searchInput.value = '';
+            }
+            if (filterKey === 'status') {
+                const statusSelect = document.getElementById('statusFilter');
+                if (statusSelect) statusSelect.value = '';
+            }
+            if (filterKey === 'type') {
+                const typeSelect = document.getElementById('typeFilter');
+                if (typeSelect) typeSelect.value = '';
+            }
+            if (filterKey === 'subnet') {
+                const subnetSelect = document.getElementById('subnetFilter');
+                if (subnetSelect) subnetSelect.value = '';
+            }
+
+            clearCrossPageSelection();
+            renderActiveFilterChips(getCurrentFilters());
+            fetchDevices(1);
+        };
 
         function submitServerFilters(options = {}) {
             const force = Boolean(options && options.force);
             const form = document.getElementById('deviceFilterForm');
             if (!form) return;
             const filters = getCurrentFilters();
+            renderActiveFilterChips(filters);
             const signature = buildFilterSignature(filters);
             if (!force && signature === lastSubmittedFilterSignature) {
                 return;
@@ -1468,7 +2959,7 @@
             }
 
             clearCrossPageSelection();
-            form.submit();
+            fetchDevices(1);
         }
 
         function handleSearchInput(event) {
@@ -1483,6 +2974,7 @@
                     searchInput.value = '';
                 }
             }
+            renderActiveFilterChips(getCurrentFilters());
             scheduleFilterTable();
         }
 
@@ -1502,7 +2994,7 @@
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Resolving...';
-                hydrateLucideIcons();
+                hydrateLucideIcons(btn);
             }
             startFilteredSelectionProgress();
 
@@ -1560,7 +3052,7 @@
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = originalText;
-                    hydrateLucideIcons();
+                    hydrateLucideIcons(btn);
                 }
             }
         }
@@ -1572,7 +3064,7 @@
 
             filterDebounceTimer = setTimeout(() => {
                 if (typeof requestAnimationFrame !== 'function') {
-                    filterTable();
+                    applyClientSideFilters();
                     return;
                 }
                 if (filterRafId) {
@@ -1580,13 +3072,14 @@
                 }
                 filterRafId = requestAnimationFrame(() => {
                     filterRafId = null;
-                    filterTable();
+                    applyClientSideFilters();
                 });
             }, DEVICES_UI_CONFIG.filterDebounceMs);
         }
 
         document.addEventListener('DOMContentLoaded', function () {
             hydrateLucideIcons();
+            bindDeviceTableNavigation();
 
             // Bulk Selection Logic
             const selectAll = document.getElementById('selectAllCheckbox');
@@ -1598,7 +3091,7 @@
                         clearCrossPageSelection();
                     }
 
-                    const visibleCheckboxes = document.querySelectorAll('tbody tr:not(.devices-row-hidden) .device-checkbox');
+                    const visibleCheckboxes = getVisibleDeviceCheckboxes();
                     for (let i = 0; i < visibleCheckboxes.length; i++) {
                         visibleCheckboxes[i].checked = shouldCheck;
                         // Also sync to global state for consistency across pages
@@ -1614,30 +3107,14 @@
                 });
             }
 
-            // Delegated listener for table action buttons and checkboxes
-            const tbody = document.getElementById('devices-table-body');
-            if (tbody) {
-                tbody.addEventListener('click', function (e) {
-                    const btn = e.target.closest('[data-action]');
-                    if (btn) {
-                        const action = btn.dataset.action;
-                        const id = parseInt(btn.dataset.deviceId, 10);
-                        if (!id) return;
-                        if (action === 'edit') editDevice(id);
-                        else if (action === 'delete') deleteDevice(id);
-                        return;
-                    }
-                    if (e.target.matches('.device-checkbox')) {
-                        handleDeviceSelection(e.target);
-                    }
-                });
-            }
+            // Dynamic checkboxes use handleDeviceSelection(this) in HTML
 
             // fetchDevices handles this now
             updateDeviceTotalCount();
             const initialFilters = getCurrentFilters();
             lastFilterSignature = `${(initialFilters.status || '').toLowerCase()}|${(initialFilters.search || '').toLowerCase()}`;
             lastSubmittedFilterSignature = buildFilterSignature(initialFilters);
+            renderActiveFilterChips(initialFilters);
             updateBulkUI();
 
             // Initialize status polling
@@ -1671,6 +3148,292 @@
             if (agentFields) agentFields.classList.toggle('monitoring-fields-hidden', mode !== 'agent');
             if (wmiFields) wmiFields.classList.toggle('monitoring-fields-hidden', mode !== 'wmi');
         }
+
+        function thresholdNumber(value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function formatThresholdValue(value) {
+            const numericValue = thresholdNumber(value);
+            if (numericValue === null) {
+                return '<span class="text-muted">Inherited</span>';
+            }
+            return `${numericValue}%`;
+        }
+
+        function thresholdPairHtml(warningValue, criticalValue, extraClass = '') {
+            const classes = extraClass ? `threshold-pair ${extraClass}` : 'threshold-pair';
+            return `
+                <div class="${classes}">
+                    <span>W ${formatThresholdValue(warningValue)}</span>
+                    <span>C ${formatThresholdValue(criticalValue)}</span>
+                </div>
+            `;
+        }
+
+        function renderComplianceThresholdPreview() {
+            const select = document.getElementById('compliance_profile_id');
+            const previewBody = document.getElementById('complianceThresholdPreviewBody');
+            const profileLabel = document.getElementById('complianceProfileLabel');
+            if (!select || !previewBody) return;
+
+            const profileId = select.value || '';
+            const overrides = profileId ? (DEVICE_COMPLIANCE_PROFILES[profileId] || {}) : {};
+            const selectedOption = select.options[select.selectedIndex];
+            if (profileLabel) {
+                profileLabel.textContent = profileId ? (selectedOption?.text || 'Selected profile') : 'Global defaults';
+            }
+
+            previewBody.innerHTML = DEVICE_THRESHOLD_ROWS.map((metric) => {
+                const globalWarning = DEVICE_GLOBAL_THRESHOLDS[metric.warningKey];
+                const globalCritical = DEVICE_GLOBAL_THRESHOLDS[metric.criticalKey];
+                const overrideWarning = Object.prototype.hasOwnProperty.call(overrides, metric.warningKey)
+                    ? overrides[metric.warningKey]
+                    : null;
+                const overrideCritical = Object.prototype.hasOwnProperty.call(overrides, metric.criticalKey)
+                    ? overrides[metric.criticalKey]
+                    : null;
+                const effectiveWarning = overrideWarning ?? globalWarning;
+                const effectiveCritical = overrideCritical ?? globalCritical;
+
+                return `
+                    <tr>
+                        <td class="threshold-metric">${metric.label}</td>
+                        <td>${thresholdPairHtml(globalWarning, globalCritical)}</td>
+                        <td>${thresholdPairHtml(overrideWarning, overrideCritical)}</td>
+                        <td>${thresholdPairHtml(effectiveWarning, effectiveCritical, 'threshold-effective')}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function getSnmpModal() {
+            const modalEl = document.getElementById('snmpConfigModal');
+            if (!modalEl || !window.bootstrap) return null;
+            if (!snmpModalInstance) {
+                snmpModalInstance = new bootstrap.Modal(modalEl);
+            }
+            return snmpModalInstance;
+        }
+
+        function setSnmpModalBusy(isBusy, busyLabel = 'Loading...') {
+            const submitBtn = document.getElementById('snmpConfigSubmitBtn');
+            const closeBtn = document.querySelector('#snmpConfigModal .btn-close');
+            const enabledToggle = document.getElementById('snmpModalEnabled');
+            const modalRoot = document.getElementById('snmpConfigModal');
+            if (submitBtn) {
+                submitBtn.disabled = Boolean(isBusy);
+                submitBtn.innerHTML = isBusy
+                    ? `<i data-lucide="loader" class="icon-spin"></i> ${busyLabel}`
+                    : 'Save SNMP';
+            }
+            if (closeBtn) closeBtn.disabled = Boolean(isBusy);
+            if (enabledToggle) enabledToggle.disabled = Boolean(isBusy);
+            hydrateLucideIcons(modalRoot);
+        }
+
+        function updateSnmpModalVersionFields() {
+            const version = document.getElementById('snmpModalVersion')?.value || 'v2c';
+            const v2Fields = document.getElementById('snmpModalV2Fields');
+            const v3Fields = document.getElementById('snmpModalV3Fields');
+            if (v2Fields) v2Fields.classList.toggle('monitoring-fields-hidden', version !== 'v2c');
+            if (v3Fields) v3Fields.classList.toggle('monitoring-fields-hidden', version !== 'v3');
+        }
+
+        function updateSnmpModalStateLabel(enabled) {
+            const stateValue = document.getElementById('snmpModalStateValue');
+            const stateCard = document.getElementById('snmpModalStateCard');
+            if (stateValue) {
+                stateValue.textContent = enabled ? 'Enabled' : 'Disabled';
+                stateValue.classList.toggle('is-enabled', enabled);
+                stateValue.classList.toggle('is-disabled', !enabled);
+            }
+            if (stateCard) {
+                stateCard.classList.toggle('state-enabled', enabled);
+                stateCard.classList.toggle('state-disabled', !enabled);
+            }
+        }
+
+        function updateSnmpConfigPanelState() {
+            const enabled = Boolean(document.getElementById('snmpModalEnabled')?.checked);
+            const panel = document.getElementById('snmpConfigPanel');
+            if (panel) panel.classList.toggle('is-disabled', !enabled);
+            updateSnmpModalStateLabel(enabled);
+        }
+
+        function resetSnmpConfigModal() {
+            currentSnmpDeviceId = null;
+            document.getElementById('snmpConfigForm')?.reset();
+            const lastError = document.getElementById('snmpModalLastError');
+            if (lastError) {
+                lastError.classList.add('devices-hidden');
+                lastError.textContent = '';
+            }
+            const nameEl = document.getElementById('snmpModalDeviceName');
+            const ipEl = document.getElementById('snmpModalDeviceIp');
+            const modeEl = document.getElementById('snmpModalDeviceMode');
+            const currentModeEl = document.getElementById('snmpModalCurrentModeValue');
+            const lastPollEl = document.getElementById('snmpModalLastPollValue');
+            if (nameEl) nameEl.textContent = 'SNMP Configuration';
+            if (ipEl) ipEl.textContent = '-';
+            if (modeEl) modeEl.textContent = 'Ping Only';
+            if (currentModeEl) currentModeEl.textContent = 'Ping';
+            if (lastPollEl) lastPollEl.textContent = 'Never';
+            updateSnmpModalStateLabel(false);
+            const enabledToggle = document.getElementById('snmpModalEnabled');
+            if (enabledToggle) enabledToggle.checked = false;
+            document.getElementById('snmpModalVersion').value = 'v2c';
+            document.getElementById('snmpModalPort').value = '161';
+            document.getElementById('snmpModalCommunity').value = 'public';
+            document.getElementById('snmpModalUsername').value = '';
+            document.getElementById('snmpModalAuthProto').value = '';
+            document.getElementById('snmpModalAuthPassword').value = '';
+            document.getElementById('snmpModalPrivProto').value = '';
+            document.getElementById('snmpModalPrivPassword').value = '';
+            updateSnmpModalVersionFields();
+            updateSnmpConfigPanelState();
+            setSnmpModalBusy(false);
+        }
+
+        function getSnmpModalFocusTarget() {
+            if (lastSnmpModalTrigger instanceof HTMLElement && document.contains(lastSnmpModalTrigger)) {
+                return lastSnmpModalTrigger;
+            }
+
+            return document.getElementById('devicesRefreshBtn')
+                || document.querySelector('.devices-page')
+                || document.body;
+        }
+
+        function handleSnmpModalHide() {
+            const modalEl = document.getElementById('snmpConfigModal');
+            const activeEl = document.activeElement;
+            if (modalEl && activeEl instanceof HTMLElement && modalEl.contains(activeEl)) {
+                activeEl.blur();
+            }
+
+            const focusTarget = getSnmpModalFocusTarget();
+            if (focusTarget instanceof HTMLElement) {
+                if (!focusTarget.matches('button, [href], input, select, textarea, [tabindex]')) {
+                    focusTarget.setAttribute('tabindex', '-1');
+                }
+                focusTarget.focus({ preventScroll: true });
+            }
+        }
+
+        function handleSnmpModalHidden() {
+            resetSnmpConfigModal();
+
+            const focusTarget = getSnmpModalFocusTarget();
+            if (focusTarget instanceof HTMLElement) {
+                window.setTimeout(() => {
+                    focusTarget.focus({ preventScroll: true });
+                }, 0);
+            }
+        }
+
+        async function openSnmpConfigModal(deviceId) {
+            const modal = getSnmpModal();
+            if (!modal) return;
+
+            lastSnmpModalTrigger = document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            resetSnmpConfigModal();
+            currentSnmpDeviceId = deviceId;
+            setSnmpModalBusy(true, 'Loading...');
+            modal.show();
+
+            try {
+                const response = await fetch(`/api/devices/${deviceId}`);
+                const payload = await response.json();
+                const device = (payload.success && payload.device) ? payload.device : null;
+                if (!response.ok || !device) {
+                    throw new Error(payload.error || 'Failed to load SNMP configuration');
+                }
+
+                document.getElementById('snmpModalDeviceName').textContent = device.device_name || `Device ${deviceId}`;
+                document.getElementById('snmpModalDeviceIp').textContent = device.device_ip || '-';
+                document.getElementById('snmpModalDeviceMode').textContent = (device.monitoring_mode || 'ping').toUpperCase();
+                document.getElementById('snmpModalCurrentModeValue').textContent = (device.monitoring_mode || 'ping').toUpperCase();
+                document.getElementById('snmpModalLastPollValue').textContent = formatSnmpLastPoll(device.snmp_last_poll);
+                document.getElementById('snmpModalEnabled').checked = Boolean(device.snmp_enabled);
+
+                const config = device.snmp_config || {};
+                const configVersion = String(config.snmp_version || '').trim().toLowerCase().replace(/^v/, '');
+                document.getElementById('snmpModalVersion').value = configVersion === '3' ? 'v3' : 'v2c';
+                document.getElementById('snmpModalPort').value = config.snmp_port || '161';
+                document.getElementById('snmpModalCommunity').value = config.community_string || device.snmp_community || 'public';
+                document.getElementById('snmpModalUsername').value = config.security_name || '';
+                document.getElementById('snmpModalAuthProto').value = config.auth_protocol || '';
+                document.getElementById('snmpModalAuthPassword').value = config.auth_password || '';
+                document.getElementById('snmpModalPrivProto').value = config.priv_protocol || '';
+                document.getElementById('snmpModalPrivPassword').value = config.priv_password || '';
+
+                const lastError = document.getElementById('snmpModalLastError');
+                if (device.snmp_last_error) {
+                    lastError.textContent = `Last poll error: ${device.snmp_last_error}`;
+                    lastError.classList.remove('devices-hidden');
+                } else if (lastError) {
+                    lastError.textContent = '';
+                    lastError.classList.add('devices-hidden');
+                }
+
+                updateSnmpModalVersionFields();
+                updateSnmpConfigPanelState();
+            } catch (error) {
+                console.error(error);
+                showDevicesNotification(error.message || 'Failed to load SNMP configuration.', 'danger');
+                modal.hide();
+            } finally {
+                setSnmpModalBusy(false);
+            }
+        }
+
+        async function saveSnmpConfiguration(event) {
+            event.preventDefault();
+            if (!currentSnmpDeviceId) return;
+
+            setSnmpModalBusy(true, 'Saving...');
+
+            const payload = {
+                enabled: Boolean(document.getElementById('snmpModalEnabled')?.checked),
+                snmp_version: document.getElementById('snmpModalVersion')?.value || 'v2c',
+                snmp_port: document.getElementById('snmpModalPort')?.value || '161',
+                snmp_community: document.getElementById('snmpModalCommunity')?.value || '',
+                snmp_username: document.getElementById('snmpModalUsername')?.value || '',
+                snmp_auth_proto: document.getElementById('snmpModalAuthProto')?.value || '',
+                snmp_auth_password: document.getElementById('snmpModalAuthPassword')?.value || '',
+                snmp_priv_proto: document.getElementById('snmpModalPrivProto')?.value || '',
+                snmp_priv_password: document.getElementById('snmpModalPrivPassword')?.value || ''
+            };
+
+            try {
+                const response = await fetch(`/api/devices/${currentSnmpDeviceId}/snmp`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to save SNMP configuration');
+                }
+
+                getSnmpModal()?.hide();
+                showDevicesNotification(payload.enabled ? 'SNMP monitoring enabled.' : 'SNMP monitoring disabled.', 'success');
+                fetchDevices(currentPage);
+            } catch (error) {
+                console.error(error);
+                showDevicesNotification(error.message || 'Failed to save SNMP configuration.', 'danger');
+            } finally {
+                setSnmpModalBusy(false);
+            }
+        }
+
         function editDevice(deviceId) {
             const form = document.getElementById('deviceForm');
             const idInput = document.getElementById('device_id');
@@ -1703,13 +3466,25 @@
                         if (siteSelect) siteSelect.value = d.site_id || '';
 
                         if (d.site_id && typeof onDeviceSiteChange === 'function') {
-                            onDeviceSiteChange(d.department_id || '');
+                            onDeviceSiteChange();
+                            setTimeout(() => {
+                                const deptSelect = document.getElementById('device_department_id');
+                                if (deptSelect) deptSelect.value = d.department_id || '';
+                            }, 300);
                         } else {
                             const deptSelect = document.getElementById('device_department_id');
                             if (deptSelect) deptSelect.value = d.department_id || '';
                         }
 
                         document.getElementById('description').value = d.description || '';
+                        const monitoredToggle = document.getElementById('is_monitored');
+                        if (monitoredToggle) monitoredToggle.checked = d.is_monitored !== false;
+                        const maintenanceToggle = document.getElementById('maintenance_mode');
+                        if (maintenanceToggle) maintenanceToggle.checked = !!d.maintenance_mode;
+                        const complianceSelect = document.getElementById('compliance_profile_id');
+                        if (complianceSelect) {
+                            complianceSelect.value = d.compliance_profile_id ? String(d.compliance_profile_id) : '';
+                        }
 
                         // Monitoring mode
                         const monMode = d.monitoring_mode || 'ping';
@@ -1730,19 +3505,16 @@
                         _set('agent_interval', d.agent_interval || '300');
                         _set('agent_os_type', d.agent_os_type || 'windows');
                         _set('agent_token', d.agent_token || '');
-                        _set('compliance_profile_id', d.compliance_profile_id || '');
 
                         toggleMonitoringFields();
                         toggleSnmpVersion();
+                        renderComplianceThresholdPreview();
 
                         // Show modal after logic executes
                         const deviceModalEl = document.getElementById('deviceModal');
                         const bsModal = new bootstrap.Modal(deviceModalEl);
                         // Flag to tell the show.bs.modal listener NOT to reset the form
                         window._editingDevice = true;
-                        // Always reset to Identity tab so edit opens in a consistent state
-                        const identityTabBtn = document.getElementById('tab-identity-btn');
-                        if (identityTabBtn) new bootstrap.Tab(identityTabBtn).show();
                         bsModal.show();
                     } else {
                         console.error("Edit device payload missing success or device:", data);
@@ -1849,9 +3621,68 @@
 
                 toggleMonitoringFields();
                 toggleSnmpVersion();
+                renderComplianceThresholdPreview();
                 document.getElementById('testResult').innerHTML = '';
             });
         }
+
+        const deviceFormEl = document.getElementById('deviceForm');
+        if (deviceFormEl && deviceFormEl.dataset.ajaxBound !== 'true') {
+            deviceFormEl.dataset.ajaxBound = 'true';
+            deviceFormEl.addEventListener('submit', async function (event) {
+                event.preventDefault();
+
+                const submitBtn = document.getElementById('deviceFormSubmitBtn');
+                const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+                const isEditing = Boolean(document.getElementById('device_id')?.value);
+
+                try {
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Saving...';
+                        hydrateLucideIcons();
+                    }
+
+                    const response = await fetch(deviceFormEl.action, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: new FormData(deviceFormEl)
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || data.error || 'Failed to save device');
+                    }
+
+                    const modal = bootstrap.Modal.getOrCreateInstance(deviceModalEl);
+                    modal.hide();
+                    showDevicesNotification(isEditing ? 'Device updated.' : 'Device saved.', 'success');
+                    fetchDevices(currentPage);
+                } catch (error) {
+                    console.error(error);
+                    showDevicesNotification(error.message || 'Failed to save device.', 'danger');
+                } finally {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalHtml;
+                        hydrateLucideIcons();
+                    }
+                }
+            });
+        }
+
+        const snmpConfigFormEl = document.getElementById('snmpConfigForm');
+        if (snmpConfigFormEl && snmpConfigFormEl.dataset.bound !== 'true') {
+            snmpConfigFormEl.dataset.bound = 'true';
+            snmpConfigFormEl.addEventListener('submit', saveSnmpConfiguration);
+        }
+        document.getElementById('snmpModalEnabled')?.addEventListener('change', updateSnmpConfigPanelState);
+        document.getElementById('snmpModalVersion')?.addEventListener('change', updateSnmpModalVersionFields);
+        document.getElementById('snmpConfigModal')?.addEventListener('hide.bs.modal', handleSnmpModalHide);
+        document.getElementById('snmpConfigModal')?.addEventListener('hidden.bs.modal', handleSnmpModalHidden);
+        document.getElementById('compliance_profile_id')?.addEventListener('change', renderComplianceThresholdPreview);
+        renderComplianceThresholdPreview();
 
         window.handleDeviceSelection = function (cb) {
             const id = parseInt(cb.value, 10);
@@ -1866,10 +3697,12 @@
 
         function updateBulkUI() {
             const selectedIds = new Set();
-            document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
-                const id = parseInt(cb.value, 10);
-                if (Number.isInteger(id) && id > 0) {
-                    selectedIds.add(id);
+            getAllDeviceCheckboxes().forEach(cb => {
+                if (cb && cb.checked) {
+                    const id = parseInt(cb.value, 10);
+                    if (Number.isInteger(id) && id > 0) {
+                        selectedIds.add(id);
+                    }
                 }
             });
             globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
@@ -1900,10 +3733,12 @@
 
         function deleteSelectedDevices() {
             const selectedIds = new Set();
-            document.querySelectorAll('.device-checkbox:checked').forEach(cb => {
-                const id = parseInt(cb.value, 10);
-                if (Number.isInteger(id) && id > 0) {
-                    selectedIds.add(id);
+            getAllDeviceCheckboxes().forEach(cb => {
+                if (cb && cb.checked) {
+                    const id = parseInt(cb.value, 10);
+                    if (Number.isInteger(id) && id > 0) {
+                        selectedIds.add(id);
+                    }
                 }
             });
             globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
@@ -1920,31 +3755,27 @@
             if (btn) {
                 btn.innerHTML = '<i data-lucide="loader" class="icon-spin"></i> Deleting...';
                 btn.disabled = true;
-                hydrateLucideIcons();
+                hydrateLucideIcons(btn);
             }
 
             fetch('/api/devices/bulk_delete', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify({ device_ids: ids })
             })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Remove deleted rows
-                        ids.forEach(id => {
-                            const row = document.querySelector(`tr[data-device-id="${id}"]`);
-                            if (row) row.remove();
-                        });
-                        // fetchDevices handles this now
-                        updateDeviceTotalCount();
                         clearCrossPageSelection();
                         updateBulkUI();
-                        scheduleFilterTable();
                         const selectAll = document.getElementById('selectAllCheckbox');
                         if (selectAll) {
                             selectAll.checked = false;
                         }
+                        fetchDevices(currentPage);
                         showDevicesNotification(`Successfully deleted ${data.deleted} devices.`, 'success');
                     } else {
                         showDevicesNotification(`Delete failed: ${data.error || 'Unknown error'}`, 'danger');
@@ -1962,12 +3793,48 @@
                 });
         }
 
+        function bulkAssignProfile(profileId, profileName) {
+            const selectedIds = new Set();
+            getAllDeviceCheckboxes().forEach(cb => {
+                if (cb && cb.checked) {
+                    const id = parseInt(cb.value, 10);
+                    if (Number.isInteger(id) && id > 0) selectedIds.add(id);
+                }
+            });
+            globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
+            const ids = Array.from(selectedIds);
+
+            if (ids.length === 0) return;
+
+            const label = profileId ? `"${profileName}"` : 'no profile (unassign)';
+            if (!confirm(`Assign ${label} to ${ids.length} selected device(s)?`)) return;
+
+            fetch('/api/devices/bulk-compliance-profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: ids, compliance_profile_id: profileId }),
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.status === 'ok') {
+                        showDevicesNotification(
+                            `Profile updated on ${d.updated_count} device(s).`, 'success'
+                        );
+                        clearCrossPageSelection();
+                        updateBulkUI();
+                    } else {
+                        showDevicesNotification(`Failed: ${d.error || 'Unknown error'}`, 'danger');
+                    }
+                })
+                .catch(() => showDevicesNotification('Error assigning compliance profile.', 'danger'));
+        }
+
         function updateDeviceType(deviceId, newType, selectIdx) {
             const selectElement = selectIdx || event.target;
             selectElement.disabled = true;
 
             fetch('/api/devices/' + deviceId + '/update_type', {
-                method: 'PATCH',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ device_type: newType })
             })
@@ -1995,7 +3862,7 @@
             const icon = row.querySelector('button[title="Toggle Monitoring"] i');
             if (!icon) return;
             icon.setAttribute('data-lucide', isMonitored ? 'eye-off' : 'eye');
-            hydrateLucideIcons();
+            hydrateLucideIcons(icon.parentElement || row);
         }
 
         function toggleMonitoring(deviceId) {
@@ -2017,13 +3884,44 @@
             }
         }
 
-        function deleteDevice(deviceId) {
-            if (confirm('Are you sure you want to delete this device?')) {
-                const params = new URLSearchParams(window.location.search);
-                params.set('delete_id', String(deviceId));
-                if (!params.get('page')) params.set('page', '{{ page|default(1) }}');
-                if (!params.get('per_page')) params.set('per_page', '{{ per_page|default(100) }}');
-                window.location.href = '/devices?' + params.toString();
+        async function deleteDevice(deviceId, triggerButton = null) {
+            if (!confirm('Are you sure you want to delete this device?')) {
+                return;
+            }
+
+            const originalHtml = triggerButton ? triggerButton.innerHTML : '';
+            try {
+                if (triggerButton) {
+                    triggerButton.disabled = true;
+                    triggerButton.innerHTML = '<i data-lucide="loader" class="icon-spin"></i>';
+                    hydrateLucideIcons(triggerButton);
+                }
+
+                const response = await fetch('/api/devices/bulk_delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({ device_ids: [deviceId] })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to delete device');
+                }
+
+                globalFilteredSelectionIds.delete(Number(deviceId));
+                showDevicesNotification('Device deleted.', 'success');
+                fetchDevices(currentPage);
+            } catch (error) {
+                console.error(error);
+                showDevicesNotification(error.message || 'Failed to delete device.', 'danger');
+            } finally {
+                if (triggerButton) {
+                    triggerButton.disabled = false;
+                    triggerButton.innerHTML = originalHtml;
+                    hydrateLucideIcons(triggerButton);
+                }
             }
         }
 
@@ -2064,7 +3962,7 @@
                 if (tableShell) {
                     tableShell.classList.remove('ui-refreshing');
                 }
-                hydrateLucideIcons();
+                hydrateLucideIcons(refreshButton || tableShell);
                 startStatusPolling();
             }
         }
@@ -2074,10 +3972,6 @@
             const requestedIds = getStatusBatchDeviceIds(options);
             if (!requestedIds.length) {
                 return Promise.resolve(null);
-            }
-
-            if (window.cleanupBootstrapModal && !document.querySelector('.modal.show')) {
-                window.cleanupBootstrapModal();
             }
 
             const now = Date.now();
@@ -2133,7 +4027,8 @@
                                 ? ` (${Math.round(device.latency)}ms)` : '';
 
                             const nextClassName = `status-indicator ${statusClass}`;
-                            const nextTitle = statusTextFromKey(status) + latencyText;
+                            const nextLabel = statusTextFromKey(status);
+                            const nextTitle = nextLabel + latencyText;
 
                             if (entry.statusElement.className !== nextClassName) {
                                 entry.statusElement.className = nextClassName;
@@ -2246,7 +4141,7 @@
                 });
         }
 
-        function filterTable() {
+        function applyClientSideFilters() {
             if (!deviceRowsCache.length) {
                 // fetchDevices handles this now
             }
@@ -2386,392 +4281,6 @@
         }
 
         // Load on page init as well
-        
-        // AJAX form submit — prevents full page reload on device save
-        (function () {
-            var _devForm = document.getElementById('deviceForm');
-            if (!_devForm) { return; }
-            _devForm.addEventListener('submit', function (e) {
-                e.preventDefault();
-                var formData = new FormData(_devForm);
-                var saveBtn = document.querySelector('[form="deviceForm"]');
-                if (saveBtn) { saveBtn.disabled = true; }
-                fetch('/devices/save', {
-                    method: 'POST',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    body: formData
-                })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data.success) {
-                        var modal = bootstrap.Modal.getInstance(document.getElementById('deviceModal'));
-                        if (modal) { modal.hide(); }
-                        showDevicesNotification('Device saved successfully.', 'success');
-                        if (typeof loadDevicesPage === 'function') { loadDevicesPage(); }
-                        else if (typeof submitServerFilters === 'function') { submitServerFilters({ force: true }); }
-                    } else {
-                        showDevicesNotification(data.message || 'Failed to save device.', 'danger');
-                    }
-                })
-                .catch(function () { showDevicesNotification('Network error saving device.', 'danger'); })
-                .finally(function () { if (saveBtn) { saveBtn.disabled = false; } });
-            });
-        }());
-
-document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
-
-        // ── Compliance Profiles Pane ────────────────────────────────────────────
-        (function () {
-            'use strict';
-
-            var _cpPaneLoaded = false;
-            var _cpProfileModal = null;
-            var _cpDeleteModal = null;
-            var _cpDeleteTargetId = null;
-
-            function escHtml(v) {
-                return String(v == null ? '' : v)
-                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            function getModal(id) {
-                var el = document.getElementById(id);
-                if (!el || !window.bootstrap) { return null; }
-                return bootstrap.Modal.getOrCreateInstance(el);
-            }
-
-            // Wire tab activation for lazy load
-            document.addEventListener('DOMContentLoaded', function () {
-                var tabBtn = document.getElementById('complianceTabBtn');
-                if (tabBtn) {
-                    tabBtn.addEventListener('shown.bs.tab', function () {
-                        if (!_cpPaneLoaded) { loadCompliancePane(); }
-                    });
-                }
-            });
-
-            function loadCompliancePane() {
-                fetch('/api/compliance-profiles', { credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(renderComplianceProfiles)
-                    .catch(function () {
-                        var el = document.getElementById('compliancePaneLoading');
-                        if (el) { el.textContent = 'Failed to load compliance profiles.'; }
-                    });
-            }
-
-            function renderComplianceProfiles(profiles) {
-                var loading = document.getElementById('compliancePaneLoading');
-                var content = document.getElementById('compliancePaneContent');
-                var empty   = document.getElementById('compliancePaneEmpty');
-                if (loading) { loading.classList.add('d-none'); }
-                _cpPaneLoaded = true;
-                if (!profiles || !profiles.length) {
-                    if (empty) { empty.classList.remove('d-none'); }
-                    return;
-                }
-                if (content) { content.classList.remove('d-none'); }
-                if (empty)   { empty.classList.add('d-none'); }
-
-                var rows = profiles.map(function (p) {
-                    var chips   = buildThresholdChips(p.rules_json || {});
-                    var cnt     = p.device_count || 0;
-                    var created = p.created_at ? p.created_at.substring(0, 10) : '—';
-                    return '<tr>'
-                        + '<td><div class="cp-name">' + escHtml(p.name) + '</div>'
-                        + (p.description ? '<div class="cp-desc">' + escHtml(p.description) + '</div>' : '')
-                        + '</td>'
-                        + '<td>' + (chips || '<span class="cp-chip dflt">Global defaults</span>') + '</td>'
-                        + '<td style="text-align:center;"><span style="font-size:.8rem;color:' + (cnt > 0 ? '#60a5fa' : '#64748b') + ';">' + cnt + '</span></td>'
-                        + '<td style="font-size:.72rem;color:#64748b;white-space:nowrap;">' + created + '</td>'
-                        + '<td style="text-align:right;white-space:nowrap;">'
-                        + '<button class="btn btn-sm" style="padding:.18rem .45rem;font-size:.72rem;color:#60a5fa;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);margin-right:.3rem;"'
-                        + ' onclick=\'openComplianceEditModal(' + JSON.stringify(p) + ')\'><i class="fas fa-pen-to-square"></i></button>'
-                        + '<button class="btn btn-sm" style="padding:.18rem .45rem;font-size:.72rem;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);"'
-                        + ' onclick="confirmDeleteComplianceProfile(' + p.id + ',&quot;' + escHtml(p.name) + '&quot;)"><i class="fas fa-trash"></i></button>'
-                        + '</td></tr>';
-                }).join('');
-
-                content.innerHTML = '<table class="cp-flat-table">'
-                    + '<thead><tr>'
-                    + '<th>Profile</th><th>Thresholds</th><th style="text-align:center;">Devices</th><th>Created</th><th></th>'
-                    + '</tr></thead><tbody>' + rows + '</tbody></table>';
-            }
-
-            function loadProfileDevices(profileId) {
-                var el = document.getElementById('profileDeviceList' + profileId);
-                if (!el) { return; }
-                fetch('/api/compliance-profiles/' + profileId + '/devices', { credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (devices) {
-                        if (!devices.length) {
-                            el.textContent = 'No devices assigned to this profile.';
-                            return;
-                        }
-                        var rows = devices.map(function (d) {
-                            return '<tr>'
-                                + '<td class="py-1 pe-3">' + escHtml(d.device_name) + '</td>'
-                                + '<td class="py-1 pe-3 text-muted">' + escHtml(d.device_ip) + '</td>'
-                                + '<td class="py-1 text-muted">' + escHtml(d.device_type || '\u2014') + '</td>'
-                                + '</tr>';
-                        }).join('');
-                        el.innerHTML = '<table class="table table-sm table-borderless text-white mb-0">'
-                            + '<thead><tr>'
-                            + '<th class="text-muted py-1 pe-3" style="font-size:.65rem;">Name</th>'
-                            + '<th class="text-muted py-1 pe-3" style="font-size:.65rem;">IP</th>'
-                            + '<th class="text-muted py-1" style="font-size:.65rem;">Type</th>'
-                            + '</tr></thead><tbody>' + rows + '</tbody></table>';
-                    })
-                    .catch(function () { el.textContent = 'Failed to load devices.'; });
-            }
-
-            function buildThresholdChips(rules) {
-                var map = {
-                    cpu_warning:    'CPU W', cpu_critical:    'CPU C',
-                    memory_warning: 'MEM W', memory_critical: 'MEM C',
-                    disk_warning:   'DISK W', disk_critical:  'DISK C',
-                };
-                return Object.keys(map).filter(function (k) { return rules[k] != null; })
-                    .map(function (k) {
-                        var cls = k.endsWith('_critical') ? 'crit' : 'warn';
-                        return '<span class="cp-chip ' + cls + '">' + map[k] + ' ' + rules[k] + '%</span>';
-                    }).join('');
-            }
-
-            // ── Modal helpers ───────────────────────────────────────────────────
-
-            function clearCpForm() {
-                ['cpModalProfileId', 'cpModalName', 'cpModalDescription',
-                 'cpModalCpuWarning', 'cpModalCpuCritical',
-                 'cpModalMemWarning', 'cpModalMemCritical',
-                 'cpModalDiskWarning', 'cpModalDiskCritical'].forEach(function (id) {
-                    var el = document.getElementById(id);
-                    if (el) { el.value = ''; }
-                });
-                var err = document.getElementById('cpModalError');
-                if (err) { err.classList.add('d-none'); err.textContent = ''; }
-            }
-
-            window.openComplianceCreateModal = function () {
-                clearCpForm();
-                var title = document.getElementById('complianceProfileModalTitle');
-                if (title) { title.innerHTML = '<i class="fas fa-plus me-1"></i> New Compliance Profile'; }
-                _cpProfileModal = getModal('complianceProfileModal');
-                if (_cpProfileModal) { _cpProfileModal.show(); }
-            };
-
-            window.openComplianceEditModal = function (profile) {
-                clearCpForm();
-                var title = document.getElementById('complianceProfileModalTitle');
-                if (title) { title.innerHTML = '<i class="fas fa-pen-to-square me-1"></i> Edit Profile'; }
-                document.getElementById('cpModalProfileId').value = profile.id || '';
-                document.getElementById('cpModalName').value = profile.name || '';
-                document.getElementById('cpModalDescription').value = profile.description || '';
-                var rules = profile.rules_json || {};
-                var fieldMap = {
-                    cpu_warning: 'cpModalCpuWarning', cpu_critical: 'cpModalCpuCritical',
-                    memory_warning: 'cpModalMemWarning', memory_critical: 'cpModalMemCritical',
-                    disk_warning: 'cpModalDiskWarning', disk_critical: 'cpModalDiskCritical',
-                };
-                Object.keys(fieldMap).forEach(function (key) {
-                    var el = document.getElementById(fieldMap[key]);
-                    if (el && rules[key] != null) { el.value = rules[key]; }
-                });
-                _cpProfileModal = getModal('complianceProfileModal');
-                if (_cpProfileModal) { _cpProfileModal.show(); }
-            };
-
-            window.saveComplianceProfile = function () {
-                var profileId = (document.getElementById('cpModalProfileId').value || '').trim();
-                var name = (document.getElementById('cpModalName').value || '').trim();
-                var errEl = document.getElementById('cpModalError');
-                if (!name) {
-                    if (errEl) { errEl.textContent = 'Profile name is required.'; errEl.classList.remove('d-none'); }
-                    return;
-                }
-                if (errEl) { errEl.classList.add('d-none'); }
-
-                var rules = {};
-                var fieldMap = {
-                    cpu_warning: 'cpModalCpuWarning', cpu_critical: 'cpModalCpuCritical',
-                    memory_warning: 'cpModalMemWarning', memory_critical: 'cpModalMemCritical',
-                    disk_warning: 'cpModalDiskWarning', disk_critical: 'cpModalDiskCritical',
-                };
-                Object.keys(fieldMap).forEach(function (key) {
-                    var val = (document.getElementById(fieldMap[key]).value || '').trim();
-                    if (val !== '') { rules[key] = parseFloat(val); }
-                });
-
-                var url    = profileId ? '/api/compliance-profiles/' + profileId : '/api/compliance-profiles';
-                var method = profileId ? 'PUT' : 'POST';
-                var saveBtn = document.getElementById('cpModalSaveBtn');
-                if (saveBtn) { saveBtn.disabled = true; }
-
-                fetch(url, {
-                    method: method,
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify({
-                        name: name,
-                        description: (document.getElementById('cpModalDescription').value || '').trim(),
-                        rules_json: rules,
-                    }),
-                })
-                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-                .then(function (res) {
-                    if (!res.ok) {
-                        if (errEl) { errEl.textContent = res.data.error || 'Save failed.'; errEl.classList.remove('d-none'); }
-                        return;
-                    }
-                    if (_cpProfileModal) { _cpProfileModal.hide(); }
-                    _cpPaneLoaded = false;
-                    var content = document.getElementById('compliancePaneContent');
-                    var loading = document.getElementById('compliancePaneLoading');
-                    if (content) { content.classList.add('d-none'); content.innerHTML = ''; }
-                    if (loading) { loading.classList.remove('d-none'); loading.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;'; }
-                    loadCompliancePane();
-                })
-                .catch(function () {
-                    if (errEl) { errEl.textContent = 'Network error. Try again.'; errEl.classList.remove('d-none'); }
-                })
-                .finally(function () {
-                    if (saveBtn) { saveBtn.disabled = false; }
-                });
-            };
-
-            window.confirmDeleteComplianceProfile = function (profileId, profileName) {
-                _cpDeleteTargetId = profileId;
-                var nameEl = document.getElementById('cpDeleteName');
-                if (nameEl) { nameEl.textContent = profileName; }
-                _cpDeleteModal = getModal('complianceDeleteModal');
-                if (_cpDeleteModal) { _cpDeleteModal.show(); }
-            };
-
-            window.executeComplianceDelete = function () {
-                if (!_cpDeleteTargetId) { return; }
-                var btn = document.getElementById('cpDeleteConfirmBtn');
-                if (btn) { btn.disabled = true; }
-
-                fetch('/api/compliance-profiles/' + _cpDeleteTargetId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'Accept': 'application/json' },
-                })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (!data.success) { alert(data.error || 'Delete failed.'); return; }
-                    if (_cpDeleteModal) { _cpDeleteModal.hide(); }
-                    _cpPaneLoaded = false;
-                    var content = document.getElementById('compliancePaneContent');
-                    var loading = document.getElementById('compliancePaneLoading');
-                    if (content) { content.classList.add('d-none'); content.innerHTML = ''; }
-                    if (loading) { loading.classList.remove('d-none'); loading.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading profiles&hellip;'; }
-                    loadCompliancePane();
-                })
-                .catch(function () { alert('Network error. Try again.'); })
-                .finally(function () {
-                    if (btn) { btn.disabled = false; }
-                    _cpDeleteTargetId = null;
-                });
-            };
-        }());
-
-        // ── SNMP Config Modal ──────────────────────────────────────────────────
-        (function () {
-            var _snmpModal = null;
-
-            window.openSnmpModal = function (deviceId) {
-                var resultDiv = document.getElementById('snmpModalTestResult');
-                if (resultDiv) { resultDiv.innerHTML = ''; }
-                fetch('/api/snmp/config/' + deviceId, { credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        var cfg = data.configured ? data.config : (data.defaults || {});
-                        document.getElementById('snmpModalDeviceId').value  = deviceId;
-                        document.getElementById('snmpModalEnabled').checked = data.configured ? (cfg.is_enabled !== false) : false;
-                        document.getElementById('snmpModalCommunity').value  = cfg.community_string || 'public';
-                        document.getElementById('snmpModalVersion').value    = cfg.snmp_version || '2c';
-                        document.getElementById('snmpModalPort').value       = cfg.snmp_port || 161;
-                        document.getElementById('snmpModalInterval').value   = cfg.poll_interval_seconds || 300;
-                        // Enrich: use device name + IP from API response
-                        var nameEl = document.getElementById('snmpModalDeviceName');
-                        if (nameEl) { nameEl.textContent = (cfg.device_name || '') + (cfg.device_ip ? '  ·  ' + cfg.device_ip : ''); }
-                        var ipEl = document.getElementById('snmpModalDeviceIp');
-                        if (ipEl && cfg.device_ip) { ipEl.value = cfg.device_ip; }
-                        _snmpModal = new bootstrap.Modal(document.getElementById('snmpConfigModal'));
-                        _snmpModal.show();
-                    })
-                    .catch(function () { showDevicesNotification('Failed to load SNMP config.', 'danger'); });
-            };
-
-            window.testSnmpFromModal = function () {
-                var btn = document.getElementById('snmpModalTestBtn');
-                var resultDiv = document.getElementById('snmpModalTestResult');
-                var ip = document.getElementById('snmpModalDeviceIp').value || '';
-                if (!ip) { resultDiv.innerHTML = '<div class="alert alert-warning py-1 small mb-0">Device IP not available.</div>'; return; }
-                btn.disabled = true;
-                resultDiv.innerHTML = '<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Testing…</div>';
-                var community = document.getElementById('snmpModalCommunity').value || 'public';
-                var version   = document.getElementById('snmpModalVersion').value || '2c';
-                var port      = document.getElementById('snmpModalPort').value || 161;
-                fetch('/api/snmp/test?ip=' + encodeURIComponent(ip) + '&community=' + encodeURIComponent(community) + '&version=' + encodeURIComponent(version) + '&port=' + encodeURIComponent(port), { credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        if (data.success) {
-                            var s = data.system || {};
-                            var info = [s.sys_name, s.sys_descr, s.sys_location].filter(Boolean).join(' · ');
-                            resultDiv.innerHTML = '<div class="alert alert-success py-1 small mb-0"><i class="fas fa-check me-1"></i>Reachable' + (info ? ': ' + info : '') + '</div>';
-                        } else {
-                            resultDiv.innerHTML = '<div class="alert alert-danger py-1 small mb-0"><i class="fas fa-times me-1"></i>' + (data.error || 'Unreachable') + '</div>';
-                        }
-                    })
-                    .catch(function () { resultDiv.innerHTML = '<div class="alert alert-danger py-1 small mb-0">Network error during test.</div>'; })
-                    .finally(function () { btn.disabled = false; });
-            };
-
-            window.saveSnmpConfig = function () {
-                var deviceId = document.getElementById('snmpModalDeviceId').value;
-                var saveBtn  = document.getElementById('snmpModalSaveBtn');
-                saveBtn.disabled = true;
-                var payload = {
-                    device_id: parseInt(deviceId),
-                    is_enabled: document.getElementById('snmpModalEnabled').checked,
-                    community_string: document.getElementById('snmpModalCommunity').value,
-                    snmp_version: document.getElementById('snmpModalVersion').value,
-                    snmp_port: parseInt(document.getElementById('snmpModalPort').value) || 161,
-                    poll_interval_seconds: parseInt(document.getElementById('snmpModalInterval').value) || 300,
-                };
-                fetch('/api/snmp/config', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify(payload)
-                })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data.success || data.config) {
-                        if (_snmpModal) { _snmpModal.hide(); }
-                        // Update the toggle pill in the table without reload
-                        var toggleBtn = document.querySelector('.snmp-toggle-btn[onclick*="openSnmpModal(' + deviceId + ')"]');
-                        if (toggleBtn) {
-                            var enabled = payload.is_enabled;
-                            toggleBtn.className = 'snmp-toggle-btn ' + (enabled ? 'snmp-on' : 'snmp-off');
-                            var dot = toggleBtn.querySelector('.snmp-dot');
-                            if (dot) { dot.className = 'snmp-dot ' + (enabled ? 'snmp-dot-on' : 'snmp-dot-off'); }
-                        }
-                        showDevicesNotification('SNMP configuration saved.', 'success');
-                    } else {
-                        showDevicesNotification(data.error || 'Failed to save SNMP config.', 'danger');
-                    }
-                })
-                .catch(function () { showDevicesNotification('Network error saving SNMP config.', 'danger'); })
-                .finally(function () { saveBtn.disabled = false; });
-            };
-        }());
-
-        // ── End Compliance Profiles Pane ────────────────────────────────────────
-
         document.addEventListener('DOMContentLoaded', loadSitesAndDepartments);
     </script>
     {% endblock %}

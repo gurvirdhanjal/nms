@@ -5,64 +5,7 @@
 {% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<!-- Specific user management styles not covered by global layout -->
-<style>
-    /* Metric Cards Strip */
-    .metric-strip {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 2rem;
-    }
-
-    .metric-card {
-        background: rgba(16, 19, 27, 0.92);
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 6px;
-        padding: 1rem;
-    }
-
-    .metric-card .stat-label {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 0.65rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: #8a97a6;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-    }
-
-    .metric-card .stat-value {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #e6edf5;
-        line-height: 1.1;
-    }
-
-    .user-form-compact .field-label {
-        display: block;
-        margin-bottom: 0.375rem;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #94a3b8;
-    }
-
-    .user-form-compact .field-help {
-        display: inline;
-        margin-left: 0.35rem;
-        font-size: 0.65rem;
-        font-weight: 400;
-        letter-spacing: 0;
-        text-transform: none;
-        color: #64748b;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/users.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}

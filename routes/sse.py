@@ -51,15 +51,18 @@ def event_stream():
             current_app.logger.exception("[SSE] Stream generator failed for client=%s", client_id[:8])
         finally:
             broadcaster.unsubscribe(client_id)
+            try:
+                from extensions import db
+                db.session.remove()
+            except Exception:
+                pass
 
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache, no-transform',
-            'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no',
-            'Access-Control-Allow-Origin': '*'
         }
     )
 

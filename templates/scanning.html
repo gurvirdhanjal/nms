@@ -3,384 +3,96 @@
 {% block title %}Network Scanner - Device Monitoring{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
-<style>
-    .devices-page {
-        --d-border: rgba(148, 163, 184, 0.2);
-        --d-border-soft: rgba(148, 163, 184, 0.14);
-        --d-text-main: #e6edf5;
-        --d-text-muted: #8a97a6;
-    }
-
-    .devices-page .lucide {
-        width: 15px;
-        height: 15px;
-        stroke-width: 1.9;
-        vertical-align: text-bottom;
-    }
-
-    .devices-page .page-header h1 {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        margin: 0;
-        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 1.04rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.09em;
-        color: var(--d-text-main);
-    }
-
-    .devices-page .page-header .lead {
-        margin: 0.32rem 0 0;
-        color: var(--d-text-muted);
-        font-size: 0.69rem;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-    }
-
-    .devices-page .card {
-        border-radius: 6px;
-        border-color: var(--d-border);
-        background: rgba(16, 19, 27, 0.86);
-    }
-
-    .devices-page .card-header {
-        padding: 0.58rem 0.78rem;
-        border-bottom-color: var(--d-border-soft);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .devices-page .card-body {
-        padding: 0.7rem 0.78rem;
-    }
-
-    .devices-page .devices-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.72rem;
-        flex-wrap: wrap;
-    }
-
-    .devices-page .devices-title {
-        display: flex;
-        align-items: center;
-        gap: 0.48rem;
-        margin: 0;
-        font-size: 0.8rem;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        color: #c3cfdb;
-    }
-
-    .devices-page .btn {
-        font-size: 0.73rem;
-        letter-spacing: 0.03em;
-    }
-
-    .devices-page .btn .lucide {
-        margin-right: 0.3rem;
-    }
-
-    .devices-page .form-control,
-    .devices-page .form-select,
-    .devices-page .input-group-text {
-        font-size: 0.74rem;
-    }
-
-    /* Table consistency with devices.html */
-    .devices-page .table-responsive {
-        border: 1px solid var(--d-border);
-        border-radius: 6px;
-        max-height: 70vh;
-        overflow-x: auto;
-        overflow-y: auto;
-    }
-
-    .devices-page .devices-table {
-        margin-bottom: 0;
-    }
-
-    .devices-page .devices-table thead th {
-        padding: 0.46rem 0.52rem;
-        font-size: 0.6rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.085em;
-        color: #b8c6d5;
-        white-space: nowrap;
-    }
-
-    .devices-page .devices-table tbody td {
-        padding: 0.44rem 0.52rem;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
-        font-variant-numeric: tabular-nums;
-        vertical-align: middle;
-        line-height: 1.2;
-    }
-
-    .devices-page .devices-table tbody tr {
-        border-color: rgba(148, 163, 184, 0.1);
-    }
-
-    .devices-page .device-name-cell strong {
-        display: inline-block;
-        color: var(--d-text-main);
-        font-size: 0.78rem;
-        font-family: 'IBM Plex Sans', sans-serif;
-    }
-
-    .devices-page .device-mac {
-        margin-top: 0.16rem;
-        font-size: 0.66rem;
-        color: var(--d-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-
-
-    /* Progress Bar Enhancements */
-    .devices-page .tactical-progress {
-        height: 24px;
-        margin-bottom: 0.7rem;
-        background: rgba(16, 19, 27, 0.86);
-        border: 1px solid var(--d-border);
-        border-radius: 4px;
-        overflow: hidden;
-    }
-
-    .devices-page .tactical-progress .progress-bar {
-        font-size: 0.75rem;
-        font-weight: 700;
-    }
-
-    /* Action Buttons for Results */
-    .devices-page .result-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .devices-page .empty-scan-state {
-        text-align: center;
-        padding: 2.1rem 1rem;
-    }
-
-    .devices-page .empty-scan-state i,
-    .devices-page .empty-scan-state .lucide {
-        width: 44px;
-        height: 44px;
-        color: #8a97a6;
-        opacity: 0.42;
-    }
-
-    .devices-page .empty-scan-state h5 {
-        margin-top: 0.7rem;
-        color: var(--d-text-main);
-        font-size: 0.95rem;
-    }
-
-    .devices-page .empty-scan-state p {
-        color: var(--d-text-muted);
-        font-size: 0.77rem;
-    }
-
-    /* Port Scan Modal Enhancements */
-    #portScanModal .modal-body {
-        max-height: 60vh;
-        overflow-y: auto;
-    }
-
-    .port-result-item {
-        padding: 0.75rem 1rem;
-        background: rgba(16, 19, 27, 0.86);
-        border-left: 3px solid rgba(95, 151, 194, 0.4);
-        margin-bottom: 0.5rem;
-        border-radius: 4px;
-    }
-
-    .port-result-item.closed {
-        border-left-color: var(--d-text-muted);
-        opacity: 0.6;
-    }
-
-    /* Scan Statistics */
-    .devices-page .scan-stats {
-        display: flex;
-        gap: 0.7rem;
-        margin-bottom: 1.5rem;
-        flex-wrap: wrap;
-    }
-
-    .devices-page .scan-stat-item {
-        flex: 1;
-        min-width: 150px;
-        padding: 0.7rem;
-        background: rgba(16, 19, 27, 0.86);
-        border: 1px solid var(--d-border);
-        border-left: 3px solid rgba(95, 151, 194, 0.4);
-        border-radius: 4px;
-    }
-
-    .devices-page .scan-stat-item .stat-value {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: var(--d-text-main);
-        font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .devices-page .scan-stat-item .stat-label {
-        font-size: 0.68rem;
-        color: var(--d-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-
-    /* ===== Ultra Minimal Action Icons ===== */
-    .devices-page .device-actions {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        justify-content: center;
-    }
-
-    .devices-page .action-icon {
-        font-size: 0.85rem;
-        cursor: pointer;
-        opacity: 0.65;
-        transition: all 0.2s ease;
-    }
-
-    .devices-page .action-icon:hover {
-        opacity: 1;
-        transform: scale(1.1);
-    }
-
-    .devices-page .action-add {
-        color: #00d4aa;
-    }
-
-    .devices-page .action-scan {
-        color: #38bdf8;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanning.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
 
-<div class="devices-page">
-    <div class="row mb-2">
-        <div class="col-md-12 page-header">
-            <h1><i data-lucide="scan-search"></i> Network Scanner</h1>
-            <p class="lead">Discover and add new endpoints to the monitoring inventory</p>
+<div class="devices-page dashboard-dense">
+    <div class="row mb-3 mt-1">
+        <div class="col-md-12 dashboard-header">
+            <h2 class="scanner-hero-title m-0"><i data-lucide="scan-search"></i> Network Scanner</h2>
+            <div class="enterprise-section-sub mt-1" style="color: #8a97a6; font-size: 0.74rem; line-height: 1.4;">Discover and add new endpoints to the monitoring inventory</div>
         </div>
     </div>
 
-    <div class="row mt-3">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <div class="devices-toolbar">
-                        <h5 class="devices-title"><i data-lucide="radar"></i> Active Discovery</h5>
-                        <div class="devices-filters">
-                            <span class="badge bg-dark border border-secondary text-secondary me-2"
-                                style="font-size: 0.65rem;">
-                                <i data-lucide="zap" class="text-warning"></i> Heavy Scan Mode (Ports + SNMP)
-                            </span>
-                        </div>
+    <div class="mt-1">
+        <div class="card">
+            <div class="card-header">
+                <div class="devices-toolbar">
+                    <h5 class="devices-title"><i data-lucide="radar"></i> Active Discovery</h5>
+                    <div class="devices-filters">
+                        <span class="badge bg-dark border border-secondary text-secondary"
+                            style="font-size: 0.6rem;">
+                            <i data-lucide="zap" class="text-warning"></i> Heavy Scan Mode (Ports + SNMP)
+                        </span>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text bg-dark border-secondary text-light"><i
-                                        data-lucide="network"></i></span>
-                                <input type="text" class="form-control bg-dark text-light border-secondary" id="ipRange"
-                                    placeholder="e.g., 192.168.1.0/24">
-                                <button class="btn btn-outline-secondary border-secondary" type="button"
-                                    id="getLocalRange" title="Get Local Range">
-                                    <i data-lucide="home"></i> Local
-                                </button>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-primary btn-sm w-100" id="startScan">
-                                <i data-lucide="play"></i> Start Network Scan
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-success btn-sm w-100" id="scanAndAddBtn">
-                                <i data-lucide="database"></i> Scan & Add to DB
-                            </button>
-                        </div>
+            </div>
+            <div class="card-body">
+                <!-- Controls row — flex, no Bootstrap grid gutter -->
+                <div class="scan-controls-row">
+                    <div class="input-group input-group-sm scan-ip-group">
+                        <span class="input-group-text bg-dark border-secondary text-light"><i data-lucide="network"></i></span>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" id="ipRange" placeholder="e.g., 192.168.1.0/24">
+                        <button class="btn btn-outline-secondary border-secondary" type="button" id="getLocalRange" title="Get Local Range">
+                            <i data-lucide="home"></i> Local
+                        </button>
                     </div>
+                    <button class="btn btn-primary btn-sm scan-action-btn" id="startScan">
+                        <i data-lucide="play"></i> Start Scan
+                    </button>
+                    <button class="btn btn-success btn-sm scan-action-btn" id="scanAndAddBtn">
+                        <i data-lucide="database"></i> Scan & Add
+                    </button>
+                </div>
 
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <div class="tactical-progress" style="display: none;" id="scanProgress">
-                                <div class="progress-bar progress-bar-striped bg-primary"
-                                    role="progressbar" style="width: 0%">0%</div>
-                            </div>
-                        </div>
+                <!-- Progress bar — inline, no row wrapper -->
+                <div class="tactical-progress" style="display: none;" id="scanProgress">
+                    <div class="progress-bar progress-bar-striped bg-primary" role="progressbar" style="width: 0%">0%</div>
+                </div>
+
+                <!-- Bulk Actions Bar -->
+                <div id="bulkActions" class="scan-bulk-bar" style="display: none;">
+                    <div class="bulk-selected-label">
+                        <i data-lucide="check-square" style="width:13px;height:13px;"></i>
+                        <span class="bulk-count" id="selectedCount">0</span>
+                        <span>selected</span>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <!-- Bulk Actions Bar -->
-                            <div id="bulkActions" class="scan-bulk-bar" style="display: none;">
-                                <div class="bulk-selected-label">
-                                    <i data-lucide="check-square" style="width:14px;height:14px;"></i>
-                                    <span class="bulk-count" id="selectedCount">0</span>
-                                    <span>devices selected</span>
-                                </div>
-                                <div class="bulk-actions-group">
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="clearBulkSelection()" style="font-size:0.73rem; padding:0.28rem 0.65rem;">
-                                        <i data-lucide="x" style="width:12px;height:12px;"></i> Clear
-                                    </button>
-                                    <button class="btn btn-sm" id="bulkAddBtn" style="font-size:0.73rem; padding:0.28rem 0.75rem; background:rgba(0,201,141,0.15); border:1px solid rgba(0,201,141,0.35); color:#00c98d;">
-                                        <i data-lucide="plus-circle" style="width:12px;height:12px;"></i> Add to Inventory
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div id="scanResults">
-                                <!-- Results will be displayed here -->
-                            </div>
-                        </div>
+                    <div class="bulk-actions-group">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearBulkSelection()" style="font-size:0.7rem; padding:0.2rem 0.5rem;">
+                            <i data-lucide="x" style="width:11px;height:11px;"></i> Clear
+                        </button>
+                        <button class="btn btn-sm" id="bulkAddBtn" style="font-size:0.7rem; padding:0.2rem 0.6rem; background:rgba(0,201,141,0.15); border:1px solid rgba(0,201,141,0.35); color:#00c98d;">
+                            <i data-lucide="plus-circle" style="width:11px;height:11px;"></i> Add to Inventory
+                        </button>
                     </div>
                 </div>
+
+                <div id="scanResults"></div>
             </div>
         </div>
     </div>
 
     <!-- SNMP Discovery Toggle Button -->
-    <div class="row mt-3">
-        <div class="col-md-12">
-            <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
-                <h6 class="devices-title text-muted mb-0"><i data-lucide="git-merge"></i> SNMP Topology Discovery</h6>
-                <button class="btn btn-sm btn-outline-secondary" id="toggleDiscoveryPanel">
-                    Configure <i data-lucide="chevron-down" id="discoveryChevron"></i>
-                </button>
-            </div>
-        </div>
+    <div class="scan-snmp-toggle">
+        <span class="devices-title text-muted"><i data-lucide="git-merge"></i> SNMP Topology Discovery</span>
+        <button class="btn btn-sm btn-outline-secondary" id="toggleDiscoveryPanel">
+            Configure <i data-lucide="chevron-down" id="discoveryChevron"></i>
+        </button>
     </div>
 
     <!-- SNMP Discovery Panel (Hidden by default) -->
-    <div class="row mt-3" id="discoveryPanel" style="display: none;">
-        <div class="col-md-12">
-            <div class="card bg-dark border-secondary">
-                <div class="card-body">
-                    <p class="text-muted small mb-3">
+    <div id="discoveryPanel" style="display: none;">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body">
+                    <p class="text-muted small mb-2">
                         <i data-lucide="info"></i>
                         Enter a seed switch IP and its SNMP community string. The system will use CDP/LLDP to
                         recursively discover neighboring switches and their connected devices via MAC/ARP tables.
                     </p>
 
-                    <div class="row mb-3 align-items-end">
+                    <div class="row mb-2 align-items-end">
                         <div class="col-md-3">
                             <label class="form-label text-muted"
                                 style="font-size: 0.65rem; text-transform: uppercase;">Seed Switch IP</label>
@@ -501,11 +213,10 @@
                 </div>
             </div>
         </div>
-    </div>
 </div>
 
 <!-- Port Scan Modal -->
-<div class="modal fade" id="portScanModal" tabindex="-1" aria-labelledby="portScanModalLabel" aria-hidden="true">
+<div class="modal fade" id="portScanModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="portScanModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content tactical-card">
             <div class="modal-header border-bottom-0">
@@ -535,7 +246,7 @@
         sharedRefresh: true
     });
 </script>
-<script src="{{ url_for('static', filename='js/scanning.js') }}?v={{ range(1, 10000) | random }}"></script>
+<script src="{{ url_for('static', filename='js/scanning.js') }}?v={{ asset_ver }}"></script>
 <script>
     // ============================================================================
     // SNMP DISCOVERY PANEL LOGIC

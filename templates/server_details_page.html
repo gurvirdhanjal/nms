@@ -1,248 +1,420 @@
 {% extends "base.html" %}
 
-{% block title %}{{ device.device_name }} - Server Monitoring{% endblock %}
+{% block title %}{{ device.device_name }} — Server Monitoring{% endblock %}
 
 {% block extra_css %}
-<style>
-    .server-details-page {
-        --sdp-bg: rgba(16, 19, 27, 0.92);
-        --sdp-border: rgba(148, 163, 184, 0.08);
-        --sdp-border-accent: rgba(148, 163, 184, 0.12);
-        --sdp-surface: rgba(24, 30, 42, 0.95);
-        min-height: 100vh;
-        background: var(--bg-primary);
-    }
-
-    .server-details-page .page-header {
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        background: rgba(16, 19, 27, 0.98);
-        backdrop-filter: blur(12px);
-        border-bottom: 1px solid var(--sdp-border);
-        padding: 1rem 0;
-        margin-bottom: 1.5rem;
-    }
-
-    .server-details-page .page-header-content {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-    }
-
-    .server-details-page .server-identity {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .server-details-page .server-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
-        background: rgba(0, 229, 160, 0.08);
-        border: 1px solid rgba(0, 229, 160, 0.15);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .server-details-page .server-title {
-        margin: 0;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 18px;
-        font-weight: 600;
-        color: #fff;
-        letter-spacing: 0.01em;
-    }
-
-    .server-details-page .server-subtitle {
-        font-size: 11px;
-        color: var(--text-muted);
-        font-family: 'IBM Plex Mono', monospace;
-        margin-top: 2px;
-    }
-
-    .server-details-page .page-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .server-details-page .btn-action {
-        font-size: 11px;
-        padding: 8px 14px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: var(--text-secondary);
-        border-radius: 6px;
-        transition: all 0.2s;
-    }
-
-    .server-details-page .btn-action:hover {
-        background: rgba(255,255,255,0.08);
-        border-color: rgba(255,255,255,0.15);
-        color: var(--text-primary);
-    }
-
-    .server-details-page .btn-action i {
-        font-size: 10px;
-        margin-right: 6px;
-    }
-
-    .server-details-page .tactical-card {
-        background: var(--sdp-surface);
-        border: 1px solid var(--sdp-border);
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .server-details-page .card-header {
-        background: transparent;
-        border-bottom: 1px solid var(--sdp-border);
-        padding: 12px 16px;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-secondary);
-    }
-
-    .server-details-page .modal-chart-120 {
-        height: 120px;
-    }
-
-    .server-details-page .modal-chart-200 {
-        height: 200px;
-    }
-
-    .server-details-page .modal-chart-220 {
-        height: 220px;
-    }
-
-    @media (max-width: 768px) {
-        .server-details-page .page-header-content {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        
-        .server-details-page .page-actions {
-            width: 100%;
-            flex-wrap: wrap;
-        }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/server_dashboard.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
 <div class="server-details-page">
-    <div class="page-header">
-        <div class="container-fluid">
-            <div class="page-header-content">
-                <div class="server-identity">
-                    <div class="server-icon">
-                        <i class="fas fa-server" style="color: var(--teal); font-size: 20px;"></i>
+
+    {# ── Command header ─────────────────────────────────────────────── #}
+    <header class="smc-header">
+        <div class="container-fluid px-4">
+
+            {# Top row: identity + health ring + actions #}
+            <div class="smc-header-inner">
+                <a href="{{ url_for('devices_bp.device_management') }}" class="smc-back-btn" title="Back to Devices">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+
+                <div class="smc-identity">
+                    <div class="smc-identity-icon">
+                        <i class="fas fa-server"></i>
                     </div>
-                    <div>
-                        <h1 class="server-title">{{ device.device_name }}</h1>
-                        <div class="server-subtitle">
-                            {{ device.device_ip }} • 
+                    <div class="smc-identity-text">
+                        <div class="smc-device-name">{{ device.device_name }}</div>
+                        <div class="smc-device-meta">
+                            <span class="smc-meta-ip">{{ device.device_ip }}</span>
+                            <span class="smc-meta-sep">·</span>
                             <span id="page-device-status">
                                 {% if device.maintenance_mode %}
-                                <span style="color: var(--amber);">Maintenance</span>
+                                <span class="smc-status-maintenance">Maintenance</span>
                                 {% else %}
-                                <span style="color: var(--teal);">Active</span>
+                                <span class="smc-status-active">Active</span>
                                 {% endif %}
                             </span>
+                            <span class="smc-meta-sep">·</span>
+                            <span id="smc-header-os" class="smc-meta-os">—</span>
                         </div>
                     </div>
                 </div>
-                <div class="page-actions">
-                    <a href="{{ url_for('devices_bp.device_management') }}" class="btn btn-action">
-                        <i class="fas fa-arrow-left"></i>Back to Devices
+
+                <div class="smc-health-badge">
+                    <div class="smc-health-ring" id="smc-health-ring">
+                        <div class="smc-health-ring-inner">
+                            <span class="smc-health-score" id="smc-header-score">—</span>
+                        </div>
+                    </div>
+                    <div class="smc-health-label-group">
+                        <span class="smc-health-state" id="smc-header-health-state">Loading…</span>
+                        <span class="smc-health-sublabel" id="smc-header-health-sub">Composite score</span>
+                    </div>
+                </div>
+
+                <div class="smc-actions">
+                    <span class="smc-freshness" id="smc-freshness" aria-live="polite"></span>
+                    <a href="{{ url_for('devices_bp.device_details_page', device_id=device.device_id) }}" class="smc-action-btn">
+                        <i class="fas fa-cog"></i><span>Config</span>
                     </a>
-                    <a href="{{ url_for('devices_bp.device_details_page', device_id=device.device_id) }}" class="btn btn-action">
-                        <i class="fas fa-cog"></i>Device Config
-                    </a>
-                    <button type="button" class="btn btn-action" id="btnRefreshMetrics">
-                        <i class="fas fa-sync-alt"></i>Refresh
+                    <button type="button" class="smc-action-btn" id="btnRefreshMetrics">
+                        <i class="fas fa-sync-alt"></i><span>Refresh</span>
                     </button>
                 </div>
             </div>
+
+            {# Vitals strip #}
+            <div class="smc-vitals">
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Uptime</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-uptime">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">24h Avail</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-avail">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Downtime</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-downtime">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">CPU</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-cpu">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Memory</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-mem">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Disk</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-disk">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Boot</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-boot">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vital">
+                    <span class="smc-vital-label">Last Seen</span>
+                    <span class="smc-vital-val smc-skeleton" id="smc-v-lastseen">—</span>
+                </div>
+                <div class="smc-vital-sep"></div>
+                <div class="smc-vitals-tl">
+                    <span class="smc-vital-label">24h Timeline (hourly)</span>
+                    <div class="smc-timeline-bar" id="smc-timeline-bar" title="24-hour uptime — green=online, amber=partial, red=offline, grey=no data"></div>
+                </div>
+            </div>
+
         </div>
+        <div class="smc-refresh-bar" id="smc-refresh-bar" aria-hidden="true"></div>
+    </header>
+
+    {# ── Main content ─────────────────────────────────────────────────── #}
+    <div class="container-fluid px-4 pb-5 smc-body">
+        {# The panel renders its own #server-page-surface with data-device-id + data-threshold-editable — no wrapper needed #}
+        {% set telemetry_prefix = 'server-page' %}
+        {% set telemetry_show_threshold_editor = true %}
+        {% set telemetry_can_edit_thresholds = can_edit_server_thresholds %}
+        {% set telemetry_show_extended = true %}
+        {% include 'partials/server_metrics_panel.html' %}
     </div>
 
-    <div class="container-fluid">
-        <div id="server-page-surface" data-device-id="{{ device.device_id }}">
-            {% set telemetry_prefix = 'server-page' %}
-            {% set telemetry_show_threshold_editor = true %}
-            {% set telemetry_can_edit_thresholds = can_edit_server_thresholds %}
-            {% set telemetry_show_extended = true %}
-            {% include 'partials/server_metrics_panel.html' %}
-        </div>
-    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
-    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
+    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v={{ asset_ver }}";
 
-    const pageRoot = document.getElementById('server-page-surface');
+    // The panel partial renders #server-page-surface with data-device-id + data-threshold-editable
+    const pageRoot = document.querySelector('[data-telemetry-prefix="server-page"]');
     const deviceId = Number(pageRoot?.dataset.deviceId || 0);
-    
+
     if (!deviceId) {
-        console.error('No device ID found');
+        console.error('[ServerPage] No device ID found');
     } else {
-        const view = createServerMetricsView({ 
-            root: pageRoot, 
-            prefix: 'server-page' 
-        });
-
+        const view = createServerMetricsView({ root: pageRoot, prefix: 'server-page' });
         let currentRange = '24h';
+        let vitalsAnimated = false;
+        let cardsRevealed = false;
+        let lastRefreshTime = null;
+        const prevVitals = {};
 
-        async function loadMetrics() {
+        // ── Live UX refs ────────────────────────────────────────────────
+        const freshnessEl = document.getElementById('smc-freshness');
+        const refreshBarEl = document.getElementById('smc-refresh-bar');
+        const REFRESH_INTERVAL_MS = 30000;
+
+        // Freshness counter — ticks every second after first data load
+        setInterval(() => {
+            if (!lastRefreshTime) return;
+            const ageS = (Date.now() - lastRefreshTime) / 1000;
+            if (freshnessEl) {
+                const label = ageS < 5 ? 'just now' : `${Math.floor(ageS)}s ago`;
+                freshnessEl.textContent = label;
+                const state = ageS < 12 ? 'fresh' : ageS < 28 ? 'aging' : 'stale';
+                freshnessEl.className = `smc-freshness visible ${state}`;
+            }
+            if (refreshBarEl) {
+                refreshBarEl.style.width = `${Math.min(100, (ageS / 30) * 100)}%`;
+            }
+        }, 1000);
+
+        // Pulse a vital element to signal a significant value change
+        function pulseVital(el, direction) {
+            if (!el) return;
+            const cls = direction === 'good' ? 'smc-vital-delta-good' : 'smc-vital-delta-warn';
+            el.classList.remove('smc-vital-delta-good', 'smc-vital-delta-warn');
+            void el.offsetWidth; // force reflow to restart animation
+            el.classList.add(cls);
+            setTimeout(() => el.classList.remove(cls), 800);
+        }
+
+        function animateCounter(el, target, unit = '', ms = 600) {
+            if (!el || target == null || isNaN(target)) return;
+            const start = performance.now(), from = parseFloat(el.textContent) || 0;
+            const tick = (now) => {
+                const p = Math.min((now - start) / ms, 1), e = 1 - Math.pow(1 - p, 4);
+                el.textContent = `${(from + (target - from) * e).toFixed(1)}${unit}`;
+                if (p < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        }
+
+        // ── Vitals strip ──────────────────────────────────────────────────
+        function updateVitalsStrip(data) {
+            const el = (id) => document.getElementById(id);
+            const fmt = (v, u = '') => v != null ? `${Number(v).toFixed(1)}${u}` : '—';
+
+            // Uptime
+            const sec = data.uptime_seconds;
+            if (sec != null) {
+                const d = Math.floor(sec / 86400);
+                const h = Math.floor((sec % 86400) / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                const uptimeEl = el('smc-v-uptime');
+                if (uptimeEl) uptimeEl.textContent = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+            }
+
+            // Availability + downtime
+            const avail = data.availability_24h_pct;
+            const down  = data.downtime_24h_min;
+            const availEl = el('smc-v-avail');
+            if (availEl) {
+                availEl.textContent = avail != null ? `${avail}%` : '—';
+                availEl.style.color = avail == null ? ''
+                    : avail >= 99.5 ? 'var(--ui-accent)'
+                    : avail >= 95   ? 'var(--ui-warning)'
+                    : 'var(--ui-danger)';
+            }
+            const downEl = el('smc-v-downtime');
+            if (downEl) {
+                if (down == null) { downEl.textContent = '—'; downEl.style.color = ''; }
+                else if (down === 0) { downEl.textContent = '0 min'; downEl.style.color = 'var(--ui-accent)'; }
+                else {
+                    downEl.textContent = down < 60 ? `${down} min` : `${(down / 60).toFixed(1)}h`;
+                    downEl.style.color = 'var(--ui-warning)';
+                }
+            }
+
+            // Current resource metrics (last value in series)
+            const lastVal = (arr) => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+            const cpu  = lastVal(data.cpu);
+            const mem  = lastVal(data.memory);
+            const disk = lastVal(data.disk);
+
+            const cpuEl = el('smc-v-cpu');
+            if (cpuEl) {
+                cpuEl.style.color = cpu == null ? '' : cpu >= 90 ? 'var(--ui-danger)' : cpu >= 75 ? 'var(--ui-warning)' : 'var(--ui-accent)';
+                if (!vitalsAnimated && cpu != null) animateCounter(cpuEl, cpu, '%');
+                else cpuEl.textContent = fmt(cpu, '%');
+                if (vitalsAnimated && cpu != null && prevVitals.cpu != null && Math.abs(cpu - prevVitals.cpu) >= 1.5) {
+                    pulseVital(cpuEl, cpu < prevVitals.cpu ? 'good' : 'warn');
+                }
+                prevVitals.cpu = cpu;
+            }
+            const memEl = el('smc-v-mem');
+            if (memEl) {
+                memEl.style.color = mem == null ? '' : mem >= 90 ? 'var(--ui-danger)' : mem >= 80 ? 'var(--ui-warning)' : 'var(--ui-accent)';
+                if (!vitalsAnimated && mem != null) animateCounter(memEl, mem, '%');
+                else memEl.textContent = fmt(mem, '%');
+                if (vitalsAnimated && mem != null && prevVitals.mem != null && Math.abs(mem - prevVitals.mem) >= 1.5) {
+                    pulseVital(memEl, mem < prevVitals.mem ? 'good' : 'warn');
+                }
+                prevVitals.mem = mem;
+            }
+            const diskEl = el('smc-v-disk');
+            if (diskEl) {
+                diskEl.style.color = disk == null ? '' : disk >= 90 ? 'var(--ui-danger)' : disk >= 85 ? 'var(--ui-warning)' : 'var(--ui-accent)';
+                if (!vitalsAnimated && disk != null) animateCounter(diskEl, disk, '%');
+                else diskEl.textContent = fmt(disk, '%');
+                if (vitalsAnimated && disk != null && prevVitals.disk != null && Math.abs(disk - prevVitals.disk) >= 1.5) {
+                    pulseVital(diskEl, disk < prevVitals.disk ? 'good' : 'warn');
+                }
+                prevVitals.disk = disk;
+            }
+
+            // Boot + last seen (IST)
+            const fmtDt = (iso) => {
+                if (!iso) return '—';
+                const d = new Date(/z$/i.test(iso) ? iso : iso + 'Z');
+                return isNaN(d) ? '—' : d.toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            };
+            const bootEl = el('smc-v-boot');
+            if (bootEl) bootEl.textContent = fmtDt(data.boot_time);
+            const seenEl = el('smc-v-lastseen');
+            if (seenEl) {
+                const fmtVal = fmtDt(data.last_seen);
+                const seenDate = data.last_seen
+                    ? new Date(/z$/i.test(data.last_seen) ? data.last_seen : data.last_seen + 'Z')
+                    : null;
+                if (seenDate && !isNaN(seenDate) && (Date.now() - seenDate.getTime()) < 60000) {
+                    seenEl.innerHTML = '<span class="smc-live-dot"></span><span>' + fmtVal + '</span>';
+                } else {
+                    seenEl.textContent = fmtVal;
+                }
+            }
+
+            // OS label in header
+            const osEl = el('smc-header-os');
+            if (osEl && data.os) osEl.textContent = [data.os.name, data.os.version].filter(Boolean).join(' ') || '—';
+
+            // Health ring + score
+            const scoreEl = el('smc-header-score');
+            const stateEl = el('smc-header-health-state');
+            const ringEl  = el('smc-health-ring');
+            const subEl   = el('smc-header-health-sub');
+            const score   = data.health_score != null ? Math.round(data.health_score) : null;
+            if (scoreEl) scoreEl.textContent = score != null ? String(score) : '—';
+            if (stateEl) {
+                stateEl.textContent = data.health || 'Unknown';
+                stateEl.style.color = data.health === 'Healthy'  ? 'var(--ui-accent)'
+                    : data.health === 'Warning'  ? 'var(--ui-warning)'
+                    : data.health === 'Critical' ? 'var(--ui-danger)'
+                    : 'var(--ui-text-dim)';
+            }
+            if (ringEl) {
+                ringEl.className = 'smc-health-ring';
+                if (data.health === 'Healthy')  ringEl.classList.add('ring-healthy');
+                else if (data.health === 'Warning')  ringEl.classList.add('ring-warning');
+                else if (data.health === 'Critical') ringEl.classList.add('ring-critical');
+            }
+            if (subEl) {
+                const pens = Array.isArray(data.health_penalties) ? data.health_penalties : [];
+                subEl.textContent = pens.length
+                    ? pens.slice(0, 2).map(p => p.label || p.metric_key).join(', ')
+                    : 'All systems nominal';
+            }
+
+            // Remove skeleton shimmer on first data arrival
+            if (!vitalsAnimated) {
+                document.querySelectorAll('#smc-v-uptime, #smc-v-avail, #smc-v-downtime, #smc-v-boot')
+                    .forEach(el => el.classList.remove('smc-skeleton'));
+            }
+
+            vitalsAnimated = true;
+
+            // 24h uptime timeline bar
+            renderTimelineBar(data.uptime_timeline || []);
+        }
+
+        function renderTimelineBar(timeline) {
+            const bar = document.getElementById('smc-timeline-bar');
+            if (!bar || !timeline.length) return;
+            bar.innerHTML = timeline.map((s, i) => {
+                const color = s === 'up'      ? 'var(--ui-accent)'
+                            : s === 'partial' ? 'var(--ui-warning)'
+                            : s === 'down'    ? 'var(--ui-danger)'
+                            :                   'rgba(255,255,255,0.07)';
+                const label = { up:'Online', partial:'Partial', down:'Offline', unknown:'No data' }[s] || 'No data';
+                // Hour label: 23 hours ago = index 0, now = index 23
+                const hoursAgo = 23 - i;
+                const title = hoursAgo === 0 ? `Now — ${label}` : `${hoursAgo}h ago — ${label}`;
+                return `<span class="smc-tl-seg" style="background:${color}" title="${title}"></span>`;
+            }).join('');
+        }
+
+        // ── Load + refresh ────────────────────────────────────────────
+        async function loadMetrics(force = false) {
+            // Dim charts while fetching so the refresh feels intentional
+            const chartWrappers = document.querySelectorAll('.smc-body .modal-chart-120');
+            if (force || lastRefreshTime) {
+                chartWrappers.forEach(el => el.classList.add('smc-chart-updating'));
+            }
+
             try {
-                await view.load(deviceId, currentRange, { preferCache: true });
-                view.prefetch?.(deviceId, currentRange);
-            } catch (error) {
-                console.error('Failed to load server metrics:', error);
+                if (force) view.invalidateCache(deviceId, currentRange);
+                const data = await view.load(deviceId, currentRange, { preferCache: !force });
+
+                if (data) {
+                    updateVitalsStrip(data);
+
+                    // Record refresh time + reset progress bar with a snappy clear → grow
+                    lastRefreshTime = Date.now();
+                    if (refreshBarEl) {
+                        refreshBarEl.style.transition = 'none';
+                        refreshBarEl.style.width = '0%';
+                        void refreshBarEl.offsetWidth; // reflow
+                        refreshBarEl.style.transition = ''; // restore linear 1s
+                    }
+                }
+
+                if (!force) {
+                    view.prefetch?.(deviceId, currentRange);
+                    // Staggered card reveal — once after first successful data load
+                    if (!cardsRevealed) {
+                        cardsRevealed = true;
+                        document.querySelectorAll('.smc-body .tactical-card').forEach((card, i) => {
+                            card.style.setProperty('--card-delay', `${i * 55}ms`);
+                            card.classList.add('smc-card-reveal');
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('[ServerPage] Load failed:', err);
+            } finally {
+                chartWrappers.forEach(el => el.classList.remove('smc-chart-updating'));
             }
         }
 
-        // Initial load
         loadMetrics();
-
-        // Auto-refresh every 30 seconds
         const refreshInterval = setInterval(loadMetrics, 30000);
 
-        // Manual refresh button
+        // Manual refresh
         const refreshBtn = document.getElementById('btnRefreshMetrics');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i>Refreshing...';
-                loadMetrics().finally(() => {
-                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i>Refresh';
+                refreshBtn.classList.add('smc-refreshing');
+                loadMetrics(true).finally(() => {
+                    setTimeout(() => refreshBtn.classList.remove('smc-refreshing'), 600);
                 });
             });
         }
 
-        // Range toggle buttons
+        // Range toggle
         const rangeButtons = pageRoot.querySelectorAll('.server-range-toggle [data-range]');
-        rangeButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                currentRange = button.dataset.range;
-                rangeButtons.forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.range === currentRange);
-                    btn.classList.toggle('tactical-btn-primary', btn.dataset.range === currentRange);
-                    btn.classList.toggle('tactical-btn-ghost', btn.dataset.range !== currentRange);
+        rangeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentRange = btn.dataset.range;
+                rangeButtons.forEach(b => {
+                    b.classList.toggle('active', b.dataset.range === currentRange);
+                    b.classList.toggle('tactical-btn-primary', b.dataset.range === currentRange);
+                    b.classList.toggle('tactical-btn-ghost', b.dataset.range !== currentRange);
                 });
                 loadMetrics();
             });
         });
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             clearInterval(refreshInterval);
             view?.destroy();

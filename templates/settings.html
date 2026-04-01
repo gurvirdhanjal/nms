@@ -1,0 +1,657 @@
+{% extends "base.html" %}
+{% from "components/ui_components.html" import ui_page_header %}
+
+{% block title %}Settings{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ asset_ver }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}?v={{ asset_ver }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-section">
+    <div class="page-container">
+
+        {% call ui_page_header('Settings', 'Manage system configuration, alert delivery, and user access.') %}
+            <span class="cp-rule-chip" style="background:rgba(220,53,69,.12);color:#dc3545;border-color:rgba(220,53,69,.25);">
+                <i class="fas fa-lock" style="margin-right:.3rem;font-size:.65rem;"></i>Admin Only
+            </span>
+        {% endcall %}
+
+        <!-- ============================================================ -->
+        <!-- Email Notifications                                           -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="smtpCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="mail" class="settings-card-icon"></i>
+                    Email Notifications
+                </div>
+                <div class="settings-card-badge {% if smtp_configured %}badge-ok{% else %}badge-warn{% endif %}">
+                    {% if smtp_configured %}Ready{% else %}Not configured{% endif %}
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label class="settings-label" for="smtpServer">Mail Server</label>
+                        <input type="text" id="smtpServer" class="settings-input"
+                               value="{{ smtp_config.smtp_server or '' }}"
+                               placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="smtpPort">Port</label>
+                        <input type="number" id="smtpPort" class="settings-input"
+                               value="{{ smtp_config.smtp_port or '587' }}"
+                               min="1" max="65535" placeholder="587">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="smtpUser">Username</label>
+                        <input type="text" id="smtpUser" class="settings-input"
+                               value="{{ smtp_config.smtp_user or '' }}"
+                               placeholder="alerts@company.com" autocomplete="off">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="smtpPassword">Password</label>
+                        <div class="settings-password-wrap">
+                            <input type="password" id="smtpPassword" class="settings-input"
+                                   value="{{ smtp_config.smtp_password or '' }}"
+                                   autocomplete="new-password">
+                            <button type="button" class="settings-eye-btn" onclick="togglePasswordVisibility('smtpPassword', this)"
+                                    title="Show / hide">
+                                <i data-lucide="eye" style="width:14px;height:14px;"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-field settings-field--full">
+                        <label class="settings-label" for="smtpFrom">Sender Address</label>
+                        <input type="email" id="smtpFrom" class="settings-input"
+                               value="{{ smtp_config.smtp_from or '' }}"
+                               placeholder="nms-alerts@company.com">
+                        <span class="settings-hint">Emails will appear to come from this address.</span>
+                    </div>
+                    <div class="settings-field settings-field--full">
+                        <label class="settings-label" for="smtpRecipients">Alert Recipients</label>
+                        <textarea id="smtpRecipients" class="settings-input settings-textarea"
+                                  placeholder="ops@company.com, oncall@company.com">{{ smtp_config.smtp_recipients or '' }}</textarea>
+                        <span class="settings-hint">Who receives alert emails — separate multiple addresses with commas.</span>
+                    </div>
+                    <div class="settings-field settings-field--full">
+                        <label class="settings-label">Encryption</label>
+                        <div class="form-check form-switch d-inline-flex align-items-center gap-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="smtpUseTls"
+                                   {% if smtp_config.smtp_use_tls in ('true', '1', 'yes', True) %}checked{% endif %}
+                                   style="cursor:pointer;">
+                            <label class="form-check-label settings-toggle-label" for="smtpUseTls">
+                                Encrypt connection (TLS)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="smtpResult" class="settings-result" style="display:none;"></div>
+
+                <div class="settings-actions">
+                    <button type="button" class="settings-btn settings-btn--primary" onclick="saveSmtp()">
+                        <i data-lucide="save" style="width:14px;height:14px;margin-right:.3rem;"></i>
+                        Save
+                    </button>
+                    <button type="button" class="settings-btn settings-btn--secondary" onclick="testSmtp()">
+                        <i data-lucide="plug" style="width:14px;height:14px;margin-right:.3rem;"></i>
+                        Test Connection
+                    </button>
+                    <button type="button" class="settings-btn settings-btn--ghost" onclick="testAlertFlow()">
+                        <i data-lucide="bell" style="width:14px;height:14px;margin-right:.3rem;"></i>
+                        Send Test Alert
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Alert Channels                                                -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="alertChannelsCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="bell-ring" class="settings-card-icon"></i>
+                    Alert Channels
+                </div>
+                <button class="settings-btn settings-btn--primary" onclick="openNewChannel()" style="font-size:.75rem;padding:.3rem .8rem;">
+                    <i data-lucide="plus" style="width:12px;height:12px;margin-right:.25rem;"></i>New Channel
+                </button>
+            </div>
+            <div class="settings-card-body">
+                <p class="settings-hint" style="margin-bottom:.85rem;">
+                    Channels control where alerts are delivered. Email channels use the settings above.
+                    If no channels are defined, alerts fall back to the recipient list above.
+                </p>
+                <div id="channelTableWrap">
+                    <p class="settings-placeholder-text" id="channelEmpty" style="display:none;">
+                        No alert channels configured yet.
+                    </p>
+                    <div id="channelTableScroll" style="display:none;overflow-x:auto;">
+                        <table id="channelTable" style="width:100%;border-collapse:collapse;font-size:.8rem;">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(148,163,184,.12);">
+                                    <th class="settings-th">Name</th>
+                                    <th class="settings-th">Type</th>
+                                    <th class="settings-th">Alerts</th>
+                                    <th class="settings-th">Device scope</th>
+                                    <th class="settings-th">Status</th>
+                                    <th class="settings-th" style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="channelTbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="channelMsg" class="settings-result mt-3" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Channel Modal -->
+        <div id="channelModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+            <div style="background:var(--ui-surface,#0e1218);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:1.5rem;width:min(520px,95vw);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                    <h3 id="channelModalTitle" style="font-size:.88rem;font-weight:700;color:#e2e8f0;text-transform:uppercase;letter-spacing:.05em;">New Channel</h3>
+                    <button onclick="closeChannelModal()" style="color:#64748b;background:none;border:none;font-size:1.4rem;cursor:pointer;line-height:1;">&times;</button>
+                </div>
+                <input type="hidden" id="channelId">
+                <div class="settings-field">
+                    <label class="settings-label">Channel Name</label>
+                    <input type="text" id="channelName" class="settings-input" placeholder="e.g. Operations Team">
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Delivery Method</label>
+                    <select id="channelType" class="settings-input" onchange="onChannelTypeChange()">
+                        <option value="email">Email</option>
+                        <option value="slack">Slack</option>
+                        <option value="teams">Microsoft Teams</option>
+                    </select>
+                </div>
+                <div id="emailFields" class="settings-field">
+                    <label class="settings-label">Recipients</label>
+                    <textarea id="channelRecipients" class="settings-input settings-textarea" rows="2"
+                              placeholder="ops@company.com, oncall@company.com"></textarea>
+                    <span class="settings-hint">Separate multiple addresses with commas.</span>
+                </div>
+                <div id="webhookFields" class="settings-field" style="display:none;">
+                    <label class="settings-label">Webhook URL</label>
+                    <input type="url" id="channelWebhook" class="settings-input" placeholder="https://hooks.slack.com/services/...">
+                </div>
+                <div class="settings-field" style="margin-top:.5rem;">
+                    <label class="settings-label">Send alerts for</label>
+                    <div style="display:flex;gap:1.25rem;flex-wrap:wrap;margin-top:.2rem;">
+                        <label class="settings-toggle-label"><input type="checkbox" id="channelCritical" checked> Critical</label>
+                        <label class="settings-toggle-label"><input type="checkbox" id="channelWarning"> Warning</label>
+                    </div>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Apply to device types <span style="font-size:.65rem;color:#64748b;font-weight:400;text-transform:none;letter-spacing:0;">(leave blank for all devices)</span></label>
+                    <input type="text" id="channelDeviceTypes" class="settings-input" placeholder="server, switch">
+                </div>
+                <div class="settings-field" style="margin-top:.25rem;">
+                    <label class="settings-toggle-label" style="font-size:.78rem;">
+                        <input type="checkbox" id="channelEnabled" checked style="margin-right:.4rem;">
+                        Channel active
+                    </label>
+                </div>
+                <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(148,163,184,.1);">
+                    <button class="settings-btn settings-btn--ghost" onclick="closeChannelModal()">Cancel</button>
+                    <button class="settings-btn settings-btn--primary" onclick="saveChannel()">Save Channel</button>
+                </div>
+                <div id="channelModalMsg" class="settings-result mt-2" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Monitoring Interval                                           -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="monitoringCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="activity" class="settings-card-icon"></i>
+                    Monitoring Interval
+                </div>
+                <div class="settings-card-badge badge-ok">Updates live</div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label class="settings-label" for="monitoringInterval">Check devices every (seconds)</label>
+                        <input type="number" id="monitoringInterval" class="settings-input"
+                               value="{{ monitoring.value }}"
+                               min="60" max="3600" step="30" placeholder="300">
+                        <span class="settings-hint">
+                            1 minute to 1 hour. Currently <strong style="color:var(--ui-text-primary);">{{ monitoring.value }}s</strong>.
+                            Changes take effect within one minute — no restart required.
+                        </span>
+                    </div>
+                </div>
+                <div id="monitoringResult" class="settings-result" style="display:none;"></div>
+                <div class="settings-actions">
+                    <button type="button" class="settings-btn settings-btn--primary" onclick="saveMonitoring()">
+                        <i data-lucide="save" style="width:14px;height:14px;margin-right:.3rem;"></i>
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- User Management                                              -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="userMgmtCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="users-cog" class="settings-card-icon"></i>
+                    User Management
+                </div>
+                <a href="{{ url_for('user_management_bp.user_management') }}"
+                   class="settings-btn settings-btn--primary" style="font-size:.75rem;padding:.3rem .8rem;text-decoration:none;">
+                    Manage Users
+                </a>
+            </div>
+            <div class="settings-card-body">
+                <p class="settings-hint">
+                    Add and remove user accounts, reset passwords, and control what each person can see and do.
+                    Role changes apply immediately without requiring users to log out.
+                </p>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Compliance Profiles                                          -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="complianceCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="shield-check" class="settings-card-icon"></i>
+                    Compliance Profiles
+                </div>
+                <a href="{{ url_for('compliance_profiles_bp.compliance_profiles_page') }}"
+                   class="settings-btn settings-btn--primary" style="font-size:.75rem;padding:.3rem .8rem;text-decoration:none;">
+                    Manage Profiles
+                </a>
+            </div>
+            <div class="settings-card-body">
+                <p class="settings-hint" style="margin-bottom:.85rem;">
+                    Profiles define custom alert thresholds for CPU, memory, disk, and network latency.
+                    Assign a profile to any device to override the global defaults.
+                    Bulk assignment is available from the
+                    <a href="{{ url_for('devices_bp.device_management') }}" style="color:var(--ui-accent);">device list</a>.
+                </p>
+                <div style="display:flex;gap:2rem;">
+                    <div>
+                        <div class="settings-label" style="margin-bottom:.25rem;">Profiles defined</div>
+                        <div class="settings-display-value" id="cpProfileCount">—</div>
+                    </div>
+                    <div>
+                        <div class="settings-label" style="margin-bottom:.25rem;">Devices assigned</div>
+                        <div class="settings-display-value" id="cpAssignedCount">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Data Retention                                               -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="retentionCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="database" class="settings-card-icon"></i>
+                    Data Retention
+                </div>
+                <div class="settings-card-badge badge-neutral">Read-only</div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label class="settings-label">Detailed server metrics</label>
+                        <div class="settings-display-value">{{ retention.server_health_raw_days }} days</div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label">Hourly summaries</label>
+                        <div class="settings-display-value">{{ retention.server_health_hourly_days }} days</div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label">Daily summaries</label>
+                        <div class="settings-display-value">{{ retention.server_health_daily_days }} days</div>
+                    </div>
+                </div>
+                <p class="settings-hint" style="margin-top:1rem;">
+                    These limits control how long historical data is kept. Contact your system administrator to adjust them.
+                </p>
+            </div>
+        </div>
+
+    </div><!-- /.page-container -->
+</div><!-- /.page-section -->
+{% endblock %}
+
+
+{% block extra_js %}
+<script type="module">
+
+const _MASKED = '••••••';
+
+function showResult(elementId, ok, message) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.textContent = message;
+    el.className = 'settings-result ' + (ok ? 'settings-result--ok' : 'settings-result--error');
+    el.style.display = 'block';
+    clearTimeout(el._timeout);
+    if (ok) el._timeout = setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+function setLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+        btn.dataset.origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working…';
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.origText || btn.innerHTML;
+    }
+}
+
+async function apiPost(path, body) {
+    const resp = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return resp.json();
+}
+
+// ── SMTP ──────────────────────────────────────────────────────────────────────
+
+function getSmtpPayload() {
+    return {
+        smtp_server:     document.getElementById('smtpServer')?.value?.trim()    || '',
+        smtp_port:       document.getElementById('smtpPort')?.value?.trim()       || '587',
+        smtp_user:       document.getElementById('smtpUser')?.value?.trim()       || '',
+        smtp_password:   document.getElementById('smtpPassword')?.value           || '',
+        smtp_from:       document.getElementById('smtpFrom')?.value?.trim()       || '',
+        smtp_recipients: document.getElementById('smtpRecipients')?.value?.trim() || '',
+        smtp_use_tls:    document.getElementById('smtpUseTls')?.checked ? 'true' : 'false',
+    };
+}
+
+window.saveSmtp = async function() {
+    const btn = document.querySelector('#smtpCard .settings-btn--primary');
+    setLoading(btn, true);
+    try {
+        const data = await apiPost('/api/settings/smtp', getSmtpPayload());
+        showResult('smtpResult', data.ok, data.message);
+    } catch (e) {
+        showResult('smtpResult', false, 'Could not save — check your connection.');
+    } finally {
+        setLoading(btn, false);
+        lucide.createIcons();
+    }
+};
+
+window.testSmtp = async function() {
+    const btn = document.querySelector('#smtpCard .settings-btn--secondary');
+    setLoading(btn, true);
+    try {
+        const data = await apiPost('/api/settings/smtp/test', getSmtpPayload());
+        showResult('smtpResult', data.ok, data.message);
+    } catch (e) {
+        showResult('smtpResult', false, 'Connection test failed.');
+    } finally {
+        setLoading(btn, false);
+        lucide.createIcons();
+    }
+};
+
+window.testAlertFlow = async function() {
+    const btn = document.querySelector('#smtpCard .settings-btn--ghost');
+    setLoading(btn, true);
+    try {
+        const data = await apiPost('/api/settings/test-alert-flow', {});
+        const detail = data.channels_triggered?.length
+            ? ` Delivered via: ${data.channels_triggered.join(', ')}.`
+            : '';
+        showResult('smtpResult', data.ok, (data.message || '') + detail);
+    } catch (e) {
+        showResult('smtpResult', false, 'Test alert could not be sent.');
+    } finally {
+        setLoading(btn, false);
+        lucide.createIcons();
+    }
+};
+
+window.togglePasswordVisibility = function(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const hidden = input.type === 'password';
+    input.type = hidden ? 'text' : 'password';
+    btn.innerHTML = hidden
+        ? '<i data-lucide="eye-off" style="width:14px;height:14px;"></i>'
+        : '<i data-lucide="eye" style="width:14px;height:14px;"></i>';
+    lucide.createIcons();
+};
+
+// ── Monitoring interval ───────────────────────────────────────────────────────
+
+window.saveMonitoring = async function() {
+    const btn = document.querySelector('#monitoringCard .settings-btn--primary');
+    setLoading(btn, true);
+    const seconds = parseInt(document.getElementById('monitoringInterval')?.value || '300', 10);
+    try {
+        const data = await apiPost('/api/settings/monitoring', { monitoring_interval_seconds: seconds });
+        showResult('monitoringResult', data.ok, data.message);
+        if (data.ok) {
+            const hint = document.querySelector('#monitoringCard .settings-hint strong');
+            if (hint) hint.textContent = seconds + 's';
+        }
+    } catch (e) {
+        showResult('monitoringResult', false, 'Could not save interval.');
+    } finally {
+        setLoading(btn, false);
+        lucide.createIcons();
+    }
+};
+
+// ── Alert Channels ────────────────────────────────────────────────────────────
+
+const TYPE_LABELS = { email: 'Email', slack: 'Slack', teams: 'Teams' };
+const TYPE_COLORS = { email: '#3b82f6', slack: '#6366f1', teams: '#8b5cf6' };
+
+async function loadChannels() {
+    try {
+        const r = await fetch('/api/settings/alert-channels');
+        const channels = await r.json();
+        renderChannelTable(channels);
+    } catch (e) {}
+}
+
+function renderChannelTable(channels) {
+    const tbody   = document.getElementById('channelTbody');
+    const scroll  = document.getElementById('channelTableScroll');
+    const empty   = document.getElementById('channelEmpty');
+    if (!channels.length) {
+        scroll.style.display = 'none';
+        empty.style.display  = '';
+        return;
+    }
+    empty.style.display  = 'none';
+    scroll.style.display = '';
+    tbody.innerHTML = channels.map(c => {
+        const severities = [
+            c.send_on_critical && '<span class="sev-chip sev-critical">Critical</span>',
+            c.send_on_warning  && '<span class="sev-chip sev-warning">Warning</span>',
+        ].filter(Boolean).join(' ');
+        const color  = TYPE_COLORS[c.channel_type] || '#64748b';
+        const label  = TYPE_LABELS[c.channel_type]  || c.channel_type;
+        const scope  = (c.applicable_device_types || []).length
+            ? c.applicable_device_types.join(', ')
+            : '<span style="color:#64748b">All devices</span>';
+        const status = c.is_enabled
+            ? '<span style="color:#4ade80;font-size:.72rem;font-weight:600;">Active</span>'
+            : '<span style="color:#64748b;font-size:.72rem;">Inactive</span>';
+        return `<tr style="border-top:1px solid rgba(148,163,184,.07);">
+            <td style="padding:.5rem .7rem;color:#e2e8f0;font-weight:500;">${escHtml(c.name)}</td>
+            <td style="padding:.5rem .7rem;">
+                <span style="background:${color}22;color:${color};border-radius:4px;padding:.12rem .45rem;font-size:.65rem;font-weight:700;text-transform:uppercase;">${escHtml(label)}</span>
+            </td>
+            <td style="padding:.5rem .7rem;">${severities || '<span style="color:#64748b;font-size:.72rem;">None</span>'}</td>
+            <td style="padding:.5rem .7rem;font-size:.75rem;color:#94a3b8;">${scope}</td>
+            <td style="padding:.5rem .7rem;">${status}</td>
+            <td style="padding:.5rem .7rem;text-align:right;white-space:nowrap;">
+                <button onclick="testChannel(${c.id})" class="ch-action-btn" title="Send test">
+                    <i data-lucide="send" style="width:13px;height:13px;"></i>
+                </button>
+                <button onclick="editChannel(${c.id})" class="ch-action-btn ch-action-edit" title="Edit">
+                    <i data-lucide="pencil" style="width:13px;height:13px;"></i>
+                </button>
+                <button onclick="deleteChannel(${c.id},'${escHtml(c.name)}')" class="ch-action-btn ch-action-delete" title="Delete">
+                    <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+    lucide.createIcons();
+}
+
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+window.openNewChannel = function() {
+    document.getElementById('channelModalTitle').textContent = 'New Channel';
+    document.getElementById('channelId').value         = '';
+    document.getElementById('channelName').value       = '';
+    document.getElementById('channelType').value       = 'email';
+    document.getElementById('channelRecipients').value = '';
+    document.getElementById('channelWebhook').value    = '';
+    document.getElementById('channelCritical').checked = true;
+    document.getElementById('channelWarning').checked  = false;
+    document.getElementById('channelEnabled').checked  = true;
+    document.getElementById('channelDeviceTypes').value = '';
+    const msg = document.getElementById('channelModalMsg');
+    msg.style.display = 'none';
+    onChannelTypeChange();
+    document.getElementById('channelModal').style.display = 'flex';
+};
+
+window.editChannel = function(id) {
+    fetch('/api/settings/alert-channels').then(r => r.json()).then(list => {
+        const c = list.find(x => x.id === id);
+        if (!c) return;
+        document.getElementById('channelModalTitle').textContent  = 'Edit Channel';
+        document.getElementById('channelId').value                = c.id;
+        document.getElementById('channelName').value              = c.name;
+        document.getElementById('channelType').value              = c.channel_type;
+        document.getElementById('channelRecipients').value        = (c.config_json?.recipients || []).join(', ');
+        document.getElementById('channelWebhook').value           = c.config_json?.webhook_url || '';
+        document.getElementById('channelCritical').checked        = c.send_on_critical;
+        document.getElementById('channelWarning').checked         = c.send_on_warning;
+        document.getElementById('channelEnabled').checked         = c.is_enabled;
+        document.getElementById('channelDeviceTypes').value       = (c.applicable_device_types || []).join(', ');
+        const msg = document.getElementById('channelModalMsg');
+        msg.style.display = 'none';
+        onChannelTypeChange();
+        document.getElementById('channelModal').style.display = 'flex';
+    });
+};
+
+window.closeChannelModal = function() {
+    document.getElementById('channelModal').style.display = 'none';
+};
+
+window.onChannelTypeChange = function() {
+    const type = document.getElementById('channelType').value;
+    document.getElementById('emailFields').style.display   = type === 'email' ? '' : 'none';
+    document.getElementById('webhookFields').style.display = type !== 'email' ? '' : 'none';
+};
+
+window.saveChannel = async function() {
+    const id   = document.getElementById('channelId').value;
+    const type = document.getElementById('channelType').value;
+    const config = type === 'email'
+        ? { recipients: document.getElementById('channelRecipients').value.split(',').map(s => s.trim()).filter(Boolean) }
+        : { webhook_url: document.getElementById('channelWebhook').value.trim() };
+    const adt  = document.getElementById('channelDeviceTypes').value.trim();
+    const body = {
+        name:                    document.getElementById('channelName').value.trim(),
+        channel_type:            type,
+        config_json:             config,
+        send_on_critical:        document.getElementById('channelCritical').checked,
+        send_on_warning:         document.getElementById('channelWarning').checked,
+        is_enabled:              document.getElementById('channelEnabled').checked,
+        applicable_device_types: adt ? adt.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [],
+    };
+    const msgEl = document.getElementById('channelModalMsg');
+    try {
+        const r = await fetch(
+            id ? `/api/settings/alert-channels/${id}` : '/api/settings/alert-channels',
+            { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        );
+        const d = await r.json();
+        if (!r.ok) {
+            msgEl.className  = 'settings-result settings-result--error';
+            msgEl.textContent = d.error || 'Could not save channel.';
+            msgEl.style.display = 'block';
+            return;
+        }
+        closeChannelModal();
+        loadChannels();
+    } catch (e) {
+        msgEl.className   = 'settings-result settings-result--error';
+        msgEl.textContent = 'Network error — please try again.';
+        msgEl.style.display = 'block';
+    }
+};
+
+window.deleteChannel = async function(id, name) {
+    if (!confirm(`Remove the "${name}" channel?`)) return;
+    const r = await fetch(`/api/settings/alert-channels/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+        loadChannels();
+    } else {
+        const d = await r.json();
+        showResult('channelMsg', false, d.error || 'Could not delete channel.');
+    }
+};
+
+window.testChannel = async function(id) {
+    const r = await fetch(`/api/settings/alert-channels/${id}/test`, { method: 'POST' });
+    const d = await r.json();
+    showResult('channelMsg', d.ok, d.message || (d.ok ? 'Test message sent.' : 'Test failed.'));
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadChannels();
+
+(async function loadComplianceCounts() {
+    try {
+        const [pr, ar] = await Promise.all([
+            fetch('/api/compliance-profiles'),
+            fetch('/api/compliance-profiles/assigned-count'),
+        ]);
+        if (pr.ok) {
+            const d  = await pr.json();
+            const el = document.getElementById('cpProfileCount');
+            if (el) el.textContent = Array.isArray(d) ? d.length : '—';
+        }
+        if (ar.ok) {
+            const d  = await ar.json();
+            const el = document.getElementById('cpAssignedCount');
+            if (el) el.textContent = d.count ?? '—';
+        }
+    } catch (_) {}
+})();
+
+</script>
+{% endblock %}

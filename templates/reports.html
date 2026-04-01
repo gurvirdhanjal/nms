@@ -2,1128 +2,115 @@
 
 {% block title %}Reports - Device Monitoring{% endblock %}
 
+{% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
+
 {% block extra_css %}
-<style>
-    /* ============================================================
-       REPORTS — Enterprise Tactical Theme
-       Dense layout, smooth animations, premium KPI cards
-       ============================================================ */
-
-    /* ── Page Header ─────────────────────────────────────────── */
-    .page-header {
-        background: linear-gradient(135deg, rgba(0, 212, 170, 0.08) 0%, transparent 60%);
-        border-bottom: 1px solid rgba(0, 212, 170, 0.15);
-        padding: 0.6rem 0;
-        margin-bottom: 1rem;
-    }
-
-    .page-header h3 {
-        font-family: 'Orbitron', monospace;
-        font-size: 1.1rem;
-        font-weight: 600;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        color: #00ffc8;
-        margin: 0;
-    }
-
-    .page-header h3 i {
-        color: #00d4aa;
-        margin-right: 8px;
-    }
-
-    /* ── Tab Navigation ──────────────────────────────────────── */
-    #reportTabs {
-        background: rgba(0, 0, 0, 0.35) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px !important;
-        padding: 6px 10px !important;
-        gap: 4px;
-        flex-wrap: wrap;
-    }
-
-    #reportTabs .nav-link {
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 600;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: rgba(255, 255, 255, 0.5);
-        border: 1px solid transparent;
-        border-radius: 6px;
-        padding: 6px 14px;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-        overflow: hidden;
-    }
-
-    #reportTabs .nav-link::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(135deg, rgba(0, 212, 170, 0.15), transparent);
-        opacity: 0;
-        transition: opacity 0.25s ease;
-    }
-
-    #reportTabs .nav-link:hover {
-        color: #00ffc8;
-        border-color: rgba(0, 212, 170, 0.25);
-        background: rgba(0, 212, 170, 0.06);
-    }
-
-    #reportTabs .nav-link:hover::before {
-        opacity: 1;
-    }
-
-    #reportTabs .nav-link.active {
-        background: linear-gradient(135deg, rgba(0, 212, 170, 0.2), rgba(0, 212, 170, 0.08)) !important;
-        color: #00ffc8 !important;
-        border-color: rgba(0, 212, 170, 0.4) !important;
-        box-shadow: 0 0 12px rgba(0, 212, 170, 0.15), inset 0 0 12px rgba(0, 212, 170, 0.08);
-    }
-
-    #reportTabs .nav-link.active::before {
-        opacity: 1;
-    }
-
-    #reportTabs .nav-link i {
-        font-size: 0.75rem;
-    }
-
-    /* ── Tab Pane Animations ─────────────────────────────────── */
-    /* ── Metric Severity Colors (key metrics only) ──────── */
-    .metric-critical { color: #ef4444 !important; font-weight: 700; }
-    .metric-warning  { color: #f59e0b !important; font-weight: 600; }
-    .metric-healthy  { color: #22c55e !important; }
-    .metric-nodata   { color: #6b7280 !important; font-style: italic; }
-
-    .kpi-accent-critical { border-left: 3px solid #ef4444 !important; }
-    .kpi-accent-warning  { border-left: 3px solid #f59e0b !important; }
-    .kpi-accent-healthy  { border-left: 3px solid #22c55e !important; }
-
-    .insight-card {
-        background: rgba(14, 165, 233, 0.06);
-        border-left: 4px solid #0ea5e9;
-        border-radius: 8px;
-    }
-    .insight-finding { padding: 2px 0; font-size: 0.85rem; }
-    .insight-finding .badge { font-size: 0.7rem; min-width: 55px; }
-
-    /* ── Narrative Block (Master Spec progressive disclosure) ── */
-    .narrative-block { display: none; }
-    .narrative-block.active { display: block; }
-    .narrative-banner { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .narrative-kpi {
-        flex: 1 1 140px; max-width: 200px;
-        background: rgba(255,255,255,0.04); border-radius: 8px;
-        padding: 0.5rem 0.75rem; border-left: 3px solid #6b7280;
-    }
-    .narrative-kpi.status-ok { border-left-color: #22c55e; }
-    .narrative-kpi.status-warning { border-left-color: #f59e0b; }
-    .narrative-kpi.status-critical { border-left-color: #ef4444; }
-    .narrative-kpi-label { font-size: 0.7rem; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.5px; }
-    .narrative-kpi-value { font-size: 1.1rem; font-weight: 700; color: #e5e7eb; }
-    .narrative-kpi-delta { font-size: 0.75rem; margin-left: 0.25rem; }
-    .narrative-kpi-delta.delta-up { color: #22c55e; }
-    .narrative-kpi-delta.delta-down { color: #ef4444; }
-    .narrative-kpi-delta.delta-flat { color: #9ca3af; }
-
-    .action-required-block {
-        background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25);
-        border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;
-    }
-    .action-required-block.no-action {
-        background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.25);
-    }
-    .action-required-item { padding: 0.25rem 0; font-size: 0.85rem; }
-    .action-required-item .badge { font-size: 0.7rem; min-width: 60px; }
-
-    .narrative-section-intro { font-size: 0.9rem; color: #d1d5db; margin-bottom: 0.5rem; }
-    .narrative-interpretation {
-        font-style: italic; font-size: 0.85rem; color: #9ca3af;
-        background: rgba(14, 165, 233, 0.05); border-radius: 6px;
-        padding: 0.5rem 0.75rem; margin-bottom: 0.5rem;
-    }
-    .narrative-actions { font-size: 0.85rem; }
-    .narrative-actions li { color: #d1d5db; padding: 0.15rem 0; }
-    .narrative-risk-summary {
-        font-size: 0.85rem; color: #e5e7eb; background: rgba(239, 68, 68, 0.06);
-        border-left: 3px solid #ef4444; border-radius: 6px;
-        padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
-    }
-
-    .intelligence-annotation {
-        padding: 0.3rem 0; font-size: 0.82rem; border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-    .intelligence-annotation:last-child { border-bottom: none; }
-
-    .highlight-pulse {
-        animation: highlightPulse 0.5s ease-in-out 3;
-    }
-    @keyframes highlightPulse {
-        0%, 100% { background: transparent; }
-        50% { background: rgba(245, 158, 11, 0.15); }
-    }
-
-    .tab-pane {
-        animation: none;
-    }
-
-    .tab-pane.show.active {
-        animation: fadeSlideIn 0.35s ease-out;
-    }
-
-    @keyframes fadeSlideIn {
-        from {
-            opacity: 0;
-            transform: translateY(8px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    /* ── KPI Stat Cards (enterprise-dense) ────────────────────── */
-    .stat-card {
-        background: linear-gradient(145deg, #1a1a28 0%, #22222f 100%);
-        border-left: 3px solid #00d4aa;
-        border-radius: 8px;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.75rem;
-        position: relative;
-        overflow: hidden;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .stat-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 60px;
-        height: 60px;
-        background: radial-gradient(circle, rgba(0, 212, 170, 0.08) 0%, transparent 70%);
-        border-radius: 50%;
-        transform: translate(20px, -20px);
-    }
-
-    .stat-card:hover {
-        background: linear-gradient(145deg, #1e1e2e 0%, #282838 100%);
-        border-left-color: #00ffc8;
-        box-shadow: 0 4px 20px rgba(0, 212, 170, 0.12), 0 0 30px rgba(0, 212, 170, 0.06);
-        transform: translateY(-2px);
-    }
-
-    .stat-card h3 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #00ffc8;
-        font-family: 'Orbitron', monospace;
-        margin: 0 0 0.15rem 0;
-        line-height: 1.2;
-        letter-spacing: 0.5px;
-    }
-
-    .stat-card p {
-        color: rgba(255, 255, 255, 0.45);
-        font-size: 0.7rem;
-        margin: 0;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-weight: 600;
-    }
-
-    .stat-card.primary {
-        border-left-color: #00d4aa;
-    }
-
-    .stat-card.primary h3 {
-        color: #00ffc8;
-    }
-
-    .stat-card.success {
-        border-left-color: #00ff88;
-    }
-
-    .stat-card.success h3 {
-        color: #00ff88;
-    }
-
-    .stat-card.danger {
-        border-left-color: #ff3b5c;
-    }
-
-    .stat-card.danger h3 {
-        color: #ff3b5c;
-    }
-
-    .stat-card.warning {
-        border-left-color: #ffaa00;
-    }
-
-    .stat-card.warning h3 {
-        color: #ffaa00;
-    }
-
-    .stat-card.info {
-        border-left-color: #22d3ee;
-    }
-    .stat-card.info h3 {
-        color: #22d3ee;
-    }
-
-    .stat-card.sync {
-        border-left-color: #a78bfa;
-    }
-    .stat-card.sync h3 {
-        color: #a78bfa;
-    }
-
-    .stat-card.metric {
-        border-left-color: #06b6d4;
-    }
-    .stat-card.metric h3 {
-        color: #06b6d4;
-    }
-
-    .stat-card.violet {
-        border-left-color: #c084fc;
-    }
-    .stat-card.violet h3 {
-        color: #c084fc;
-    }
-
-    .stat-card.blue {
-        border-left-color: #60a5fa;
-    }
-    .stat-card.blue h3 {
-        color: #60a5fa;
-    }
-
-    .stat-card.green {
-        border-left-color: #4ade80;
-    }
-    .stat-card.green h3 {
-        color: #4ade80;
-    }
-
-    /* ── Stagger animation for card groups ─────────────────── */
-    .row>[class*="col"]>.stat-card {
-        animation: cardFadeIn 0.4s ease-out backwards;
-    }
-
-    .row>[class*="col"]:nth-child(1)>.stat-card {
-        animation-delay: 0.05s;
-    }
-
-    .row>[class*="col"]:nth-child(2)>.stat-card {
-        animation-delay: 0.10s;
-    }
-
-    .row>[class*="col"]:nth-child(3)>.stat-card {
-        animation-delay: 0.15s;
-    }
-
-    .row>[class*="col"]:nth-child(4)>.stat-card {
-        animation-delay: 0.20s;
-    }
-
-    @keyframes cardFadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(12px) scale(0.97);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-
-    /* ── Dense Card Headers ───────────────────────────────── */
-    .card-header h5,
-    .card-header h6 {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        margin: 0;
-        color: rgba(255, 255, 255, 0.8);
-    }
-
-    .card-header {
-        padding: 0.6rem 1rem !important;
-    }
-
-    /* ── Dense Tables (enterprise compact) ─────────────────── */
-    .table thead th {
-        font-size: 0.7rem !important;
-        padding: 0.55rem 0.75rem !important;
-        letter-spacing: 1.2px;
-        white-space: nowrap;
-    }
-
-    .table tbody td {
-        font-size: 0.82rem !important;
-        padding: 0.5rem 0.75rem !important;
-        vertical-align: middle;
-    }
-
-    .table tbody tr {
-        transition: all 0.15s ease;
-    }
-
-    /* ── Dense Form Controls ──────────────────────────────── */
-    .form-select-sm {
-        font-size: 0.75rem !important;
-        padding: 0.35rem 2rem 0.35rem 0.6rem !important;
-        font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.5px;
-    }
-
-    /* ── Export Buttons ───────────────────────────────────── */
-    .btn-group .btn-outline-secondary {
-        font-size: 0.7rem !important;
-        padding: 0.3rem 0.6rem !important;
-        letter-spacing: 0.5px;
-    }
-
-    .btn-group .btn-outline-secondary:hover {
-        box-shadow: 0 0 10px rgba(0, 212, 170, 0.2);
-    }
-
-    /* ── Searchable Select (Device Inspector) ─────────────── */
-    .search-select-container {
-        position: relative;
-    }
-
-    .search-select-input {
-        background: rgba(13, 13, 20, 0.8);
-        color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 6px;
-        width: 100%;
-        padding: 0.6rem 2.2rem 0.6rem 0.85rem;
-        cursor: pointer;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.85rem;
-        transition: all 0.3s ease;
-    }
-
-    .search-select-input:focus {
-        border-color: #00d4aa;
-        box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.15), 0 0 12px rgba(0, 212, 170, 0.2);
-        outline: none;
-    }
-
-    .search-select-icon {
-        position: absolute;
-        right: 0.8rem;
-        top: 50%;
-        transform: translateY(-50%);
-        color: rgba(255, 255, 255, 0.3);
-        pointer-events: none;
-        font-size: 0.8rem;
-    }
-
-    .search-select-dropdown {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-        background: #1a1a28;
-        border: 1px solid rgba(0, 212, 170, 0.2);
-        border-radius: 6px;
-        margin-top: 4px;
-        max-height: 280px;
-        overflow-y: auto;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 212, 170, 0.08);
-    }
-
-    .search-select-dropdown.show {
-        display: block;
-    }
-
-    .search-select-item {
-        padding: 0.55rem 0.85rem;
-        cursor: pointer;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-        transition: background 0.15s ease;
-        font-size: 0.82rem;
-    }
-
-    .search-select-item:last-child {
-        border-bottom: none;
-    }
-
-    .search-select-item:hover,
-    .search-select-item.selected {
-        background: rgba(0, 212, 170, 0.1);
-        color: #00ffc8;
-    }
-
-    .search-select-item .device-ip {
-        font-family: 'JetBrains Mono', monospace;
-        color: #00d4aa;
-        font-size: 0.78rem;
-    }
-
-    /* ── Spinner Polish ───────────────────────────────────── */
-    .spinner-border {
-        color: #00d4aa !important;
-        width: 1.5rem;
-        height: 1.5rem;
-        border-width: 2px;
-    }
-
-    /* ── Chart Containers ─────────────────────────────────── */
-    .card-body canvas {
-        max-width: 100%;
-    }
-
-    /* ── Refresh button spin animation ────────────────────── */
-    .btn .fa-sync {
-        transition: transform 0.3s ease;
-    }
-
-    .btn:active .fa-sync {
-        transform: rotate(180deg);
-    }
-
-    /* ── Responsive density tweaks ─────────────────────────── */
-    @media (max-width: 768px) {
-        #reportTabs .nav-link {
-            font-size: 0.7rem;
-            padding: 5px 10px;
-        }
-
-        .stat-card h3 {
-            font-size: 1.2rem;
-        }
-
-        .stat-card p {
-            font-size: 0.65rem;
-        }
-    }
-
-    /* ── Monospace utility ─────────────────────────────────── */
-    .monospace {
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* ============================================================
-       UI.md Conformance Overrides (scoped, non-breaking)
-       ============================================================ */
-    .reports-enterprise {
-        --e-space-1: 0.4rem;
-        --e-space-2: 0.62rem;
-        --e-space-3: 0.82rem;
-        --e-space-4: 1.15rem;
-        --e-space-5: 1.55rem;
-        --e-bg-panel: rgba(16, 19, 27, 0.88);
-        --e-bg-panel-soft: rgba(16, 19, 27, 0.72);
-        --e-border: rgba(148, 163, 184, 0.20);
-        --e-border-strong: rgba(148, 163, 184, 0.36);
-        --e-text-primary: #e6edf5;
-        --e-text-secondary: #c3cfdb;
-        --e-text-muted: #93a0ae;
-        font-variant-numeric: tabular-nums;
-    }
-
-    .reports-page-header {
-        background: linear-gradient(180deg, rgba(16, 19, 27, 0.92) 0%, rgba(12, 16, 22, 0.92) 100%);
-        border-bottom: 1px solid var(--e-border);
-        padding: 0.5rem 0;
-        margin-bottom: var(--e-space-3);
-    }
-
-    .reports-page-header h3 {
-        font-family: inherit;
-        font-size: 0.92rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.11em;
-        color: var(--e-text-primary);
-    }
-
-    .reports-page-header h3 i {
-        color: var(--e-text-secondary);
-    }
-
-    .reports-enterprise #reportTabs {
-        background: var(--e-bg-panel-soft) !important;
-        border: 1px solid var(--e-border);
-        border-radius: 10px !important;
-        padding: 0.38rem 0.5rem !important;
-        margin-bottom: var(--e-space-3) !important;
-    }
-
-    .reports-enterprise #reportTabs .nav-link {
-        font-size: 0.60rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.10em;
-        color: var(--e-text-muted);
-        border-radius: 999px;
-        padding: 0.32rem 0.62rem;
-        border: 1px solid transparent;
-        background: rgba(148, 163, 184, 0.08);
-    }
-
-    .reports-enterprise #reportTabs .nav-link:hover {
-        color: var(--e-text-secondary);
-        border-color: var(--e-border);
-        background: rgba(148, 163, 184, 0.14);
-    }
-
-    .reports-enterprise #reportTabs .nav-link.active {
-        color: var(--e-text-primary) !important;
-        border-color: var(--e-border-strong) !important;
-        background: rgba(148, 163, 184, 0.18) !important;
-        box-shadow: none !important;
-    }
-
-    .reports-enterprise .tab-content>.tab-pane.show.active {
-        animation: fadeSlideIn 0.18s ease-out;
-    }
-
-    .reports-enterprise .card {
-        background: var(--e-bg-panel);
-        border: 1px solid var(--e-border);
-        border-radius: 10px;
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-    }
-
-    /* Refresh overlay — applied during data refresh; keeps rows visible */
-    .table-refreshing {
-        opacity: 0.55;
-        pointer-events: none;
-        transition: opacity 0.2s;
-    }
-
-    .reports-enterprise .card-header {
-        padding: 0.42rem 0.62rem !important;
-        border-bottom: 1px solid var(--e-border);
-        background: rgba(15, 18, 26, 0.96);
-    }
-
-    .reports-enterprise .card-header h5,
-    .reports-enterprise .card-header h6 {
-        margin: 0;
-        color: var(--e-text-primary);
-        font-size: 0.66rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-    }
-
-    .reports-enterprise .card-body {
-        color: var(--e-text-secondary);
-        padding: 0.62rem !important;
-    }
-
-    .reports-enterprise .table-responsive {
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 8px;
-    }
-
-    .reports-enterprise .table {
-        margin-bottom: 0;
-    }
-
-    .reports-enterprise .table thead th {
-        font-size: 0.62rem !important;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #b8c6d5;
-        background: rgba(15, 18, 26, 0.96) !important;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.30) !important;
-        padding: 0.44rem 0.56rem !important;
-        white-space: nowrap;
-    }
-
-    .reports-enterprise .table tbody td {
-        font-size: 0.79rem !important;
-        color: var(--e-text-secondary);
-        border-top: 1px solid rgba(148, 163, 184, 0.14) !important;
-        padding: 0.42rem 0.56rem !important;
-        vertical-align: middle;
-    }
-
-    .reports-enterprise .table tbody tr {
-        background: rgba(255, 255, 255, 0.012);
-    }
-
-    .reports-enterprise .table tbody tr:nth-child(even) {
-        background: rgba(255, 255, 255, 0.022);
-    }
-
-    .reports-enterprise .table tbody tr:hover {
-        background: rgba(148, 163, 184, 0.13);
-    }
-
-    .reports-enterprise .form-select,
-    .reports-enterprise .search-select-input {
-        background: rgba(9, 13, 19, 0.78);
-        color: var(--e-text-secondary);
-        border: 1px solid var(--e-border);
-        border-radius: 8px;
-    }
-
-    .reports-enterprise .form-select:focus,
-    .reports-enterprise .search-select-input:focus {
-        border-color: var(--e-border-strong);
-        box-shadow: 0 0 0 1px rgba(32, 201, 151, 0.12) inset;
-    }
-
-    .reports-enterprise .form-select-sm {
-        font-size: 0.73rem !important;
-        padding: 0.28rem 1.7rem 0.28rem 0.5rem !important;
-        letter-spacing: 0.02em;
-    }
-
-    .reports-enterprise .btn-sm {
-        font-size: 0.66rem;
-        letter-spacing: 0.06em;
-        padding: 0.28rem 0.48rem;
-        border-radius: 8px;
-    }
-
-    .reports-enterprise .btn-primary {
-        background: rgba(148, 163, 184, 0.18);
-        border-color: rgba(148, 163, 184, 0.36);
-        color: var(--e-text-primary);
-    }
-
-    .reports-enterprise .btn-primary:hover {
-        background: rgba(148, 163, 184, 0.28);
-        border-color: rgba(148, 163, 184, 0.45);
-    }
-
-    .reports-enterprise .btn-outline-secondary {
-        color: #c2ceda;
-        border-color: rgba(148, 163, 184, 0.28);
-        background: rgba(148, 163, 184, 0.10);
-    }
-
-    .reports-enterprise .btn-outline-secondary:hover {
-        color: #e6edf5;
-        border-color: rgba(148, 163, 184, 0.42);
-        background: rgba(148, 163, 184, 0.20);
-        box-shadow: none;
-    }
-
-    .reports-enterprise .spinner-border {
-        color: #a6cfb7 !important;
-    }
-
-    .reports-enterprise .text-muted {
-        color: var(--e-text-muted) !important;
-    }
-
-    .reports-enterprise .text-success {
-        color: #a6cfb7 !important;
-    }
-
-    .reports-enterprise .text-warning {
-        color: #e0c98f !important;
-    }
-
-    .reports-enterprise .text-danger {
-        color: #dfa3ab !important;
-    }
-
-    .reports-enterprise .stat-card {
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-left-width: 2px;
-        border-radius: 10px;
-        min-height: 90px;
-        padding: 0.68rem 0.72rem;
-        margin-bottom: 0.56rem;
-        box-shadow: none;
-        transform: none !important;
-    }
-
-    .reports-enterprise .stat-card:hover {
-        border-color: var(--e-border-strong);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
-    }
-
-    .reports-enterprise .stat-card h3 {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: var(--e-text-primary);
-        margin: 0 0 0.2rem 0;
-        letter-spacing: 0;
-        font-family: inherit;
-    }
-
-    .reports-enterprise .stat-card p {
-        margin: 0;
-        font-size: 0.63rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: var(--e-text-muted);
-    }
-
-    .reports-enterprise .search-select-dropdown {
-        background: var(--e-bg-panel);
-        border: 1px solid var(--e-border);
-        border-radius: 8px;
-        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
-        max-height: 280px;
-    }
-
-    .reports-enterprise .search-select-item {
-        color: var(--e-text-secondary);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-        padding: 0.45rem 0.62rem;
-        font-size: 0.79rem;
-    }
-
-    .reports-enterprise .search-select-item:hover,
-    .reports-enterprise .search-select-item.selected {
-        background: rgba(148, 163, 184, 0.18);
-        color: var(--e-text-primary);
-    }
-
-    .reports-enterprise .search-select-item .device-ip {
-        color: var(--e-text-muted);
-        font-size: 0.72rem;
-    }
-
-    .reports-enterprise .report-range-select {
-        width: 150px;
-    }
-
-    .reports-enterprise .report-range-select-sm {
-        width: 130px;
-    }
-
-    .reports-enterprise .chart-pane-300 {
-        min-height: 300px;
-    }
-
-    .reports-enterprise .chart-pane-280 {
-        min-height: 280px;
-    }
-
-    .reports-enterprise .chart-pane-250 {
-        min-height: 250px;
-    }
-
-    .reports-enterprise .chart-pane-230 {
-        min-height: 230px;
-    }
-
-    .reports-enterprise .chart-max-250 {
-        max-height: 250px;
-    }
-
-    .reports-enterprise .chart-max-200 {
-        max-height: 200px;
-    }
-
-    .reports-enterprise .heatmap-scroll {
-        overflow-x: auto;
-    }
-
-    .reports-enterprise .table-scroll-400 {
-        max-height: 400px;
-    }
-
-    .reports-enterprise .table-scroll-350 {
-        max-height: 350px;
-    }
-
-    .reports-enterprise .empty-state-icon {
-        color: rgba(148, 163, 184, 0.38);
-    }
-
-    .reports-enterprise .nowrap-cell {
-        white-space: nowrap;
-    }
-
-    .reports-enterprise .search-select-item.disabled {
-        color: var(--e-text-muted);
-        cursor: default;
-    }
-
-    .reports-enterprise .stat-icon-primary {
-        color: #b8d2e8;
-    }
-
-    .reports-enterprise .stat-icon-success {
-        color: #abd8bf;
-    }
-
-    .reports-enterprise .stat-icon-danger {
-        color: #f0b4bb;
-    }
-
-    .reports-enterprise .stat-icon-warning {
-        color: #f2d99f;
-    }
-
-    .reports-enterprise .section-title-primary {
-        color: var(--e-text-primary);
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-
-    .reports-enterprise .mtta-value {
-        font-size: 2.5rem;
-        line-height: 1.2;
-    }
-
-    /* ── APL TECHNO Enterprise Report Preview Panel ─────────── */
-    .rpt-preview-panel {
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 10px;
-        overflow: hidden;
-        margin-top: 1rem;
-        background: rgba(9, 13, 19, 0.82);
-    }
-
-    .rpt-brand-header {
-        background: #1B2A4A;
-        padding: 0.6rem 1rem;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        flex-wrap: wrap;
-    }
-
-    .rpt-brand-name {
-        font-family: 'Orbitron', monospace;
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #00ffc8;
-        letter-spacing: 2px;
-    }
-
-    .rpt-report-title {
-        font-size: 0.82rem;
-        color: #b8c6d5;
-        font-weight: 600;
-    }
-
-    .rpt-meta-text {
-        font-size: 0.7rem;
-        color: rgba(184, 198, 213, 0.6);
-        margin-left: auto;
-    }
-
-    .rpt-preview-table th {
-        font-size: 0.64rem !important;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #b8c6d5;
-        background: rgba(27, 42, 74, 0.85) !important;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
-        padding: 0.46rem 0.6rem !important;
-        white-space: nowrap;
-    }
-
-    .rpt-preview-table td {
-        font-size: 0.78rem !important;
-        padding: 0.4rem 0.6rem !important;
-        vertical-align: middle;
-        color: #c8d6e4;
-        border-top: 1px solid rgba(148, 163, 184, 0.12) !important;
-    }
-
-    .rpt-preview-table tbody tr:nth-child(even) td {
-        background: rgba(255, 255, 255, 0.025);
-    }
-
-    .rpt-preview-table tbody tr:hover td {
-        background: rgba(0, 212, 170, 0.06);
-    }
-
-    .rpt-status-ok   { color: #a6cfb7; font-weight: 700; }
-    .rpt-status-warn { color: #e0c98f; font-weight: 700; }
-    .rpt-status-crit { color: #dfa3ab; font-weight: 700; }
-
-    .rpt-preview-empty {
-        color: rgba(148, 163, 184, 0.5);
-        font-size: 0.8rem;
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .btn-view-report {
-        font-size: 0.67rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        background: rgba(0, 212, 170, 0.1);
-        border: 1px solid rgba(0, 212, 170, 0.35);
-        color: #00d4aa;
-        padding: 0.28rem 0.6rem;
-        border-radius: 6px;
-    }
-
-    .btn-view-report:hover {
-        background: rgba(0, 212, 170, 0.2);
-        border-color: rgba(0, 212, 170, 0.55);
-        color: #00ffc8;
-    }
-
-    .btn-view-report:disabled {
-        opacity: 0.45;
-        cursor: default;
-    }
-
-    /* ── Device Inspector Premium Typography ────────────────── */
-    .rpt-inspector-header {
-        background: linear-gradient(135deg, rgba(0,212,170,0.04) 0%, rgba(0,0,0,0) 100%);
-        border: 1px solid rgba(0,212,170,0.14);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-    }
-    .rpt-inspector-ip {
-        font-family: 'Orbitron', monospace;
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #e2e8f0;
-        letter-spacing: 0.5px;
-        margin: 0;
-    }
-    .rpt-period-badge {
-        background: rgba(255,255,255,0.06);
-        color: rgba(255,255,255,0.45);
-        font-size: 0.68rem;
-        font-weight: 500;
-        letter-spacing: 0.4px;
-        padding: .22rem .55rem;
-        border-radius: 4px;
-    }
-    .rpt-scan-count {
-        font-family: 'Orbitron', monospace;
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: #00ffc8;
-        line-height: 1;
-    }
-    .rpt-scan-label {
-        font-size: 0.62rem;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: rgba(255,255,255,0.3);
-        margin-top: .2rem;
-    }
-    .rpt-inspector-section {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        color: rgba(255,255,255,0.3);
-        padding-bottom: .35rem;
-        border-bottom: 1px solid rgba(255,255,255,0.05);
-        margin-bottom: .75rem;
-    }
-    .rpt-unit {
-        font-size: .65rem;
-        font-weight: 400;
-        font-family: 'Rajdhani', sans-serif;
-        opacity: .65;
-        letter-spacing: 0;
-    }
-</style>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}?v={{ asset_ver }}">
 <script type="module">
-  import { statusBadge } from "{{ url_for('static', filename='js/reports/reportsUtils.js') }}";
+  import { statusBadge } from "{{ url_for('static', filename='js/reports/reportsUtils.js') }}?v={{ asset_ver }}";
+  import { patchKeyedTableRows, setTableMessageRow } from "{{ url_for('static', filename='js/dashboard/domPatch.js') }}?v={{ asset_ver }}";
   window._statusBadge = statusBadge;
+  window._patchKeyedTableRows = patchKeyedTableRows;
+  window._setTableMessageRow = setTableMessageRow;
 </script>
 {% endblock %}
 
 {% block content %}
-<div class="page-header reports-page-header">
-    <div class="container-fluid">
-        <h3><i class="fas fa-chart-bar"></i> Reports & Analytics</h3>
+<div class="container-fluid reports-header-bar">
+    <div class="reports-hdr-left">
+        <h1 class="reports-hdr-title"><i class="fas fa-chart-bar"></i> Reports</h1>
     </div>
-</div>
-
-<!-- Global summary bar (always visible, updates with active range) -->
-<div class="container-fluid py-2" id="globalSummaryBar"
-     style="background:var(--bg-card,#1e293b);border-bottom:1px solid var(--border,#334155)">
-    <div class="row g-2 text-center" id="globalSummaryCards">
-        <div class="col"><small class="text-muted d-block">Devices</small><strong id="gsTotalDevices">—</strong></div>
-        <div class="col"><small class="text-muted d-block">Fleet Uptime</small><strong id="gsFleetUptime">—</strong></div>
-        <div class="col"><small class="text-muted d-block">Critical</small><strong id="gsCritical" class="text-danger">—</strong></div>
-        <div class="col"><small class="text-muted d-block">Avg Latency</small><strong id="gsAvgLatency">—</strong></div>
-        <div class="col"><small class="text-muted d-block">Avg Pkt Loss</small><strong id="gsAvgPktLoss">—</strong></div>
-        <div class="col"><small class="text-muted d-block">Anomalies</small><strong id="gsAnomalies" class="text-warning">—</strong></div>
+    <div id="globalSummaryBar" class="reports-hdr-kpis">
+        <div id="globalSummaryCards" class="reports-hdr-chips">
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Devices</span>
+                <strong id="gsTotalDevices" class="rk-value reports-summary-value">—</strong>
+            </div>
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Fleet Uptime</span>
+                <strong id="gsFleetUptime" class="rk-value reports-summary-value">—</strong>
+            </div>
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Critical</span>
+                <strong id="gsCritical" class="rk-value reports-summary-value text-danger">—</strong>
+            </div>
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Avg Latency</span>
+                <strong id="gsAvgLatency" class="rk-value reports-summary-value">—</strong>
+            </div>
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Pkt Loss</span>
+                <strong id="gsAvgPktLoss" class="rk-value reports-summary-value">—</strong>
+            </div>
+            <div class="reports-kpi-chip">
+                <span class="rk-label">Anomalies</span>
+                <strong id="gsAnomalies" class="rk-value reports-summary-value text-warning">—</strong>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="container-fluid tactical-theme dashboard-enterprise reports-enterprise">
     <!-- Tabs -->
-    <ul class="nav nav-pills mb-4" id="reportTabs" role="tablist">
+    <div class="report-tabs-shell" data-report-tab-shell="dense">
+    <ul class="nav nav-pills mb-1" id="reportTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="executive-tab" data-bs-toggle="pill" data-bs-target="#executive"
                 type="button" role="tab">
-                <i class="fas fa-briefcase me-2"></i> Executive Overview
+                <i class="fas fa-briefcase me-1"></i> Executive
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="serverreports-tab" data-bs-toggle="pill"
                 data-bs-target="#serverreports" type="button" role="tab"
                 onclick="lazyLoadServerReports()">
-                <i class="fas fa-server me-2"></i> Server Fleet
+                <i class="fas fa-server me-1"></i> Servers
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="workstationhealth-tab" data-bs-toggle="pill"
                 data-bs-target="#workstationhealth" type="button" role="tab"
                 onclick="lazyLoadWorkstationHealth()">
-                <i class="fas fa-desktop me-2"></i> Workstation Fleet
+                <i class="fas fa-desktop me-1"></i> Workstations
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="inspector-tab" data-bs-toggle="pill" data-bs-target="#inspector" type="button"
                 role="tab">
-                <i class="fas fa-search me-2"></i> Device Inspector
+                <i class="fas fa-search me-1"></i> Inspector
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="devicehealth-tab" data-bs-toggle="pill" data-bs-target="#devicehealth"
                 type="button" role="tab">
-                <i class="fas fa-heartbeat me-2"></i> System Health
+                <i class="fas fa-heartbeat me-1"></i> Health
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="alerthistory-tab" data-bs-toggle="pill" data-bs-target="#alerthistory"
                 type="button" role="tab">
-                <i class="fas fa-bell me-2"></i> Alerts
+                <i class="fas fa-bell me-1"></i> Alerts
             </button>
         </li>
         {% if productivity_report_enabled %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="productivity-tab" data-bs-toggle="pill" data-bs-target="#productivity"
                 type="button" role="tab">
-                <i class="fas fa-user-clock me-2"></i> Productivity
+                <i class="fas fa-user-clock me-1"></i> Productivity
             </button>
         </li>
         {% endif %}
     </ul>
+    </div>
 
     <div class="tab-content" id="reportTabContent">
 
         <!-- Tab: Executive Overview -->
         <div class="tab-pane fade show active" id="executive" role="tabpanel">
+            <!-- Decision Banner: RAG fleet status (rendered from cross_report) -->
+            <div id="decisionBanner" style="display:none" class="mb-2"></div>
+            <!-- Cross-Report Risk Strip: per-domain status chips -->
+            <div id="crossReportStrip" style="display:none" class="mb-2"></div>
             <!-- Narrative Block (Master Spec progressive disclosure) -->
             <div class="narrative-block" id="execNarrative"></div>
             <!-- Intelligence Annotations -->
@@ -1143,9 +130,12 @@
                     <div id="execInsightRecommendations"></div>
                 </div>
             </div>
-            <div class="card mb-4">
+            <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-globe"></i> Fleet Overview</h5>
+                    <div>
+                        <h5 class="mb-0"><i class="fas fa-globe"></i> Fleet Overview</h5>
+                        <div id="execConfidenceBadge" class="confidence-badge-line"></div>
+                    </div>
                     <div class="d-flex gap-2">
                         <select class="form-select form-select-sm report-range-select" id="execRange">
                             <option value="24h">Last 24 Hours</option>
@@ -1153,7 +143,7 @@
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="mtd">Month to Date</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()">
+                        <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()" aria-label="Refresh executive report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','pdf')">
@@ -1161,7 +151,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-4" id="execContent">
+                <div class="card-body p-2" id="execContent">
                     <!-- Loaded via JS -->
                     <div class="text-center py-5">
                         <div class="spinner-border text-primary" role="status"></div>
@@ -1182,9 +172,9 @@
                 </div>
             </div>
 
-            <div class="card mb-4">
+            <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Top 10 Problematic Devices</h5>
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Top 10 Degraded Devices</h5>
                     <button class="btn btn-sm btn-outline-secondary" id="sortToggleBtn" onclick="toggleProblematicSort()">
                         <i class="fas fa-sort-amount-up me-1"></i> Show Best 10
                     </button>
@@ -1197,17 +187,20 @@
                                     <th>Device</th>
                                     <th>Type</th>
                                     <th class="text-end">Availability</th>
+                                    <th class="text-end">Latency</th>
+                                    <th class="text-end">Pkt Loss</th>
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted p-4">Loading...</td>
+                                    <td colspan="6" class="text-center text-muted p-4">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
+                <div id="chronicallyOfflineSummary" class="d-none"></div>
             </div>
 
         </div>
@@ -1255,11 +248,12 @@
         <!-- Tab: System Health (was Device Health) -->
         <div class="tab-pane fade" id="devicehealth" role="tabpanel">
             <div class="narrative-block" id="deviceHealthNarrative"></div>
-            <div class="card mb-4">
+            <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="mb-0"><i class="fas fa-heartbeat"></i> Infrastructure Health</h5>
                         <small class="text-muted">Server and infrastructure resource utilization</small>
+                        <div id="dhConfidenceBadge" class="confidence-badge-line"></div>
                     </div>
                     <div class="d-flex gap-2">
                         <select class="form-select form-select-sm report-range-select" id="dhRange">
@@ -1268,7 +262,7 @@
                             <option value="30d">Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadDeviceHealthReport()">
+                        <button class="btn btn-sm btn-primary" onclick="loadDeviceHealthReport()" aria-label="Refresh device health report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('device-health','pdf')">
@@ -1276,14 +270,16 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-4">
-                    <div class="row mb-4" id="dhSummaryCards">
+                <div class="card-body p-2">
+                    <div class="row mb-3" id="dhSummaryCards">
                         <div class="text-center py-4">
                             <div class="spinner-border text-primary" role="status"></div>
                             <p class="mt-2 text-muted">Loading Device Health...</p>
                         </div>
                     </div>
                     <div id="dhDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem"></div>
+                    <!-- Capacity Runway (U5) — devices where estimated_days_to_breach < 60 -->
+                    <div id="dhCapacityRunway" class="mb-3" style="display:none"></div>
                     <div class="row">
                         <div class="col-md-4">
                             <div class="card h-100">
@@ -1354,7 +350,7 @@
         {% if productivity_report_enabled %}
         <!-- Tab: Productivity -->
         <div class="tab-pane fade" id="productivity" role="tabpanel">
-            <div class="card mb-4">
+            <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-user-clock"></i> Employee Productivity</h5>
                     <div class="d-flex gap-2">
@@ -1363,7 +359,7 @@
                             <option value="7d">Last 7 Days</option>
                             <option value="30d">Last 30 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadProductivityReport()">
+                        <button class="btn btn-sm btn-primary" onclick="loadProductivityReport()" aria-label="Refresh productivity report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('productivity','pdf')">
@@ -1371,7 +367,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-4">
+                <div class="card-body p-2">
                     <div class="row">
                         <div class="col-md-5">
                             <div class="card h-100">
@@ -1419,9 +415,12 @@
         <!-- Tab: Alert History -->
         <div class="tab-pane fade" id="alerthistory" role="tabpanel">
             <div class="narrative-block" id="alertNarrative"></div>
-            <div class="card mb-4">
+            <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-bell"></i> Alert History</h5>
+                    <div>
+                        <h5 class="mb-0"><i class="fas fa-bell"></i> Alert History</h5>
+                        <div id="alertConfidenceBadge" class="confidence-badge-line"></div>
+                    </div>
                     <div class="d-flex gap-2">
                         <select class="form-select form-select-sm report-range-select" id="alertRange">
                             <option value="24h">Last 24 Hours</option>
@@ -1434,7 +433,7 @@
                             <option value="WARNING">Warning</option>
                             <option value="INFO">Info</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadAlertReport()">
+                        <button class="btn btn-sm btn-primary" onclick="loadAlertReport()" aria-label="Refresh alert report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','pdf')">
@@ -1442,8 +441,8 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-4">
-                    <div class="row mb-4" id="alertKpiCards">
+                <div class="card-body p-2">
+                    <div class="row mb-3" id="alertKpiCards">
                         <div class="text-center py-4">
                             <div class="spinner-border text-primary" role="status"></div>
                             <p class="mt-2 text-muted">Loading Alert Data...</p>
@@ -1570,14 +569,17 @@
             <!-- Header card -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation Monitoring — Employee Device Fleet</h5>
+                    <div>
+                        <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation Monitoring — Employee Device Fleet</h5>
+                        <div id="wsConfidenceBadge" class="confidence-badge-line"></div>
+                    </div>
                     <div class="d-flex gap-2 align-items-center">
                         <select class="form-select form-select-sm" id="wsRange" style="width:130px">
                             <option value="7d">Last 7 Days</option>
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadWorkstationHealth(true)">
+                        <button class="btn btn-sm btn-primary" onclick="loadWorkstationHealth(true)" aria-label="Refresh workstation report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <a id="wsPdfBtn" href="#"
@@ -1686,29 +688,23 @@
                                             <th>Device</th>
                                             <th>Employee</th>
                                             <th>Dept</th>
-                                            <th>IP</th>
                                             <th>Status</th>
                                             <th class="text-end">Uptime %</th>
                                             <th class="text-end">Downtime</th>
-                                            <th class="text-end">Incidents</th>
-                                            <th class="text-end">MTTR</th>
-                                            <th class="text-end">MTBF</th>
-                                            <th>Last Seen</th>
                                             <th>SLA</th>
-                                            <th class="text-end">Keyboard</th>
-                                            <th class="text-end">Active Hrs</th>
-                                            <th>Top App</th>
-                                            <th class="text-end">Violations</th>
-                                            <th class="text-end">Prod.</th>
-                                            <th class="text-end">Focus</th>
+                                            <th>Last Seen</th>
+                                            <th>Risk</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td colspan="18" class="text-center text-muted p-4">
+                                        <tr><td colspan="9" class="text-center text-muted p-4">
                                             Click <strong>Workstation Monitoring</strong> tab to load.
                                         </td></tr>
                                     </tbody>
                                 </table>
+                            </div>
+                            <div class="px-3 pb-2">
+                                <small class="text-muted" style="font-size:0.72rem">† MTTR, MTBF, incidents, productivity, focus score, and keyboard activity are available in the Device Inspector tab.</small>
                             </div>
                         </div>
                     </div>
@@ -1792,14 +788,17 @@
             <!-- Header card -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-server me-2"></i> Server &amp; Network Device Fleet</h5>
+                    <div>
+                        <h5 class="mb-0"><i class="fas fa-server me-2"></i> Server &amp; Network Device Fleet</h5>
+                        <div id="srvConfidenceBadge" class="confidence-badge-line"></div>
+                    </div>
                     <div class="d-flex gap-2 align-items-center">
                         <select class="form-select form-select-sm" id="srvRange" style="width:130px">
                             <option value="7d">Last 7 Days</option>
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadServerReports(true)">
+                        <button class="btn btn-sm btn-primary" onclick="loadServerReports(true)" aria-label="Refresh server report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <a id="srvPdfBtn" href="#"
@@ -1828,13 +827,13 @@
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="stat-card" style="background:#0ea5e9;color:#fff">
+                    <div class="stat-card info" id="srvLatencyCard">
                         <h3 id="srvAvgLatency">—</h3>
                         <p><i class="fas fa-tachometer-alt me-1"></i> Fleet Avg Latency</p>
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="stat-card" style="background:#8b5cf6;color:#fff">
+                    <div class="stat-card violet" id="srvPacketLossCard">
                         <h3 id="srvAvgPacketLoss">—</h3>
                         <p><i class="fas fa-exclamation-circle me-1"></i> Avg Pkt Loss</p>
                     </div>
@@ -1858,19 +857,19 @@
                 <!-- KPI row 2 — fleet resource averages + agent coverage -->
                 <div class="row mb-3">
                     <div class="col-6 col-md-3">
-                        <div class="stat-card" style="background:#0e7490;color:#fff">
+                        <div class="stat-card info">
                             <h3 id="srvAvgMem">—</h3>
                             <p><i class="fas fa-memory me-1"></i> Fleet Avg Memory</p>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="stat-card" style="background:#0369a1;color:#fff">
+                        <div class="stat-card blue">
                             <h3 id="srvAvgDisk">—</h3>
                             <p><i class="fas fa-hdd me-1"></i> Fleet Avg Disk</p>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="stat-card" style="background:#6366f1;color:#fff">
+                        <div class="stat-card sync">
                             <h3 id="srvAgentCount">—</h3>
                             <p><i class="fas fa-robot me-1"></i> Agent Coverage</p>
                         </div>
@@ -1963,10 +962,10 @@
 
 <!-- ── Device Detail Modal (Phase 3) ─────────────────────────────── -->
 <!-- Export Confirmation Modal -->
-<div class="modal fade" id="exportConfirmModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="exportConfirmModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
-    <div class="modal-content" style="background:#0f172a;border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
-      <div class="modal-header" style="background:#0b0f1a;border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
+    <div class="modal-content" style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
+      <div class="modal-header" style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
         <h6 class="modal-title mb-0" style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
           <i class="fas fa-file-export me-2"></i>Confirm Export
         </h6>
@@ -1988,10 +987,10 @@
   </div>
 </div>
 
-<div class="modal fade" id="deviceDetailModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="deviceDetailModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content" style="background:#0f172a;border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
-      <div class="modal-header" style="background:#0b0f1a;border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
+    <div class="modal-content" style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
+      <div class="modal-header" style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
         <div>
           <h6 class="modal-title fw-semibold mb-0" style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
             <i class="fas fa-microchip me-2"></i><span id="ddmDeviceName">Device</span>
@@ -2077,7 +1076,7 @@
           </div>
         </div><!-- /ddmContent -->
       </div><!-- /modal-body -->
-      <div class="modal-footer" style="background:#0b0f1a;border-top:1px solid rgba(0,212,170,.1);padding:.4rem 1rem">
+      <div class="modal-footer" style="background:var(--ui-surface-1,#0C0C0C);border-top:1px solid rgba(0,212,170,.1);padding:.4rem 1rem">
         <small class="text-muted me-auto" id="ddmPeriodLabel" style="font-size:.7rem"></small>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
       </div>
@@ -2679,16 +1678,26 @@
         function renderProblematicTable(devices) {
             const tableBody = document.querySelector('#problematicTable tbody');
             const sorted = [...devices].sort((a, b) =>
-                _problematicSortDesc ? a.uptime - b.uptime : b.uptime - a.uptime
+                _problematicSortDesc
+                    ? (b.degradation_score || 0) - (a.degradation_score || 0)
+                    : (a.degradation_score || 0) - (b.degradation_score || 0)
             );
             patchTableRows(tableBody, sorted, {
                 getKey: (device, index) => device.device_id || device.ip || `problematic-${index}`,
-                emptyColSpan: 4,
-                emptyMessage: '<i class="fas fa-check-circle text-success mb-2"></i><br>No problematic devices found.',
+                emptyColSpan: 6,
+                emptyMessage: '<i class="fas fa-check-circle text-success mb-2"></i><br>No degraded devices found.',
                 emptyClassName: 'text-center text-muted py-4',
                 renderCells: (device) => {
                     const uptime = parseFloat(device.uptime);
                     const badgeClass = uptime >= 99 ? 'bg-success' : uptime >= 95 ? 'bg-warning text-dark' : 'bg-danger';
+                    const latency = device.avg_latency_ms;
+                    const latencyBadge = latency != null
+                        ? `<span class="badge ${latency > 200 ? 'bg-danger' : latency > 100 ? 'bg-warning text-dark' : 'bg-secondary opacity-75'}">${latency.toFixed(0)}ms</span>`
+                        : '<span class="text-muted">—</span>';
+                    const pktLoss = device.avg_packet_loss_pct;
+                    const pktBadge = pktLoss != null
+                        ? `<span class="badge ${pktLoss > 10 ? 'bg-danger' : pktLoss > 5 ? 'bg-warning text-dark' : 'bg-secondary opacity-75'}">${pktLoss.toFixed(1)}%</span>`
+                        : '<span class="text-muted">—</span>';
                     const viewLink = device.device_id
                         ? `<a href="/devices/${device.device_id}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem;">View</a>`
                         : '';
@@ -2699,8 +1708,10 @@
                         </td>
                         <td><span class="badge bg-secondary opacity-75">${device.type}</span></td>
                         <td class="text-end">
-                            <span class="badge ${badgeClass}">${device.uptime}%</span>
+                            <span class="badge ${badgeClass}">${device.uptime != null ? device.uptime + '%' : '—'}</span>
                         </td>
+                        <td class="text-end">${latencyBadge}</td>
+                        <td class="text-end">${pktBadge}</td>
                         <td class="text-end">${viewLink}</td>
                     `;
                 }
@@ -2734,24 +1745,41 @@
                         true,
                         data.data_health?.trend_window_days ?? 30
                     );
+                    const pktLossVal = data.avg_packet_loss;
+                    const pktLossClass = pktLossVal != null ? (pktLossVal > 10 ? 'text-danger' : pktLossVal > 5 ? 'text-warning' : 'text-success') : 'text-muted';
+                    const downtimeVal = data.downtime_hours;
                     contentDiv.innerHTML = `
                         <div class="row text-center">
                             <div class="col-md-3 border-end border-secondary">
-                                <h2 class="display-4 fw-bold ${data.uptime_score >= 99 ? 'text-success' : 'text-warning'}">${data.uptime_score}% ${trendHtml}</h2>
+                                <h2 class="display-4 fw-bold ${(data.uptime_score ?? 0) >= 99 ? 'text-success' : 'text-warning'}">${data.uptime_score != null ? data.uptime_score + '%' : 'N/A'} ${trendHtml}</h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">Fleet Availability</p>
                             </div>
                             <div class="col-md-3 border-end border-secondary">
-                                <h2 class="display-4 fw-bold text-white">${data.total_devices}</h2>
+                                <h2 class="display-4 fw-bold text-white">${data.total_devices ?? '—'}</h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">Total Devices</p>
                             </div>
                             <div class="col-md-3 border-end border-secondary">
-                                <h2 class="display-4 fw-bold text-info">${data.avg_latency}<span class="fs-6">ms</span></h2>
+                                <h2 class="display-4 fw-bold text-info">${data.avg_latency != null ? data.avg_latency : '—'}<span class="fs-6">${data.avg_latency != null ? 'ms' : ''}</span></h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">Avg Latency</p>
                             </div>
                             <div class="col-md-3">
                                 <h2 class="display-4 fw-bold text-warning mtta-value">${mttaDisplay}</h2>
                                 <p class="text-muted text-uppercase small ls-1 mb-0">MTTA (Avg)</p>
                                 ${mttaSubnote}
+                            </div>
+                        </div>
+                        <div class="row text-center mt-2 pt-2 border-top border-secondary">
+                            <div class="col-md-4 border-end border-secondary">
+                                <h3 class="fw-bold ${pktLossClass}">${pktLossVal != null ? pktLossVal.toFixed(1) + '%' : '—'}</h3>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Avg Packet Loss</p>
+                            </div>
+                            <div class="col-md-4 border-end border-secondary">
+                                <h3 class="fw-bold text-info">${downtimeVal != null ? downtimeVal.toFixed(1) + 'h' : '—'}</h3>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Est. Downtime</p>
+                            </div>
+                            <div class="col-md-4">
+                                <h3 class="fw-bold text-white">${data.chronically_offline?.count ?? 0}</h3>
+                                <p class="text-muted text-uppercase small ls-1 mb-0">Chronically Offline</p>
                             </div>
                         </div>
                         <div class="text-end mt-3">
@@ -2762,6 +1790,12 @@
 
                     _renderFleetHealthBar(data.health_distribution);
                     _renderDataHealthBanner(data);
+
+                    // Decision banner + cross-report risk strip
+                    if (data.cross_report) {
+                        _renderDecisionBanner('decisionBanner', data.cross_report);
+                        _renderCrossReportStrip('crossReportStrip', data.cross_report);
+                    }
 
                     // Render narrative + intelligence (containers: #execNarrative, #execIntelligence)
                     if (data.narrative) _renderNarrativeBlock('execNarrative', data.narrative);
@@ -2778,10 +1812,47 @@
                     const sortBtn = document.getElementById('sortToggleBtn');
                     if (sortBtn) sortBtn.innerHTML = '<i class="fas fa-sort-amount-up me-1"></i> Show Best 10';
                     renderProblematicTable(_problematicDevices);
+
+                    // Chronically offline summary
+                    const offlineDiv = document.getElementById('chronicallyOfflineSummary');
+                    if (offlineDiv) {
+                        const offline = data.chronically_offline || {};
+                        if (offline.count > 0) {
+                            const names = (offline.devices || []).map(d => d.name).join(', ');
+                            const ellipsis = offline.count > 5 ? '...' : '';
+                            offlineDiv.className = 'card-footer border-top border-secondary';
+                            offlineDiv.innerHTML = `
+                                <div class="d-flex align-items-center gap-2 py-1">
+                                    <span class="badge bg-secondary">${offline.count}</span>
+                                    <span class="text-muted" style="font-size:.8rem;">
+                                        device(s) chronically offline (0% uptime for full period)
+                                        <span class="text-muted opacity-75 ms-1" style="font-size:.72rem;">
+                                            ${names}${ellipsis}
+                                        </span>
+                                    </span>
+                                </div>`;
+                        } else {
+                            offlineDiv.className = 'd-none';
+                            offlineDiv.innerHTML = '';
+                        }
+                    }
+
+                    // Sync global summary bar from executive data (single source of truth)
+                    _updateGlobalSummary(data);
+
+                    // Confidence badge (U4)
+                    _renderConfidenceBadge('execConfidenceBadge',
+                        data._confidence?.uptime_score?.level,
+                        data.availability_basis,
+                        data.total_devices,
+                        data.period
+                    );
                 })
                 .catch(e => {
                     console.error(e);
                     contentDiv.innerHTML = `<div class="alert alert-danger">Failed to load report: ${e.message}</div>`;
+                    // Reset tab flag so the user can retry by clicking the tab again
+                    delete tabLoaded['executive'];
                 });
         }
 
@@ -2951,7 +2022,7 @@
 
             <!-- Availability KPIs -->
             <div class="rpt-inspector-section">Availability</div>
-            <div class="row mb-4">
+            <div class="row mb-3">
                 <div class="col-6 col-md-3 mb-3">
                     <div class="stat-card success">
                         <h3>${stats.online_count.toLocaleString()}</h3>
@@ -2981,7 +2052,7 @@
             ${stats.avg_latency != null ? `
             <!-- Latency KPIs -->
             <div class="rpt-inspector-section">Latency</div>
-            <div class="row mb-4">
+            <div class="row mb-3">
                 <div class="col-6 col-md-3 mb-3">
                     <div class="stat-card primary">
                         <h3>${stats.avg_latency.toFixed(1)}<small class="rpt-unit"> ms</small></h3>
@@ -3009,7 +2080,7 @@
             </div>
 
             <!-- Charts -->
-            <div class="row mb-4">
+            <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header py-2 px-3">
@@ -3329,7 +2400,7 @@
             summaryCards.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
             setTableStatusRow(tbody, 7, 'Loading...');
 
-            fetchReportJson(`/api/reports/device-health?range=${encodeURIComponent(range)}`)
+            return fetchReportJson(`/api/reports/device-health?range=${encodeURIComponent(range)}`)
                 .then(data => {
                     renderCompletenessWarnings('devicehealth', data.meta);
                     // Summary table
@@ -3425,6 +2496,18 @@
                         });
                     });
                     dhDiskChart = new Chart(document.getElementById('dhDiskChart').getContext('2d'), { type: 'line', data: { labels, datasets: diskDatasets }, options: chartOpts, plugins: [_diskThreshPlugin] });
+
+                    // Wire device-health narrative block
+                    if (data.narrative) _renderNarrativeBlock('deviceHealthNarrative', data.narrative);
+
+                    // Confidence badge (U4)
+                    const dhDeviceCount = s.length;
+                    const dhConfLevel = data.granularity === 'daily' ? 'HIGH' : data.granularity === 'hourly' ? 'MEDIUM' : 'LOW';
+                    const dhConfSource = data.granularity ? data.granularity + ' aggregates' : null;
+                    _renderConfidenceBadge('dhConfidenceBadge', dhConfLevel, dhConfSource, dhDeviceCount, data.period);
+
+                    // Capacity Runway table (U5)
+                    _renderCapacityRunway(data.peaks_and_breaches);
                 })
                 .catch(e => { summaryCards.innerHTML = `<div class="alert alert-danger">Failed: ${e.message}</div>`; });
         }
@@ -3632,7 +2715,7 @@
             let url = `/api/reports/alerts?range=${range}`;
             if (severity) url += `&severity=${encodeURIComponent(severity)}`;
 
-            fetchReportJson(url)
+            return fetchReportJson(url)
                 .then(data => {
                     renderCompletenessWarnings('alerthistory', data.meta);
                     // KPIs
@@ -3694,6 +2777,13 @@
                     if (sevFilterEl) sevFilterEl.value = '';
                     applyAlertListFilters();
                     _renderUnresolvedAgePanel(data.alerts || []);
+
+                    // Wire alerts narrative block
+                    if (data.narrative) _renderNarrativeBlock('alertNarrative', data.narrative);
+
+                    // Confidence badge (U4) — alert history comes from dashboard events
+                    _renderConfidenceBadge('alertConfidenceBadge', 'HIGH', 'Dashboard events',
+                        data.alerts_total_count ?? (data.alerts?.length ?? null), data.meta?.period ?? null);
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -3838,17 +2928,27 @@
         // Tab lazy-loading
         // ==========================================
         const tabLoaded = {};
+        function _lazyLoad(target) {
+            if (tabLoaded[target]) return;
+            tabLoaded[target] = true;
+            // Reset on error so the user can switch away and back to retry
+            const _reset = () => { delete tabLoaded[target]; };
+            let p;
+            if (target === 'devicehealth')      p = loadDeviceHealthReport();
+            else if (target === 'productivity') p = loadProductivityReport();
+            else if (target === 'network')      p = loadNetworkReport();
+            else if (target === 'alerthistory') p = loadAlertReport();
+            else if (target === 'workstationhealth') p = loadWorkstationHealth();
+            else if (target === 'serverreports') p = loadServerReports();
+            else if (target === 'inspector' && !window._devicesLoaded) {
+                window._devicesLoaded = true;
+                p = loadDevices();
+            }
+            if (p && typeof p.catch === 'function') p.catch(_reset);
+        }
         document.querySelectorAll('#reportTabs button[data-bs-toggle="pill"]').forEach(btn => {
             btn.addEventListener('shown.bs.tab', (e) => {
-                const target = e.target.getAttribute('data-bs-target').replace('#', '');
-                if (tabLoaded[target]) return;
-                tabLoaded[target] = true;
-                if (target === 'devicehealth') loadDeviceHealthReport();
-                else if (target === 'productivity') loadProductivityReport();
-                else if (target === 'network') loadNetworkReport();
-                else if (target === 'alerthistory') loadAlertReport();
-                else if (target === 'workstationhealth') loadWorkstationHealth();
-                else if (target === 'serverreports') loadServerReports();
+                _lazyLoad(e.target.getAttribute('data-bs-target').replace('#', ''));
             });
         });
 
@@ -3888,7 +2988,7 @@
         document.getElementById('netRange')?.addEventListener('change', loadNetworkReport);
         document.getElementById('alertSeverity')?.addEventListener('change', loadAlertReport);
 
-        loadDevices();
+        // loadDevices() deferred to Device Inspector tab click (lazy load)
         if (document.getElementById('dailyReport')) {
             loadDailyReport();
         }
@@ -3919,14 +3019,9 @@
             () => _renderSrvTopConsumers(_srvAllRows)
         );
 
-        // Global summary bar — initial fetch + debounced re-fetch on any tab range change
-        _fetchAndRenderGlobalSummary();
-        const _gsSummaryDebounced = _debounce(_fetchAndRenderGlobalSummary, 400);
-        ['srvRange', 'wsRange', 'execRange', 'alertRange'].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', e =>
-                _gsSummaryDebounced(e.target.value)
-            );
-        });
+        // Global summary bar — now derived from executive response (no extra API call).
+        // _updateGlobalSummary(data) is called inside loadExecutiveReport(),
+        // which is already debounced on execRange change.
 
         // Device detail modal — delegated click (tbody replaced on filter/refresh)
         document.addEventListener('click', function(e) {
@@ -3978,6 +3073,86 @@
         const data = await resp.json();
         _enterpriseCache[cacheKey] = data;
         return data;
+    }
+
+    // ── U4: Confidence badge ────────────────────────────────────────────────
+    function _renderConfidenceBadge(containerId, level, source, deviceCount, period) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (!level && !source) { el.textContent = ''; return; }
+        const lvl = (level || 'UNKNOWN').toUpperCase();
+        const lvlClass = lvl === 'HIGH' ? 'cb-level-high' : lvl === 'MEDIUM' ? 'cb-level-medium' : 'cb-level-nodata';
+        const srcLabel = source || (lvl === 'NO_DATA' ? 'No data' : 'Mixed sources');
+        let parts = [`Data: ${srcLabel} (<span class="${lvlClass}">${lvl}</span>)`];
+        if (period?.start && period?.end) {
+            const fmt = d => new Date(d).toLocaleDateString('en-IN', {day:'2-digit', month:'short', timeZone:'Asia/Kolkata'});
+            parts.push(`${fmt(period.start)} – ${fmt(period.end)}`);
+        }
+        if (deviceCount != null && deviceCount > 0) parts.push(`${deviceCount} devices`);
+        el.innerHTML = parts.join(' · ');
+    }
+
+    // ── U5: Capacity Runway table ───────────────────────────────────────────
+    function _renderCapacityRunway(peaksAndBreaches) {
+        const el = document.getElementById('dhCapacityRunway');
+        if (!el) return;
+
+        // Flatten all capacity_runway entries across all devices, filter < 60 days
+        const atRisk = [];
+        if (peaksAndBreaches && typeof peaksAndBreaches === 'object') {
+            for (const [, dev] of Object.entries(peaksAndBreaches)) {
+                const runway = dev.capacity_runway || [];
+                for (const r of runway) {
+                    if (r.estimated_days_to_breach != null && r.estimated_days_to_breach < 60) {
+                        atRisk.push({ device_name: dev.device_name, ...r });
+                    }
+                }
+            }
+        }
+        atRisk.sort((a, b) => a.estimated_days_to_breach - b.estimated_days_to_breach);
+
+        if (!atRisk.length) {
+            el.style.display = 'none';
+            return;
+        }
+
+        const urgentClass = d => d <= 14 ? 'text-danger fw-bold' : d <= 30 ? 'text-warning fw-semibold' : 'text-muted';
+        const confBadge = c => c === 'high'
+            ? '<span class="badge bg-success bg-opacity-75" style="font-size:.6rem">HIGH</span>'
+            : '<span class="badge bg-warning text-dark bg-opacity-75" style="font-size:.6rem">MED</span>';
+
+        const rows = atRisk.map(r => `
+            <tr>
+                <td class="fw-semibold">${_esc(r.device_name || '—')}</td>
+                <td>${_esc(r.metric || '—')}</td>
+                <td class="text-end">${r.current_avg != null ? r.current_avg + '%' : '—'}</td>
+                <td class="text-end ${urgentClass(r.estimated_days_to_breach)}">${r.estimated_days_to_breach} days</td>
+                <td class="text-center">${confBadge(r.confidence)}</td>
+            </tr>`).join('');
+
+        el.innerHTML = `
+            <div class="card border-warning">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center" style="background:rgba(217,119,6,0.12)">
+                    <h6 class="mb-0 text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Capacity Runway — ${atRisk.length} metric${atRisk.length > 1 ? 's' : ''} approaching threshold within 60 days</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Metric</th>
+                                    <th class="text-end">Current Avg</th>
+                                    <th class="text-end">Days to Threshold</th>
+                                    <th class="text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>`;
+        el.style.display = '';
     }
 
     function _slaBadge(tier) {
@@ -4058,6 +3233,67 @@
                     </li>`).join('')}
                 </ul>
             </div>`;
+    }
+
+    function _renderDecisionBanner(containerId, crossReport) {
+        const el = document.getElementById(containerId);
+        if (!el || !crossReport) return;
+        const status = crossReport.fleet_status || 'ok';
+        const _SC = {
+            ok:       { bg: 'rgba(34,197,94,.07)',  border: '#22c55e', text: '#16a34a', label: 'GREEN'  },
+            warning:  { bg: 'rgba(245,158,11,.08)', border: '#f59e0b', text: '#d97706', label: 'AMBER'  },
+            critical: { bg: 'rgba(239,68,68,.08)',  border: '#ef4444', text: '#dc2626', label: 'RED'    },
+        };
+        const sc = _SC[status] || _SC.ok;
+        const uptime    = crossReport.fleet_uptime != null ? crossReport.fleet_uptime.toFixed(2) + '%' : null;
+        const critCount = crossReport.critical_device_count || 0;
+        const unresCount = crossReport.unresolved_alert_count || 0;
+
+        let headline;
+        if (status === 'ok') {
+            headline = `Fleet Healthy${uptime ? ' — ' + uptime + ' availability.' : '.'} No critical issues detected.`;
+        } else if (status === 'warning') {
+            const parts = [];
+            if (uptime) parts.push(uptime + ' availability');
+            if (critCount) parts.push(critCount + ' device(s) below SLA');
+            if (unresCount) parts.push(unresCount + ' unresolved alert(s)');
+            headline = 'Fleet At Risk' + (parts.length ? ' — ' + parts.join('. ') + '.' : '.');
+        } else {
+            headline = `Fleet Critical — ${critCount || '?'} device(s) offline or degraded. Immediate action required.`;
+        }
+
+        const risks = (crossReport.top_risks || []).slice(0, 2);
+        const riskHtml = risks.length
+            ? `<ul class="mb-0 mt-1 ps-3" style="font-size:.78rem;color:#94a3b8">${risks.map(r => `<li>${_esc(r)}</li>`).join('')}</ul>`
+            : '';
+        const actionHtml = crossReport.composite_action
+            ? `<div class="mt-1" style="font-size:.76rem;color:${sc.text}"><i class="fas fa-arrow-right me-1"></i>${_esc(crossReport.composite_action)}</div>`
+            : '';
+
+        el.innerHTML = `<div style="border-left:3px solid ${sc.border};background:${sc.bg};border-radius:3px;padding:.5rem .85rem">
+            <span style="font-weight:700;font-size:.75rem;color:${sc.text};text-transform:uppercase;letter-spacing:.05em">${sc.label}</span>
+            <span style="font-size:.82rem;margin-left:.6rem;color:var(--text-primary,#e2e8f0)">${_esc(headline)}</span>
+            ${riskHtml}${actionHtml}
+        </div>`;
+        el.style.display = '';
+    }
+
+    function _renderCrossReportStrip(containerId, crossReport) {
+        const el = document.getElementById(containerId);
+        if (!el || !crossReport) return;
+        const domains = crossReport.domain_statuses || {};
+        const _CLS = { ok: 'text-success', warning: 'text-warning', critical: 'text-danger', no_data: 'text-muted' };
+        const _ICO = { ok: '●', warning: '●', critical: '●', no_data: '○' };
+        const order = [['fleet','Fleet'],['alerts','Alerts'],['health','Health'],['security','Security']];
+        const chips = order.map(([key, label]) => {
+            const s = domains[key] || 'no_data';
+            return `<span class="${_CLS[s] || 'text-muted'} me-3" style="font-size:.76rem;white-space:nowrap">
+                <span style="font-size:.68rem">${_ICO[s] || '○'}</span>
+                <span class="text-muted ms-1">${label}</span>
+            </span>`;
+        }).join('');
+        el.innerHTML = `<div class="d-flex flex-wrap align-items-center px-1" style="border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:.3rem">${chips}</div>`;
+        el.style.display = '';
     }
 
     function _renderNarrativeBlock(containerId, narrative) {
@@ -4201,7 +3437,7 @@
 
         // Show loading
         const tbody = document.querySelector('#wsDeviceTable tbody');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="18" class="text-center p-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading workstation data…</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center p-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading workstation data…</td></tr>`;
 
         try {
             const data = await _fetchEnterpriseData(range, 'workstation', forceRefresh);
@@ -4299,8 +3535,18 @@
                     wsNote.style.display = 'none';
                 }
             }
+            // Wire tracked-fleet narrative block
+            if (data.narratives?.tracked_fleet) _renderNarrativeBlock('workstationNarrative', data.narratives.tracked_fleet);
+
+            // Confidence badge (U4)
+            _renderConfidenceBadge('wsConfidenceBadge',
+                data._confidence?.tracked_fleet?.level,
+                data._confidence?.tracked_fleet?.source,
+                data.summary?.tracked_devices,
+                data.period
+            );
         } catch (err) {
-            if (tbody) tbody.innerHTML = `<tr><td colspan="18" class="text-center text-danger p-4">${err.message || 'Failed to load workstation data.'}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger p-4">${err.message || 'Failed to load workstation data.'}</td></tr>`;
         }
     }
 
@@ -4318,54 +3564,58 @@
         return `${Number(v).toFixed(1)}${suffix}`;
     }
 
+    function _wsRiskBadge(r) {
+        // Critical: uptime < 90% OR mttr > 120 min OR violations > 5
+        // Warning:  uptime < 95% OR mttr > 60 min OR violations > 0
+        const uptime = r.uptime_pct;
+        const mttr = r.mttr_min;
+        const viol = r.policy_violations;
+        if ((uptime != null && uptime < 90) || (mttr != null && mttr > 120) || (viol != null && viol > 5))
+            return '<span class="badge bg-danger">Critical</span>';
+        if ((uptime != null && uptime < 95) || (mttr != null && mttr > 60) || (viol != null && viol > 0))
+            return '<span class="badge bg-warning text-dark">Warning</span>';
+        return '<span class="badge bg-success">OK</span>';
+    }
+
+    function _wsRowCells(r) {
+        const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}) : '—';
+        return `<td><span class="fw-semibold">${_esc(r.device_name || '—')}</span>${_dataGapBadge(r)}</td>
+            <td class="text-muted">${_esc(r.employee_name || '—')}</td>
+            <td class="text-muted" style="font-size:0.78rem">${_esc(r.department || '—')}</td>
+            <td>${_statusBadge(r.availability_status)}</td>
+            <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
+            <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
+            <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+            <td style="font-size:0.75rem;white-space:nowrap">${lastSeen}</td>
+            <td>${_wsRiskBadge(r)}</td>`;
+    }
+
     function _renderWsTable(rows) {
         const tbody = document.querySelector('#wsDeviceTable tbody');
         if (!tbody) return;
-        if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="18" class="text-center text-muted p-4">No tracked devices found for this period.</td></tr>';
+        const patch = window._patchKeyedTableRows;
+        if (!patch) {
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-4">No tracked devices found for this period.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(r => `<tr data-device-id="${r.device_id || ''}" data-fleet="workstation" data-device-ip="${_esc(r.device_ip || '')}" style="cursor:pointer" title="View details — ${_esc(r.device_name || r.employee_name || '')}">${_wsRowCells(r)}</tr>`).join('');
             return;
         }
-        tbody.innerHTML = rows.map(r => {
-            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}) : '—';
-            const mttr = r.mttr_min != null ? `${Math.round(r.mttr_min)} min` : '—';
-            const mtbf = r.mtbf_hours != null ? `${r.mtbf_hours.toFixed(1)} h` : '—';
-            // Behavioral columns
-            const kb = r.total_keyboard_events != null ? Number(r.total_keyboard_events).toLocaleString() : '<span class="text-muted">—</span>';
-            const activeHrs = r.total_active_hours != null ? `${r.total_active_hours} h` : '<span class="text-muted">—</span>';
-            const topApp = r.top_app ? _esc(r.top_app.length > 15 ? r.top_app.slice(0, 15) + '…' : r.top_app) : '<span class="text-muted">—</span>';
-            const viol = r.policy_violations != null
-                ? (r.policy_violations > 0 ? `<span class="badge bg-danger">${r.policy_violations}</span>` : `<span class="badge bg-success">0</span>`)
-                : '<span class="text-muted">—</span>';
-            const prodColor = r.productivity_score == null ? '' : r.productivity_score >= 70 ? 'color:#16a34a' : r.productivity_score >= 40 ? 'color:#d97706' : 'color:#dc2626';
-            const focusColor = r.focus_score == null ? '' : r.focus_score >= 70 ? 'color:#16a34a' : r.focus_score >= 40 ? 'color:#d97706' : 'color:#dc2626';
-            const prod = r.productivity_score != null ? `<span style="font-weight:600;${prodColor}">${r.productivity_score}</span>` : '<span class="text-muted">—</span>';
-            const focus = r.focus_score != null ? `<span style="font-weight:600;${focusColor}">${r.focus_score}</span>` : '<span class="text-muted">—</span>';
-            return `<tr
-                data-device-id="${r.device_id || ''}"
-                data-fleet="workstation"
-                data-device-ip="${_esc(r.device_ip || '')}"
-                style="cursor:pointer"
-                title="View details — ${_esc(r.device_name || r.employee_name || '')}">
-                <td><span class="fw-semibold">${_esc(r.device_name || '—')}</span>${_dataGapBadge(r)}</td>
-                <td class="text-muted">${_esc(r.employee_name || '—')}</td>
-                <td class="text-muted" style="font-size:0.78rem">${_esc(r.department || '—')}</td>
-                <td><code style="font-size:0.75rem">${_esc(r.device_ip || '—')}</code></td>
-                <td>${_statusBadge(r.availability_status)}</td>
-                <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
-                <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
-                <td class="text-end">${r.incident_count ?? 0}</td>
-                <td class="text-end text-muted">${mttr}</td>
-                <td class="text-end text-muted">${mtbf}</td>
-                <td style="font-size:0.75rem;white-space:nowrap">${lastSeen}</td>
-                <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
-                <td class="text-end" style="font-size:0.8rem">${kb}</td>
-                <td class="text-end" style="font-size:0.8rem">${activeHrs}</td>
-                <td style="font-size:0.78rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topApp}</td>
-                <td class="text-end">${viol}</td>
-                <td class="text-end" style="font-size:0.85rem">${prod}</td>
-                <td class="text-end" style="font-size:0.85rem">${focus}</td>
-            </tr>`;
-        }).join('');
+        patch(tbody, rows, {
+            getKey: (r, i) => String(r.device_id || i),
+            renderCells: _wsRowCells,
+            applyRow: (row, r) => {
+                row.dataset.deviceId = r.device_id || '';
+                row.dataset.fleet = 'workstation';
+                row.dataset.deviceIp = _esc(r.device_ip || '');
+                row.style.cursor = 'pointer';
+                row.title = `View details — ${_esc(r.device_name || r.employee_name || '')}`;
+            },
+            emptyColSpan: 9,
+            emptyMessage: 'No tracked devices found for this period.',
+            emptyClassName: 'text-center text-muted p-4',
+        });
     }
 
     function filterWsTable() {
@@ -4508,29 +3758,28 @@
             if (srvPktEl) srvPktEl.textContent = avgPktLoss;
             document.getElementById('srvCriticalCount').textContent = sla['Critical'] || 0;
 
-            // Threshold-based KPI card colors — packet loss
-            const pktVal = parseFloat(avgPktLoss);
-            const pktCard = srvPktEl ? srvPktEl.closest('.stat-card') : null;
-            if (pktCard && Number.isFinite(pktVal)) {
-                if (pktVal >= 5) {
-                    pktCard.style.background = '#dc2626';  // red — critical
-                } else if (pktVal >= 1) {
-                    pktCard.style.background = '#f97316';  // amber — warning
+            function applyThresholdState(card, numericValue, warningCutoff, criticalCutoff) {
+                if (!card) return;
+                card.style.removeProperty('background');
+                delete card.dataset.thresholdState;
+                if (!Number.isFinite(numericValue)) return;
+                if (numericValue >= criticalCutoff) {
+                    card.dataset.thresholdState = 'critical';
+                } else if (numericValue >= warningCutoff) {
+                    card.dataset.thresholdState = 'warning';
+                } else {
+                    card.dataset.thresholdState = 'healthy';
                 }
-                // else keep default purple (#8b5cf6)
             }
 
-            // Threshold-based KPI card colors — latency
+            // Threshold-based KPI state — packet loss and latency
+            const pktVal = parseFloat(avgPktLoss);
+            const pktCard = srvPktEl ? srvPktEl.closest('.stat-card') : null;
+            applyThresholdState(pktCard, pktVal, 1, 5);
+
             const latVal = parseFloat(avgLatency);
             const latCard = srvLatEl ? srvLatEl.closest('.stat-card') : null;
-            if (latCard && Number.isFinite(latVal)) {
-                if (latVal >= 150) {
-                    latCard.style.background = '#dc2626';  // red — critical
-                } else if (latVal >= 50) {
-                    latCard.style.background = '#f97316';  // amber — warning
-                }
-                // else keep default cyan (#0ea5e9)
-            }
+            applyThresholdState(latCard, latVal, 50, 150);
 
             // Coverage warning banner
             const srvNote = document.getElementById('srvDataNote');
@@ -4568,6 +3817,17 @@
             // Monitoring coverage banner
             const srvCovEl = document.getElementById('srvCoverageBanner');
             if (srvCovEl && data.summary) srvCovEl.innerHTML = _renderCoverageBanner(data.summary);
+
+            // Wire server-fleet narrative block
+            if (data.narratives?.server_fleet) _renderNarrativeBlock('serverNarrative', data.narratives.server_fleet);
+
+            // Confidence badge (U4)
+            _renderConfidenceBadge('srvConfidenceBadge',
+                data._confidence?.server_fleet?.level,
+                data._confidence?.server_fleet?.source,
+                data.summary?.server_devices,
+                data.period
+            );
 
             // Table (top consumers rendered lazily on collapse open)
             _renderSrvTable(rows);
@@ -4665,33 +3925,46 @@
         if (row.fleet === 'workstation') _loadViolationsIntoModal(row);
     }
 
+    function _srvRowCells(r) {
+        const statusBadgeFn = window._statusBadge || _statusBadge;
+        return `<td><span class="fw-semibold">${_esc(r.device_name || '—')}</span>${_dataGapBadge(r)}</td>
+            <td><code style="font-size:0.75rem">${_esc(r.device_ip || '—')}</code></td>
+            <td><span class="badge bg-secondary bg-opacity-50">${_esc(r.device_type || '—')}</span></td>
+            <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
+            <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
+            <td class="text-end">${r.timeout_count ? '<span class="text-warning fw-bold">'+r.timeout_count+'</span>' : '<span class="text-muted">—</span>'}</td>
+            <td class="text-end text-muted">${_fmtNum(r.avg_latency_ms, ' ms')}</td>
+            <td class="text-end text-muted">${_fmtNum(r.avg_packet_loss_pct, '%')}</td>
+            <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
+            <td>${statusBadgeFn(r)}</td>`;
+    }
+
     function _renderSrvTable(rows) {
         const tbody = document.querySelector('#srvDeviceTable tbody');
         if (!tbody) return;
-        if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted p-4">No inventory devices found for this period.</td></tr>';
+        const patch = window._patchKeyedTableRows;
+        if (!patch) {
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted p-4">No inventory devices found for this period.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(r => `<tr data-device-id="${r.device_id || ''}" data-fleet="server" data-device-ip="${_esc(r.device_ip || '')}" style="cursor:pointer" title="View details — ${_esc(r.device_name || '')}">${_srvRowCells(r)}</tr>`).join('');
             return;
         }
-        tbody.innerHTML = rows.map(r => {
-            const statusBadgeFn = window._statusBadge || _statusBadge;
-            return `<tr
-                data-device-id="${r.device_id || ''}"
-                data-fleet="server"
-                data-device-ip="${_esc(r.device_ip || '')}"
-                style="cursor:pointer"
-                title="View details — ${_esc(r.device_name || '')}">
-                <td><span class="fw-semibold">${_esc(r.device_name || '—')}</span>${_dataGapBadge(r)}</td>
-                <td><code style="font-size:0.75rem">${_esc(r.device_ip || '—')}</code></td>
-                <td><span class="badge bg-secondary bg-opacity-50">${_esc(r.device_type || '—')}</span></td>
-                <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
-                <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
-                <td class="text-end">${r.timeout_count ? '<span class="text-warning fw-bold">'+r.timeout_count+'</span>' : '<span class="text-muted">—</span>'}</td>
-                <td class="text-end text-muted">${_fmtNum(r.avg_latency_ms, ' ms')}</td>
-                <td class="text-end text-muted">${_fmtNum(r.avg_packet_loss_pct, '%')}</td>
-                <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
-                <td>${statusBadgeFn(r)}</td>
-            </tr>`;
-        }).join('');
+        patch(tbody, rows, {
+            getKey: (r, i) => String(r.device_id || i),
+            renderCells: _srvRowCells,
+            applyRow: (row, r) => {
+                row.dataset.deviceId = r.device_id || '';
+                row.dataset.fleet = 'server';
+                row.dataset.deviceIp = _esc(r.device_ip || '');
+                row.style.cursor = 'pointer';
+                row.title = `View details — ${_esc(r.device_name || '')}`;
+            },
+            emptyColSpan: 10,
+            emptyMessage: 'No inventory devices found for this period.',
+            emptyClassName: 'text-center text-muted p-4',
+        });
     }
 
     function _renderSrvTopConsumers(rows) {
@@ -4747,32 +4020,18 @@
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Global summary bar ────────────────────────────────────────────────────
-    async function _fetchAndRenderGlobalSummary(range = '7d') {
-        try {
-            const resp = await fetch(`/api/reports/devices?range=${encodeURIComponent(range)}`);
-            if (!resp.ok) return;
-            const data = await resp.json();
-            const rows = data.devices || [];
-            if (!rows.length) return;  // guard empty — don't show stale/zero values
-            const summary = data.summary || {};
-
-            const latRows = rows.filter(r => r.avg_latency_ms != null);
-            const pktRows = rows.filter(r => r.avg_packet_loss_pct != null);
-            const avgLat = latRows.length
-                ? (latRows.reduce((a, r) => a + r.avg_latency_ms, 0) / latRows.length).toFixed(1) + ' ms' : '—';
-            const avgPkt = pktRows.length
-                ? (pktRows.reduce((a, r) => a + r.avg_packet_loss_pct, 0) / pktRows.length).toFixed(2) + '%' : '—';
-            const critical = rows.filter(r => r.sla_tier === 'Critical').length;
-
-            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-            set('gsTotalDevices', summary.total_all ?? summary.total ?? rows.length);
-            set('gsFleetUptime', summary.fleet_avg_uptime != null ? summary.fleet_avg_uptime + '%' : '—');
-            set('gsCritical', critical);
-            set('gsAvgLatency', avgLat);
-            set('gsAvgPktLoss', avgPkt);
-            set('gsAnomalies', summary.anomaly_count ?? 0);
-        } catch (_) { /* best-effort — never block page load */ }
+    // ── Global summary bar — derived from executive response (no extra fetch) ──
+    function _updateGlobalSummary(data) {
+        if (!data) return;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('gsTotalDevices', data.total_devices ?? '—');
+        set('gsFleetUptime', data.uptime_score != null ? data.uptime_score + '%' : '—');
+        set('gsAvgLatency', data.avg_latency != null ? data.avg_latency + ' ms' : '—');
+        // Critical: count from top_problematic or health_distribution
+        const hd = data.health_distribution || {};
+        set('gsCritical', hd['Critical'] ?? 0);
+        set('gsAvgPktLoss', data.avg_packet_loss != null ? data.avg_packet_loss + '%' : '—');
+        set('gsAnomalies', data.anomaly_count ?? 0);
     }
 </script>
 {% endblock %}

@@ -3,60 +3,7 @@
 {% block title %}Real-time Monitoring - Device Monitoring{% endblock %}
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 {% block extra_css %}
-<style>
-    /* Monitoring - Tactical Theme (Minimal Overrides) */
-
-    /* Statistics Cards */
-    .stats-card {
-        background: var(--tactical-bg-surface);
-        border: 1px solid var(--tactical-border);
-        border-radius: var(--tactical-radius-lg);
-        padding: 1.5rem;
-        text-align: center;
-        transition: var(--tactical-transition);
-    }
-
-    .stats-card:hover {
-        border-color: var(--tactical-border-accent);
-        transform: translateY(-4px);
-        box-shadow: var(--tactical-shadow-accent);
-    }
-
-    .stats-card h3 {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        font-family: 'Orbitron', monospace;
-    }
-
-    .stats-card.primary h3 {
-        color: var(--tactical-accent-bright);
-    }
-
-    .stats-card.success h3 {
-        color: var(--tactical-success);
-    }
-
-    .stats-card.danger h3 {
-        color: var(--tactical-danger);
-    }
-
-    .stats-card.info h3 {
-        color: var(--tactical-accent);
-    }
-
-    .stats-card p {
-        font-size: 0.875rem;
-        color: var(--tactical-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin: 0;
-    }
-
-    #refreshBtn.ui-btn-busy {
-        min-width: 108px;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/monitoring.css') }}?v={{ asset_ver }}">
 {% endblock %}
 {% block content %}
 <div class="row">

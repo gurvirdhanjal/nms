@@ -35,10 +35,17 @@ class ComplianceProfile(db.Model):
         return f'<ComplianceProfile id={self.id} name={self.name!r}>'
 
     def to_dict(self):
+        rj = self.rules_json or {}
         return {
             'id':          self.id,
             'name':        self.name,
             'description': self.description,
-            'rules_json':  self.rules_json,
+            'rules_json':  rj,
+            # Explicitly surface ICMP keys for API consumers (Phase 6)
+            'latency_warning_ms':       rj.get('latency_warning_ms'),
+            'latency_critical_ms':      rj.get('latency_critical_ms'),
+            'packet_loss_warning_pct':  rj.get('packet_loss_warning_pct'),
+            'packet_loss_critical_pct': rj.get('packet_loss_critical_pct'),
+            'applicable_device_types':  rj.get('applicable_device_types', []),
             'created_at':  self.created_at.isoformat() if self.created_at else None,
         }

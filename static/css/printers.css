@@ -1,0 +1,215 @@
+/* ══════════════════════════════════════════════════════════════
+   PRINTERS PAGES — Extracted from templates/printers/ + print_jobs/ — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Printer Detail Page (printers/detail.html) ── */
+
+.printer-detail-page .lucide {
+    width: 15px;
+    height: 15px;
+    stroke-width: 1.9;
+    vertical-align: text-bottom;
+}
+
+.printer-detail-page .page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.9rem;
+}
+
+.printer-detail-page .page-title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.58rem;
+    font-size: 1.02rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.printer-detail-page .subtitle {
+    margin-top: 0.36rem;
+    color: var(--ui-text-muted);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+}
+
+.printer-detail-page .subtitle code {
+    color: var(--ui-text-secondary);
+    background: var(--ui-hover);
+}
+
+.printer-detail-page .page-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    flex-wrap: wrap;
+}
+
+.printer-detail-page .card {
+    background: var(--ui-surface-2);
+    border-color: var(--ui-border);
+}
+
+.printer-detail-page .card-header {
+    border-bottom-color: var(--ui-border);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ui-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+}
+
+.printer-detail-page .kv {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 0.45rem 0.62rem;
+    font-size: 0.78rem;
+    margin: 0;
+}
+
+.printer-detail-page .kv dt {
+    color: var(--ui-text-muted);
+    font-weight: 500;
+    margin: 0;
+}
+
+.printer-detail-page .kv dd {
+    margin: 0;
+    color: var(--ui-text-primary);
+    font-family: var(--ui-font-mono);
+}
+
+.printer-detail-page .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+
+.printer-detail-page .metric-box {
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 0.62rem;
+    background: var(--ui-hover);
+}
+
+.printer-detail-page .metric-label {
+    color: var(--ui-text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.printer-detail-page .metric-value {
+    margin-top: 0.2rem;
+    font-size: 0.95rem;
+    font-family: var(--ui-font-mono);
+    color: var(--ui-text-primary);
+}
+
+.printer-detail-page .table th {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ui-text-secondary);
+}
+
+.printer-detail-page .table td {
+    font-size: 0.76rem;
+    font-family: var(--ui-font-mono);
+    vertical-align: middle;
+}
+
+.toner-bar-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.3rem;
+    font-size: 0.76rem;
+}
+
+.toner-bar-label .toner-name {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.toner-bar-label .toner-pct {
+    font-family: var(--ui-font-mono);
+    color: var(--ui-text-primary);
+}
+
+.toner-progress {
+    height: 16px;
+    background: var(--ui-border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.7rem;
+}
+
+.toner-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transform: scaleX(0);
+    transform-origin: left;
+    will-change: transform;
+    transition: transform 0.4s ease;
+}
+
+.icon-spin {
+    animation: prt-spin 2s linear infinite;
+}
+
+@keyframes prt-spin {
+    100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .printer-detail-page .metric-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .printer-detail-page .kv {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Printer List Page (printers/list.html) ── */
+
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+}
+
+.progress {
+    background-color: var(--ui-border);
+}
+
+.badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.65rem;
+}
+
+/* ── Print Jobs List Page (print_jobs/list.html) ── */
+
+.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable:hover {
+    background-color: var(--ui-accent-soft);
+}
+
+.sortable i {
+    font-size: 0.8rem;
+    margin-left: 0.25rem;
+}

@@ -132,3 +132,28 @@ Output summary:
   - JS unit run (`npm run test:js`)
   - JS coverage run (`npm run test:js:coverage`)
   - JS perf run (`npm run test:js:perf`)
+
+## 7. Logging Standards
+
+Every Python module must define a module-level logger:
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+Use the appropriate level:
+
+| Level | When to use |
+|---|---|
+| `logger.debug()` | Internal state transitions, polling cycle details, loop progress |
+| `logger.info()` | Business events: device added, report generated, alert triggered, scan completed |
+| `logger.warning()` | Recoverable anomalies: Redis miss, stale data served, partial SNMP result |
+| `logger.error()` | Failed operations: DB write failure, export crash, connection refused |
+| `logger.exception()` | Unexpected exceptions in `except` blocks — includes full stack trace |
+
+Rules:
+- **Never use `print()` in production code.** Use `logger.*` instead.
+- **Never use bare `except:`**.  Use `except Exception:` (or a specific exception type) and log with `logger.exception()` for unexpected failures.
+- For expected, silent failures (e.g., network probe misses), `except Exception: pass` is acceptable when the caller handles the None/False return.
+- Use `%s` style format strings in logger calls (`logger.info("msg %s", val)`) — not f-strings — so the string is only formatted if the level is active.

@@ -3,239 +3,632 @@
    All rules intentionally scoped to prevent theme bleed.
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Table: row transitions & hover ──────────────────────────── */
-.devices-page .table tbody tr {
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+/* ── Page header ── */
+.devices-page .page-header {
+    padding: 0 0 0.25rem 0;
+    margin-bottom: 0.25rem;
 }
 
-.devices-page .table tbody tr:hover {
-    background-color: rgba(0, 201, 141, 0.06) !important;
-    color: #e6edf5;
+.devices-page .page-header h1 {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    gap: 0.4rem;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
 }
 
-/* ── Scan results: row enter animation ───────────────────────── */
-@keyframes scan-row-in {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+.devices-page .page-header h1 .lucide {
+    width: 14px;
+    height: 14px;
 }
 
-.devices-page .devices-table tbody tr {
-    animation: scan-row-in 0.22s ease-out both;
+.devices-page .page-header .lead {
+    font-size: 0.65rem;
+    margin-top: 0.1rem;
+    margin-bottom: 0;
+    letter-spacing: 0.05em;
+    color: var(--tactical-text-dim, #b8b8c8);
 }
 
-/* ── Progress bar ─────────────────────────────────────────────── */
-.devices-page #scanProgress {
+/* ── Card & Headers ── */
+.devices-page .card {
+    background: var(--tactical-bg-surface, #1e1e2a);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
     border-radius: 4px;
-    overflow: hidden;
+    box-shadow: none;
+    margin-bottom: 0.5rem;
 }
 
-.devices-page #scanProgress .progress-bar {
-    font-size: 0.72rem;
-    font-weight: 700;
-    transition: width 0.3s ease;
+.devices-page .card-header {
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    padding: 0.4rem 0.75rem;
 }
 
-/* ── Bulk actions bar ─────────────────────────────────────────── */
-.devices-page .scan-bulk-bar {
+.devices-page .card-body {
+    padding: 0.5rem 0.75rem;
+}
+
+.devices-page .devices-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.6rem 0.9rem;
-    background: rgba(14, 20, 30, 0.92);
-    border: 1px solid rgba(0, 201, 141, 0.22);
-    border-radius: 6px;
-    margin-bottom: 0.75rem;
-    backdrop-filter: blur(4px);
 }
 
-.devices-page .scan-bulk-bar .bulk-selected-label {
+.devices-page .card-header .devices-title {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    margin: 0;
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    font-size: 0.78rem;
-    color: #c3cfdb;
-    white-space: nowrap;
+    gap: 0.35rem;
+    text-transform: uppercase;
+    color: var(--tactical-text-primary, #ffffff);
 }
 
-.devices-page .scan-bulk-bar .bulk-count {
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    color: #00c98d;
-}
-
-.devices-page .scan-bulk-bar .bulk-actions-group {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-/* ── Scan status bar ──────────────────────────────────────────── */
-.devices-page .scan-status-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.76rem;
-    color: #c3cfdb;
-    background: rgba(0, 201, 141, 0.05);
-    border: 1px solid rgba(0, 201, 141, 0.15);
-    border-left: 3px solid rgba(0, 201, 141, 0.5);
-    border-radius: 4px;
-    margin-bottom: 0.65rem;
-}
-
-.devices-page .scan-status-bar .scan-spinner {
+.devices-page .card-header .devices-title .lucide {
     width: 12px;
     height: 12px;
-    border: 2px solid rgba(0, 201, 141, 0.25);
-    border-top-color: #00c98d;
-    border-radius: 50%;
-    flex-shrink: 0;
-    animation: scan-spin 0.7s linear infinite;
 }
 
-@keyframes scan-spin {
-    to { transform: rotate(360deg); }
+/* ── Controls Row (Matches Device Tab Toolbars) ── */
+.scan-controls-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem; /* Matches devices.html .devices-filters gap */
+    margin-bottom: 0.5rem;
+    width: 100%;
 }
 
-/* ── Action icon buttons ──────────────────────────────────────── */
-.devices-page .action-icon {
-    font-size: 0.82rem;
-    cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.15s ease, color 0.15s ease;
-    padding: 0.2rem;
-    border-radius: 3px;
+.scan-controls-row .input-group {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
 }
 
-.devices-page .action-icon:hover {
-    opacity: 1;
-}
-
-.devices-page .action-add:hover { color: #00c98d; }
-.devices-page .action-scan:hover { color: #38bdf8; }
-
-/* ── IP/MAC code display ──────────────────────────────────────── */
-.devices-page .devices-table code,
-.devices-page .devices-table .mono-cell {
-    background: transparent;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.73rem;
-    color: inherit;
-    padding: 0;
-    border: none;
-}
-
-/* ── ONLINE/OFFLINE status pill ──────────────────────────────── */
-.devices-page .scan-status-pill {
+.scan-controls-row .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 1.2rem;
+    letter-spacing: 0.05em;
     display: inline-flex;
     align-items: center;
-    padding: 0.14rem 0.5rem;
-    border-radius: 999px;
+    justify-content: center;
+    transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.scan-controls-row .btn:active:not(:disabled) {
+    transform: scale(0.96);
+    transition-duration: 50ms;
+}
+
+.scan-controls-row .btn .lucide {
+    margin-right: 0.45rem; /* Space in the buttons */
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
+    transition: transform 250ms ease;
+}
+
+/* Lightweight Icon Animations on Hover */
+.scan-controls-row .btn:hover:not(:disabled) .lucide-radar {
+    transform: rotate(45deg) scale(1.1);
+}
+
+.scan-controls-row .btn:hover:not(:disabled) .lucide-zap {
+    animation: zap-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes zap-pulse {
+    0% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(0,255,136,0)); }
+    100% { transform: scale(1.15); filter: drop-shadow(0 0 3px rgba(0,255,136,0.6)); }
+}
+
+.scan-controls-row .btn:hover:not(:disabled) .lucide-home {
+    transform: translateY(-2px);
+}
+
+.scan-controls-row .form-control,
+.scan-controls-row .input-group-text {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    height: auto;
+}
+
+/* Jumbo Scanner Headline -> Matches Dashboard Enterprise Title */
+.scanner-hero-title {
+    font-size: 1.12rem !important;
+    letter-spacing: 0.08em !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: #e6edf5 !important;
+    font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0 !important;
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: initial;
+}
+
+.scanner-hero-title .lucide {
+    width: 1.12rem;
+    height: 1.12rem;
+    color: #e6edf5;
+}
+
+/* Scanner results tables inherit the device-inventory table language */
+#scanResults .devices-table-shell,
+#scanResults .table-responsive,
+#discoveryPanel .table-responsive {
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 6px;
+    background: rgba(9, 12, 18, 0.78);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+#scanResults .devices-table,
+#discoveryPanel .devices-table {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+#scanResults .devices-table thead th,
+#discoveryPanel .devices-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0.46rem 0.52rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.085em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #b8c6d5;
+    background: #10131b !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16) !important;
+    backdrop-filter: none !important;
+}
+
+#scanResults .devices-table tbody td,
+#discoveryPanel .devices-table tbody td {
+    padding: 0.44rem 0.52rem;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+    line-height: 1.35;
+    color: #d7e4f3;
+    border-color: rgba(148, 163, 184, 0.1);
+}
+
+#scanResults .devices-table tbody tr,
+#discoveryPanel .devices-table tbody tr {
+    border-color: rgba(148, 163, 184, 0.1);
+    animation: none;
+    opacity: 1;
+    will-change: auto;
+}
+
+#scanResults .devices-table tbody tr:hover,
+#discoveryPanel .devices-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.025) !important;
+}
+
+#scanResults .device-name-cell strong,
+#discoveryPanel .device-name-cell strong {
+    display: inline-block;
+    color: var(--d-text-main, #f5f7fa);
+    font-size: 0.78rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+#scanResults .device-mac,
+#discoveryPanel .device-mac {
+    margin-top: 0.16rem;
+    font-size: 0.66rem;
+    color: var(--d-text-muted, #8fa3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+#scanResults .devices-table code,
+#discoveryPanel .devices-table code {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.72rem;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+#scanResults .select-column,
+#discoveryPanel .select-column {
+    width: 40px;
+}
+
+#scanResults .badge,
+#discoveryPanel .badge {
+    padding: 0.18rem 0.45rem;
     font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    border: 1px solid;
+    border-radius: 999px;
 }
 
-.devices-page .scan-status-online {
-    border-color: rgba(0, 201, 141, 0.35);
-    background: rgba(0, 201, 141, 0.1);
-    color: #00c98d;
+#scanResults .device-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
 }
 
-.devices-page .scan-status-offline {
-    border-color: rgba(148, 163, 184, 0.22);
-    background: rgba(148, 163, 184, 0.06);
-    color: #7a8899;
+#scanResults .action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.32);
+    color: #d7e4f3 !important;
+    transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 
-/* ── Port scan modal ──────────────────────────────────────────── */
+#scanResults .action-icon:hover {
+    border-color: rgba(34, 211, 238, 0.45);
+    background: rgba(34, 211, 238, 0.12);
+    color: #ecfeff !important;
+}
+
+#scanResults .scan-status-bar {
+    margin-bottom: 0.6rem;
+    padding: 0.42rem 0.58rem;
+    background: rgba(95, 151, 194, 0.08);
+    border: 1px solid rgba(95, 151, 194, 0.18);
+    border-left: 3px solid rgba(95, 151, 194, 0.4);
+    border-radius: 4px;
+    color: #c3cfdb;
+    font-size: 0.73rem;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+#scanResults .scan-spinner {
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid rgba(95, 151, 194, 0.18);
+    border-top-color: rgba(95, 151, 194, 0.72);
+    border-radius: 999px;
+    animation: scanner-spin 0.75s linear infinite;
+}
+
+@keyframes scanner-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.scan-controls-row .input-group-text {
+    background: var(--tactical-bg-dark, #0d0d14);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    border-right: none;
+    color: var(--tactical-text-muted, #556070);
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.scan-controls-row .form-control {
+    background: var(--tactical-bg-dark, #0d0d14);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    color: var(--tactical-text-primary, #ffffff);
+    border-radius: 0;
+}
+
+.scan-controls-row .form-control:focus {
+    border-color: var(--tactical-accent, #00d4aa);
+    box-shadow: none;
+    background: var(--tactical-bg-medium, #12121a);
+}
+
+.scan-controls-row #getLocalRange {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    color: var(--tactical-text-muted, #556070);
+}
+
+.scan-controls-row #getLocalRange:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--tactical-text-primary, #ffffff);
+}
+
+.scan-controls-row .scan-action-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid transparent;
+}
+
+.scan-controls-row #startScan {
+    background: color-mix(in srgb, var(--tactical-accent, #00d4aa) 20%, transparent);
+    border-color: color-mix(in srgb, var(--tactical-accent, #00d4aa) 40%, transparent);
+    color: var(--tactical-accent, #00d4aa);
+}
+
+.scan-controls-row #startScan:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tactical-accent, #00d4aa) 30%, transparent);
+    border-color: var(--tactical-accent, #00d4aa);
+    box-shadow: 0 0 10px rgba(0, 212, 170, 0.15);
+}
+
+.scan-controls-row #scanAndAddBtn {
+    background: color-mix(in srgb, var(--tactical-success, #00ff88) 20%, transparent);
+    border-color: color-mix(in srgb, var(--tactical-success, #00ff88) 40%, transparent);
+    color: var(--tactical-success, #00ff88);
+}
+
+.scan-controls-row #scanAndAddBtn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tactical-success, #00ff88) 30%, transparent);
+    border-color: var(--tactical-success, #00ff88);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.15);
+}
+
+.scan-controls-row .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Progress & Bulk Bars ── */
+#scanProgress {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.3);
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+
+#scanProgress .progress-bar {
+    background: var(--tactical-accent, #00d4aa);
+    transition: width 0.3s ease;
+}
+
+.scan-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0.5rem;
+    background: rgba(0, 212, 170, 0.05);
+    border: 1px solid rgba(0, 212, 170, 0.2);
+    border-radius: 3px;
+    margin-bottom: 0.5rem;
+}
+
+.bulk-selected-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    color: var(--tactical-text-secondary, #ffffff);
+}
+
+.bulk-count {
+    font-weight: 700;
+    color: var(--tactical-accent, #00d4aa);
+}
+
+.bulk-actions-group {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.bulk-actions-group .btn {
+    height: 22px;
+    padding: 0 0.4rem;
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* ── Table & Results ── */
+
+.connection-buttons-group {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.connection-buttons-group .btn {
+    height: 22px;
+    padding: 0 0.4rem;
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 2px;
+}
+
+/* ── SNMP Topology Panel ── */
+.scan-snmp-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.scan-snmp-toggle .devices-title {
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-transform: uppercase;
+}
+
+.scan-snmp-toggle .btn {
+    height: 24px;
+    padding: 0 0.5rem;
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-color: var(--tactical-border, rgba(255, 255, 255, 0.08));
+    color: var(--tactical-text-muted, #556070);
+}
+
+#discoveryPanel {
+    margin-top: 0.25rem;
+}
+
+#discoveryPanel .card-body {
+    padding: 0.6rem 0.75rem;
+}
+
+#discoveryPanel .form-label {
+    margin-bottom: 0.2rem;
+    font-weight: 600;
+}
+
+#discoveryPanel .form-control,
+#discoveryPanel .form-select {
+    height: 26px;
+    font-size: 0.7rem;
+    padding: 0 0.5rem;
+    border-radius: 3px;
+    background: var(--tactical-bg-dark, #0d0d14);
+    border-color: var(--tactical-border, rgba(255, 255, 255, 0.08));
+    color: var(--tactical-text-primary, #ffffff);
+}
+
+#discoveryPanel .btn {
+    height: 26px;
+    font-size: 0.7rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* ── Tactical Agent Row ── */
+.tactical-agent-row {
+    background: rgba(0, 212, 170, 0.04) !important;
+    border-left: 2px solid var(--tactical-accent, #00d4aa) !important;
+}
+
+.tactical-agent-row:hover {
+    background: rgba(0, 212, 170, 0.1) !important;
+}
+
+/* ── Badges & Status ── */
+.badge {
+    padding: 0.25em 0.5em;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 2px;
+}
+
+/* ── Port Scan Modal ── */
 #portScanModal .modal-content {
-    background: rgba(10, 14, 22, 0.98);
-    border: 1px solid rgba(148, 163, 184, 0.15);
+    background: var(--tactical-bg-surface, #1e1e2a);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    border-radius: 4px;
 }
 
 #portScanModal .modal-header {
-    background: rgba(8, 11, 18, 0.9);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-    padding: 0.9rem 1.25rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    padding: 0.6rem 1rem;
+    border-radius: 3px 3px 0 0;
+}
+
+#portScanModal .modal-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tactical-text-primary, #ffffff);
 }
 
 #portScanModal .modal-body {
-    padding: 1rem 1.25rem;
+    padding: 0.75rem 1rem;
     max-height: 60vh;
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+#portScanModal .modal-footer {
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    background: rgba(0, 0, 0, 0.1);
 }
 
 .port-result-item {
-    padding: 0.65rem 0.9rem;
-    background: rgba(16, 19, 27, 0.7);
-    border-left: 2px solid rgba(56, 189, 248, 0.35);
-    border-radius: 4px;
-    margin-bottom: 0.4rem;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--tactical-border, rgba(255, 255, 255, 0.08));
+    border-left: 2px solid var(--tactical-info, #0dcaf0);
+    padding: 0.4rem 0.6rem;
+    border-radius: 3px;
+    margin-bottom: 0.3rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .port-result-item:hover {
-    background: rgba(56, 189, 248, 0.06);
-    border-left-color: rgba(56, 189, 248, 0.7);
+    background: rgba(13, 202, 240, 0.05);
+}
+
+.port-result-item .port-number {
+    color: var(--tactical-text-primary, #ffffff);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.port-result-item .port-service {
+    color: var(--tactical-info, #0dcaf0);
+    font-size: 0.7rem;
+    font-family: var(--font-mono, monospace);
 }
 
 .port-result-item.closed {
-    border-left-color: rgba(148, 163, 184, 0.2);
-    opacity: 0.55;
+    border-left-color: var(--tactical-border, rgba(255, 255, 255, 0.08));
+    opacity: 0.6;
 }
 
-/* ── Tactical agent discovered row ───────────────────────────── */
-.devices-page .tactical-agent-row {
-    background: rgba(0, 201, 141, 0.04) !important;
-    border-left: 2px solid rgba(0, 201, 141, 0.45) !important;
-}
-
-.devices-page .tactical-agent-row:hover {
-    background: rgba(0, 201, 141, 0.09) !important;
-}
-
-/* ── SNMP discovery panel ─────────────────────────────────────── */
-.devices-page .discovery-panel-card {
-    background: rgba(14, 20, 30, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    border-radius: 6px;
-}
-
-/* ── Scroll style for result table ───────────────────────────── */
-.devices-page .table-responsive::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-}
-
-.devices-page .table-responsive::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.devices-page .table-responsive::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.25);
-    border-radius: 999px;
-}
-
-/* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 768px) {
-    .devices-page .devices-table {
-        font-size: 0.76rem;
-    }
-
-    .devices-page .devices-table td,
-    .devices-page .devices-table th {
-        padding: 0.38rem 0.4rem;
-    }
-
-    .devices-page .scan-bulk-bar {
+    .scan-controls-row {
         flex-wrap: wrap;
-        gap: 0.5rem;
+    }
+    
+    .scan-controls-row .input-group {
+        min-width: 100%;
+    }
+    
+    .scan-controls-row .scan-action-btn {
+        flex: 1;
     }
 }

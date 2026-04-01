@@ -165,6 +165,7 @@ def test_alerts_report_is_site_scoped_for_manager_and_device_filter_cannot_escap
         site_id=beta_department.site_id,
         department_id=beta_department.id,
     )
+    beta_device_id = beta_device.device_id  # capture before commit — session removed by report endpoint
     _alert(alpha_device, timestamp=now, message="alpha-visible")
     _alert(beta_device, timestamp=now, message="beta-hidden")
     db.session.commit()
@@ -179,7 +180,7 @@ def test_alerts_report_is_site_scoped_for_manager_and_device_filter_cannot_escap
     assert "alpha-visible" in messages
     assert "beta-hidden" not in messages
 
-    escaped = manager_client.get(f"/api/reports/alerts{params}&device_ids={beta_device.device_id}")
+    escaped = manager_client.get(f"/api/reports/alerts{params}&device_ids={beta_device_id}")
     assert escaped.status_code == 200
     escaped_payload = escaped.get_json()
     assert escaped_payload["alerts"] == []
@@ -226,26 +227,28 @@ def test_report_logging_includes_request_id(admin_client, caplog):
 def test_executive_report_falls_back_to_raw_scan_history(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
     device = _scoped_device("Exec-Raw", "10.41.2.10", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device_ip = device.device_ip  # capture before commit — session removed by report endpoint
+    device_name = device.device_name
     now = datetime.utcnow()
     db.session.add_all(
         [
             DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 status="Online",
                 scan_timestamp=now - timedelta(hours=3),
                 ping_time_ms=5.0,
             ),
             DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 status="Offline",
                 scan_timestamp=now - timedelta(hours=2),
                 ping_time_ms=None,
             ),
             DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 status="Online",
                 scan_timestamp=now - timedelta(hours=1),
                 ping_time_ms=7.0,
@@ -263,17 +266,18 @@ def test_executive_report_falls_back_to_raw_scan_history(admin_client):
     assert payload["availability_basis"] == "device_scan_history"
     assert payload["uptime_score"] == 66.67
     assert payload["avg_latency"] == 6.0
-    assert payload["top_problematic"][0]["ip"] == device.device_ip
+    assert payload["top_problematic"][0]["ip"] == device_ip
 
 
 def test_device_health_report_falls_back_to_raw_when_rollups_missing(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
     device = _scoped_device("Health-Raw", "10.41.3.10", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    device_id = device.device_id  # capture before commit — session removed by report endpoint
     now = datetime.utcnow()
     db.session.add_all(
         [
             ServerHealthLog(
-                device_id=device.device_id,
+                device_id=device_id,
                 cpu_usage=22.0,
                 memory_usage=47.0,
                 disk_usage=61.0,
@@ -282,7 +286,7 @@ def test_device_health_report_falls_back_to_raw_when_rollups_missing(admin_clien
                 timestamp=now - timedelta(days=5),
             ),
             ServerHealthLog(
-                device_id=device.device_id,
+                device_id=device_id,
                 cpu_usage=41.0,
                 memory_usage=59.0,
                 disk_usage=72.0,
@@ -302,26 +306,30 @@ def test_device_health_report_falls_back_to_raw_when_rollups_missing(admin_clien
 
     assert payload["granularity"] == "raw"
     assert len(payload["summary"]) == 1
-    assert str(device.device_id) in {str(key) for key in payload["time_series"].keys()}
+    assert str(device_id) in {str(key) for key in payload["time_series"].keys()}
 
 
 def test_network_report_falls_back_to_raw_scan_history(admin_client):
     alpha_department = Department.query.filter_by(name="Alpha Department").first()
     device = _scoped_device("Network-Raw", "10.41.4.10", site_id=alpha_department.site_id, department_id=alpha_department.id)
+    # Capture scalar values before commit — the session is removed inside the report
+    # endpoint (db.session.remove()), which detaches ORM objects after the request.
+    device_name = device.device_name
+    device_ip = device.device_ip
     now = datetime.utcnow()
     db.session.add_all(
         [
             DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 status="Online",
                 scan_timestamp=now - timedelta(hours=6),
                 ping_time_ms=3.0,
                 packet_loss=0.0,
             ),
             DeviceScanHistory(
-                device_ip=device.device_ip,
-                device_name=device.device_name,
+                device_ip=device_ip,
+                device_name=device_name,
                 status="Offline",
                 scan_timestamp=now - timedelta(hours=3),
                 ping_time_ms=None,
@@ -338,7 +346,7 @@ def test_network_report_falls_back_to_raw_scan_history(admin_client):
     payload = response.get_json()
 
     assert payload["uptime_basis"] == "device_scan_history"
-    assert payload["uptime_summary"][0]["device_name"] == device.device_name
+    assert payload["uptime_summary"][0]["device_name"] == device_name
     assert payload["uptime_summary"][0]["avg_uptime"] == 50.0
 
 

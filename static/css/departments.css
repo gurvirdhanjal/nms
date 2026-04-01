@@ -1,0 +1,269 @@
+/* ══════════════════════════════════════════════════════════════
+   DEPARTMENTS MODULE — Extracted from templates/departments/*.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+    .departments-page .page-container {
+        padding: 1.2rem 1rem;
+        max-width: 94rem;
+    }
+
+    @media (min-width: 640px) {
+        .departments-page .page-container {
+            padding: 1.45rem 1.4rem;
+        }
+    }
+
+    .departments-page .page-body {
+        gap: 0.9rem;
+    }
+
+    .departments-header-shell {
+        margin-bottom: 1rem;
+    }
+
+    .departments-header {
+        margin-bottom: 0 !important;
+        gap: 0.8rem;
+    }
+
+    .departments-header h1 {
+        font-size: 1.7rem;
+        margin-bottom: 0.3rem !important;
+    }
+
+    .departments-header p {
+        font-size: 0.82rem;
+        line-height: 1.35;
+    }
+
+    .departments-toolbar {
+        gap: 0.55rem !important;
+        flex-wrap: wrap;
+    }
+
+    .departments-secondary-btn,
+    .departments-primary-btn {
+        min-height: 38px;
+        padding: 0.58rem 0.88rem !important;
+        border-radius: 0.7rem !important;
+        font-size: 0.82rem !important;
+    }
+
+    .departments-secondary-btn {
+        background: var(--ui-surface-2);
+        border-color: var(--ui-border) !important;
+        color: var(--ui-text-secondary);
+    }
+
+    .departments-secondary-btn:hover {
+        background: var(--ui-surface-3) !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+        color: var(--ui-text-primary) !important;
+    }
+
+    /* KPI Summary Strip */
+    .enterprise-kpi-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.55rem;
+        margin-bottom: 0.95rem;
+    }
+
+    .enterprise-kpi {
+        background: var(--ui-surface-2);
+        border: 1px solid var(--ui-border);
+        border-radius: 5px;
+        padding: 0.66rem 0.82rem;
+    }
+
+    .enterprise-kpi .stat-label {
+        font-family: var(--ui-font-sans);
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ui-text-muted);
+        margin-bottom: 0.35rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .enterprise-kpi .stat-label::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.32);
+    }
+
+    .enterprise-kpi .stat-value {
+        font-family: var(--ui-font-mono);
+        font-size: 1.08rem;
+        font-weight: 700;
+        color: var(--ui-text-primary);
+        line-height: 1.1;
+    }
+
+    .enterprise-kpi .metric-sub {
+        font-size: 0.67rem;
+        color: var(--ui-text-muted);
+        margin-top: 0.24rem;
+        line-height: 1.25;
+    }
+
+    .departments-filter-shell {
+        margin-bottom: 0 !important;
+        gap: 0.65rem !important;
+        padding: 0.62rem 0.78rem;
+        border: 1px solid var(--ui-border);
+        border-radius: 0.9rem;
+        background: var(--ui-surface-2);
+        backdrop-filter: blur(10px);
+    }
+
+    .departments-filter-shell input,
+    .departments-filter-shell select {
+        background: rgba(0, 0, 0, 0.88) !important;
+        padding-top: 0.65rem !important;
+        padding-bottom: 0.65rem !important;
+        font-size: 0.83rem !important;
+        border-radius: 0.7rem !important;
+    }
+
+    #departmentsTable thead th {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+        font-size: 0.64rem;
+        background: var(--ui-surface-1);
+    }
+
+    #departmentsTable tbody tr {
+        background: rgba(255, 255, 255, 0.012);
+    }
+
+    #departmentsTable tbody tr:nth-child(even) {
+        background: rgba(255, 255, 255, 0.022);
+    }
+
+    #departmentsTable tbody tr:hover {
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    #departmentsTable tbody td {
+        padding-top: 0.56rem;
+        padding-bottom: 0.56rem;
+        font-size: 0.82rem;
+    }
+
+    .departments-page .table-action-btn {
+        padding: 0.24rem 0.42rem;
+    }
+
+    /* Assign context grid */
+    .assign-context {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .assign-context-item {
+        border: 1px solid var(--ui-border);
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.07);
+        padding: 0.36rem 0.54rem;
+        font-size: 0.76rem;
+        color: var(--ui-text-secondary);
+    }
+
+    .assign-context-item strong {
+        color: var(--ui-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        font-size: 0.7rem;
+        margin-right: 0.4rem;
+    }
+
+    .drawer-form .field-label {
+        display: block;
+        margin-bottom: 0.22rem;
+        font-size: 0.69rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--ui-text-secondary);
+    }
+
+    .drawer-form .field-help {
+        margin-top: 0.22rem;
+        font-size: 0.69rem;
+        color: var(--ui-text-dim);
+    }
+
+    #departmentForm {
+        gap: 0.9rem !important;
+    }
+
+    #department-slide-over input,
+    #department-slide-over select,
+    #department-slide-over textarea,
+    #assign-devices-slide-over input {
+        padding-top: 0.58rem !important;
+        padding-bottom: 0.58rem !important;
+        font-size: 0.82rem !important;
+    }
+
+    #department-slide-over .sticky,
+    #assign-devices-slide-over .sticky {
+        padding-top: 0.85rem;
+    }
+
+    #inventoryDevicesTable thead th,
+    #inventoryDevicesTable tbody td {
+        padding-top: 0.46rem;
+        padding-bottom: 0.46rem;
+    }
+
+    #assignDevicesNoSiteAlert,
+    #subnetInfoAlert,
+    #subnetWarningAlert {
+        padding: 0.7rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+
+/* ── Department Profile (templates/departments/profile.html) ── */
+
+    .profile-card {
+        background: var(--ui-surface-2);
+        border: 1px solid var(--ui-border);
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+
+    .profile-header {
+        border-bottom: 1px solid var(--ui-border-strong);
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .profile-label {
+        font-family: var(--ui-font-sans);
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ui-text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .profile-value {
+        font-family: var(--ui-font-sans);
+        font-size: 0.9rem;
+        color: var(--ui-text-primary);
+    }
+
+    .profile-value-mono {
+        font-family: var(--ui-font-mono);
+        font-size: 0.85rem;
+        color: var(--ui-text-secondary);
+    }

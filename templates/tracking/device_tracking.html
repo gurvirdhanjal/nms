@@ -9,40 +9,61 @@
 
     <div class="row">
         <div class="col-md-12">
-            <div class="tracking-page-header d-flex flex-column gap-3">
+            <div class="tracking-page-header">
                 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                    <!-- Left: eyebrow + title + subtitle -->
                     <div>
-                        <h1 class="tracking-title-ops"><i data-lucide="monitor"></i> LIVE TRACKING</h1>
+                        <div class="tracking-eyebrow">Live Tracking</div>
+                        <h1 class="tracking-title-ops"><i data-lucide="monitor"></i> Device Fleet</h1>
                         <p class="tracking-subtitle-ops mb-0">Operator control center for stored workstations, live
                             agent discovery, and IP reconciliation.</p>
                     </div>
-                </div>
-
-                <div class="ops-action-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
-                    <div class="d-flex flex-wrap align-items-center gap-2 tracking-action-group">
+                    <!-- Right: all actions + refresh -->
+                    <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0 tracking-action-group">
                         <button class="ops-btn ops-btn-primary" type="button" id="trackingScanBtn">
                             <i data-lucide="search" class="tracking-icon-sm"></i> Scan Network
                         </button>
-                        <button class="ops-btn ops-btn-ghost open-add-device" type="button">
+                        <button class="ops-btn ops-btn-secondary open-add-device" type="button">
                             <i data-lucide="plus" class="tracking-icon-sm"></i> Add Device
                         </button>
-                        <button class="ops-btn ops-btn-ghost" type="button" id="syncBtn">
-                            <i data-lucide="refresh-cw" class="tracking-icon-sm"></i> Sync IPs
-                        </button>
-                        <button class="ops-btn ops-btn-ghost" type="button" id="goLiveSyncBtn" title="Run live sync now">
-                            <i data-lucide="activity" class="tracking-icon-sm"></i> Go Live
-                        </button>
-                        {% if session.get('role') == 'admin' %}
-                        <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}"
-                            class="ops-btn ops-btn-ghost text-decoration-none">
-                            <i data-lucide="shield-alert" class="tracking-icon-sm"></i> Restricted Sites
-                        </a>
-                        {% endif %}
-                    </div>
-                    <div class="ops-refresh-info d-flex align-items-center gap-2 tracking-refresh-group">
-                        <span class="ops-last-refresh" id="trackingLastRefreshedText">Last refreshed n/a</span>
-                        <span class="status-dot ops-dot-breathing tracking-indicator-dot healthy"></span>
-                        <span id="trackingRefreshStatus" class="d-none">Live polling active</span>
+                        <span class="tracking-action-sep" aria-hidden="true"></span>
+                        <div class="dropdown">
+                            <button class="ops-btn ops-btn-ghost dropdown-toggle" type="button"
+                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                <i data-lucide="more-horizontal" class="tracking-icon-sm"></i>
+                                More
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-dark">
+                                <li>
+                                    <button class="dropdown-item" type="button" id="syncBtn">
+                                        <i data-lucide="refresh-cw" class="tracking-icon-sm me-2"></i> Sync IPs
+                                    </button>
+                                </li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="goLiveSyncBtn">
+                                        <i data-lucide="activity" class="tracking-icon-sm me-2"></i> Go Live Sync
+                                    </button>
+                                </li>
+                                {% if session.get('role') == 'admin' %}
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <a href="{{ url_for('tracking_bp.restricted_sites_policy_page') }}"
+                                       class="dropdown-item text-decoration-none">
+                                        <i data-lucide="shield-alert" class="tracking-icon-sm me-2"></i> Restricted Sites
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        <span class="tracking-action-sep" aria-hidden="true"></span>
+                        <div class="ops-refresh-info d-flex align-items-center gap-2">
+                            <button id="trackingManualRefreshBtn" type="button" class="border-0 bg-transparent p-0 d-flex align-items-center" title="Refresh status now" style="cursor:pointer;line-height:1;color:inherit">
+                                <i data-lucide="refresh-cw" id="trackingRefreshIcon" class="tracking-refresh-icon tracking-icon-sm"></i>
+                            </button>
+                            <span class="ops-last-refresh" id="trackingLastRefreshedText">Last refreshed n/a</span>
+                            <span id="trackingRefreshStatus" class="text-muted small"></span>
+                            <span class="status-dot ops-dot-breathing tracking-indicator-dot healthy"></span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -51,44 +72,50 @@
 
     <div class="row g-3 mb-4 tracking-section-ops" id="device-kpi-row">
         <div class="col-md-3 col-sm-6">
-            <div class="ops-kpi-card ops-kpi-total">
+            <div class="ops-kpi-card ops-kpi-total kpi-clickable" data-filter-target="all" role="button" tabindex="0" title="Show all devices">
                 <div class="ops-kpi-accent"></div>
                 <div class="kpi-header">
-                    <span class="stat-label">TOTAL DEVICES</span>
+                    <span class="stat-label">TOTAL MANAGED</span>
+                    <i data-lucide="arrow-right" class="kpi-click-hint"></i>
                 </div>
                 <div class="stat-value" id="trackingKpiTotal">{{ saved_devices|length }}</div>
-                <div class="metric-sub">Managed endpoints</div>
+                <div class="metric-sub">Devices in inventory</div>
+                <div class="kpi-trend" id="trackingKpiTotalTrend"></div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
-            <div class="ops-kpi-card ops-kpi-healthy">
+            <div class="ops-kpi-card ops-kpi-healthy kpi-clickable" data-filter-target="online" role="button" tabindex="0" title="Filter: online devices">
                 <div class="ops-kpi-accent bg-teal"></div>
                 <div class="kpi-header">
-                    <span class="stat-label">REACHABLE NOW</span>
+                    <span class="stat-label">DEVICES ONLINE</span>
+                    <i data-lucide="arrow-right" class="kpi-click-hint"></i>
                 </div>
-                <div class="stat-value" id="trackingKpiReachable">{{ reachable_count|default(online_count|default(0)) }}
-                </div>
-                <div class="metric-sub">Online + degraded</div>
+                <div class="stat-value" id="trackingKpiReachable">{{ reachable_count|default(online_count|default(0)) }}</div>
+                <div class="metric-sub">All systems reachable</div>
+                <div class="kpi-trend" id="trackingKpiReachableTrend"></div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
-            <div class="ops-kpi-card ops-kpi-critical {% if offline_count|default(0) > 0 %}pulse-offline{% endif %}">
+            <div class="ops-kpi-card ops-kpi-critical kpi-clickable {% if offline_count|default(0) > 0 %}pulse-offline{% endif %}" data-filter-target="offline" role="button" tabindex="0" title="Filter: offline devices">
                 <div class="ops-kpi-accent bg-red"></div>
                 <div class="kpi-header">
-                    <span class="stat-label">OFFLINE</span>
+                    <span class="stat-label">OFFLINE NOW</span>
+                    <i data-lucide="arrow-right" class="kpi-click-hint"></i>
                 </div>
                 <div class="stat-value" id="trackingKpiOffline">{{ offline_count|default(0) }}</div>
-                <div class="metric-sub">Unreachable agents</div>
+                <div class="metric-sub">{% if offline_count|default(0) > 0 %}Action required{% else %}Everything is up{% endif %}</div>
+                <div class="kpi-trend" id="trackingKpiOfflineTrend"></div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6">
             <div class="ops-kpi-card ops-kpi-warning">
                 <div class="ops-kpi-accent bg-amber"></div>
                 <div class="kpi-header">
-                    <span class="stat-label">ACTIVE AGENT CHECK-INS</span>
+                    <span class="stat-label">AGENT ACTIVITY</span>
                 </div>
                 <div class="stat-value" id="trackingKpiActive24h">{{ active_agent_checkins|default(0) }}</div>
-                <div class="metric-sub">Recent push syncs</div>
+                <div class="metric-sub">Active agent check-ins</div>
+                <div class="kpi-trend" id="trackingKpiActive24hTrend"></div>
             </div>
         </div>
     </div>
@@ -198,7 +225,7 @@
                                 <td>
                                     <div class="ops-time-main">
                                         {% if device.last_seen %}
-                                        {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
+                                        <time class="utc-to-ist" data-utc="{{ device.last_seen.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}</time>
                                         {% else %}
                                         Never
                                         {% endif %}
@@ -356,7 +383,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="scanResultsModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="scanResultsModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable tracking-scan-modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -410,7 +437,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="addDeviceModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -483,7 +510,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="confirmDeleteModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header tracking-delete-header">
@@ -505,7 +532,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_tracking.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block extra_js %}
@@ -516,5 +543,82 @@
         sharedRefresh: true
     });
 </script>
-<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v={{ asset_ver }}"></script>
+<script>
+(function () {
+    // IST timestamp conversion
+    function convertTimestampsToIST() {
+        document.querySelectorAll('time.utc-to-ist[data-utc]').forEach(function (el) {
+            var d = new Date(el.dataset.utc);
+            if (!isNaN(d)) {
+                el.textContent = d.toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                });
+            }
+        });
+    }
+
+    // Count-up animation for KPI numbers
+    function animateCount(el, target, duration) {
+        if (!el || isNaN(target)) return;
+        var start = performance.now();
+        (function step(now) {
+            var progress = Math.min((now - start) / duration, 1);
+            el.textContent = Math.round(target * progress);
+            if (progress < 1) requestAnimationFrame(step);
+        })(start);
+    }
+
+    // Row reveal — IntersectionObserver fires for rows entering viewport
+    function initRowReveal() {
+        if (!('IntersectionObserver' in window)) return;
+        var rows = document.querySelectorAll('#deviceList .ops-device-row');
+        if (!rows.length) return;
+        var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry, idx) {
+                if (entry.isIntersecting) {
+                    var el = entry.target;
+                    setTimeout(function () {
+                        el.style.opacity = '1';
+                        el.style.transform = 'translateY(0)';
+                    }, idx * 35);
+                    observer.unobserve(el);
+                }
+            });
+        }, { threshold: 0.05 });
+        rows.forEach(function (row) { observer.observe(row); });
+    }
+
+    // Set row opacity synchronously (script runs after body content is parsed)
+    // This prevents FOUC by hiding rows before browser first paint
+    (function () {
+        var tr = 'opacity 0.35s ease, transform 0.35s ease, background 0.15s ease, border-color 0.25s ease';
+        document.querySelectorAll('#deviceList .ops-device-row').forEach(function (row) {
+            row.style.opacity = '0';
+            row.style.transform = 'translateY(8px)';
+            row.style.transition = tr;
+        });
+    })();
+
+    document.addEventListener('DOMContentLoaded', function () {
+        convertTimestampsToIST();
+
+        // Count-up KPI cards
+        var kpiIds = ['trackingKpiTotal', 'trackingKpiReachable', 'trackingKpiOffline', 'trackingKpiActive24h'];
+        kpiIds.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var val = parseInt(el.textContent, 10);
+            if (!isNaN(val) && val > 0) {
+                el.textContent = '0';
+                animateCount(el, val, 900);
+            }
+        });
+
+        initRowReveal();
+    });
+})();
+</script>
 {% endblock %}

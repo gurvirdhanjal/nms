@@ -1,0 +1,111 @@
+/* ══════════════════════════════════════════════════════════════
+   USERS MODULE — Extracted from templates/user_management.html + users/profile.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+    /* Metric Cards Strip */
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+    }
+
+    .metric-card {
+        background: var(--ui-surface-2);
+        border: 1px solid var(--ui-border);
+        border-radius: 6px;
+        padding: 1rem;
+    }
+
+    .metric-card .stat-label {
+        font-family: var(--ui-font-sans);
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ui-text-muted);
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .metric-card .stat-value {
+        font-family: var(--ui-font-mono);
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--ui-text-primary);
+        line-height: 1.1;
+    }
+
+    .user-form-compact .field-label {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ui-text-secondary);
+    }
+
+    .user-form-compact .field-help {
+        display: inline;
+        margin-left: 0.35rem;
+        font-size: 0.65rem;
+        font-weight: 400;
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--ui-text-dim);
+    }
+
+/* ── User Profile (templates/users/profile.html) ── */
+
+    .profile-card {
+        background: var(--ui-surface-2);
+        border: 1px solid var(--ui-border);
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+
+    .profile-header {
+        border-bottom: 1px solid var(--ui-border-strong);
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .profile-label {
+        font-family: var(--ui-font-sans);
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ui-text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .profile-value {
+        font-family: var(--ui-font-sans);
+        font-size: 0.9rem;
+        color: var(--ui-text-primary);
+    }
+
+    .profile-value-mono {
+        font-family: var(--ui-font-mono);
+        font-size: 0.85rem;
+        color: var(--ui-text-secondary);
+    }
+
+    .activity-log {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .activity-item {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--ui-border);
+        font-size: 0.75rem;
+    }
+
+    .activity-item:last-child {
+        border-bottom: none;
+    }

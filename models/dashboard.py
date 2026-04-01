@@ -28,6 +28,11 @@ class DashboardEvent(db.Model):
     is_acknowledged = db.Column(db.Boolean, default=False)
     acknowledged_at = db.Column(db.DateTime, nullable=True)
     acknowledged_by = db.Column(db.String(100), nullable=True)
+
+    # Denormalized tenant keys (frozen at insert from device row) — avoids sub-select
+    # for scoped alert queries.  Populated by alert_manager._trigger_alert().
+    site_id = db.Column(db.Integer, nullable=True)
+    department_id = db.Column(db.Integer, nullable=True)
     
     def __repr__(self):
         return f'<DashboardEvent {self.event_id[:8]} - {self.severity}>'

@@ -547,3 +547,33 @@ def toggle_maintenance():
         db.session.rollback()
         return jsonify({'error': 'Internal server error'}), 500
 
+
+# ============================================================
+# POST /api/maintenance/alerts/purge  — Purge old resolved alerts
+# ============================================================
+@maintenance_bp.route('/alerts/purge', methods=['POST'])
+@require_role('admin')
+def purge_old_alerts():
+    """Delete resolved alerts older than N days (default 90).
+
+    Body (optional): { "days": 90 }
+    Returns: { "deleted": N, "cutoff": "ISO timestamp" }
+    """
+    try:
+        from models.dashboard import DashboardEvent
+        from datetime import timedelta
+        data = request.get_json(silent=True) or {}
+        days = max(1, int(data.get('days', 90)))
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        deleted = DashboardEvent.query.filter(
+            DashboardEvent.resolved.is_(True),
+            DashboardEvent.resolved_at < cutoff,
+        ).delete(synchronize_session=False)
+        db.session.commit()
+        logger.info("[MAINTENANCE] alerts/purge: deleted %d alerts older than %dd", deleted, days)
+        return jsonify({'deleted': deleted, 'cutoff': cutoff.isoformat(), 'days': days})
+    except Exception:
+        logger.exception("alerts/purge failed")
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error'}), 500
+

@@ -111,18 +111,35 @@ class ReportNarrativeService:
             kpis.append(_kpi("MTTA", format_duration(mtta / 3600),
                              "warning" if mtta > 3600 else "ok", None))
 
-        # Action required
+        # Action required — focus on degraded devices, summarize chronically offline
         action_required = []
+        # Degraded devices (online but struggling) are now the primary concern
         for device in data.get("top_problematic", []):
             device_uptime = device.get("uptime")
-            if device_uptime is not None and float(device_uptime) == 0.0:
+            deg_score = device.get("degradation_score")
+            if deg_score is not None and deg_score > 40:
                 action_required.append({
-                    "severity": "critical",
+                    "severity": "critical" if deg_score > 60 else "warning",
                     "device": normalize_device_display(device.get("name"), device.get("ip")),
                     "ip": device.get("ip", ""),
-                    "text": f"Persistently Offline \u2014 0% uptime over full period",
-                    "since": "full period",
+                    "text": (
+                        f"Degraded \u2014 {fmt_pct(device_uptime)} uptime"
+                        + (f", {device.get('avg_latency_ms'):.0f}ms latency" if device.get("avg_latency_ms") else "")
+                        + (f", {device.get('avg_packet_loss_pct'):.1f}% packet loss" if device.get("avg_packet_loss_pct") else "")
+                    ),
+                    "since": "reporting period",
                 })
+        # Single summary line for chronically offline devices
+        offline_info = data.get("chronically_offline", {})
+        offline_count = offline_info.get("count", 0)
+        if offline_count:
+            action_required.append({
+                "severity": "warning",
+                "device": f"{offline_count} device(s)",
+                "ip": "",
+                "text": f"Chronically offline \u2014 0% uptime for full period, decommission review recommended",
+                "since": "full period",
+            })
 
         # Intro
         intro = (
@@ -169,21 +186,17 @@ class ReportNarrativeService:
                 f"The network fleet is operating at {fmt_pct(uptime)} availability, "
                 f"well below the 95% acceptable threshold."
             )
-        zero_uptime_count = sum(
-            1 for d in data.get("top_problematic", [])
-            if d.get("uptime") is not None and float(d.get("uptime")) == 0.0
-        )
-        if zero_uptime_count:
+        if offline_count:
             risk_parts.append(
-                f"{zero_uptime_count} device(s) have been offline for the full reporting period "
+                f"{offline_count} device(s) have been offline for the full reporting period "
                 f"and should be investigated or decommissioned."
             )
         risk_summary = " ".join(risk_parts) if risk_parts else None
 
         # Action items
         action_items = []
-        if zero_uptime_count:
-            action_items.append(f"Investigate {zero_uptime_count} persistently offline device(s) \u2014 decommission review or physical inspection")
+        if offline_count:
+            action_items.append(f"Investigate {offline_count} chronically offline device(s) \u2014 decommission review or physical inspection")
         if critical > healthy:
             action_items.append("Critical devices outnumber healthy \u2014 prioritize triage")
         if mtta and mtta > 3600:
@@ -832,6 +845,214 @@ class ReportNarrativeService:
             "interpretation": interpretation,
             "action_items": action_items,
             "risk_summary": None,
+        }
+
+    # ── Cross-report synthesis ────────────────────────────────────────────
+
+    def synthesize_cross_report(
+        self,
+        executive_narrative: Optional[dict],
+        alerts_narrative: Optional[dict],
+        security_narrative: Optional[dict],
+        report_summary: Optional[dict] = None,
+    ) -> dict:
+        """Produce a fleet-level RAG status by aggregating three narratives.
+
+        Returns:
+            {
+                "fleet_status":           "ok" | "warning" | "critical",
+                "risk_count":             int,
+                "top_risks":              list[str],
+                "composite_action":       str,
+                "domain_statuses":        {"fleet": ..., "alerts": ..., "health": ..., "security": ...},
+                "fleet_uptime":           float | None,
+                "critical_device_count":  int,
+                "unresolved_alert_count": int,
+                "security_violation_count": int,
+            }
+
+        Rules:
+        - Worst-case wins: if any narrative has a "critical" KPI → fleet_status=critical.
+        - Second worst: any "warning" KPI → fleet_status=warning.
+        - Otherwise: ok.
+        - top_risks collects the worst signal from each narrative in priority order.
+        - Never raises; returns a safe default on any failure.
+        """
+        try:
+            return self._synthesize(
+                executive_narrative, alerts_narrative, security_narrative, report_summary
+            )
+        except Exception as exc:
+            logger.warning("[Narrative] synthesize_cross_report failed: %s", exc)
+            return {
+                "fleet_status": "ok",
+                "risk_count": 0,
+                "top_risks": [],
+                "composite_action": "",
+                "domain_statuses": {"fleet": "ok", "alerts": "ok", "health": "no_data", "security": "ok"},
+                "fleet_uptime": None,
+                "critical_device_count": 0,
+                "unresolved_alert_count": 0,
+                "security_violation_count": 0,
+            }
+
+    def _synthesize(
+        self,
+        executive: Optional[dict],
+        alerts: Optional[dict],
+        security: Optional[dict],
+        report_summary: Optional[dict] = None,
+    ) -> dict:
+        """Internal synthesis — may raise; wrapped by synthesize_cross_report."""
+        import re as _re
+
+        _STATUS_RANK = {"ok": 0, "warning": 1, "critical": 2}
+
+        def _kpi_by_label(narrative: Optional[dict], fragment: str) -> Optional[dict]:
+            if not narrative:
+                return None
+            kpis = (narrative.get("executive_banner") or {}).get("kpis") or []
+            return next(
+                (k for k in kpis if fragment.lower() in (k.get("label") or "").lower()), None
+            )
+
+        def _parse_count(val_str: Optional[str]) -> int:
+            if not val_str or val_str in ("—", "N/A", ""):
+                return 0
+            m = _re.search(r"\d+", str(val_str).replace(",", ""))
+            return int(m.group()) if m else 0
+
+        def _parse_float(val_str: Optional[str]) -> Optional[float]:
+            if not val_str or val_str in ("—", "N/A", ""):
+                return None
+            m = _re.match(r"[\d.]+", str(val_str).replace("%", "").strip())
+            return float(m.group()) if m else None
+
+        def _worst_kpi_status(narrative: Optional[dict]) -> str:
+            if not narrative:
+                return "ok"
+            kpis = (narrative.get("executive_banner") or {}).get("kpis") or []
+            worst = "ok"
+            for kpi in kpis:
+                s = (kpi.get("status") or "ok").lower()
+                if _STATUS_RANK.get(s, 0) > _STATUS_RANK.get(worst, 0):
+                    worst = s
+            return worst
+
+        exec_status = _worst_kpi_status(executive)
+        alert_status = _worst_kpi_status(alerts)
+        sec_status = _worst_kpi_status(security)
+
+        # Aggregate to worst
+        all_statuses = [exec_status, alert_status, sec_status]
+        fleet_status = max(all_statuses, key=lambda s: _STATUS_RANK.get(s, 0))
+
+        # Build top_risks list from each source
+        top_risks: list = []
+
+        # From alerts narrative
+        if alerts:
+            action_required = alerts.get("action_required") or []
+            for item in action_required[:1]:
+                if isinstance(item, str):
+                    top_risks.append(item)
+                elif isinstance(item, dict):
+                    top_risks.append(item.get("text") or item.get("description") or "")
+            # Fallback: count-based summary
+            if not top_risks:
+                kpis = (alerts.get("executive_banner") or {}).get("kpis") or []
+                unresolved_kpi = next((k for k in kpis if "Unresolved" in (k.get("label") or "")), None)
+                if unresolved_kpi and unresolved_kpi.get("value") not in (None, "0", "—"):
+                    top_risks.append(f"{unresolved_kpi['value']} unresolved alert(s) pending")
+
+        # From security narrative
+        if security:
+            action_required = security.get("action_required") or []
+            for item in action_required[:1]:
+                if isinstance(item, str):
+                    top_risks.append(item)
+                elif isinstance(item, dict):
+                    top_risks.append(item.get("text") or item.get("description") or "")
+            if not any("violation" in r.lower() for r in top_risks):
+                kpis = (security.get("executive_banner") or {}).get("kpis") or []
+                viol_kpi = next((k for k in kpis if "Violation" in (k.get("label") or "")), None)
+                if viol_kpi and viol_kpi.get("value") not in (None, "0", "—"):
+                    top_risks.append(f"{viol_kpi['value']} policy violation(s) detected")
+
+        # From executive narrative
+        if executive:
+            findings = executive.get("top_findings") or []
+            if findings:
+                f = findings[0]
+                text = f if isinstance(f, str) else (f.get("text") or "")
+                if text:
+                    top_risks.append(text)
+
+        # Deduplicate and filter empty
+        seen: set = set()
+        unique_risks = []
+        for r in top_risks:
+            if r and r not in seen:
+                seen.add(r)
+                unique_risks.append(r)
+
+        # Composite action — take the first action_item from the highest-severity narrative
+        composite_action = ""
+        for narrative in (alerts, security, executive):
+            if not narrative:
+                continue
+            items = narrative.get("action_items") or []
+            if items:
+                first = items[0]
+                composite_action = first if isinstance(first, str) else (first.get("text") or "")
+                if composite_action:
+                    break
+
+        # ── Quantitative enrichment ───────────────────────────────────────────
+        # Fleet uptime: prefer report_summary, fall back to executive KPI
+        fleet_uptime: Optional[float] = None
+        if report_summary:
+            fleet_uptime = report_summary.get("fleet_avg_uptime")
+        if fleet_uptime is None:
+            avail_kpi = _kpi_by_label(executive, "Fleet Availability")
+            if avail_kpi:
+                fleet_uptime = _parse_float(avail_kpi.get("value"))
+
+        # Critical device count: prefer report_summary sla_distribution
+        critical_device_count = 0
+        if report_summary:
+            sla_dist = report_summary.get("sla_distribution") or {}
+            critical_device_count = int(sla_dist.get("Critical", 0))
+        else:
+            crit_kpi = _kpi_by_label(executive, "Critical SLA")
+            critical_device_count = _parse_count((crit_kpi or {}).get("value"))
+
+        # Unresolved alert count: parse from alerts narrative KPI
+        unres_kpi = _kpi_by_label(alerts, "Unresolved")
+        unresolved_alert_count = _parse_count((unres_kpi or {}).get("value"))
+
+        # Security violation count: parse from security narrative KPI
+        viol_kpi = _kpi_by_label(security, "Violation") or _kpi_by_label(security, "Total Violations")
+        security_violation_count = _parse_count((viol_kpi or {}).get("value"))
+
+        # Domain statuses — per-narrative worst KPI status
+        domain_statuses = {
+            "fleet":    exec_status,
+            "alerts":   alert_status,
+            "security": sec_status,
+            "health":   "no_data",  # health narrative not included in this call
+        }
+
+        return {
+            "fleet_status": fleet_status,
+            "risk_count": len(unique_risks),
+            "top_risks": unique_risks[:3],
+            "composite_action": composite_action,
+            "domain_statuses": domain_statuses,
+            "fleet_uptime": fleet_uptime,
+            "critical_device_count": critical_device_count,
+            "unresolved_alert_count": unresolved_alert_count,
+            "security_violation_count": security_violation_count,
         }
 
 

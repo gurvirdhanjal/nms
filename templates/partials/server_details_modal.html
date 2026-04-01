@@ -1,103 +1,394 @@
 <style>
-    #serverDetailsModal .modal-content {
-        background: var(--bg-primary);
-        border: none;
-    }
-    #serverDetailsModal .modal-header {
-        height: 56px;
-        padding: 0 2rem;
-        background: rgba(16, 19, 27, 0.95);
-        backdrop-filter: blur(8px);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-    }
-    #serverDetailsModal .server-icon-badge {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        background: rgba(0, 229, 160, 0.08);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    #serverDetailsModal .server-icon-badge i {
-        color: var(--teal);
-        font-size: 14px;
-    }
-    #serverDetailsModal .server-modal-title {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 13px;
-        font-weight: 600;
-        color: #fff;
-        letter-spacing: 0.02em;
-        margin: 0;
-    }
-    #serverDetailsModal .server-modal-subtitle {
-        font-size: 10px;
-        color: var(--text-muted);
-        font-family: 'IBM Plex Mono', monospace;
-        margin-top: 1px;
-    }
-    #serverDetailsModal .server-modal-action-link {
-        font-size: 11px;
-        padding: 6px 12px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: var(--text-secondary);
-        border-radius: 6px;
-        transition: all 0.2s;
-    }
-    #serverDetailsModal .server-modal-close {
-        opacity: 0.4;
-        filter: none;
-        padding: 0.5rem;
-        margin: 0;
-        transition: opacity 0.2s;
-    }
-    #serverDetailsModal .server-modal-close:hover {
-        opacity: 0.8;
-    }
-    #serverDetailsModal .modal-body {
-        padding: 1.5rem 2rem;
-        overflow-y: auto;
-        background: var(--bg-primary);
-    }
+/* ── Server Snapshot Modal ── scoped to #serverDetailsModal ── */
+#serverDetailsModal .snap-modal-body {
+    padding: 14px 16px;
+    background: var(--ui-bg, #13161c);
+}
+#serverDetailsModal .snap-metrics-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+#serverDetailsModal .snap-metric-tile {
+    background: var(--bg-card, rgba(255,255,255,0.03));
+    border: 1px solid var(--ui-border, rgba(255,255,255,0.07));
+    border-radius: 6px;
+    padding: 10px 10px 8px;
+    text-align: center;
+}
+#serverDetailsModal .snap-metric-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted, rgba(255,255,255,0.38));
+    margin-bottom: 5px;
+}
+#serverDetailsModal .snap-metric-value {
+    font-size: 17px; font-weight: 700;
+    font-family: var(--ui-font-mono, 'JetBrains Mono', monospace);
+    color: var(--ui-accent, #00bcd4);
+    line-height: 1;
+}
+#serverDetailsModal .snap-metric-sub {
+    font-size: 9px; color: var(--text-muted); margin-top: 3px;
+}
+#serverDetailsModal .snap-section-hdr {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted, rgba(255,255,255,0.35));
+    margin: 12px 0 7px;
+    display: flex; align-items: center; gap: 6px;
+}
+#serverDetailsModal .snap-section-hdr::after {
+    content: ''; flex: 1; height: 1px;
+    background: var(--ui-border, rgba(255,255,255,0.07));
+}
+/* Network health */
+#serverDetailsModal .snap-net-row {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin-bottom: 12px;
+}
+#serverDetailsModal .snap-net-cell {
+    background: var(--bg-card, rgba(255,255,255,0.03));
+    border: 1px solid var(--ui-border, rgba(255,255,255,0.07));
+    border-radius: 6px; padding: 8px 10px;
+}
+#serverDetailsModal .snap-net-lbl {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+}
+#serverDetailsModal .snap-net-val {
+    font-size: 14px; font-weight: 700;
+    font-family: var(--ui-font-mono, monospace);
+    color: var(--text-primary, #fff);
+}
+/* Resources */
+#serverDetailsModal .snap-res-row {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; margin-bottom: 12px;
+}
+#serverDetailsModal .snap-res-card {
+    background: var(--bg-card, rgba(255,255,255,0.03));
+    border: 1px solid var(--ui-border, rgba(255,255,255,0.07));
+    border-radius: 6px; padding: 10px 12px;
+}
+#serverDetailsModal .snap-res-card-lbl {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+#serverDetailsModal .snap-res-value {
+    font-size: 20px; font-weight: 700;
+    font-family: var(--ui-font-mono, monospace);
+    line-height: 1; margin-bottom: 5px;
+}
+#serverDetailsModal .snap-res-bar-track {
+    height: 3px; background: rgba(255,255,255,0.06);
+    border-radius: 2px; overflow: hidden; margin-bottom: 4px;
+}
+#serverDetailsModal .snap-res-bar-fill {
+    height: 3px; border-radius: 2px; transition: width 0.4s ease;
+}
+#serverDetailsModal .snap-res-status-lbl {
+    font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+}
+/* CPU Chart */
+#serverDetailsModal .snap-chart-card {
+    background: var(--bg-card, rgba(255,255,255,0.03));
+    border: 1px solid var(--ui-border, rgba(255,255,255,0.07));
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+#serverDetailsModal .snap-chart-hdr {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+#serverDetailsModal .snap-chart-wrap { height: 70px; }
+/* Timeline */
+#serverDetailsModal .snap-tl-card {
+    background: var(--bg-card, rgba(255,255,255,0.03));
+    border: 1px solid var(--ui-border, rgba(255,255,255,0.07));
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+#serverDetailsModal .snap-tl-bar {
+    display: flex; gap: 2px; height: 14px; align-items: stretch;
+}
+#serverDetailsModal .snap-tl-seg {
+    flex: 1; border-radius: 2px; cursor: default; transition: opacity 0.1s;
+}
+#serverDetailsModal .snap-tl-seg:hover { opacity: 0.7; }
+#serverDetailsModal .snap-tl-legend {
+    display: flex; gap: 12px; margin-top: 6px;
+    font-size: 9px; color: var(--text-muted); flex-wrap: wrap;
+}
+#serverDetailsModal .snap-tl-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 2px; margin-right: 3px; vertical-align: middle;
+}
+/* SNMP */
+#serverDetailsModal .snap-snmp-card {
+    background: rgba(0,188,212,0.04);
+    border: 1px solid rgba(0,188,212,0.18);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;
+}
+#serverDetailsModal .snap-snmp-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+#serverDetailsModal .snap-snmp-lbl {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+}
+#serverDetailsModal .snap-snmp-val {
+    font-size: 12px; font-weight: 700;
+    font-family: var(--ui-font-mono, monospace);
+    color: var(--ui-accent, #00bcd4);
+}
+/* Alerts */
+#serverDetailsModal .snap-alerts-card {
+    background: rgba(239,68,68,0.05);
+    border: 1px solid rgba(239,68,68,0.22);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 4px;
+}
+#serverDetailsModal .snap-alert-item {
+    font-size: 11px; color: rgba(255,255,255,0.72);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+#serverDetailsModal .snap-alert-item:last-child { border-bottom: none; }
+/* Skeleton shimmer */
+#serverDetailsModal .snap-shimmer {
+    border-radius: 4px;
+    background: linear-gradient(90deg,
+        rgba(255,255,255,0.04) 25%,
+        rgba(255,255,255,0.09) 50%,
+        rgba(255,255,255,0.04) 75%);
+    background-size: 200% 100%;
+    animation: snap-shimmer 1.4s infinite;
+}
+@keyframes snap-shimmer { to { background-position: -200% 0; } }
+/* Header */
+#serverDetailsModal .snap-hdr {
+    background: var(--ui-bg, #13161c);
+    border-bottom: 1px solid var(--ui-border, rgba(255,255,255,0.08));
+    padding: 13px 16px;
+}
+#serverDetailsModal .snap-icon {
+    width: 32px; height: 32px; flex-shrink: 0;
+    background: rgba(0,188,212,0.1);
+    border: 1px solid rgba(0,188,212,0.22);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ui-accent, #00bcd4); font-size: 13px;
+}
+#serverDetailsModal .snap-dev-name {
+    font-size: 13px; font-weight: 700;
+    font-family: var(--ui-font-mono, monospace);
+    color: var(--text-primary, #fff);
+    letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#serverDetailsModal .snap-dev-sub {
+    font-size: 11px; color: var(--text-muted); font-family: var(--ui-font-mono, monospace);
+    margin-top: 1px;
+}
+#serverDetailsModal .snap-btn-details {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ui-accent, #00bcd4) !important;
+    border: 1px solid rgba(0,188,212,0.28) !important;
+    padding: 4px 10px; border-radius: 4px;
+    text-decoration: none; white-space: nowrap;
+    transition: background 0.15s;
+}
+#serverDetailsModal .snap-btn-details:hover { background: rgba(0,188,212,0.09); }
 </style>
 
-<div class="modal fade" id="serverDetailsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-fullscreen">
-        <div class="modal-content">
-            <div class="modal-header border-0 d-flex align-items-center">
-                <div class="d-flex align-items-center gap-3 flex-grow-1">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="server-icon-badge">
-                            <i class="fas fa-server"></i>
-                        </div>
-                        <div>
-                            <h5 class="server-modal-title">
-                                <span id="server-modal-device-name">Server Overview</span>
-                            </h5>
-                            <div class="server-modal-subtitle">
-                                <span id="server-modal-device-ip">-</span> • <span id="server-modal-device-status">Loading...</span>
-                            </div>
+<div class="modal fade" id="serverDetailsModal" role="dialog" aria-modal="true" tabindex="-1"
+    aria-labelledby="server-modal-device-name" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"
+        style="max-width: 820px;">
+        <div class="modal-content"
+            style="background: var(--ui-bg, #13161c); border: 1px solid var(--ui-border, rgba(255,255,255,0.09)); border-radius: 10px; overflow: hidden;">
+
+            <!-- ── HEADER ── -->
+            <div class="modal-header snap-hdr border-0 p-0">
+                <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0" style="padding: 13px 16px 13px 16px;">
+                    <div class="snap-icon"><i class="fas fa-server"></i></div>
+                    <div class="min-w-0 flex-grow-1">
+                        <div class="snap-dev-name" id="server-modal-device-name">Loading…</div>
+                        <div class="snap-dev-sub">
+                            <span id="server-modal-device-ip">—</span>
+                            <span style="margin: 0 5px; opacity: 0.3;">·</span>
+                            <span id="server-modal-device-status" style="color: var(--text-muted)">—</span>
                         </div>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <a id="server-modal-open-page" class="btn btn-sm server-modal-action-link" href="#"
-                        target="_blank" rel="noopener noreferrer">
-                        <i class="fas fa-external-link-alt me-1"></i>Full Page
+                <div class="d-flex align-items-center gap-2 flex-shrink-0" style="padding-right: 14px;">
+                    <a href="#" id="server-modal-open-page" class="snap-btn-details">
+                        <i class="fas fa-external-link-alt me-1" style="font-size: 8px;"></i>Full Details
                     </a>
-                    <button type="button" class="btn-close btn-close-white server-modal-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"
+                        style="opacity: 0.45; font-size: 11px; margin: 0;"></button>
                 </div>
             </div>
-            <div class="modal-body">
-                {% set telemetry_prefix = 'server-modal' %}
-                {% set telemetry_show_threshold_editor = false %}
-                {% set telemetry_can_edit_thresholds = false %}
-                {% set telemetry_show_extended = false %}
-                {% include 'partials/server_metrics_panel.html' %}
-            </div>
+
+            <!-- ── BODY ── -->
+            <div class="modal-body snap-modal-body">
+
+                <!-- LOADING SKELETON -->
+                <div id="snap-loading">
+                    <div class="snap-metrics-row" style="margin-bottom: 12px;">
+                        {% for _ in range(5) %}
+                        <div class="snap-metric-tile">
+                            <div class="snap-shimmer" style="height: 9px; width: 55%; margin: 0 auto 8px;"></div>
+                            <div class="snap-shimmer" style="height: 17px; width: 70%; margin: 0 auto;"></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="snap-res-row">
+                        {% for _ in range(3) %}
+                        <div class="snap-res-card" style="height: 70px;">
+                            <div class="snap-shimmer" style="height: 8px; width: 40%; margin-bottom: 10px;"></div>
+                            <div class="snap-shimmer" style="height: 20px; width: 65%;"></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- CONTENT (populated by JS after load) -->
+                <div id="snap-content" class="d-none">
+
+                    <!-- 1. HEALTH SUMMARY ─────────────────────── -->
+                    <div class="snap-metrics-row">
+                        <div class="snap-metric-tile">
+                            <div class="snap-metric-label">Uptime</div>
+                            <div class="snap-metric-value" id="snap-uptime">—</div>
+                        </div>
+                        <div class="snap-metric-tile">
+                            <div class="snap-metric-label">Availability</div>
+                            <div class="snap-metric-value" id="snap-availability">—</div>
+                            <div class="snap-metric-sub">24 h</div>
+                        </div>
+                        <div class="snap-metric-tile">
+                            <div class="snap-metric-label">Downtime</div>
+                            <div class="snap-metric-value" id="snap-downtime"
+                                style="color: var(--text-secondary, rgba(255,255,255,0.55))">—</div>
+                            <div class="snap-metric-sub">24 h</div>
+                        </div>
+                        <div class="snap-metric-tile">
+                            <div class="snap-metric-label">Ping</div>
+                            <div class="snap-metric-value" id="snap-ping">—</div>
+                            <div class="snap-metric-sub">avg 24 h</div>
+                        </div>
+                        <div class="snap-metric-tile">
+                            <div class="snap-metric-label">Pkt Loss</div>
+                            <div class="snap-metric-value" id="snap-pkt-loss">—</div>
+                            <div class="snap-metric-sub">avg 24 h</div>
+                        </div>
+                    </div>
+
+                    <!-- 2. NETWORK HEALTH ─────────────────────── -->
+                    <div class="snap-section-hdr">Network Health</div>
+                    <div class="snap-net-row">
+                        <div class="snap-net-cell">
+                            <div class="snap-net-lbl">Ping</div>
+                            <div class="snap-net-val" id="snap-net-ping">—</div>
+                        </div>
+                        <div class="snap-net-cell">
+                            <div class="snap-net-lbl">Jitter</div>
+                            <div class="snap-net-val" id="snap-net-jitter">—</div>
+                        </div>
+                        <div class="snap-net-cell">
+                            <div class="snap-net-lbl">Pkt Loss</div>
+                            <div class="snap-net-val" id="snap-net-loss">—</div>
+                        </div>
+                        <div class="snap-net-cell">
+                            <div class="snap-net-lbl">Status</div>
+                            <div class="snap-net-val" id="snap-net-status">—</div>
+                        </div>
+                    </div>
+
+                    <!-- 3. RESOURCES ─────────────────────────── -->
+                    <div class="snap-section-hdr">Resources</div>
+                    <div class="snap-res-row">
+                        <div class="snap-res-card">
+                            <div class="snap-res-card-lbl">CPU</div>
+                            <div id="snap-res-cpu">
+                                <div class="snap-res-value" style="color: var(--text-muted)">—</div>
+                            </div>
+                        </div>
+                        <div class="snap-res-card">
+                            <div class="snap-res-card-lbl">Memory</div>
+                            <div id="snap-res-mem">
+                                <div class="snap-res-value" style="color: var(--text-muted)">—</div>
+                            </div>
+                        </div>
+                        <div class="snap-res-card">
+                            <div class="snap-res-card-lbl">Disk</div>
+                            <div id="snap-res-disk">
+                                <div class="snap-res-value" style="color: var(--text-muted)">—</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. MINI CPU CHART ────────────────────── -->
+                    <div class="snap-chart-card">
+                        <div class="snap-chart-hdr">
+                            <span>CPU — Last 1 Hour</span>
+                            <span id="snap-cpu-current-label"
+                                style="font-family: var(--ui-font-mono, monospace); font-size: 11px; font-weight: 700; color: var(--ui-accent)"></span>
+                        </div>
+                        <div class="snap-chart-wrap">
+                            <canvas id="snap-cpu-canvas"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 5. UPTIME TIMELINE 24H ───────────────── -->
+                    <div class="snap-section-hdr">Uptime — Last 24 Hours</div>
+                    <div class="snap-tl-card">
+                        <div class="snap-tl-bar" id="snap-timeline-bar"></div>
+                        <div class="snap-tl-legend">
+                            <span><span class="snap-tl-dot" style="background: var(--ui-accent, #00bcd4)"></span>Up</span>
+                            <span><span class="snap-tl-dot" style="background: var(--amber, #f59e0b)"></span>Partial</span>
+                            <span><span class="snap-tl-dot" style="background: var(--danger, #ef4444)"></span>Down</span>
+                            <span><span class="snap-tl-dot" style="background: rgba(255,255,255,0.1)"></span>No Data</span>
+                            <span class="ms-auto" style="font-size: 9px; color: var(--text-muted);">
+                                Last seen: <span id="snap-last-seen">—</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- 6. SNMP (shown only when enabled) ────── -->
+                    <div id="snap-snmp-section" class="d-none">
+                        <div class="snap-section-hdr">SNMP Monitoring</div>
+                        <div class="snap-snmp-card">
+                            <div class="snap-snmp-grid">
+                                <div>
+                                    <div class="snap-snmp-lbl">Version</div>
+                                    <div class="snap-snmp-val" id="snap-snmp-version">—</div>
+                                </div>
+                                <div>
+                                    <div class="snap-snmp-lbl">Port</div>
+                                    <div class="snap-snmp-val" id="snap-snmp-port">—</div>
+                                </div>
+                                <div>
+                                    <div class="snap-snmp-lbl">Last Poll</div>
+                                    <div class="snap-snmp-val" id="snap-snmp-last-poll"
+                                        style="font-size: 11px;">—</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 7. ALERTS (shown only when present) ──── -->
+                    <div id="snap-alerts-section" class="d-none">
+                        <div class="snap-section-hdr"
+                            style="color: rgba(239,68,68,0.75);">Active Alerts</div>
+                        <div class="snap-alerts-card">
+                            <div id="snap-alerts-list"></div>
+                        </div>
+                    </div>
+
+                </div><!-- /snap-content -->
+            </div><!-- /modal-body -->
         </div>
     </div>
 </div>

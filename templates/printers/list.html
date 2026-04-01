@@ -2,6 +2,10 @@
 
 {% block title %}Printers - Device Monitoring System{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/printers.css') }}?v={{ asset_ver }}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -456,22 +460,4 @@ function escapeHtml(text) {
 }
 </script>
 
-<style>
-.card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.card:hover {
-    transform: translateY(-4px);
-}
-
-.progress {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.badge {
-    font-size: 0.75rem;
-    padding: 0.35rem 0.65rem;
-}
-</style>
 {% endblock %}

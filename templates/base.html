@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap & Icons -->
@@ -19,13 +19,12 @@
     {% block ui_assets %}{% endblock %}
 
     <!-- Tactical Theme CSS -->
-    <link href="{{ url_for('static', filename='css/tactical.css') }}?v=8" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/tactical.css') }}?v={{ asset_ver }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/animations.css') }}?v={{ asset_ver }}" rel="stylesheet">
     <!-- Note: style.css removed - conflicts with tactical theme -->
-    <!-- Animation System -->
-    <link href="{{ url_for('static', filename='css/animations.css') }}" rel="stylesheet">
 
     {% if session.logged_in %}
-    <link href="{{ url_for('static', filename='css/session_warning.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/session_warning.css') }}?v={{ asset_ver }}" rel="stylesheet">
     {% endif %}
     <script>
         (function () {
@@ -38,40 +37,40 @@
 
     <style>
         :root {
-            --ui-bg: #09090B;
-            --ui-bg-grid: rgba(255, 255, 255, 0.025);
-            --ui-surface-1: #0F0F11;
-            --ui-surface-2: #18181B;
-            --ui-surface-3: #27272A;
-            --ui-surface-4: #2E2E32;
-            --ui-text: #FAFAFA;
-            --ui-text-muted: #A1A1AA;
-            --ui-border: #3F3F46;
-            --ui-border-strong: #52525B;
-            --ui-accent: #14B8A6;
-            --ui-accent-strong: #2DD4BF;
-            --ui-accent-soft: rgba(20, 184, 166, 0.10);
-            --ui-accent-glow: rgba(20, 184, 166, 0.30);
-            --ui-success: #10B981;
-            --ui-danger: #EF4444;
-            --ui-warning: #F59E0B;
+            --ui-bg: #0a0a0f;
+            --ui-bg-grid: rgba(0, 212, 170, 0.02);
+            --ui-surface-1: #0d0d14;
+            --ui-surface-2: #12121a;
+            --ui-surface-3: #1e1e2a;
+            --ui-surface-4: #252532;
+            --ui-text: #f5f7fa;
+            --ui-text-muted: #b8b8c8;
+            --ui-border: rgba(255, 255, 255, 0.08);
+            --ui-border-strong: rgba(255, 255, 255, 0.12);
+            --ui-accent: #00d4aa;
+            --ui-accent-strong: #00ffc8;
+            --ui-accent-soft: rgba(0, 212, 170, 0.10);
+            --ui-accent-glow: rgba(0, 212, 170, 0.35);
+            --ui-success: #00ff88;
+            --ui-danger: #ff3b5c;
+            --ui-warning: #ffaa00;
             --ui-info: #00aaff;
-            --ui-link: #14B8A6;
-            --ui-link-hover: #2DD4BF;
-            --ui-on-accent: #000000;
-            --ui-code-bg: rgba(20, 184, 166, 0.10);
-            --ui-code-border: rgba(20, 184, 166, 0.20);
-            --ui-scroll-track: #0F0F11;
-            --ui-scroll-thumb: #3F3F46;
-            --ui-scroll-thumb-hover: #0D9488;
-            --ui-selection-bg: #14B8A6;
-            --ui-selection-text: #000000;
+            --ui-link: #00d4aa;
+            --ui-link-hover: #00ffc8;
+            --ui-on-accent: #0a0a0f;
+            --ui-code-bg: rgba(0, 212, 170, 0.1);
+            --ui-code-border: rgba(0, 212, 170, 0.2);
+            --ui-scroll-track: #0d0d14;
+            --ui-scroll-thumb: #252532;
+            --ui-scroll-thumb-hover: #00a080;
+            --ui-selection-bg: #00d4aa;
+            --ui-selection-text: #0a0a0f;
             --ui-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
             --ui-shadow-soft: 0 1px 10px rgba(15, 23, 42, 0.08);
             --ui-shadow-depth: 0 4px 12px rgba(0, 0, 0, 0.2);
             --ui-shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.35);
             --ui-shadow-accent: 0 0 20px var(--ui-accent-glow);
-            --ui-shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.70);
+            --ui-shadow-modal: 0 4px 16px rgba(0, 0, 0, 0.35);
             --ui-border-soft: color-mix(in srgb, var(--ui-border) 80%, transparent);
             --ui-footer-text: color-mix(in srgb, var(--ui-text-muted) 55%, transparent);
             --ui-clock-bg: color-mix(in srgb, var(--ui-accent-soft) 55%, transparent);
@@ -87,28 +86,17 @@
             --bg-surface: var(--ui-surface-3);
             --bg-surface-elevated: var(--ui-surface-4);
             --border-subtle: var(--ui-border);
+        }
 
-            /* Semantic interaction tokens — elevation / text scale */
-            --ui-surface-hover:    rgba(255, 255, 255, 0.05);
-            --ui-surface-active:   rgba(255, 255, 255, 0.08);
-            --ui-surface-elevated: #27272A;
-            --ui-text-soft:        rgba(250, 250, 250, 0.88);
-            --ui-text-dim:         #71717A;
-            --ui-border-accent:    rgba(20, 184, 166, 0.28);
-
-            /* ── Interaction states (canonical tokens) ── */
-            --ui-hover:            rgba(255, 255, 255, 0.05);
-            --ui-active:           rgba(255, 255, 255, 0.08);
-            --ui-focus:            rgba(20, 184, 166, 0.20);
-            --ui-disabled:         rgba(255, 255, 255, 0.25);
-            --ui-overlay:          rgba(0, 0, 0, 0.60);
-            --ui-skeleton:         rgba(255, 255, 255, 0.06);
-
-            /* ── Text scale ── */
+        /* ── Compatibility aliases: restores removed tokens + defines missing --s-* tokens ── */
+        :root {
+            /* Text scale (restored) */
             --ui-text-primary:     var(--ui-text);
-            --ui-text-secondary:   #A1A1AA;
+            --ui-text-secondary:   var(--ui-text-muted);
+            --ui-text-dim:         #71717A;
+            --ui-text-soft:        rgba(245, 247, 250, 0.88);
 
-            /* ── Typography ── */
+            /* Typography (restored) */
             --ui-font-sans:        'IBM Plex Sans', system-ui, sans-serif;
             --ui-font-mono:        'IBM Plex Mono', 'Courier New', monospace;
             --ui-font-display:     'Rajdhani', 'IBM Plex Sans', sans-serif;
@@ -117,12 +105,24 @@
             --ui-font-size-base:   0.90rem;
             --ui-font-size-lg:     1.10rem;
 
-            /* ── Transitions ── */
+            /* Interaction states (restored) */
+            --ui-surface-hover:    rgba(255, 255, 255, 0.05);
+            --ui-surface-active:   rgba(255, 255, 255, 0.08);
+            --ui-surface-elevated: var(--ui-surface-3);
+            --ui-hover:            rgba(255, 255, 255, 0.05);
+            --ui-active:           rgba(255, 255, 255, 0.08);
+            --ui-focus:            rgba(20, 184, 166, 0.20);
+            --ui-disabled:         rgba(255, 255, 255, 0.25);
+            --ui-overlay:          rgba(0, 0, 0, 0.60);
+            --ui-skeleton:         rgba(255, 255, 255, 0.06);
+            --ui-border-accent:    rgba(20, 184, 166, 0.28);
+            --ui-shadow-modal:     0 25px 50px -12px rgba(0, 0, 0, 0.70);
+
+            /* Transitions (restored) */
             --ui-transition-fast:  120ms ease;
             --ui-transition-base:  180ms ease;
 
-            /* ── Status tokens — canonical source of truth ── */
-            /* (--s-* aliases live in tactical.css — remove in Phase 7) */
+            /* Status tokens — canonical (restored from git HEAD) */
             --status-critical:     #EF4444;
             --status-warning:      #F59E0B;
             --status-success:      #10B981;
@@ -138,30 +138,37 @@
             --status-offline-bg:   rgba(108, 117, 125, 0.12);
             --status-offline-bd:   rgba(108, 117, 125, 0.28);
 
-            /* ── Toast semantic tokens ── */
-            --ui-toast-info-bg:     rgba(8, 22, 34, 0.97);
-            --ui-toast-info-bd:     rgba(56, 189, 248, 0.22);
-            --ui-toast-info-text:   #38bdf8;
-            --ui-toast-info-color:  #cdefff;
+            /* --s-* status tokens (new names, never previously defined — now defined) */
+            --s-healthy:           #10B981;
+            --s-healthy-bg:        rgba(16, 185, 129, 0.10);
+            --s-healthy-bd:        rgba(16, 185, 129, 0.24);
+            --s-critical:          #EF4444;
+            --s-critical-bg:       rgba(239, 68, 68, 0.12);
+            --s-critical-bd:       rgba(239, 68, 68, 0.30);
+            --s-warning:           #F59E0B;
+            --s-warn:              #F59E0B;
+            --s-warning-bg:        rgba(245, 158, 11, 0.10);
+            --s-warning-bd:        rgba(245, 158, 11, 0.28);
 
-            --ui-toast-success-bg:  rgba(8, 28, 22, 0.97);
-            --ui-toast-success-bd:  rgba(16, 185, 129, 0.22);
-            --ui-toast-success-text: #10B981;
-            --ui-toast-success-color: #d9fff0;
+            /* Toast tokens (restored) */
+            --ui-toast-info-bg:          rgba(8, 22, 34, 0.97);
+            --ui-toast-info-bd:          rgba(56, 189, 248, 0.22);
+            --ui-toast-info-text:        #38bdf8;
+            --ui-toast-info-color:       #cdefff;
+            --ui-toast-success-bg:       rgba(8, 28, 22, 0.97);
+            --ui-toast-success-bd:       rgba(16, 185, 129, 0.22);
+            --ui-toast-success-text:     #10B981;
+            --ui-toast-success-color:    #d9fff0;
+            --ui-toast-warning-bg:       rgba(30, 22, 8, 0.97);
+            --ui-toast-warning-bd:       rgba(245, 158, 11, 0.24);
+            --ui-toast-warning-text:     #f59e0b;
+            --ui-toast-warning-color:    #fff0cc;
+            --ui-toast-danger-bg:        rgba(32, 12, 18, 0.97);
+            --ui-toast-danger-bd:        rgba(244, 63, 94, 0.24);
+            --ui-toast-danger-text:      #f43f5e;
+            --ui-toast-danger-color:     #ffd9e3;
 
-            --ui-toast-warning-bg:  rgba(30, 22, 8, 0.97);
-            --ui-toast-warning-bd:  rgba(245, 158, 11, 0.24);
-            --ui-toast-warning-text: #f59e0b;
-            --ui-toast-warning-color: #fff0cc;
-
-            --ui-toast-danger-bg:   rgba(32, 12, 18, 0.97);
-            --ui-toast-danger-bd:   rgba(244, 63, 94, 0.24);
-            --ui-toast-danger-text: #f43f5e;
-            --ui-toast-danger-color: #ffd9e3;
-
-            /* ── Bootstrap 5 variable bridge ── */
-            /* Maps --bs-* to our --ui-* tokens so Bootstrap components
-               (navbar, card, dropdown, table, modal) inherit the carbon-black palette */
+            /* Bootstrap 5 variable bridges (restored) */
             --bs-body-bg:                var(--ui-bg);
             --bs-body-color:             var(--ui-text);
             --bs-body-color-rgb:         250, 250, 250;
@@ -219,7 +226,7 @@
             --bs-popover-header-bg:      var(--ui-surface-4);
             --bs-popover-body-color:     var(--ui-text-secondary);
 
-            /* ── Button system tokens ── */
+            /* Button system tokens (restored) */
             --ui-label-color:         #A1A1AA;
             --btn-primary-bg:         var(--ui-accent);
             --btn-primary-text:       #000000;
@@ -234,208 +241,55 @@
         }
 
         html[data-theme="light"] {
-            /* ── Surface ladder — Zinc neutral, zero blue tint ── */
-            --ui-bg:             #F4F4F5;
-            --ui-bg-grid:        rgba(0, 0, 0, 0.03);
-            --ui-surface-1:      #FFFFFF;
-            --ui-surface-2:      #FAFAFA;
-            --ui-surface-3:      #F0F0F1;
-            --ui-surface-4:      #E7E7EA;
-            --ui-surface-elevated: #FFFFFF;
-            --ui-surface-hover:  #F5F5F6;
-            --ui-surface-active: #EBEBED;
+            --ui-bg: #f5f7fb;
+            --ui-bg-grid: rgba(30, 41, 59, 0.02);
+            --ui-surface-1: #ffffff;
+            --ui-surface-2: #f7f9fc;
+            --ui-surface-3: #fdfefe;
+            --ui-surface-4: #eef3f8;
+            --ui-text: #172235;
+            --ui-text-muted: #5f6f86;
+            --ui-border: rgba(23, 34, 53, 0.12);
+            --ui-border-strong: rgba(23, 34, 53, 0.18);
+            --ui-accent: #2a8f93;
+            --ui-accent-strong: #142033;
+            --ui-accent-soft: rgba(42, 143, 147, 0.11);
+            --ui-accent-glow: rgba(42, 143, 147, 0.18);
+            --ui-success: #15803d;
+            --ui-danger: #b42332;
+            --ui-warning: #b45309;
+            --ui-info: #1d4ed8;
+            --ui-link: #172235;
+            --ui-link-hover: #0f1726;
+            --ui-on-accent: #0f1a2c;
+            --ui-code-bg: rgba(23, 34, 53, 0.06);
+            --ui-code-border: rgba(23, 34, 53, 0.16);
+            --ui-scroll-track: #edf2f7;
+            --ui-scroll-thumb: #c2cedd;
+            --ui-scroll-thumb-hover: #8fa0b6;
+            --ui-selection-bg: #d9e9f2;
+            --ui-selection-text: #101a2b;
+            --ui-shadow: 0 4px 16px rgba(23, 34, 53, 0.12);
+            --ui-shadow-soft: 0 1px 10px rgba(23, 34, 53, 0.06);
+            --ui-shadow-depth: 0 4px 12px rgba(23, 34, 53, 0.16);
+            --ui-shadow-overlay: 0 4px 16px rgba(23, 34, 53, 0.12);
+            --ui-shadow-accent: 0 0 20px var(--ui-accent-glow);
+            --ui-shadow-modal: 0 4px 16px rgba(23, 34, 53, 0.14);
+            --ui-border-soft: color-mix(in srgb, var(--ui-border) 90%, transparent);
+            --ui-footer-text: color-mix(in srgb, var(--ui-text-muted) 75%, transparent);
+            --ui-clock-bg: color-mix(in srgb, var(--ui-accent-soft) 65%, var(--ui-surface-1) 35%);
+            --ui-clock-border: color-mix(in srgb, var(--ui-accent) 30%, transparent);
+            --ui-clock-date: color-mix(in srgb, var(--ui-accent) 65%, transparent);
 
-            /* ── Text ladder — Zinc 900→400 ── */
-            --ui-text:           #18181B;
-            --ui-text-secondary: #52525B;
-            --ui-text-muted:     #71717A;
-            --ui-text-dim:       #A1A1AA;
-            --ui-text-soft:      rgba(24, 24, 27, 0.80);
-            --ui-text-primary:   #18181B;
-
-            /* ── Borders ── */
-            --ui-border:         rgba(0, 0, 0, 0.10);
-            --ui-border-strong:  rgba(0, 0, 0, 0.14);
-            --ui-border-soft:    rgba(0, 0, 0, 0.07);
-            --ui-border-accent:  rgba(13, 148, 136, 0.30);
-
-            /* ── Shadows — low-opacity for light surfaces ── */
-            --ui-shadow:         0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-            --ui-shadow-soft:    0 1px 4px rgba(0, 0, 0, 0.06);
-            --ui-shadow-depth:   0 4px 12px rgba(0, 0, 0, 0.12);
-            --ui-shadow-overlay: 0 4px 24px rgba(0, 0, 0, 0.10);
-            --ui-shadow-modal:   0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
-            --ui-shadow-accent:  0 0 16px rgba(13, 148, 136, 0.18);
-
-            /* ── Accent — Teal-600, 4.7:1 on white (WCAG AA) ── */
-            --ui-accent:         #0D9488;
-            --ui-accent-strong:  #0F766E;
-            --ui-accent-soft:    rgba(13, 148, 136, 0.10);
-            --ui-accent-glow:    rgba(13, 148, 136, 0.18);
-            --ui-on-accent:      #FFFFFF;
-
-            /* ── Semantic UI states ── */
-            --ui-success:        #059669;
-            --ui-danger:         #DC2626;
-            --ui-warning:        #D97706;
-            --ui-info:           #0D9488;
-            --ui-link:           #0D9488;
-            --ui-link-hover:     #0F766E;
-            --ui-overlay:        rgba(0, 0, 0, 0.50);
-            --ui-hover:          rgba(0, 0, 0, 0.04);
-            --ui-active:         rgba(0, 0, 0, 0.07);
-            --ui-focus:          rgba(13, 148, 136, 0.22);
-            --ui-disabled:       rgba(0, 0, 0, 0.25);
-            --ui-skeleton:       rgba(0, 0, 0, 0.06);
-
-            /* ── Status tokens — WCAG AA corrected for white backgrounds ── */
-            --status-success:    #059669;
-            --status-warning:    #D97706;
-            --status-critical:   #DC2626;
-            --status-offline:    #71717A;
-            --status-degraded:   #C2600A;
-            --status-unknown:    #71717A;
-            --status-critical-bg: rgba(220, 38, 38, 0.10);
-            --status-critical-bd: rgba(220, 38, 38, 0.28);
-            --status-warning-bg:  rgba(217, 119, 6, 0.10);
-            --status-warning-bd:  rgba(217, 119, 6, 0.26);
-            --status-success-bg:  rgba(5, 150, 105, 0.10);
-            --status-success-bd:  rgba(5, 150, 105, 0.24);
-            --status-offline-bg:  rgba(113, 113, 122, 0.10);
-            --status-offline-bd:  rgba(113, 113, 122, 0.24);
-
-            /* ── Toast tokens — light surfaces, colored text ── */
-            --ui-toast-info-bg:       rgba(250, 250, 250, 0.98);
-            --ui-toast-info-bd:       rgba(13, 148, 136, 0.30);
-            --ui-toast-info-text:     #0D9488;
-            --ui-toast-info-color:    #18181B;
-            --ui-toast-success-bg:    rgba(240, 253, 244, 0.98);
-            --ui-toast-success-bd:    rgba(5, 150, 105, 0.28);
-            --ui-toast-success-text:  #059669;
-            --ui-toast-success-color: #18181B;
-            --ui-toast-warning-bg:    rgba(255, 251, 235, 0.98);
-            --ui-toast-warning-bd:    rgba(217, 119, 6, 0.28);
-            --ui-toast-warning-text:  #D97706;
-            --ui-toast-warning-color: #18181B;
-            --ui-toast-danger-bg:     rgba(254, 242, 242, 0.98);
-            --ui-toast-danger-bd:     rgba(220, 38, 38, 0.28);
-            --ui-toast-danger-text:   #DC2626;
-            --ui-toast-danger-color:  #18181B;
-
-            /* ── Scrollbar ── */
-            --ui-scroll-track:        #F0F0F1;
-            --ui-scroll-thumb:        #C4C4C8;
-            --ui-scroll-thumb-hover:  #0D9488;
-
-            /* ── Selection ── */
-            --ui-selection-bg:   rgba(13, 148, 136, 0.20);
-            --ui-selection-text: #18181B;
-
-            /* ── Code ── */
-            --ui-code-bg:        rgba(0, 0, 0, 0.05);
-            --ui-code-border:    rgba(0, 0, 0, 0.10);
-
-            /* ── Clock widget ── */
-            --ui-clock-bg:       rgba(13, 148, 136, 0.08);
-            --ui-clock-border:   rgba(13, 148, 136, 0.25);
-            --ui-clock-date:     rgba(13, 148, 136, 0.70);
-            --ui-footer-text:    rgba(113, 113, 122, 0.70);
-
-            /* ── Alias tokens ── */
-            --text-primary:         var(--ui-text);
-            --text-secondary:       var(--ui-text-muted);
-            --text-muted:           rgba(113, 113, 122, 0.80);
-            --accent:               var(--ui-accent);
-            --accent-strong:        var(--ui-accent-strong);
-            --bg-surface:           var(--ui-surface-3);
-            --bg-surface-elevated:  var(--ui-surface-4);
-            --border-subtle:        var(--ui-border);
-            --ui-label-color:       #71717A;
-
-            /* ── Bootstrap 5 variable bridge ── */
-            --bs-body-bg:                    #F4F4F5;
-            --bs-body-color:                 #18181B;
-            --bs-body-color-rgb:             24, 24, 27;
-            --bs-tertiary-bg:                #F0F0F1;
-            --bs-secondary-bg:               #FAFAFA;
-            --bs-secondary-color:            #71717A;
-            --bs-secondary-color-rgb:        113, 113, 122;
-            --bs-border-color:               rgba(0, 0, 0, 0.10);
-            --bs-border-color-translucent:   rgba(0, 0, 0, 0.10);
-            --bs-card-bg:                    #FFFFFF;
-            --bs-card-border-color:          rgba(0, 0, 0, 0.10);
-            --bs-card-cap-bg:                transparent;
-            --bs-table-bg:                   #FFFFFF;
-            --bs-table-striped-bg:           #FAFAFA;
-            --bs-table-hover-bg:             rgba(13, 148, 136, 0.05);
-            --bs-table-color:                #18181B;
-            --bs-table-border-color:         rgba(0, 0, 0, 0.08);
-            --bs-input-bg:                   #FFFFFF;
-            --bs-form-control-bg:            #FFFFFF;
-            --bs-input-border-color:         rgba(0, 0, 0, 0.14);
-            --bs-input-color:                #18181B;
-            --bs-input-focus-border-color:   #0D9488;
-            --bs-input-focus-box-shadow:     0 0 0 3px rgba(13, 148, 136, 0.20);
-            --bs-dropdown-bg:                #FFFFFF;
-            --bs-dropdown-border-color:      rgba(0, 0, 0, 0.10);
-            --bs-dropdown-color:             #18181B;
-            --bs-dropdown-link-color:        #18181B;
-            --bs-dropdown-link-hover-bg:     #F0F0F1;
-            --bs-dropdown-divider-bg:        rgba(0, 0, 0, 0.08);
-            --bs-modal-bg:                   #FFFFFF;
-            --bs-modal-header-bg:            #FFFFFF;
-            --bs-modal-content-bg:           #FFFFFF;
-            --bs-modal-border-color:         rgba(0, 0, 0, 0.12);
-
-            /* Bootstrap nav/navbar */
-            --bs-nav-link-color:              #0D9488;
-            --bs-nav-link-hover-color:        #0F766E;
-            --bs-navbar-color:                #52525B;
-            --bs-navbar-hover-color:          #18181B;
-            --bs-navbar-active-color:         #0D9488;
-            --bs-navbar-bg:                   #FFFFFF;
-
-            /* Bootstrap list group */
-            --bs-list-group-bg:               #FFFFFF;
-            --bs-list-group-border-color:     rgba(0, 0, 0, 0.10);
-            --bs-list-group-color:            #18181B;
-            --bs-list-group-hover-bg:         #F0F0F1;
-
-            /* Bootstrap pagination */
-            --bs-pagination-bg:               #FFFFFF;
-            --bs-pagination-border-color:     rgba(0, 0, 0, 0.10);
-            --bs-pagination-color:            #52525B;
-            --bs-pagination-hover-bg:         #F0F0F1;
-            --bs-pagination-hover-color:      #18181B;
-            --bs-pagination-active-bg:        #0D9488;
-            --bs-pagination-active-border-color: #0D9488;
-
-            /* Bootstrap tooltip / popover */
-            --bs-tooltip-bg:                  #18181B;
-            --bs-tooltip-color:               #FFFFFF;
-            --bs-popover-bg:                  #FFFFFF;
-            --bs-popover-border-color:        rgba(0, 0, 0, 0.12);
-            --bs-popover-header-bg:           #FAFAFA;
-            --bs-popover-body-color:          #18181B;
-
-            /* Bootstrap button secondary hover */
-            --btn-secondary-hover-bg:         rgba(0, 0, 0, 0.05);
-
-            /* Bootstrap dropdown link hover */
-            --bs-dropdown-link-hover-color:   #18181B;
-
-            /* ── Typography (same in both themes) ── */
-            --ui-font-sans:        'IBM Plex Sans', system-ui, sans-serif;
-            --ui-font-mono:        'IBM Plex Mono', 'Courier New', monospace;
-            --ui-font-display:     'Rajdhani', 'IBM Plex Sans', sans-serif;
-            --ui-font-size-xs:     0.70rem;
-            --ui-font-size-sm:     0.80rem;
-            --ui-font-size-base:   0.90rem;
-            --ui-font-size-lg:     1.10rem;
-
-            /* ── Transitions (same in both themes) ── */
-            --ui-transition-fast:  120ms ease;
-            --ui-transition-base:  180ms ease;
+            /* Alias tokens for consistency/migration */
+            --text-primary: var(--ui-text);
+            --text-secondary: var(--ui-text-muted);
+            --text-muted: color-mix(in srgb, var(--ui-text-muted) 78%, transparent);
+            --accent: var(--ui-accent);
+            --accent-strong: var(--ui-accent-strong);
+            --bg-surface: var(--ui-surface-3);
+            --bg-surface-elevated: var(--ui-surface-4);
+            --border-subtle: var(--ui-border);
         }
 
         /* ============================================================
@@ -445,7 +299,7 @@
         body {
             height: 100%;
             margin: 0;
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', 'Segoe UI', sans-serif;
             overflow: hidden;
         }
 
@@ -500,7 +354,7 @@
             grid-column: 1 / -1;
             height: 52px;
             min-height: 52px;
-            background: var(--ui-surface-1);
+            background: linear-gradient(180deg, var(--ui-surface-2) 0%, var(--ui-surface-1) 100%);
             border-bottom: 1px solid var(--ui-border-strong);
             box-shadow: var(--ui-shadow);
             display: flex;
@@ -539,7 +393,7 @@
             align-items: center;
             justify-content: center;
             font-size: 1rem;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .sidebar-toggle:hover {
@@ -550,7 +404,7 @@
 
         .header-brand {
             color: var(--ui-accent-strong) !important;
-            font-family: var(--ui-font-display);
+            font-family: 'Orbitron', monospace;
             font-weight: 700;
             font-size: 1.3rem;
             letter-spacing: 2px;
@@ -586,7 +440,7 @@
         }
 
         .tactical-clock {
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
             background: var(--ui-clock-bg);
             padding: 0.45rem 0.85rem;
             border: 1px solid var(--ui-clock-border);
@@ -629,7 +483,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .theme-toggle-btn:hover {
@@ -644,7 +498,7 @@
             color: var(--ui-text);
             padding: 6px 14px;
             border-radius: 6px;
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
             font-size: 0.85rem;
             letter-spacing: 0.5px;
@@ -652,7 +506,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .header-user-btn::after {
@@ -687,7 +541,7 @@
             font-weight: 500;
             padding: 0.6rem 1rem;
             border-radius: 4px;
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
 
         .header-right .dropdown-item:hover {
@@ -785,7 +639,7 @@
         .app-sidebar.collapsed .sidebar-link .lucide {
             width: 17px;
             height: 17px;
-            color: var(--ui-text-dim);
+            color: #a8b6c8;
         }
 
         .app-sidebar.collapsed .sidebar-link:hover {
@@ -865,7 +719,7 @@
             font-size: 0.76rem;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
             border-left: 3px solid transparent;
             white-space: nowrap;
             position: relative;
@@ -884,7 +738,7 @@
             width: 20px;
             height: 20px;
             flex-shrink: 0;
-            color: var(--ui-text-muted);
+            color: #8fa0b6;
             transition: color 0.2s ease, transform 0.2s ease;
         }
 
@@ -964,7 +818,6 @@
             bottom: 0;
             background: rgba(0, 0, 0, 0.6);
             z-index: 89;
-            backdrop-filter: blur(2px);
         }
 
         .sidebar-backdrop.show {
@@ -981,7 +834,7 @@
             box-shadow: var(--ui-shadow);
             position: relative;
             overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s ease-in-out, border-color 0.4s ease-in-out;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
         }
 
         /* ============================================================
@@ -1005,7 +858,8 @@
             width: 100%;
             height: 100%;
             border-radius: 50%;
-            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+            opacity: 0.55;
+            transform: scale(1.45);
             z-index: 1;
         }
 
@@ -1127,7 +981,7 @@
         }
 
         .card-body {
-            padding: 1.25rem 1.5rem;
+            padding: 1rem;
             color: var(--ui-text);
         }
 
@@ -1203,39 +1057,38 @@
    TACTICAL BUTTONS
    ============================================================ */
         .btn {
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
             font-size: 0.875rem;
             text-transform: uppercase;
             letter-spacing: 1px;
             padding: 0.6rem 1.25rem;
             border-radius: 4px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .btn-primary {
-            background-color: var(--btn-primary-bg) !important;
-            border-color: var(--btn-primary-bg) !important;
-            color: var(--btn-primary-text) !important;
-            font-weight: 600;
+            background: color-mix(in srgb, var(--ui-accent) 72%, #000 28%) !important;
+            border: 1px solid var(--ui-accent) !important;
+            color: var(--ui-bg) !important;
         }
 
         .btn-primary:hover {
-            background-color: var(--btn-primary-hover-bg) !important;
-            border-color: var(--btn-primary-hover-bg) !important;
+            background: var(--ui-accent) !important;
+            box-shadow: 0 0 20px color-mix(in srgb, var(--ui-accent) 45%, transparent);
+            transform: translateY(-2px);
         }
 
-        /* Tier 2: Secondary */
-        .btn-secondary, .btn-outline-secondary {
-            background-color: var(--btn-secondary-bg) !important;
-            border-color: var(--btn-secondary-border) !important;
-            color: var(--btn-secondary-text) !important;
+        .btn-secondary {
+            background: transparent !important;
+            border: 1px solid var(--ui-border-strong) !important;
+            color: var(--ui-text-muted) !important;
         }
 
-        .btn-secondary:hover, .btn-outline-secondary:hover {
-            background-color: var(--btn-secondary-hover-bg) !important;
-            border-color: var(--ui-border-strong) !important;
-            color: var(--ui-text) !important;
+        .btn-secondary:hover {
+            border-color: var(--ui-accent) !important;
+            color: var(--ui-accent) !important;
+            background: var(--ui-accent-soft) !important;
         }
 
         .btn-success {
@@ -1250,16 +1103,16 @@
             box-shadow: 0 0 20px color-mix(in srgb, var(--ui-success) 30%, transparent);
         }
 
-        /* Tier 3a: Destructive solid */
         .btn-danger {
-            background-color: var(--btn-destructive-bg) !important;
-            border-color: var(--btn-destructive-bg) !important;
-            color: var(--btn-destructive-text) !important;
+            background: color-mix(in srgb, var(--ui-danger) 18%, transparent) !important;
+            border: 1px solid var(--ui-danger) !important;
+            color: var(--ui-danger) !important;
         }
 
         .btn-danger:hover {
-            background-color: var(--btn-destructive-hover-bg) !important;
-            border-color: var(--btn-destructive-hover-bg) !important;
+            background: var(--ui-danger) !important;
+            color: var(--ui-text) !important;
+            box-shadow: 0 0 20px color-mix(in srgb, var(--ui-danger) 30%, transparent);
         }
 
         .btn-warning {
@@ -1316,37 +1169,31 @@
             background: color-mix(in srgb, var(--ui-success) 12%, transparent) !important;
         }
 
-        /* Tier 3b: Destructive outline */
         .btn-outline-danger {
-            background-color: transparent !important;
-            border-color: var(--status-critical) !important;
-            color: var(--status-critical) !important;
+            border-color: var(--ui-danger) !important;
+            color: var(--ui-danger) !important;
         }
 
         .btn-outline-danger:hover {
-            background-color: rgba(239, 68, 68, 0.10) !important;
+            background: color-mix(in srgb, var(--ui-danger) 12%, transparent) !important;
         }
 
-        /* Tier 3c: Warning outline */
         .btn-outline-warning {
-            background-color: transparent !important;
-            border-color: var(--status-warning) !important;
-            color: var(--status-warning) !important;
+            border-color: var(--ui-warning) !important;
+            color: var(--ui-warning) !important;
         }
 
         .btn-outline-warning:hover {
-            background-color: rgba(245, 158, 11, 0.10) !important;
+            background: color-mix(in srgb, var(--ui-warning) 12%, transparent) !important;
         }
 
         .btn-outline-info {
-            border-color: var(--ui-accent) !important;
-            color: var(--ui-accent) !important;
+            border-color: var(--ui-info) !important;
+            color: var(--ui-info) !important;
         }
 
         .btn-outline-info:hover {
-            background: rgba(20, 184, 166, 0.12) !important;
-            color: var(--ui-accent-strong) !important;
-            border-color: var(--ui-accent) !important;
+            background: color-mix(in srgb, var(--ui-info) 12%, transparent) !important;
         }
 
         /* ============================================================
@@ -1358,27 +1205,26 @@
             transition: color 0.4s ease, border-color 0.4s ease;
         }
 
-        .table thead th,
-        .table-dark thead th {
-            background: transparent !important;
-            color: var(--ui-text-muted) !important;
-            font-weight: 700;
+        .table thead th {
+            background: var(--ui-surface-1);
+            color: var(--ui-accent);
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-size: 0.72rem;
-            border-top: none !important;
-            border-bottom: 1px solid var(--ui-border-strong) !important;
-            padding: 0.6rem 0.9rem;
+            letter-spacing: 1px;
+            font-size: 0.8rem;
+            border-bottom: 2px solid var(--ui-border-strong);
+            padding: 1rem;
         }
 
-        /* Sticky header guard */
-        .table-responsive .table thead th {
-            background-color: var(--ui-surface-1) !important;
+        .table-dark thead th {
+            background: var(--ui-surface-1) !important;
+            color: var(--ui-accent) !important;
+            border-color: var(--ui-border-strong) !important;
         }
 
         .table tbody tr {
-            background: var(--ui-surface-1);
-            transition: all 0.15s ease;
+            background: #161622;
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
 
         .table tbody tr:hover {
@@ -1391,7 +1237,7 @@
         }
 
         .table-striped tbody tr:nth-of-type(odd) {
-            background: var(--ui-surface-2);
+            background: #1a1a27;
         }
 
         .table-striped tbody tr:nth-of-type(odd):hover {
@@ -1431,9 +1277,9 @@
             border-radius: 4px;
             color: var(--ui-text) !important;
             padding: 0.75rem 1rem;
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
             font-size: 1rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .form-control:focus,
@@ -1448,8 +1294,8 @@
         }
 
         .form-label {
-            color: var(--ui-label-color);
-            font-size: 0.78rem;
+            color: var(--ui-accent-strong);
+            font-size: 0.85rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -1545,9 +1391,8 @@
         /* ============================================================
    TACTICAL MODALS
    ============================================================ */
-        .modal-backdrop { background-color: rgba(0, 0, 0, 0.72); }
         .modal-content {
-            background: var(--ui-surface-2) !important;
+            background: var(--ui-surface-3) !important;
             border: 1px solid var(--ui-border-strong);
             border-radius: 12px;
             box-shadow: var(--ui-shadow-modal);
@@ -1562,7 +1407,7 @@
 
         .modal-title {
             color: var(--ui-accent-strong) !important;
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -1699,7 +1544,7 @@
             font-weight: bold;
             color: var(--ui-accent-strong);
             margin-bottom: 30px;
-            font-family: var(--ui-font-display);
+            font-family: 'Orbitron', monospace;
         }
 
         .profile-info-item {
@@ -1708,7 +1553,7 @@
             background: color-mix(in srgb, var(--ui-accent-soft) 55%, transparent);
             border-radius: 5px;
             margin-bottom: 15px;
-            transition: all 0.3s ease;
+            transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
         }
 
         .profile-info-item:hover {
@@ -1761,17 +1606,6 @@
         }
 
         /* ============================================================
-   METRIC / KPI VALUE COLORS
-   ============================================================ */
-        /* Default KPI/metric values are bright white */
-        .stat-value, .kpi-value, .metric-value {
-            color: var(--ui-text) !important;
-        }
-        .stat-value.text-danger, .stat-value.critical { color: var(--status-critical) !important; }
-        .stat-value.text-warning, .stat-value.warning { color: var(--status-warning) !important; }
-        .stat-value.text-success, .stat-value.success { color: var(--status-success) !important; }
-
-        /* ============================================================
    TACTICAL TEXT COLORS
    ============================================================ */
         .text-primary {
@@ -1814,7 +1648,7 @@
         h5,
         h6 {
             color: var(--ui-text);
-            font-family: var(--ui-font-display);
+            font-family: 'Rajdhani', sans-serif;
         }
 
         .lead {
@@ -1824,7 +1658,7 @@
         /* Links */
         a {
             color: var(--ui-link);
-            transition: all 0.2s ease;
+            transition: color 0.2s ease, text-shadow 0.2s ease;
         }
 
         a:hover {
@@ -1873,32 +1707,29 @@
    NAV TABS & PILLS
    ============================================================ */
         .nav-tabs {
-            border-bottom: 1px solid var(--ui-border) !important;
+            border-bottom-color: var(--ui-border);
         }
 
         .nav-tabs .nav-link {
-            background: transparent !important;
-            color: var(--ui-text-muted) !important;
-            border: none !important;
-            border-bottom: 2px solid transparent !important;
-            border-radius: 0 !important;
-            padding: 0.5rem 1rem;
-            transition: color var(--ui-transition-fast), border-color var(--ui-transition-fast);
+            color: var(--ui-text-muted);
+            border: none;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            padding: 0.75rem 1rem;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
         }
 
         .nav-tabs .nav-link:hover {
-            color: var(--ui-text) !important;
-            border-bottom-color: rgba(20, 184, 166, 0.40) !important;
-            background: transparent !important;
+            color: var(--ui-accent);
+            border-color: transparent;
         }
 
-        .nav-tabs .nav-link.active,
-        .nav-tabs .nav-item.show .nav-link {
-            background: transparent !important;
-            color: #FAFAFA !important;
-            border: none !important;
-            border-bottom: 2px solid var(--ui-accent) !important;
-            border-radius: 0 !important;
+        .nav-tabs .nav-link.active {
+            color: var(--ui-accent-strong) !important;
+            background: transparent;
+            border-bottom-color: var(--ui-accent);
         }
 
         .nav-pills .nav-link {
@@ -1981,7 +1812,7 @@
             }
 
             .tactical-clock {
-                font-family: var(--ui-font-display);
+                font-family: 'Rajdhani', sans-serif;
                 background: var(--ui-clock-bg);
                 padding: 4px 8px;
                 border: 1px solid var(--ui-clock-border);
@@ -2054,9 +1885,6 @@
 </head>
 
 <body class="tactical-theme">
-    <!-- Grain texture overlay -->
-    <div class="grain-overlay" aria-hidden="true"></div>
-
     <div class="app-layout {% if not session.logged_in %}no-sidebar{% endif %}">
 
         <!-- ============================================================
@@ -2180,13 +2008,9 @@
                     </a>
                     {% endif %}
                     {% if rbac_context.capabilities.admin %}
-                    <a href="{{ url_for('user_management_bp.user_management') }}"
-                        class="sidebar-link {% if request.endpoint and 'user_management' in request.endpoint %}active{% endif %}">
-                        <i data-lucide="users-cog"></i><span class="link-text">User Management</span>
-                    </a>
-                    <a href="{{ url_for('compliance_profiles_bp.compliance_profiles_page') }}"
-                        class="sidebar-link {% if request.endpoint and 'compliance_profiles_bp' in request.endpoint %}active{% endif %}">
-                        <i data-lucide="shield-check"></i><span class="link-text">Compliance</span>
+                    <a href="{{ url_for('settings_bp.settings_page') }}"
+                        class="sidebar-link {% if request.endpoint and ('settings_bp' in request.endpoint or 'user_management' in request.endpoint) %}active{% endif %}">
+                        <i data-lucide="settings-2"></i><span class="link-text">Settings</span>
                     </a>
                     {% endif %}
                 </nav>
@@ -2226,7 +2050,7 @@
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <!-- User Profile Modal -->
-    <div class="modal fade profile-modal" id="profileModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="profileModalLabel"
+    <div class="modal fade profile-modal" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -2306,12 +2130,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     {% if session.logged_in %}
-    <script src="{{ url_for('static', filename='js/session_manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session_manager.js') }}?v={{ asset_ver }}"></script>
     {% endif %}
     <script>
         window.__RBAC_CONTEXT__ = {{ rbac_context | tojson }};
     </script>
-    <script src="{{ url_for('static', filename='js/ui/slideover.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/ui/slideover.js') }}?v={{ asset_ver }}"></script>
     {% block extra_js %}{% endblock %}
     <script>
         // ============================================================
@@ -2455,27 +2279,19 @@
                 lucide.createIcons();
             }
 
-            // Pause tactical-scan animation when element is off-screen (saves GPU)
-            if ('IntersectionObserver' in window) {
-                const scanObserver = new IntersectionObserver(entries => {
-                    entries.forEach(e => e.target.classList.toggle('tactical-scan-paused', !e.isIntersecting));
-                });
-                document.querySelectorAll('.tactical-scan-effect').forEach(el => scanObserver.observe(el));
-            }
-
             // Live clock
             function updateClock() {
                 const now = new Date();
                 const dateEl = document.getElementById('clock-date');
                 const timeEl = document.getElementById('clock-time');
                 if (dateEl) {
-                    dateEl.textContent = now.toLocaleDateString('en-IN', {
-                        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata'
+                    dateEl.textContent = now.toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric'
                     }).toUpperCase();
                 }
                 if (timeEl) {
-                    timeEl.textContent = now.toLocaleTimeString('en-IN', {
-                        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata'
+                    timeEl.textContent = now.toLocaleTimeString('en-US', {
+                        hour12: false, hour: '2-digit', minute: '2-digit', second: undefined
                     });
                 }
             }
@@ -2571,8 +2387,6 @@
     <!-- ============================================================
          HEARTBEAT REMOVED (Reverted)
          ============================================================ -->
-    <!-- Animation System -->
-    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
 </body>
 
 </html>

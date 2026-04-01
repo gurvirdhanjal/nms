@@ -26,12 +26,16 @@ def departments_list_page():
     """Render the departments management page."""
     from middleware.rbac import scoped_query
 
-    departments = scoped_query(Department).order_by(Department.name).all()
+    dept_rows = Department.get_all_with_counts(base_query=scoped_query(Department))
+    departments = [row[0] for row in dept_rows]
+    departments_payload = [
+        row[0].to_dict(user_count=row[1], device_count=row[2]) for row in dept_rows
+    ]
     sites = scoped_query(Site).order_by(Site.site_name).all()
     return render_template(
         'departments/list.html',
         departments=departments,
-        departments_payload=[department.to_dict() for department in departments],
+        departments_payload=departments_payload,
         sites=sites,
         sites_payload=[site.to_dict() for site in sites],
     )
@@ -52,12 +56,31 @@ def department_profile(dept_id):
 @departments_bp.route('/api/departments', methods=['GET'])
 @require_login
 def list_departments():
-    """List all departments with device and user counts."""
+    """List all departments with device and user counts.
+
+    Supports optional pagination via ?page=<n>&per_page=<n> (default: all).
+    """
     from middleware.rbac import scoped_query
-    departments = scoped_query(Department).order_by(Department.name).all()
+    dept_rows = Department.get_all_with_counts(base_query=scoped_query(Department))
+
+    page = request.args.get('page', type=int)
+    if page is not None:
+        per_page = min(request.args.get('per_page', 50, type=int), 200)
+        total = len(dept_rows)
+        start = (page - 1) * per_page
+        dept_rows = dept_rows[start: start + per_page]
+        data = [row[0].to_dict(user_count=row[1], device_count=row[2]) for row in dept_rows]
+        return jsonify({
+            'status': 'ok',
+            'data': data,
+            'total': total,
+            'page': page,
+            'pages': max(1, (total + per_page - 1) // per_page),
+        })
+
     return jsonify({
         'status': 'ok',
-        'data': [d.to_dict() for d in departments]
+        'data': [row[0].to_dict(user_count=row[1], device_count=row[2]) for row in dept_rows]
     })
 
 
@@ -117,6 +140,7 @@ def update_department(dept_id):
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
+    before_snapshot = department.to_dict()
     previous_site_id = department.site_id
     site_changed = False
 
@@ -155,6 +179,18 @@ def update_department(dept_id):
         )
 
     db.session.commit()
+
+    from middleware.rbac import create_audit_log
+    from utils.audit_helpers import capture_model_diff
+    create_audit_log(
+        action='update',
+        entity_type='department',
+        entity_id=department.id,
+        entity_name=department.name,
+        description=f'Updated department "{department.name}"',
+        changes=capture_model_diff(before_snapshot, department) or None,
+    )
+
     return jsonify({'status': 'ok', 'data': department.to_dict()})
 
 

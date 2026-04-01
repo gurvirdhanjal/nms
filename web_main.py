@@ -1,4 +1,5 @@
 from app import create_app
+from waitress import serve
 import atexit
 import webbrowser
 import threading
@@ -81,7 +82,9 @@ if __name__ == "__main__":
         pass
 
     try:
-        print(f"[WEB] Starting web_main on {WEB_HOST}:{WEB_PORT} (debug={WEB_DEBUG})")
-        app.run(host=WEB_HOST, port=WEB_PORT, debug=WEB_DEBUG, use_reloader=False)
+        print(f"[WEB] Starting web_main on {WEB_HOST}:{WEB_PORT} (Waitress, 16 threads)")
+        # Waitress: bounded thread pool prevents Flask dev server's unlimited-thread
+        # per-request model from exhausting the DB connection pool (size 20+overflow).
+        serve(app, host=WEB_HOST, port=WEB_PORT, threads=16)
     finally:
         _shutdown()

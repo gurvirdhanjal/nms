@@ -363,7 +363,7 @@ def get_monitoring_status():
                         if latency is None:
                             latency = 1.0 
                         logger.debug("Status check - %s (%s) IS ONLINE via Agent", device.device_name, device.device_ip)
-                except:
+                except Exception:
                     pass
 
             logger.debug("Status check - %s (%s): %s", device.device_name, device.device_ip, status)

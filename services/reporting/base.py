@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, bindparam, case, desc, func, or_, text
+from sqlalchemy import and_, bindparam, case, cast, desc, func, literal_column, or_, text
 
 from extensions import db
 from middleware.rbac import build_scope_context, scoped_query
@@ -215,9 +215,28 @@ class ReportingServiceBase:
                 combined.c.device_ip,
                 combined.c.device_type,
                 func.count(combined.c.scan_id).label("total_scans"),
-                func.sum(case((func.lower(combined.c.status) == "online", 1), else_=0)).label("online_scans"),
-                func.avg(combined.c.ping_time_ms).label("avg_latency"),
-                func.avg(combined.c.packet_loss).label("avg_packet_loss"),
+                # COUNT non-null returns bigint — avoids SUM(integer) type-inference overflow.
+                # CASE with literal_column avoids bound-param type ambiguity.
+                func.count(
+                    case((func.lower(combined.c.status) == "online", literal_column("1")))
+                ).label("online_scans"),
+                # Guard against overflow: CASE WHEN returns NULL for extreme/sentinel values;
+                # AVG() ignores NULLs, so only sane values enter the aggregate.
+                # Function.filter() aggregate FILTER clause is silently dropped by SQLAlchemy's
+                # legacy Query API on UNION subquery columns, so WHERE-based filtering is used
+                # here via CASE WHEN ... ELSE NULL END inside the aggregate.
+                func.avg(
+                    case(
+                        (combined.c.ping_time_ms.between(0, 60000), combined.c.ping_time_ms),
+                        else_=literal_column("NULL"),
+                    )
+                ).label("avg_latency"),
+                func.avg(
+                    case(
+                        (combined.c.packet_loss.between(0, 100), combined.c.packet_loss),
+                        else_=literal_column("NULL"),
+                    )
+                ).label("avg_packet_loss"),
             )
             .group_by(combined.c.device_id, combined.c.device_name, combined.c.device_ip, combined.c.device_type)
             .all()
@@ -229,6 +248,27 @@ class ReportingServiceBase:
         if total <= 0:
             return None
         return round((int(online_scans or 0) / total) * 100.0, 2)
+
+    @staticmethod
+    def _degradation_score(uptime_pct, avg_latency_ms, avg_packet_loss_pct):
+        """Composite degradation score (0-100, higher = worse).
+
+        Weights: 50% uptime deficit, 25% latency penalty, 25% packet loss.
+        Surfaces online-but-degraded devices above always-offline ones.
+        Returns None when all inputs are None.
+        """
+        if uptime_pct is None and avg_latency_ms is None and avg_packet_loss_pct is None:
+            return None
+        score = 0.0
+        if uptime_pct is not None:
+            score += (100.0 - max(0.0, min(100.0, float(uptime_pct)))) * 0.5
+        else:
+            score += 50.0  # unknown uptime treated as worst
+        if avg_latency_ms is not None:
+            score += min(float(avg_latency_ms) / 500.0, 1.0) * 25.0
+        if avg_packet_loss_pct is not None:
+            score += min(float(avg_packet_loss_pct) / 20.0, 1.0) * 25.0
+        return round(score, 2)
 
     @staticmethod
     def _is_health_payload_empty(time_series, summary):

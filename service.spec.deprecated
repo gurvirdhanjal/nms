@@ -1,0 +1,73 @@
+ DEPRECATED — use WorkstationAgent.spec for production builds
+
+import os
+from PyInstaller.utils.hooks import collect_submodules
+
+# Project root (directory containing service.py)
+project_root = os.path.abspath(".")
+
+# Collect all internal modules
+client_modules_hidden = collect_submodules("client_modules")
+
+a = Analysis(
+    ['service.py'],
+    pathex=[project_root],  # 🔥 makes local packages discoverable
+    binaries=[],
+    datas=[
+        # Bundle entire client_modules folder
+        ('client_modules', 'client_modules'),
+    ],
+    hiddenimports=[
+        # Third-party libs that often fail static detection
+        'PIL.ImageGrab',
+        'cv2.cv2',
+        'pynput',
+        'pynput.keyboard',
+        'pynput.mouse',
+        'cryptography',
+        'cryptography.fernet',
+        'numpy',
+        'psutil',
+        'wmi',
+        'requests',
+        'win32gui',
+        'win32process',
+
+        # Your internal modules (auto-detected)
+        *client_modules_hidden,
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(
+    a.pure,
+    a.zipped_data,
+    cipher=None,
+)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='service',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[
+        'vcruntime140.dll',
+    ],
+    runtime_tmpdir=None,
+    console=False,  # 🔥 background process (no terminal)
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)

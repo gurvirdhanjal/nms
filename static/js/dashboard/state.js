@@ -69,6 +69,7 @@ function saveToCache() {
     try {
         const cacheData = {
             timestamp: Date.now(),
+            activeRange: localStorage.getItem('tactical_dashboard_range') || '24h',
             data: {
                 summary: dashboardState.summary,
                 trends: dashboardState.trends,
@@ -93,6 +94,9 @@ export function loadFromCache() {
         // Allow stale data to render while revalidating (stale-while-revalidate)
         // We still check for very old garbage (e.g. > 7 days) but 1 hour is too strict for UI
         if (Date.now() - cache.timestamp > (1000 * 60 * 60 * 24 * 7)) return false;
+        // Discard cache if it was saved for a different time range
+        const currentRange = localStorage.getItem('tactical_dashboard_range') || '24h';
+        if (cache.activeRange && cache.activeRange !== currentRange) return false;
 
         const data = cache.data;
         if (data.summary) dashboardState.summary = data.summary;

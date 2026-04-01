@@ -1,73 +1,601 @@
 {% extends "base.html" %}
 
-{% block title %}Login - Device Monitoring{% endblock %}
+{% block title %}Login — NMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Full-page takeover ─────────────────────────────────────── */
+    body { background: #040810 !important; overflow: hidden; }
+
+    /* ── Aurora background ──────────────────────────────────────── */
+    #login-aurora {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        background: radial-gradient(ellipse 90% 70% at 50% 50%, #070e1e 0%, #040810 100%);
+    }
+
+    /* Grain texture overlay */
+    #login-aurora::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.032'/%3E%3C/svg%3E");
+        background-size: 200px 200px;
+        pointer-events: none;
+        z-index: 10;
+    }
+
+    /* All orbs anchored to center — balanced placement, ~40% lower intensity */
+    .aurora-orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(100px);
+        will-change: transform;
+    }
+
+    /* Orb 1 — teal, upper-left of card center */
+    .aurora-orb:nth-child(1) {
+        width: 580px; height: 580px;
+        background: radial-gradient(circle at 50% 50%, rgba(0,212,170,0.21), transparent 64%);
+        top: 50%; left: 50%;
+        transform: translate(-75%, -58%);
+        animation: orb1 22s ease-in-out infinite;
+    }
+    /* Orb 2 — deep blue, right of card */
+    .aurora-orb:nth-child(2) {
+        width: 480px; height: 480px;
+        background: radial-gradient(circle at 50% 50%, rgba(48,90,210,0.19), transparent 64%);
+        top: 50%; left: 50%;
+        transform: translate(8%, -48%);
+        animation: orb2 28s ease-in-out infinite;
+    }
+    /* Orb 3 — indigo, below card */
+    .aurora-orb:nth-child(3) {
+        width: 440px; height: 440px;
+        background: radial-gradient(circle at 50% 50%, rgba(85,45,195,0.15), transparent 64%);
+        top: 50%; left: 50%;
+        transform: translate(-58%, 18%);
+        animation: orb3 20s ease-in-out infinite;
+    }
+    /* Orb 4 — center pulse — breathes gently behind card */
+    .aurora-orb:nth-child(4) {
+        width: 300px; height: 300px;
+        background: radial-gradient(circle at 50% 50%, rgba(0,175,195,0.11), transparent 64%);
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        animation: orb4 13s ease-in-out infinite;
+    }
+
+    @keyframes orb1 {
+        0%,100% { transform: translate(-75%, -58%) scale(1); }
+        40%      { transform: translate(-65%, -48%) scale(1.06); }
+        70%      { transform: translate(-80%, -62%) scale(0.94); }
+    }
+    @keyframes orb2 {
+        0%,100% { transform: translate(8%, -48%) scale(1); }
+        35%      { transform: translate(-2%, -55%) scale(1.08); }
+        70%      { transform: translate(14%, -40%) scale(0.95); }
+    }
+    @keyframes orb3 {
+        0%,100% { transform: translate(-58%, 18%) scale(1); }
+        50%      { transform: translate(-48%, 10%) scale(1.07); }
+    }
+    @keyframes orb4 {
+        0%,100% { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+        50%      { transform: translate(-50%, -50%) scale(1.18); opacity: 0.75; }
+    }
+
+    /* Scan shimmer — center-biased, very faint */
+    #login-aurora-scan {
+        position: fixed;
+        top: 0; left: -60%;
+        width: 50%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(0,212,170,0.016), transparent);
+        animation: scan 10s linear infinite;
+        z-index: 5;
+        pointer-events: none;
+    }
+    @keyframes scan { 0% { left: -55%; } 100% { left: 110%; } }
+
+    /* ── App header — unified with aurora layer ─────────────────── */
+    .app-header {
+        background: rgba(4, 8, 16, 0.72) !important;
+        backdrop-filter: blur(22px) saturate(1.5) !important;
+        -webkit-backdrop-filter: blur(22px) saturate(1.5) !important;
+        border-bottom: 1px solid rgba(0,212,170,0.11) !important;
+        box-shadow:
+            0 1px 0 rgba(0,212,170,0.07),
+            0 6px 28px rgba(0,0,0,0.45) !important;
+        z-index: 200 !important;
+    }
+    .app-header::after {
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(0,212,170,0.48) 35%,
+            rgba(56,100,220,0.38) 65%,
+            transparent 100%) !important;
+        opacity: 0.65 !important;
+        height: 1px !important;
+    }
+
+    /* ── Container ──────────────────────────────────────────────── */
+    .container-fluid.tactical-theme {
+        background: transparent !important;
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+    }
+
+    /* ── Card entrance animation ────────────────────────────────── */
+    @keyframes cardReveal {
+        0%   { opacity: 0; transform: translateY(8px) scale(0.990); filter: blur(3px); }
+        100% { opacity: 1; transform: translateY(0)   scale(1);     filter: blur(0); }
+    }
+
+    /* ── Login card — elevated glass ────────────────────────────── */
+    .auth-card.enterprise-card {
+        background: rgba(8, 14, 28, 0.87) !important;
+        backdrop-filter: blur(34px) saturate(1.9) !important;
+        -webkit-backdrop-filter: blur(34px) saturate(1.9) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        box-shadow:
+            0 0 0 1px rgba(0,212,170,0.11),
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 24px 60px rgba(0,0,0,0.75),
+            0 56px 130px rgba(0,0,0,0.50),
+            0 0 70px rgba(0,212,170,0.055) !important;
+        animation: cardReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    /* Teal→blue gradient top accent line */
+    .auth-card.enterprise-card::before {
+        content: '';
+        display: block;
+        height: 2px;
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(0,212,170,0.90) 32%,
+            rgba(56,115,255,0.72) 68%,
+            transparent 100%);
+        border-radius: 8px 8px 0 0;
+    }
+
+    /* ── Card branding header ───────────────────────────────────── */
+    .auth-header-brand {
+        text-align: center;
+        padding: 26px 24px 14px;
+    }
+    .auth-noc-icon {
+        width: 46px; height: 46px;
+        background: rgba(0,212,170,0.08);
+        border: 1px solid rgba(0,212,170,0.25);
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 10px;
+        color: #00d4aa;
+        box-shadow: 0 0 18px rgba(0,212,170,0.18), 0 0 0 4px rgba(0,212,170,0.05);
+    }
+    .auth-noc-icon [data-lucide] {
+        width: 20px; height: 20px;
+        stroke-width: 1.8;
+    }
+    .auth-title {
+        font-family: 'Orbitron', monospace !important;
+        font-size: 0.92rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.20em !important;
+        text-transform: uppercase;
+        color: #dde8f8 !important;
+        margin-bottom: 5px;
+        line-height: 1.35;
+    }
+    .auth-subtitle {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.60rem;
+        letter-spacing: 0.15em;
+        color: rgba(130,150,185,0.50) !important;
+        text-transform: uppercase;
+        margin-bottom: 0;
+    }
+    /* LDAP badge — anchored near header, clearly informational */
+    .auth-ldap-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 10px;
+        padding: 4px 10px;
+        border: 1px solid rgba(0,165,255,0.14);
+        border-radius: 20px;
+        background: rgba(0,165,255,0.05);
+        font-size: 0.60rem;
+        letter-spacing: 0.10em;
+        color: rgba(90,145,210,0.60);
+        font-family: 'IBM Plex Mono', monospace;
+        text-transform: uppercase;
+    }
+    .auth-ldap-inline [data-lucide] { width: 10px; height: 10px; stroke-width: 2; }
+
+    /* ── Alert messages — muted, non-competing ──────────────────── */
+    .auth-card .alert-danger {
+        background: rgba(200,40,55,0.08) !important;
+        border: 1px solid rgba(200,40,55,0.18) !important;
+        color: rgba(255,130,145,0.80) !important;
+        font-size: 0.75rem;
+        border-radius: 7px;
+        padding: 9px 13px;
+        margin-bottom: 20px;
+        box-shadow: none !important;
+    }
+    /* "Logged out" / info — intentionally very quiet */
+    .auth-card .alert-info {
+        background: transparent !important;
+        border: none !important;
+        border-top: 1px solid rgba(255,255,255,0.05) !important;
+        border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+        color: rgba(120,155,195,0.55) !important;
+        font-size: 0.72rem;
+        border-radius: 0 !important;
+        padding: 8px 0 !important;
+        margin-bottom: 18px;
+        box-shadow: none !important;
+        text-align: center;
+    }
+
+    /* ── Form labels ────────────────────────────────────────────── */
+    .auth-card .form-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.63rem !important;
+        letter-spacing: 0.12em;
+        color: rgba(150,170,205,0.65) !important;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    /* ── Input fields — with depth + focus glow ─────────────────── */
+    .auth-card .tactical-input {
+        background: rgba(255,255,255,0.035) !important;
+        border: 1px solid rgba(255,255,255,0.09) !important;
+        color: rgba(255,255,255,0.85) !important;
+        border-radius: 7px !important;
+        height: 44px;
+        font-size: 0.875rem;
+        padding: 0 14px;
+        box-shadow: inset 0 1px 4px rgba(0,0,0,0.28) !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .auth-card .tactical-input::placeholder {
+        color: rgba(130,150,185,0.30);
+    }
+    .auth-card .tactical-input:focus {
+        border-color: rgba(0,212,170,0.48) !important;
+        box-shadow:
+            inset 0 1px 4px rgba(0,0,0,0.22),
+            0 0 0 3px rgba(0,212,170,0.13) !important;
+        background: rgba(0,212,170,0.035) !important;
+        outline: none;
+    }
+
+    /* ── Submit button — with shimmer + physics ─────────────────── */
+    .auth-card .btn-login {
+        background: linear-gradient(135deg, #00d4aa 0%, #00a886 100%);
+        border: none;
+        color: #030c18;
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 700;
+        font-size: 0.76rem;
+        letter-spacing: 0.20em;
+        text-transform: uppercase;
+        width: 100%;
+        height: 46px;
+        border-radius: 7px;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        box-shadow:
+            0 4px 16px rgba(0,212,170,0.20),
+            inset 0 1px 0 rgba(255,255,255,0.22);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    /* Shimmer sweep */
+    .auth-card .btn-login::before {
+        content: '';
+        position: absolute;
+        top: 0; left: -100%;
+        width: 55%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+        transition: left 0.55s ease;
+        pointer-events: none;
+    }
+    .auth-card .btn-login:hover {
+        transform: translateY(-2px);
+        box-shadow:
+            0 8px 24px rgba(0,212,170,0.30),
+            inset 0 1px 0 rgba(255,255,255,0.22);
+    }
+    .auth-card .btn-login:hover::before { left: 140%; }
+    .auth-card .btn-login:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(0,212,170,0.20);
+    }
+
+    /* ── Forgot password ────────────────────────────────────────── */
+    .auth-forgot {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 14px;
+        font-size: 0.68rem;
+        color: rgba(120,140,175,0.42) !important;
+        text-decoration: none;
+        letter-spacing: 0.06em;
+        transition: color 0.15s ease;
+    }
+    .auth-forgot::before,
+    .auth-forgot::after {
+        content: '';
+        display: block;
+        height: 1px;
+        width: 28px;
+        background: rgba(255,255,255,0.07);
+    }
+    .auth-forgot:hover { color: rgba(0,212,170,0.65) !important; }
+
+    /* ── Registration section ───────────────────────────────────── */
+    .auth-card .enterprise-divider {
+        border-color: rgba(255,255,255,0.065);
+        margin: 20px 0;
+    }
+    .auth-register-text {
+        text-align: center;
+        font-size: 0.74rem;
+        color: rgba(130,150,185,0.42);
+    }
+    .auth-register-text a {
+        color: rgba(0,212,170,0.62) !important;
+        text-decoration: none;
+        transition: color 0.15s ease;
+    }
+    .auth-register-text a:hover { color: #00d4aa !important; }
+
+    /* ════════════════════════════════════════════════════════════
+       LIGHT THEME — reactbits-inspired soft mesh aurora
+       ════════════════════════════════════════════════════════════ */
+
+    /* ── Background ──────────────────────────────────────────────── */
+    html[data-theme="light"] body { background: #eef2f9 !important; }
+
+    html[data-theme="light"] #login-aurora {
+        background: linear-gradient(145deg, #f0f5fc 0%, #eaf0fb 45%, #f3f5fd 100%);
+    }
+
+    /* Dot-grid pattern — reactbits signature detail */
+    html[data-theme="light"] #login-aurora::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle, rgba(30,80,180,0.07) 1px, transparent 1px);
+        background-size: 26px 26px;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    /* Softer grain on light */
+    html[data-theme="light"] #login-aurora::after { opacity: 0.012; }
+
+    /* Pastel orbs — same structure, light palette */
+    html[data-theme="light"] .aurora-orb:nth-child(1) {
+        background: radial-gradient(circle at 50% 50%, rgba(0,175,145,0.11), transparent 64%);
+    }
+    html[data-theme="light"] .aurora-orb:nth-child(2) {
+        background: radial-gradient(circle at 50% 50%, rgba(55,110,220,0.09), transparent 64%);
+    }
+    html[data-theme="light"] .aurora-orb:nth-child(3) {
+        background: radial-gradient(circle at 50% 50%, rgba(115,75,200,0.07), transparent 64%);
+    }
+    html[data-theme="light"] .aurora-orb:nth-child(4) {
+        background: radial-gradient(circle at 50% 50%, rgba(0,160,190,0.08), transparent 64%);
+    }
+
+    /* Scan shimmer — warmer on light */
+    html[data-theme="light"] #login-aurora-scan {
+        background: linear-gradient(90deg, transparent, rgba(0,175,145,0.025), transparent);
+    }
+
+    /* ── App header ──────────────────────────────────────────────── */
+    html[data-theme="light"] .app-header {
+        background: rgba(248,251,255,0.88) !important;
+        border-bottom: 1px solid rgba(0,150,120,0.10) !important;
+        box-shadow:
+            0 1px 0 rgba(0,150,120,0.07),
+            0 4px 18px rgba(0,0,0,0.05) !important;
+    }
+    html[data-theme="light"] .app-header::after {
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(0,155,125,0.32) 35%,
+            rgba(55,100,185,0.24) 65%,
+            transparent 100%) !important;
+        opacity: 0.8 !important;
+    }
+
+    /* ── Card ────────────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-card.enterprise-card {
+        background: rgba(255,255,255,0.92) !important;
+        backdrop-filter: blur(28px) saturate(1.4) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(1.4) !important;
+        border: 1px solid rgba(0,0,0,0.065) !important;
+        box-shadow:
+            0 0 0 1px rgba(0,150,120,0.07),
+            inset 0 1px 0 rgba(255,255,255,0.95),
+            0 8px 28px rgba(0,0,0,0.07),
+            0 28px 64px rgba(0,0,0,0.05),
+            0 0 50px rgba(0,155,125,0.04) !important;
+    }
+    html[data-theme="light"] .auth-card.enterprise-card::before {
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(0,155,125,0.70) 32%,
+            rgba(55,105,205,0.55) 68%,
+            transparent 100%);
+    }
+
+    /* ── Icon ────────────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-noc-icon {
+        background: rgba(0,155,125,0.08);
+        border-color: rgba(0,155,125,0.22);
+        color: #009d82;
+        box-shadow: 0 0 16px rgba(0,155,125,0.12), 0 0 0 4px rgba(0,155,125,0.05);
+    }
+
+    /* ── Typography ──────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-title  { color: #192038 !important; }
+    html[data-theme="light"] .auth-subtitle { color: rgba(55,75,110,0.46) !important; }
+    html[data-theme="light"] .auth-ldap-inline {
+        border-color: rgba(55,100,195,0.14);
+        background: rgba(55,100,195,0.05);
+        color: rgba(55,95,180,0.58);
+    }
+
+    /* ── Alerts ──────────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-card .alert-danger {
+        background: rgba(200,35,50,0.06) !important;
+        border-color: rgba(200,35,50,0.15) !important;
+        color: rgba(175,25,45,0.80) !important;
+    }
+    html[data-theme="light"] .auth-card .alert-info {
+        border-top-color: rgba(0,0,0,0.07) !important;
+        border-bottom-color: rgba(0,0,0,0.07) !important;
+        color: rgba(55,85,140,0.52) !important;
+    }
+
+    /* ── Labels ──────────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-card .form-label {
+        color: rgba(55,75,110,0.60) !important;
+    }
+
+    /* ── Inputs ──────────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-card .tactical-input {
+        background: rgba(0,0,0,0.02) !important;
+        border-color: rgba(0,0,0,0.10) !important;
+        color: rgba(10,20,45,0.85) !important;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.05) !important;
+    }
+    html[data-theme="light"] .auth-card .tactical-input::placeholder {
+        color: rgba(55,75,110,0.28) !important;
+    }
+    html[data-theme="light"] .auth-card .tactical-input:focus {
+        border-color: rgba(0,155,125,0.42) !important;
+        box-shadow:
+            inset 0 1px 3px rgba(0,0,0,0.04),
+            0 0 0 3px rgba(0,155,125,0.10) !important;
+        background: rgba(0,155,125,0.025) !important;
+    }
+
+    /* ── Forgot link ─────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-forgot {
+        color: rgba(55,75,110,0.36) !important;
+    }
+    html[data-theme="light"] .auth-forgot::before,
+    html[data-theme="light"] .auth-forgot::after {
+        background: rgba(0,0,0,0.08);
+    }
+    html[data-theme="light"] .auth-forgot:hover { color: rgba(0,155,125,0.68) !important; }
+
+    /* ── Back link (forgot-password page) ───────────────────────── */
+    html[data-theme="light"] .auth-back {
+        color: rgba(55,75,110,0.36) !important;
+    }
+    html[data-theme="light"] .auth-back:hover { color: rgba(0,155,125,0.68) !important; }
+
+    /* ── Registration ────────────────────────────────────────────── */
+    html[data-theme="light"] .auth-card .enterprise-divider {
+        border-color: rgba(0,0,0,0.07);
+    }
+    html[data-theme="light"] .auth-register-text { color: rgba(55,75,110,0.42); }
+    html[data-theme="light"] .auth-register-text a { color: rgba(0,155,125,0.65) !important; }
+    html[data-theme="light"] .auth-register-text a:hover { color: #009d82 !important; }
+</style>
+{% endblock %}
 
 {% block content %}
+<!-- Aurora layer -->
+<div id="login-aurora">
+    <div class="aurora-orb"></div>
+    <div class="aurora-orb"></div>
+    <div class="aurora-orb"></div>
+    <div class="aurora-orb"></div>
+</div>
+<div id="login-aurora-scan"></div>
+
 <div class="container-fluid tactical-theme">
     <div class="auth-wrapper">
 
         <div class="card enterprise-card auth-card">
-            <div class="card-header border-0 pb-0 bg-transparent">
-                <h5 class="enterprise-section-title text-center mb-0 mt-3">
-                    <i class="fas fa-sign-in-alt me-2"></i> Network Operations Center
-                </h5>
-                <div class="enterprise-section-sub text-center mb-2">Authorized Access Only</div>
+            <!-- Gradient accent line rendered via ::before -->
+
+            <!-- Branding -->
+            <div class="auth-header-brand">
+                <div class="auth-noc-icon">
+                    <i data-lucide="shield-check"></i>
+                </div>
+                <div class="auth-title">Network Operations Center</div>
+                <div class="auth-subtitle">Authorized Access Only</div>
                 {% if ldap_enabled %}
-                <div class="text-center mb-2">
-                    <span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 px-3 py-1"
-                        style="font-size: 0.7rem; letter-spacing: 0.06em;">
-                        <i class="fas fa-sitemap me-1"></i> CORPORATE DIRECTORY
+                <div style="margin-top:10px;">
+                    <span class="auth-ldap-inline">
+                        <i data-lucide="building-2"></i>
+                        Corporate Directory
                     </span>
                 </div>
                 {% endif %}
             </div>
 
-            <div class="card-body p-4">
+            <div class="card-body px-4 pb-4 pt-2">
 
                 {% if error %}
-                <div class="alert alert-danger small">{{ error }}</div>
+                <div class="alert alert-danger small">
+                    <i class="fas fa-exclamation-triangle me-2" style="opacity:0.65"></i>{{ error }}
+                </div>
                 {% endif %}
 
                 {% if message %}
-                <div class="alert alert-info small">{{ message }}</div>
+                <div class="alert alert-info small">
+                    <i class="fas fa-info-circle me-2" style="opacity:0.65"></i>{{ message }}
+                </div>
                 {% endif %}
 
                 <form method="POST" action="{{ url_for('auth_bp.login') }}">
 
-                    <div class="mb-4">
-                        <label for="username" class="form-label small text-secondary text-uppercase fw-bold"
-                            style="letter-spacing: 0.08em;">Username</label>
-                        <input type="text" class="form-control tactical-input" id="username" name="username" required
-                            autocomplete="username">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control tactical-input"
+                            id="username" name="username" required autocomplete="username">
                     </div>
 
-                    <div class="mb-4">
-                        <label for="password" class="form-label small text-secondary text-uppercase fw-bold"
-                            style="letter-spacing: 0.08em;">Password</label>
-                        <input type="password" class="form-control tactical-input" id="password" name="password"
-                            required autocomplete="current-password">
+                    <div class="mb-5">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control tactical-input"
+                            id="password" name="password" required autocomplete="current-password">
                     </div>
 
-                    <button type="submit" class="btn btn-primary w-100 py-2 text-uppercase fw-bold"
-                        style="letter-spacing: 0.15em; height: 44px;">
-                        Login
+                    <button type="submit" class="btn-login">
+                        Sign In
                     </button>
+
                 </form>
 
-                <div class="text-center mt-4 small">
-                    <a href="{{ url_for('auth_bp.forgot_password') }}"
-                        class="text-decoration-none text-secondary hover-text-primary">
-                        Forgot Password?
-                    </a>
-                </div>
+                <a href="{{ url_for('auth_bp.forgot_password') }}" class="auth-forgot">
+                    Forgot Password?
+                </a>
 
                 {% if allow_registration %}
-                <hr class="enterprise-divider my-4">
-                <div class="text-center small text-secondary">
+                <hr class="enterprise-divider">
+                <div class="auth-register-text">
                     No account?
-                    <a href="{{ url_for('auth_bp.register') }}" class="text-info text-decoration-none ms-1">
-                        Register as admin
-                    </a>
+                    <a href="{{ url_for('auth_bp.register') }}">Register as admin</a>
                 </div>
                 {% endif %}
 

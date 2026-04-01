@@ -14,6 +14,51 @@ from sqlalchemy import inspect, or_, func
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 logger = logging.getLogger(__name__)
 
+_DEVICE_THRESHOLD_DEFAULTS = {
+    'cpu_warning': 80.0,
+    'cpu_critical': 95.0,
+    'memory_warning': 85.0,
+    'memory_critical': 95.0,
+    'disk_warning': 80.0,
+    'disk_critical': 95.0,
+}
+
+
+def _default_device_thresholds():
+    return dict(_DEVICE_THRESHOLD_DEFAULTS)
+
+
+def _get_device_surface_context():
+    context = {
+        'compliance_profiles': [],
+        'global_thresholds': _default_device_thresholds(),
+        'can_manage_compliance_profiles': str(session.get('role') or '').strip().lower() == 'admin',
+    }
+
+    try:
+        from models.compliance_profile import ComplianceProfile
+
+        context['compliance_profiles'] = ComplianceProfile.query.order_by(ComplianceProfile.name).all()
+    except Exception:
+        logger.warning('[Devices] Could not load compliance profiles for device surface', exc_info=True)
+
+    try:
+        from services.server_thresholds import get_merged_thresholds
+
+        metrics = (get_merged_thresholds() or {}).get('metrics', {})
+        context['global_thresholds'] = {
+            'cpu_warning': float(metrics.get('cpu_usage_pct', {}).get('warning', _DEVICE_THRESHOLD_DEFAULTS['cpu_warning'])),
+            'cpu_critical': float(metrics.get('cpu_usage_pct', {}).get('critical', _DEVICE_THRESHOLD_DEFAULTS['cpu_critical'])),
+            'memory_warning': float(metrics.get('memory_usage_pct', {}).get('warning', _DEVICE_THRESHOLD_DEFAULTS['memory_warning'])),
+            'memory_critical': float(metrics.get('memory_usage_pct', {}).get('critical', _DEVICE_THRESHOLD_DEFAULTS['memory_critical'])),
+            'disk_warning': float(metrics.get('disk_usage_pct', {}).get('warning', _DEVICE_THRESHOLD_DEFAULTS['disk_warning'])),
+            'disk_critical': float(metrics.get('disk_usage_pct', {}).get('critical', _DEVICE_THRESHOLD_DEFAULTS['disk_critical'])),
+        }
+    except Exception:
+        logger.warning('[Devices] Could not load global threshold defaults for compliance preview', exc_info=True)
+
+    return context
+
 
 def _parse_limit(default: int = 100, max_val: int = 500) -> int:
     """Parse and cap the ?limit= query parameter."""
@@ -221,6 +266,18 @@ def _resolve_device_status(device, latest_status_by_ip):
     return latest_status_by_ip.get(device.device_ip, 'Offline')
 
 
+def _device_inventory_payload(device, *, latest_status_by_ip=None, snmp_config=None):
+    payload = device.to_dict()
+    cfg = snmp_config if snmp_config is not None else getattr(device, 'snmp_config', None)
+    payload['monitoring_mode'] = (device.monitoring_mode or 'ping')
+    payload['snmp_enabled'] = bool(cfg.is_enabled) if cfg else False
+    payload['snmp_last_error'] = cfg.last_poll_error if cfg else None
+    payload['snmp_last_poll'] = _iso_utc(cfg.last_successful_poll) if cfg and cfg.last_successful_poll else None
+    if latest_status_by_ip is not None:
+        payload['status'] = _resolve_device_status(device, latest_status_by_ip)
+    return payload
+
+
 def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device_type='', subnet='', status=''):
     """Apply consistent device filters for UI pages and cross-page selection endpoints."""
     filtered_query = query
@@ -346,9 +403,13 @@ def device_management():
         if 'delete_id' in request.args:
             device = scoped_query(Device).get(request.args.get('delete_id'))
             if device:
-                _delete_device_with_dependencies(device)
-                db.session.commit()
-                logger.debug("Deleted device %s", device.device_id)
+                try:
+                    _delete_device_with_dependencies(device)
+                    db.session.commit()
+                    logger.debug("Deleted device %s", device.device_id)
+                except Exception as del_err:
+                    db.session.rollback()
+                    logger.error("[Devices] Failed to delete device %s: %s", device.device_id, del_err)
             redirect_params = {
                 'page': page,
                 'per_page': per_page,
@@ -369,8 +430,7 @@ def device_management():
             if dtype in ("", "unknown", "network device"):
                 unclassified_count += 1
 
-        from models.compliance_profile import ComplianceProfile
-        compliance_profiles = ComplianceProfile.query.order_by(ComplianceProfile.name).all()
+        device_surface_context = _get_device_surface_context()
 
         return render_template(
             'devices.html',
@@ -378,7 +438,7 @@ def device_management():
             device=device,
             prefill_data=prefill_data,
             unclassified_count=unclassified_count,
-            compliance_profiles=compliance_profiles,
+            **device_surface_context,
             subnets=[
                 row[0]
                 for row in db.session.query(Device.subnet_cidr)
@@ -568,6 +628,7 @@ def save_device():
         # The background scanner will pick this up later.
 
         try:
+            before_snapshot: dict = {}
             if device_id:
                 # Update existing device
                 from middleware.rbac import scoped_query
@@ -576,6 +637,7 @@ def save_device():
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                         return jsonify({'success': False, 'message': 'Device not found'}), 404
                     return redirect(url_for('devices_bp.device_management'))
+                before_snapshot = device.to_dict()
                 device.device_name = device_name
                 device.device_ip = device_ip
                 device.device_type = device_type
@@ -698,19 +760,31 @@ def save_device():
             )
             db.session.commit()
             
-            # Audit logging
+            # Audit logging with field-level diff for updates
             from middleware.rbac import create_audit_log
+            from utils.audit_helpers import capture_model_diff
             action = 'update' if device_id else 'create'
+            changes = capture_model_diff(before_snapshot, device) if before_snapshot else {}
             create_audit_log(
                 action=action,
                 entity_type='device',
                 entity_id=device.device_id,
                 entity_name=device.device_name or device.device_ip,
-                description=f"Device {action}d: {device.device_name or device.device_ip} ({device.device_ip})"
+                description=f"Device {action}d: {device.device_name or device.device_ip} ({device.device_ip})",
+                changes=changes or None,
             )
             
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': True, 'device_id': device.device_id}), 200
+                from models.scan_history import DeviceScanHistory
+                latest_status_by_ip = _load_latest_scan_statuses(
+                    [device.device_ip],
+                    DeviceScanHistory=DeviceScanHistory,
+                )
+                return jsonify({
+                    'success': True,
+                    'device_id': device.device_id,
+                    'device': _device_inventory_payload(device, latest_status_by_ip=latest_status_by_ip),
+                }), 200
             return redirect(url_for('devices_bp.device_management'))
         except Exception as e:
             db.session.rollback()
@@ -719,14 +793,25 @@ def save_device():
                 return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
             from models.device import Device
             devices = Device.query.all()
-            return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}"), 500
+            return render_template(
+                'devices.html',
+                devices=devices,
+                error=f"Error saving device: {str(e)}",
+                **_get_device_surface_context(),
+            ), 500
 
     except Exception as e:
+        db.session.rollback()
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
         from models.device import Device
         devices = Device.query.all()
-        return render_template('devices.html', devices=devices, error=f"Error saving device: {str(e)}")
+        return render_template(
+            'devices.html',
+            devices=devices,
+            error=f"Error saving device: {str(e)}",
+            **_get_device_surface_context(),
+        )
 
 @devices_bp.route('/api/devices/subnets')
 def api_device_subnets():
@@ -789,12 +874,14 @@ def api_devices():
             DeviceScanHistory=DeviceScanHistory,
         )
         for d in devices:
-            d_dict = d.to_dict()
             cfg = snmp_by_device_id.get(d.device_id)
-            d_dict['snmp_enabled'] = bool(cfg.is_enabled) if cfg else False
-            d_dict['snmp_last_error'] = cfg.last_poll_error if cfg else None
-            d_dict['status'] = _resolve_device_status(d, latest_status_by_ip)
-            result.append(d_dict)
+            result.append(
+                _device_inventory_payload(
+                    d,
+                    latest_status_by_ip=latest_status_by_ip,
+                    snmp_config=cfg,
+                )
+            )
             
         return jsonify({
             'devices': result,
@@ -812,9 +899,7 @@ def api_devices():
         )
         device_dicts = []
         for d in devices:
-            d_dict = d.to_dict()
-            d_dict['status'] = _resolve_device_status(d, latest_status_by_ip)
-            device_dicts.append(d_dict)
+            device_dicts.append(_device_inventory_payload(d, latest_status_by_ip=latest_status_by_ip))
         return jsonify(device_dicts)
 @devices_bp.route('/api/devices/filter_ids')
 def api_filtered_device_ids():
@@ -876,6 +961,9 @@ def api_device_detail(device_id):
             'monitoring_mode': (device.monitoring_mode or 'ping'),
             'agent_interval': int(device.agent_interval or 300),
             'agent_os_type': (device.agent_os_type or ''),
+            'snmp_enabled': bool(snmp_config.is_enabled) if snmp_config else False,
+            'snmp_last_error': (snmp_config.last_poll_error if snmp_config else None),
+            'snmp_last_poll': _iso_utc(snmp_config.last_successful_poll) if snmp_config and snmp_config.last_successful_poll else None,
             'snmp_config': {
                 'snmp_version': (snmp_config.snmp_version if snmp_config else None),
                 'snmp_port': (snmp_config.snmp_port if snmp_config else None),
@@ -955,10 +1043,11 @@ def device_details_page(device_id):
     from models.device_identity_link import DeviceIdentityLink
     from models.device_identity_link_candidate import DeviceIdentityLinkCandidate
     from models.interfaces import DeviceInterface
-    from models.scan_history import DeviceScanHistory
+    from models.scan_history import DeviceScanHistory, PortScanResult
     from models.server_health import ServerHealthLog
     from models.snmp_config import DeviceSnmpConfig
     from middleware.rbac import scoped_query
+    from datetime import timedelta
 
     device = scoped_query(Device).get_or_404(device_id)
 
@@ -1023,10 +1112,68 @@ def device_details_page(device_id):
         .all()
     )
 
+    # ── Ping history (last 7 days, up to 100 scans for KPI + sparkline) ────────
+    _seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    recent_scans = (
+        DeviceScanHistory.query
+        .filter(
+            DeviceScanHistory.device_ip == device.device_ip,
+            DeviceScanHistory.scan_timestamp >= _seven_days_ago,
+        )
+        .order_by(DeviceScanHistory.scan_timestamp.desc())
+        .limit(100)
+        .all()
+    )
+    _latencies  = [s.ping_time_ms for s in recent_scans if s.ping_time_ms and s.ping_time_ms > 0]
+    _online     = [s for s in recent_scans if (s.status or '').lower() == 'online']
+    _offline    = [s for s in recent_scans if (s.status or '').lower() != 'online']
+    _pkt_vals   = [s.packet_loss for s in recent_scans if s.packet_loss is not None]
+    _avg_ms     = round(sum(_latencies) / len(_latencies), 1) if _latencies else None
+    ping_stats = {
+        'avg_ms':          _avg_ms,
+        'min_ms':          round(min(_latencies), 1) if _latencies else None,
+        'max_ms':          round(max(_latencies), 1) if _latencies else None,
+        'offline_count':   len(_offline),
+        'total_scans':     len(recent_scans),
+        'online_count':    len(_online),
+        # avg_packet_loss: average only scans that actually reported a value
+        'avg_packet_loss': round(sum(_pkt_vals) / len(_pkt_vals), 1) if _pkt_vals else None,
+        'sparkline': [
+            {
+                't': s.scan_timestamp.strftime('%H:%M'),
+                'v': round(s.ping_time_ms, 1) if s.ping_time_ms else 0,
+                'status': (s.status or '').lower(),
+            }
+            for s in reversed(recent_scans[:50])
+        ],
+        # CSS colour class for avg ping KPI card
+        'avg_class': (
+            'dd-kpi-good' if _avg_ms is not None and _avg_ms < 5 else
+            'dd-kpi-ok'   if _avg_ms is not None and _avg_ms < 20 else
+            'dd-kpi-warn' if _avg_ms is not None and _avg_ms < 50 else
+            'dd-kpi-bad'  if _avg_ms is not None else ''
+        ),
+    }
+
+    # ── Open ports ───────────────────────────────────────────────────────────
+    open_ports = (
+        PortScanResult.query
+        .filter_by(device_ip=device.device_ip, status='open')
+        .order_by(PortScanResult.port_number.asc())
+        .all()
+    )
+
     snmp_enabled = bool(snmp_config and snmp_config.is_enabled)
     has_snmp_metrics = bool(latest_snmp_log or interfaces)
     classification_details = _parse_device_classification_details(device.classification_details)
     availability_summary = _device_availability_summary(device, latest_scan)
+
+    try:
+        from models.compliance_profile import ComplianceProfile
+        compliance_profiles = ComplianceProfile.query.order_by(ComplianceProfile.name).all()
+    except Exception:
+        compliance_profiles = []
+
     monitoring_sources = [
         {
             'name': 'Reachability',
@@ -1070,26 +1217,10 @@ def device_details_page(device_id):
             current_app.config.get('ENABLE_SERVER_FULLPAGE_TELEMETRY', Config.ENABLE_SERVER_FULLPAGE_TELEMETRY)
         ),
         can_edit_server_thresholds=str(session.get('role') or '').strip().lower() == 'admin',
+        ping_stats=ping_stats,
+        open_ports=open_ports,
+        compliance_profiles=compliance_profiles,
     )
-
-@devices_bp.route('/devices/<int:device_id>/server-monitoring')
-def server_monitoring_page(device_id):
-    """Dedicated full-page server monitoring view for enterprise-grade telemetry."""
-    from models.device import Device
-    from middleware.rbac import scoped_query
-
-    device = scoped_query(Device).get_or_404(device_id)
-    
-    # Ensure this is actually a server device
-    if not device.device_type or device.device_type.lower() != 'server':
-        abort(400, description='This page is only available for server devices.')
-
-    return render_template(
-        'server_details_page.html',
-        device=device,
-        can_edit_server_thresholds=str(session.get('role') or '').strip().lower() == 'admin',
-    )
-
 
 @devices_bp.route('/api/devices/<int:device_id>/connections', methods=['GET'])
 def get_device_connections(device_id):
@@ -1318,6 +1449,85 @@ def toggle_device_monitoring(device_id):
         return jsonify({'success': True, 'is_monitored': device.is_monitored})
     else:
         return jsonify({'error': 'Device not found'}), 404
+
+
+@devices_bp.route('/api/devices/<int:device_id>/snmp', methods=['PATCH'])
+@require_permission('devices.edit')
+def update_device_snmp(device_id):
+    from models.device import Device
+    from models.scan_history import DeviceScanHistory
+    from middleware.rbac import scoped_query
+
+    device = scoped_query(Device).get(device_id)
+    if not device:
+        return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled'))
+
+    current_mode = (device.monitoring_mode or 'ping').strip().lower() or 'ping'
+    fallback_mode = 'ping' if current_mode == 'snmp' else current_mode
+
+    snmp_version = data.get('snmp_version') or (device.snmp_config.snmp_version if device.snmp_config else device.snmp_version or 'v2c')
+    snmp_community = data.get('snmp_community') if data.get('snmp_community') is not None else (device.snmp_config.community_string if device.snmp_config else device.snmp_community or 'public')
+    snmp_username = data.get('snmp_username') if data.get('snmp_username') is not None else (device.snmp_config.security_name if device.snmp_config else device.snmp_username or '')
+    snmp_auth_proto = data.get('snmp_auth_proto') if data.get('snmp_auth_proto') is not None else (device.snmp_config.auth_protocol if device.snmp_config else device.snmp_auth_proto or '')
+    snmp_auth_password = data.get('snmp_auth_password') if data.get('snmp_auth_password') is not None else (device.snmp_config.auth_password if device.snmp_config else device.snmp_auth_password or '')
+    snmp_priv_proto = data.get('snmp_priv_proto') if data.get('snmp_priv_proto') is not None else (device.snmp_config.priv_protocol if device.snmp_config else device.snmp_priv_proto or '')
+    snmp_priv_password = data.get('snmp_priv_password') if data.get('snmp_priv_password') is not None else (device.snmp_config.priv_password if device.snmp_config else device.snmp_priv_password or '')
+
+    raw_port = data.get('snmp_port')
+    try:
+        snmp_port = int(raw_port if raw_port is not None and str(raw_port).strip() != '' else (device.snmp_config.snmp_port if device.snmp_config else device.snmp_port or 161))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'SNMP port must be a valid integer.'}), 400
+
+    if snmp_port <= 0 or snmp_port > 65535:
+        return jsonify({'success': False, 'error': 'SNMP port must be between 1 and 65535.'}), 400
+
+    device.monitoring_mode = 'snmp' if enabled else fallback_mode
+    if enabled:
+        device.is_monitored = True
+
+    device.snmp_version = snmp_version
+    device.snmp_port = snmp_port
+    device.snmp_community = snmp_community
+    device.snmp_username = snmp_username or None
+    device.snmp_auth_proto = snmp_auth_proto or None
+    device.snmp_auth_password = snmp_auth_password or None
+    device.snmp_priv_proto = snmp_priv_proto or None
+    device.snmp_priv_password = snmp_priv_password or None
+
+    try:
+        db.session.flush()
+        _upsert_device_snmp_config(
+            device=device,
+            monitoring_mode=device.monitoring_mode,
+            is_monitored=device.is_monitored,
+            snmp_version=snmp_version,
+            snmp_port=snmp_port,
+            snmp_community=snmp_community,
+            snmp_username=snmp_username,
+            snmp_auth_proto=snmp_auth_proto,
+            snmp_auth_password=snmp_auth_password,
+            snmp_priv_proto=snmp_priv_proto,
+            snmp_priv_password=snmp_priv_password,
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("[Devices] Failed to update SNMP settings for device %s: %s", device_id, exc)
+        return jsonify({'success': False, 'error': f'Failed to update SNMP settings: {exc}'}), 500
+
+    latest_status_by_ip = _load_latest_scan_statuses(
+        [device.device_ip],
+        DeviceScanHistory=DeviceScanHistory,
+    )
+    return jsonify({
+        'success': True,
+        'device_id': device.device_id,
+        'device': _device_inventory_payload(device, latest_status_by_ip=latest_status_by_ip),
+    })
 
 @devices_bp.route('/api/devices/bulk_add', methods=['POST'])
 @require_permission('devices.edit')
@@ -1590,7 +1800,7 @@ def reclassify_all():
             # Ping first (ICMP may be blocked; do not rely on it for classification)
             status, _latency, _packet_loss, ttl, *_ = asyncio.run(scanner.ping_device(device.device_ip))
 
-            mac_address = device.macaddress or "N/A"
+            mac_address = device.macaddress if device.macaddress and device.macaddress.strip().lower() not in ('n/a', 'na', 'unknown', '') else None
             hostname = device.hostname or ""
             if not hostname or hostname.strip().lower() in ("unknown", "n/a", "na"):
                 name_fallback = device.device_name or ""
@@ -1601,7 +1811,9 @@ def reclassify_all():
             manufacturer = device.manufacturer or "Unknown"
 
             if status == "Online":
-                mac_address = scanner.get_mac_address(device.device_ip) or mac_address
+                _scanned_mac = scanner.get_mac_address(device.device_ip)
+                if _scanned_mac and _scanned_mac.strip().lower() not in ('n/a', 'na', 'unknown', ''):
+                    mac_address = _scanned_mac
                 hostname = scanner.get_hostname(device.device_ip) or hostname
 
             if (manufacturer in ("Unknown", "N/A", "") and mac_address not in ("", "N/A", None)):
@@ -1684,6 +1896,15 @@ def reclassify_all():
                 "classification_confidence": device.classification_confidence,
                 "confidence_score": device.confidence_score
             })
+
+            # Commit every 20 devices to prevent connection timeout on large fleets
+            if updated_count % 20 == 0:
+                try:
+                    db.session.commit()
+                except Exception as _ce:
+                    db.session.rollback()
+                    logger.error("[Reclassify] Batch commit failed at %d devices: %s", updated_count, _ce)
+
         except Exception as e:
             logger.error("[Reclassify] Failed for %s: %s", device.device_ip, e)
 
@@ -1963,4 +2184,271 @@ def reassign_device_site(device_id):
         'message': f'Device reassigned to site {new_site_id}',
         'device': device.to_dict(),
         'warning': 'Department assignment cleared - please reassign to appropriate department'
+    })
+
+
+@devices_bp.route('/api/devices/<int:device_id>/icmp-thresholds', methods=['GET'])
+@require_login
+def get_icmp_thresholds(device_id):
+    """Return effective ICMP thresholds for a device with source annotation."""
+    from models.device import Device
+    from services.alert_manager import AlertManager
+
+    device = Device.query.get_or_404(device_id)
+    effective = AlertManager._get_icmp_thresholds(device)
+
+    # Determine source for each field
+    def _source(device_attr, profile_key, effective_val, default_val):
+        if getattr(device, device_attr, None) is not None:
+            return 'device_override'
+        profile_id = getattr(device, 'compliance_profile_id', None)
+        if profile_id:
+            try:
+                from models.compliance_profile import ComplianceProfile
+                profile = ComplianceProfile.query.get(profile_id)
+                if profile and isinstance(getattr(profile, 'rules_json', None), dict):
+                    if profile.rules_json.get(profile_key) is not None:
+                        return 'compliance_profile'
+            except Exception:
+                pass
+        return 'global_default'
+
+    source_latency_warn = _source('icmp_latency_warning_ms',       'latency_warning_ms',       effective['latency_warning_ms'],      AlertManager.LATENCY_THRESHOLD_MS)
+    source_latency_crit = _source('icmp_latency_critical_ms',      'latency_critical_ms',      effective['latency_critical_ms'],     AlertManager.LATENCY_THRESHOLD_MS)
+    source_loss_warn    = _source('icmp_packet_loss_warning_pct',  'packet_loss_warning_pct',  effective['packet_loss_warning_pct'], AlertManager.PACKET_LOSS_THRESHOLD_PCT)
+    source_loss_crit    = _source('icmp_packet_loss_critical_pct', 'packet_loss_critical_pct', effective['packet_loss_critical_pct'], AlertManager.PACKET_LOSS_THRESHOLD_PCT)
+
+    return jsonify({
+        'latency_warning_ms':       effective['latency_warning_ms'],
+        'latency_critical_ms':      effective['latency_critical_ms'],
+        'packet_loss_warning_pct':  effective['packet_loss_warning_pct'],
+        'packet_loss_critical_pct': effective['packet_loss_critical_pct'],
+        'source': {
+            'latency_warning_ms':       source_latency_warn,
+            'latency_critical_ms':      source_latency_crit,
+            'packet_loss_warning_pct':  source_loss_warn,
+            'packet_loss_critical_pct': source_loss_crit,
+        },
+        'device_overrides': {
+            'icmp_latency_warning_ms':       device.icmp_latency_warning_ms,
+            'icmp_latency_critical_ms':      device.icmp_latency_critical_ms,
+            'icmp_packet_loss_warning_pct':  device.icmp_packet_loss_warning_pct,
+            'icmp_packet_loss_critical_pct': device.icmp_packet_loss_critical_pct,
+        }
+    })
+
+
+@devices_bp.route('/api/devices/<int:device_id>/icmp-thresholds', methods=['PATCH'])
+@require_login
+def set_icmp_thresholds(device_id):
+    """Set per-device ICMP threshold overrides. Pass null to clear an override."""
+    from middleware.rbac import require_role
+    from models.device import Device
+
+    if session.get('role') not in ('admin', 'manager'):
+        return jsonify({'error': 'Insufficient permissions'}), 403
+
+    device = Device.query.get_or_404(device_id)
+    data = request.get_json(silent=True) or {}
+
+    _INT_FIELDS   = ('icmp_latency_warning_ms', 'icmp_latency_critical_ms')
+    _FLOAT_FIELDS = ('icmp_packet_loss_warning_pct', 'icmp_packet_loss_critical_pct')
+
+    errors = []
+    for field in _INT_FIELDS:
+        if field in data:
+            val = data[field]
+            if val is None:
+                setattr(device, field, None)
+            else:
+                try:
+                    v = int(val)
+                    if not (1 <= v <= 60000):
+                        errors.append(f'{field} must be 1–60000')
+                    else:
+                        setattr(device, field, v)
+                except (TypeError, ValueError):
+                    errors.append(f'{field} must be an integer')
+
+    for field in _FLOAT_FIELDS:
+        if field in data:
+            val = data[field]
+            if val is None:
+                setattr(device, field, None)
+            else:
+                try:
+                    v = float(val)
+                    if not (0.1 <= v <= 99.9):
+                        errors.append(f'{field} must be 0.1–99.9')
+                    else:
+                        setattr(device, field, v)
+                except (TypeError, ValueError):
+                    errors.append(f'{field} must be a number')
+
+    if errors:
+        return jsonify({'error': '; '.join(errors)}), 400
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('[devices] ICMP threshold save failed device=%s: %s', device_id, exc)
+        return jsonify({'error': 'Database error'}), 500
+
+    logger.info('[devices] ICMP thresholds updated device=%s by user=%s', device_id, session.get('user_id'))
+    return jsonify({'status': 'ok', 'message': 'ICMP thresholds saved'})
+
+
+@devices_bp.route('/api/devices/<int:device_id>/compliance-profile', methods=['PATCH'])
+@require_login
+def set_device_compliance_profile(device_id):
+    """Assign or unassign a compliance profile from a device."""
+    from models.device import Device
+
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin required'}), 403
+
+    device = Device.query.get_or_404(device_id)
+    data = request.get_json(silent=True) or {}
+    profile_id = data.get('compliance_profile_id')  # null to unassign
+
+    if profile_id is not None:
+        from models.compliance_profile import ComplianceProfile
+        if not ComplianceProfile.query.get(profile_id):
+            return jsonify({'error': 'Compliance profile not found'}), 404
+
+    device.compliance_profile_id = profile_id
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('[devices] Compliance profile assign failed device=%s: %s', device_id, exc)
+        return jsonify({'error': 'Database error'}), 500
+
+    logger.info('[devices] Compliance profile set device=%s profile=%s by user=%s', device_id, profile_id, session.get('user_id'))
+    return jsonify({'status': 'ok', 'compliance_profile_id': profile_id})
+
+
+@devices_bp.route('/api/devices/bulk-compliance-profile', methods=['PATCH'])
+@require_login
+def bulk_set_compliance_profile():
+    """Assign or unassign a compliance profile on multiple devices at once.
+
+    Body: { "device_ids": [1, 2, 3], "compliance_profile_id": 5 }
+    Pass null for compliance_profile_id to unassign from all listed devices.
+    """
+    from models.device import Device
+
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    device_ids = data.get('device_ids')
+    profile_id = data.get('compliance_profile_id')  # null → unassign
+
+    if not device_ids or not isinstance(device_ids, list):
+        return jsonify({'error': 'device_ids must be a non-empty list'}), 400
+
+    device_ids = [int(d) for d in device_ids if str(d).isdigit()]
+    if not device_ids:
+        return jsonify({'error': 'No valid device IDs provided'}), 400
+
+    if profile_id is not None:
+        from models.compliance_profile import ComplianceProfile
+        if not ComplianceProfile.query.get(int(profile_id)):
+            return jsonify({'error': 'Compliance profile not found'}), 404
+        profile_id = int(profile_id)
+
+    try:
+        updated = (
+            Device.query
+            .filter(Device.device_id.in_(device_ids))
+            .update({'compliance_profile_id': profile_id}, synchronize_session=False)
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('[devices] Bulk compliance profile assign failed: %s', exc)
+        return jsonify({'error': 'Database error'}), 500
+
+    logger.info(
+        '[devices] Bulk compliance profile set profile=%s on %s devices by user=%s',
+        profile_id, updated, session.get('user_id')
+    )
+    return jsonify({'status': 'ok', 'compliance_profile_id': profile_id, 'updated_count': updated})
+
+
+@devices_bp.route('/api/devices/<int:device_id>/live-snapshot', methods=['GET'])
+@require_login
+def api_device_live_snapshot(device_id):
+    """Live snapshot for device details tabs: ping stats, agent metrics, SNMP metrics."""
+    from models.device import Device
+    from models.server_health import ServerHealthLog
+    from models.scan_history import DeviceScanHistory
+    from middleware.rbac import scoped_query
+    from datetime import timedelta
+
+    device = scoped_query(Device).get_or_404(device_id)
+
+    latest_agent = (
+        ServerHealthLog.query
+        .filter(ServerHealthLog.device_id == device_id, ServerHealthLog.source == 'agent')
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    latest_snmp = (
+        ServerHealthLog.query
+        .filter(ServerHealthLog.device_id == device_id, ServerHealthLog.source == 'snmp')
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    recent_scans = (
+        DeviceScanHistory.query
+        .filter(
+            DeviceScanHistory.device_ip == device.device_ip,
+            DeviceScanHistory.scan_timestamp >= seven_days_ago,
+        )
+        .order_by(DeviceScanHistory.scan_timestamp.desc())
+        .limit(100)
+        .all()
+    )
+
+    latencies = [s.ping_time_ms for s in recent_scans if s.ping_time_ms and s.ping_time_ms > 0]
+    online_count = sum(1 for s in recent_scans if (s.status or '').lower() == 'online')
+    pkt_vals = [s.packet_loss for s in recent_scans if s.packet_loss is not None]
+    avg_ms = round(sum(latencies) / len(latencies), 1) if latencies else None
+
+    ping_stats = {
+        'avg_ms': avg_ms,
+        'min_ms': round(min(latencies), 1) if latencies else None,
+        'max_ms': round(max(latencies), 1) if latencies else None,
+        'online_count': online_count,
+        'offline_count': len(recent_scans) - online_count,
+        'total_scans': len(recent_scans),
+        'avg_packet_loss': round(sum(pkt_vals) / len(pkt_vals), 1) if pkt_vals else None,
+        'sparkline': [
+            {
+                't': s.scan_timestamp.strftime('%H:%M'),
+                'ts': s.scan_timestamp.isoformat() + 'Z',
+                'v': round(s.ping_time_ms, 1) if s.ping_time_ms else 0,
+                'status': (s.status or '').lower(),
+            }
+            for s in reversed(recent_scans[:50])
+        ],
+    }
+
+    agent_data = None
+    if latest_agent:
+        agent_data = latest_agent.to_dict()
+        agent_data['network_in_bps'] = latest_agent.network_in_bps
+        agent_data['network_out_bps'] = latest_agent.network_out_bps
+
+    return jsonify({
+        'ping_stats': ping_stats,
+        'agent_metrics': agent_data,
+        'snmp_metrics': latest_snmp.to_dict() if latest_snmp else None,
+        'updated_at': datetime.utcnow().isoformat() + 'Z',
     })

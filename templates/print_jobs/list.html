@@ -2,6 +2,10 @@
 
 {% block title %}Print Jobs Audit - Device Monitoring System{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/printers.css') }}?v={{ asset_ver }}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -464,19 +468,4 @@ function escapeHtml(text) {
 }
 </script>
 
-<style>
-.sortable {
-    cursor: pointer;
-    user-select: none;
-}
-
-.sortable:hover {
-    background-color: var(--ui-accent-soft);
-}
-
-.sortable i {
-    font-size: 0.8rem;
-    margin-left: 0.25rem;
-}
-</style>
 {% endblock %}

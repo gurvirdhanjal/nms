@@ -9,6 +9,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Never run destructive git commands** (`git reset --hard`, `git clean -fd`, `git checkout -- .`, `git restore .`, etc.) without explicit user approval. Always confirm before any operation that could destroy uncommitted work.
 - **Do not attempt git operations unless explicitly asked.** The user manages their own git workflow.
 
+### HARD RULE — Zero-Loss Push Protocol
+
+**Trigger:** Any time the user says "push", "commit", "save my work", "push my code",
+"push commit", "ship it", "save and push", or similar — invoke the `/safe-push` skill
+immediately. No exceptions.
+
+**The protocol (in this exact order — never skip or reorder):**
+
+1. **Safety stash first** — before staging a single file, run:
+   ```
+   git stash push -u -m "safe-push-backup-<timestamp>"
+   ```
+   This preserves ALL uncommitted work (tracked + untracked) as a named backup.
+   If the tree is already clean, this is a no-op — that is fine, continue.
+
+2. **Pop the stash** — restore the working tree:
+   ```
+   git stash pop
+   ```
+   If pop creates conflicts: take `--theirs` (the stash/user's version) for every conflict.
+
+3. **Stage with `git add -u`** (never `git add -A` / never `git add .` — these can stage .env files and secrets).
+
+4. **Commit** with a conventional commit message derived from the diff.
+
+5. **Push** — `git push origin HEAD` (add `-u` if branch has no upstream yet).
+
+6. **Report** — tell the user the commit hash, the safety stash ref, and the remote URL.
+
+**Why this rule exists:** A previous session ran `git checkout --ours` during stash pop
+conflict resolution and permanently destroyed days of uncommitted UI work, backend changes,
+and reports module modifications. Those changes could not be recovered. This protocol
+ensures that even if conflict resolution goes wrong, the work is preserved in a named stash.
+
 ---
 
 ## Project Context
@@ -519,6 +553,86 @@ Hardening Sprint 2 complete (2026-03-27):
   Remaining for Sprint 2 (deferred):
   - Rate limiting on write endpoints (bulk_add, bulk_delete, scan_network, save_user)
   - CSRF protection (Flask-WTF install + template meta tag + JS headers)
+
+Hardening Sprint 3 complete (2026-03-27):
+  [Concurrency & Load Safety — 402 unit tests passing, 0 new failures introduced]
+  - services/alert_manager.py — class-level threading.RLock added (_lock); all in-memory
+    dict reads/writes and DB check-then-write in _trigger_alert/_resolve_alert wrapped in
+    with cls._lock:. RLock (re-entrant) prevents deadlock since process_scan_result calls
+    _trigger_alert/_resolve_alert while holding the lock.
+  - routes/sse.py — added db.session.remove() in generate() finally block to prevent
+    SQLAlchemy session leak when SSE client disconnects.
+  - routes/dashboard.py — acquire_stampede_lock() Redis-down fallback changed from
+    return True (stampede) to per-key threading.Lock non-blocking try_acquire. Added
+    _local_stampede_locks dict + _local_stampede_registry_lock; release_stampede_lock()
+    also releases the local threading.Lock. Prevents in-process DB stampede when Redis
+    is unavailable.
+  - config.py — REDIS_MAX_CONNECTIONS default raised 6 → 30; REDIS_BLOCKING_POOL_TIMEOUT_SECONDS
+    raised 3 → 10. Both remain env-configurable via REDIS_MAX_CONNECTIONS /
+    REDIS_BLOCKING_POOL_TIMEOUT_SECONDS.
+  - services/scheduler.py — added _run_scheduler_with_watchdog() wrapper that restarts
+    run_scheduler() after any unhandled exception with a 10-second delay.
+    start_scheduled_monitoring() now uses the watchdog variant.
+  - routes/tracking.py — subprocess.run(ping) calls now include timeout=timeout+1.0;
+    subprocess.check_output(arp) now includes timeout=3. Hard ceiling prevents indefinite
+    blocking in request handlers if OS commands hang.
+
+  Deferred from Sprint 3:
+  - Full async enqueue-and-poll refactor for tracking live probe (Phase 5 scope)
+
+Hardening Sprint 4 complete (2026-03-27):
+  [Database & ORM Optimization — 466 unit tests passing, 0 new failures introduced]
+  - models/device.py — added index=True to parent_switch_id, parent_port_id,
+    compliance_profile_id; SQLAlchemy now reflects these as indexed columns.
+  - utils/db_migrations.py — _ensure_performance_indexes() now includes
+    idx_device_parent_switch_id and idx_device_parent_port_id (partial, WHERE NOT NULL).
+    All indexes are IF NOT EXISTS — idempotent on every startup.
+  - models/subnet.py — Subnet.get_best_match() rewrites to PostgreSQL inet containment
+    (single indexed query with masklen ordering) instead of Python loop over all rows.
+    SQLite fallback retained for tests.
+  - models/department.py — added Department.get_all_with_counts() classmethod: single
+    query with outerjoin aggregates for user_count + device_count. to_dict() accepts
+    optional user_count/device_count params to skip per-row lazy queries.
+  - models/site.py — added Site.get_all_with_device_counts() classmethod: bulk queries
+    for direct site_id + department-based device counts (avoids double-counting).
+    to_dict() accepts optional device_count param.
+  - routes/departments.py — departments_list_page() and list_departments() now use
+    get_all_with_counts(). list_departments() supports opt-in pagination via
+    ?page=&per_page= (backward compatible — returns all when ?page omitted).
+  - routes/sites.py — sites_list_page() and list_sites() now use
+    get_all_with_device_counts(). list_sites() supports opt-in pagination.
+  - services/reporting/health.py — 4.6 (TimescaleDB >30d routing) already correctly
+    implemented in get_device_health_report() lines 37-45; no change needed.
+
+Hardening Sprint 5 complete (2026-03-27):
+  [Observability & API Quality — 402 unit tests passing, 0 new failures introduced]
+  - services/network_scanner.py — replaced 9 print() calls with logger.info/warning/debug/exception
+  - services/discovery_service.py — replaced 9 print() calls with logger.info/debug/error
+  - services/alert_manager.py, device_monitor.py, email_service.py,
+    interface_poller.py, notification_service.py, scheduler.py — all print() → logger.* (Sprint 5.1)
+  - routes/file_transfer.py — added logger; bare except: → except Exception:; added debug log
+    for inaccessible filesystem path items
+  - routes/monitoring.py — bare except: in agent fallback → except Exception: pass
+  - templates/dashboard.html — scheduler health badge added to Global Status Strip;
+    JS polls GET /api/maintenance/scheduler/status every 60s; shows green/amber/red
+    dot + "ok" / "N stale" / "down" text
+  - routes/dashboard.py — set_cached() now evicts expired keys (or oldest if none expired)
+    when in-memory cache exceeds 500 keys (LRU-like eviction cap)
+  - app.py — _apply_security_headers() sets Cache-Control: private, max-age=60 for
+    /api/sites and /api/departments; no-store for all write methods (POST/PUT/DELETE/PATCH)
+  - docs/CONVENTIONS.md — §7 Logging Standards added: level guide, no-print rule,
+    no-bare-except rule, %s format string rule
+
+  Bug fixed (2026-03-27):
+  - services/reporting/base.py — _raw_scan_uptime_rows() raised
+    psycopg2.errors.NumericValueOutOfRange: value out of range: overflow on executive report.
+    Root cause: AVG() on float columns that may be stored as NUMERIC in the DB can raise
+    overflow if infinity/extreme values are present; SUM(CASE ... THEN 1 ELSE 0) bound-param
+    type inference was ambiguous.
+    Fix: replaced func.sum(case(..., 1), else_=0) with func.count(case(...)) which always
+    returns bigint; added cast(..., db.Float) before avg() expressions to force float8
+    arithmetic (which handles extremes gracefully, returns Infinity instead of raising).
+    Added cast and literal_column to sqlalchemy imports.
 
 ---
 

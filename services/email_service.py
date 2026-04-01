@@ -1,8 +1,11 @@
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import threading
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 def send_otp_email(email, otp):
     """Send OTP email for password reset"""
@@ -32,12 +35,11 @@ The APL Techno Team
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
     
-    # MOCK EMAIL LOGGING (For development/testing)
-    print(f"\n--- [MOCK EMAIL] OTP for {email}: {otp} ---\n")
-    
+    logger.debug("[email] OTP generated for %s", email)
+
     try:
         if not sender_email or not password:
-            print("DEBUG: SMTP credentials not set, skipping real email send.")
+            logger.warning("[email] SMTP credentials not set, skipping OTP email send.")
             return
 
         server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
@@ -45,9 +47,9 @@ The APL Techno Team
         server.login(sender_email, password)
         server.sendmail(sender_email, receiver_email, msg.as_string())
         server.quit()
-        print(f"OTP email sent to {email}")
+        logger.info("[email] OTP email sent to %s", email)
     except Exception as e:
-        print(f"Error sending OTP email: {e}")
+        logger.error("[email] Error sending OTP email to %s: %s", email, e)
 
 def send_alert_email(email, subject, message):
     """Send alert email for device monitoring"""
@@ -78,9 +80,9 @@ The APL Techno Team
         server.login(sender_email, password)
         server.sendmail(sender_email, receiver_email, msg.as_string())
         server.quit()
-        print(f"Alert email sent to {email}")
+        logger.info("[email] Alert email sent to %s", email)
     except Exception as e:
-        print(f"Error sending alert email: {e}")
+        logger.error("[email] Error sending alert email to %s: %s", email, e)
 
 def send_otp_email_async(email, otp):
     """Send OTP email asynchronously"""

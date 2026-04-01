@@ -1,0 +1,20 @@
+{
+  "extends": "stylelint-config-standard",
+  "rules": {
+    "color-no-hex": [
+      true,
+      {
+        "severity": "warning",
+        "message": "Hardcoded hex colors are deprecated. Use the new strict semantic tokens (--surface-*, --border-*, --text-*)."
+      }
+    ],
+    "declaration-property-value-disallowed-list": {
+      "/(color|background|border|box-shadow|fill|stroke)/": [
+        "/var\\(--ui-.*?\\)/",
+        "/var\\(--tactical-.*?\\)/",
+        "/var\\(--mo-.*?\\)/",
+        "/var\\(--e-.*?\\)/"
+      ]
+    }
+  }
+}

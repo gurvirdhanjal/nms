@@ -6,6 +6,18 @@ import { formatPercent, checkStale } from '../utils.js';
 let chartInstance = null;
 let breakdownChart = null;
 
+function getAvailabilitySeverity(percentValue) {
+    const value = Number(percentValue || 0);
+    if (value >= 99) return 'success';
+    if (value >= 94) return 'warning';
+    return 'danger';
+}
+
+function getThemeAccentColor() {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--ui-accent').trim();
+    return accent || '#2a8f93';
+}
+
 export function renderNetworkAvailability(data, trendsData) {
     const cardId = 'card-network-avail';
     const container = document.getElementById(cardId);
@@ -20,13 +32,18 @@ export function renderNetworkAvailability(data, trendsData) {
         const valueEl = document.getElementById('val-availability');
         if (valueEl) valueEl.textContent = formatPercent(percentValue);
 
+        const severity = getAvailabilitySeverity(percentValue);
+
         // Color
         if (valueEl) {
-            valueEl.className = 'metric-value ' + (percentValue >= 99 ? 'tactical-text-success' : (percentValue >= 95 ? 'tactical-text-warning' : 'tactical-text-danger'));
+            valueEl.className = `metric-value text-${severity}`;
         }
 
         const breakdownVal = document.getElementById('val-availability-breakdown');
-        if (breakdownVal) breakdownVal.textContent = formatPercent(percentValue);
+        if (breakdownVal) {
+            breakdownVal.textContent = formatPercent(percentValue);
+            breakdownVal.className = `fw-bold text-${severity}`;
+        }
     }
 
     renderAvailabilityTrendSummary(percentValue, trendsData);
@@ -130,15 +147,16 @@ function renderSparkline(trendData) {
     Chart.getChart(canvas)?.destroy();
     // Create new Chart
     // @ts-ignore
+    const accent = getThemeAccentColor();
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
                 data: values,
-                borderColor: '#2ecc71',
+                borderColor: accent,
                 borderWidth: 2,
-                backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                backgroundColor: 'rgba(42, 143, 147, 0.12)',
                 fill: true,
                 pointRadius: 0,
                 tension: 0.4
@@ -176,15 +194,16 @@ function renderBreakdownTrend(trendData) {
     // @ts-ignore
     Chart.getChart(canvas)?.destroy();
     // @ts-ignore
+    const accent = getThemeAccentColor();
     breakdownChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
                 data: values,
-                borderColor: '#2ecc71',
+                borderColor: accent,
                 borderWidth: 2,
-                backgroundColor: 'rgba(46, 204, 113, 0.08)',
+                backgroundColor: 'rgba(42, 143, 147, 0.09)',
                 fill: true,
                 pointRadius: 0,
                 tension: 0.3

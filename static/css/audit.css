@@ -1,0 +1,50 @@
+/* ══════════════════════════════════════════════════════════════
+   AUDIT LOGS PAGE — Extracted from templates/audit_logs.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+/* Metric Cards Strip */
+.metric-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.metric-card {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.metric-card .stat-label {
+    font-family: var(--ui-font-sans);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.metric-card .stat-value {
+    font-family: var(--ui-font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ui-text);
+    line-height: 1.1;
+}
+
+/* Changes Cell Truncation */
+.changes-compact {
+    max-width: 250px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--ui-font-mono);
+    font-size: 0.65rem;
+    color: var(--ui-text-muted);
+}

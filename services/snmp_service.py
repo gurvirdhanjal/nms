@@ -730,5 +730,144 @@ class SnmpService:
         return result
 
 
+    # ─────────────────────────────────────────────
+    # Printer MIB (RFC 3805) - Supplies
+    # ─────────────────────────────────────────────
+    def get_printer_supplies(self, host: str, community: str = 'public',
+                             version: str = '2c', port: int = 161) -> List[Dict[str, Any]]:
+        """
+        Get printer supply levels (toner, ink, drums, waste) via Printer-MIB.
+        Returns list of dicts with: name, type, level, max_capacity, unit, percentage.
+        """
+        if not PYSNMP_AVAILABLE:
+            return []
+            
+        supplies = {}
+        use_bulk = self._use_bulk(version)
+        
+        # OIDs from Printer-MIB (1.3.6.1.2.1.43)
+        # prtMarkerSuppliesTable = 1.3.6.1.2.1.43.11.1
+        OID_SUPPLY_INDEX = '1.3.6.1.2.1.43.11.1.1.1'
+        OID_SUPPLY_DESCR = '1.3.6.1.2.1.43.11.1.1.6'
+        OID_SUPPLY_LEVEL = '1.3.6.1.2.1.43.11.1.1.9'
+        OID_SUPPLY_MAX = '1.3.6.1.2.1.43.11.1.1.8'
+        OID_SUPPLY_UNIT = '1.3.6.1.2.1.43.11.1.1.7' # 19=percent, others=units
+        OID_SUPPLY_TYPE = '1.3.6.1.2.1.43.11.1.1.5' # 3=toner, 4=wasteToner...
+        
+        oids = [
+            ObjectType(ObjectIdentity(OID_SUPPLY_INDEX)),
+            ObjectType(ObjectIdentity(OID_SUPPLY_DESCR)),
+            ObjectType(ObjectIdentity(OID_SUPPLY_LEVEL)),
+            ObjectType(ObjectIdentity(OID_SUPPLY_MAX)),
+            ObjectType(ObjectIdentity(OID_SUPPLY_UNIT)),
+            ObjectType(ObjectIdentity(OID_SUPPLY_TYPE)),
+        ]
+        
+        try:
+            if use_bulk:
+                walk_iter = bulkCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    0, BULK_MAX_REPETITIONS,
+                    *oids,
+                    lexicographicMode=False
+                )
+            else:
+                walk_iter = nextCmd(
+                    self._engine,
+                    self._get_community_data(community, version),
+                    self._get_transport_target(host, port),
+                    ContextData(),
+                    *oids,
+                    lexicographicMode=False
+                )
+                
+            for (error_indication, error_status, error_index, var_binds) in walk_iter:
+                err = classify_snmp_error(error_indication, error_status, error_index)
+                if err:
+                    log.debug(f"[SNMP] Printer supply walk error for {host}: {err}")
+                    break
+                    
+                # We expect rows of data. 
+                # Note: Not all printers return all columns in one go if max-repetitions is small, 
+                # but with bulkCmd and small row width it usually works. 
+                # However, pysnmp aligns varBinds.
+                
+                # Parse row
+                idx = None
+                data = {}
+                
+                for var_bind in var_binds:
+                    oid_str = str(var_bind[0])
+                    val = var_bind[1]
+                    
+                    if OID_SUPPLY_INDEX in oid_str:
+                        idx = int(val)
+                        data['id'] = idx
+                    elif OID_SUPPLY_DESCR in oid_str:
+                        data['name'] = str(val)
+                    elif OID_SUPPLY_LEVEL in oid_str:
+                        data['level'] = int(val)
+                    elif OID_SUPPLY_MAX in oid_str:
+                        data['max'] = int(val)
+                    elif OID_SUPPLY_UNIT in oid_str:
+                        data['unit_code'] = int(val)
+                    elif OID_SUPPLY_TYPE in oid_str:
+                        type_map = {
+                            3: 'toner', 4: 'waste_toner', 21: 'ink', 
+                            15: 'fuser', 18: 'drum'
+                        }
+                        data['type'] = type_map.get(int(val), 'other')
+
+                if idx is not None:
+                    # Merge if we already have partial data for this index (unlikely with this logic but safe)
+                    if idx in supplies:
+                        supplies[idx].update(data)
+                    else:
+                        supplies[idx] = data
+
+            # Calculate percentages
+            results = []
+            for item in supplies.values():
+                # Filter out junk (some printers report undefined supplies)
+                if not item.get('name'): continue
+                
+                level = item.get('level', 0)
+                max_cap = item.get('max', 0)
+                
+                # RFC 3805: 
+                # level = -1 means "some remaining" (unknown amount)
+                # level = -2 means "unknown"
+                # level = -3 means "some remaining" (at least one unit)
+                
+                if max_cap > 0 and level >= 0:
+                    item['percentage'] = round((level / max_cap) * 100)
+                elif level == -3:
+                    item['percentage'] = 10  # Arbitrary "Low but OK"
+                    item['status'] = 'OK (Low)'
+                elif level == -2:
+                    item['percentage'] = 0
+                    item['status'] = 'Unknown'
+                elif level == -1:
+                    item['percentage'] = 50 # Arbitrary "Has Supply"
+                    item['status'] = 'Available'
+                else:
+                    item['percentage'] = 0
+                
+                # Normalize type
+                if not item.get('type'):
+                    item['type'] = 'supply'
+                    
+                results.append(item)
+                
+            return results
+
+        except Exception as e:
+            log.error(f"[SNMP] Printer supply error for {host}: {e}")
+            return []
+
+
 # Singleton instance
 snmp_service = SnmpService()

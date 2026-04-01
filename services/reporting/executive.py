@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, cast, func
 
 from extensions import db
 from models.dashboard import DailyDeviceStats, DashboardEvent
@@ -21,8 +21,23 @@ class ExecutiveReportMixin:
 
         uptime_stats = (
             db.session.query(
-                func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"),
-                func.avg(DailyDeviceStats.avg_latency_ms).label("avg_latency"),
+                func.sum(DailyDeviceStats.online_scans).label("total_online"),
+                func.sum(DailyDeviceStats.total_scans).label("total_scans"),
+                func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                    DailyDeviceStats.uptime_percent.isnot(None),
+                    DailyDeviceStats.uptime_percent >= 0,
+                    DailyDeviceStats.uptime_percent <= 200,
+                ).label("avg_uptime"),
+                func.avg(cast(DailyDeviceStats.avg_latency_ms, db.Float)).filter(
+                    DailyDeviceStats.avg_latency_ms.isnot(None),
+                    DailyDeviceStats.avg_latency_ms >= 0,
+                    DailyDeviceStats.avg_latency_ms < 1e15,
+                ).label("avg_latency"),
+                func.avg(cast(DailyDeviceStats.avg_packet_loss_pct, db.Float)).filter(
+                    DailyDeviceStats.avg_packet_loss_pct.isnot(None),
+                    DailyDeviceStats.avg_packet_loss_pct >= 0,
+                    DailyDeviceStats.avg_packet_loss_pct <= 100,
+                ).label("avg_packet_loss"),
             )
             .filter(
                 DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
@@ -32,7 +47,14 @@ class ExecutiveReportMixin:
             .first()
         )
         availability_basis = "daily_device_stats"
-        uptime_score = round(uptime_stats.avg_uptime, 2) if uptime_stats and uptime_stats.avg_uptime is not None else None
+        if uptime_stats and uptime_stats.total_scans:
+            # Correct weighted formula: count-based, not average-of-percentages
+            uptime_score = round((uptime_stats.total_online / uptime_stats.total_scans) * 100.0, 2)
+        elif uptime_stats and uptime_stats.avg_uptime is not None:
+            # Legacy rows: scan counts not populated — fall back to stored percentage
+            uptime_score = round(uptime_stats.avg_uptime, 2)
+        else:
+            uptime_score = None
         avg_latency = round(uptime_stats.avg_latency, 2) if uptime_stats and uptime_stats.avg_latency is not None else None
 
         raw_uptime_rows = self._raw_scan_uptime_rows(start_date=start_date, end_date=end_date)
@@ -41,7 +63,13 @@ class ExecutiveReportMixin:
             total_scans = sum(int(row.total_scans or 0) for row in raw_uptime_rows)
             total_online_scans = sum(int(row.online_scans or 0) for row in raw_uptime_rows)
             raw_ping_stats = (
-                db.session.query(func.avg(DeviceScanHistory.ping_time_ms).label("avg_latency"))
+                db.session.query(
+                    func.avg(cast(DeviceScanHistory.ping_time_ms, db.Float)).filter(
+                        DeviceScanHistory.ping_time_ms.isnot(None),
+                        DeviceScanHistory.ping_time_ms >= 0,
+                        DeviceScanHistory.ping_time_ms < 60000,
+                    ).label("avg_latency")
+                )
                 .filter(
                     DeviceScanHistory.device_ip.in_(db.session.query(inventory_ips.c.device_ip)),
                     DeviceScanHistory.scan_timestamp >= start_date,
@@ -59,7 +87,15 @@ class ExecutiveReportMixin:
         prev_end = start_date - timedelta(days=1)
 
         prev_stats = (
-            db.session.query(func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"))
+            db.session.query(
+                func.sum(DailyDeviceStats.online_scans).label("total_online"),
+                func.sum(DailyDeviceStats.total_scans).label("total_scans"),
+                func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                    DailyDeviceStats.uptime_percent.isnot(None),
+                    DailyDeviceStats.uptime_percent >= 0,
+                    DailyDeviceStats.uptime_percent <= 200,
+                ).label("avg_uptime"),
+            )
             .filter(
                 DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
                 DailyDeviceStats.date >= prev_start.date(),
@@ -67,7 +103,12 @@ class ExecutiveReportMixin:
             )
             .first()
         )
-        prev_uptime_score = round(prev_stats.avg_uptime, 2) if prev_stats and prev_stats.avg_uptime is not None else None
+        if prev_stats and prev_stats.total_scans:
+            prev_uptime_score = round((prev_stats.total_online / prev_stats.total_scans) * 100.0, 2)
+        elif prev_stats and prev_stats.avg_uptime is not None:
+            prev_uptime_score = round(prev_stats.avg_uptime, 2)
+        else:
+            prev_uptime_score = None
 
         if prev_uptime_score is None:
             prev_raw_rows = self._raw_scan_uptime_rows(start_date=prev_start, end_date=prev_end)
@@ -144,14 +185,29 @@ class ExecutiveReportMixin:
         )
         mtta_seconds = round(sla_stats.avg_ack_seconds) if sla_stats and sla_stats.avg_ack_seconds else None
 
-        problematic_devices = (
+        # ── Top problematic: two-tier split (degraded vs chronically offline) ──
+        _all_candidates = (
             db.session.query(
                 Device.device_id,
                 Device.device_name,
                 Device.device_ip,
                 Device.device_type,
                 Device.classification_confidence,
-                func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"),
+                func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                    DailyDeviceStats.uptime_percent.isnot(None),
+                    DailyDeviceStats.uptime_percent >= 0,
+                    DailyDeviceStats.uptime_percent <= 200,
+                ).label("avg_uptime"),
+                func.avg(cast(DailyDeviceStats.avg_latency_ms, db.Float)).filter(
+                    DailyDeviceStats.avg_latency_ms.isnot(None),
+                    DailyDeviceStats.avg_latency_ms >= 0,
+                    DailyDeviceStats.avg_latency_ms < 1e15,
+                ).label("avg_latency_ms"),
+                func.avg(cast(DailyDeviceStats.avg_packet_loss_pct, db.Float)).filter(
+                    DailyDeviceStats.avg_packet_loss_pct.isnot(None),
+                    DailyDeviceStats.avg_packet_loss_pct >= 0,
+                    DailyDeviceStats.avg_packet_loss_pct <= 100,
+                ).label("avg_packet_loss_pct"),
             )
             .join(DailyDeviceStats, DailyDeviceStats.device_id == Device.device_id)
             .filter(
@@ -161,25 +217,79 @@ class ExecutiveReportMixin:
             )
             .group_by(Device.device_id, Device.device_name, Device.device_ip,
                        Device.device_type, Device.classification_confidence)
-            .order_by(func.avg(DailyDeviceStats.uptime_percent).asc())
-            .limit(10)
+            .order_by(func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                DailyDeviceStats.uptime_percent.isnot(None),
+                DailyDeviceStats.uptime_percent >= 0,
+                DailyDeviceStats.uptime_percent <= 200,
+            ).asc().nullslast())
+            .limit(50)
             .all()
         )
         # PR 17: Confidence gate — deprioritize LOW-confidence devices
-        if problematic_devices:
-            filtered = [r for r in problematic_devices
-                        if (getattr(r, 'classification_confidence', '') or '').strip().lower() != 'low']
-            if filtered:
-                problematic_devices = filtered
+        if _all_candidates:
+            _filtered = [r for r in _all_candidates
+                         if (getattr(r, 'classification_confidence', '') or '').strip().lower() != 'low']
+            if _filtered:
+                _all_candidates = _filtered
+
+        # Split: degraded (online but struggling) vs chronically offline (0% uptime)
+        _degraded = []
+        _offline = []
+        for r in _all_candidates:
+            if r.avg_uptime is not None and float(r.avg_uptime) > 0:
+                _degraded.append(r)
+            else:
+                _offline.append(r)
+
+        # Rank degraded by composite score (higher = worse), take top 10
+        _degraded.sort(
+            key=lambda r: self._degradation_score(
+                r.avg_uptime,
+                r.avg_latency_ms,
+                r.avg_packet_loss_pct,
+            ) or 0,
+            reverse=True,
+        )
+        problematic_devices = _degraded[:10]
+
+        # Fallback: if no degraded devices from DailyDeviceStats, try raw scan history
         if not problematic_devices:
             availability_basis = "device_scan_history"
-            problematic_devices = sorted(
-                raw_uptime_rows,
-                key=lambda row: (
-                    101.0 if self._availability_pct(row.online_scans, row.total_scans) is None else self._availability_pct(row.online_scans, row.total_scans),
-                    -int(row.total_scans or 0),
-                ),
-            )[:10]
+            _raw_degraded = []
+            _raw_offline = []
+            for row in raw_uptime_rows:
+                pct = self._availability_pct(row.online_scans, row.total_scans)
+                if pct is not None and pct > 0:
+                    _raw_degraded.append(row)
+                else:
+                    _raw_offline.append(row)
+            _raw_degraded.sort(
+                key=lambda row: self._degradation_score(
+                    self._availability_pct(row.online_scans, row.total_scans),
+                    getattr(row, 'avg_latency', None),
+                    getattr(row, 'avg_packet_loss', None),
+                ) or 0,
+                reverse=True,
+            )
+            problematic_devices = _raw_degraded[:10]
+            # Merge offline from raw into the offline list
+            _offline_from_raw = [
+                type('_row', (), {
+                    'device_name': r.device_name, 'device_ip': r.device_ip,
+                })
+                for r in _raw_offline
+            ]
+            _offline = list(_offline) + _offline_from_raw
+
+        # Build chronically offline summary
+        chronically_offline = {
+            "count": len(_offline),
+            "devices": [
+                {"name": getattr(r, 'device_name', None) or "—", "ip": getattr(r, 'device_ip', None) or "—"}
+                for r in _offline[:5]
+            ],
+            "note": "Devices with 0% uptime for the entire period — consider decommission review or physical inspection." if _offline else None,
+        }
 
         # ── Data confidence metadata ───────────────────────────────────────
         _confidence = {
@@ -201,10 +311,50 @@ class ExecutiveReportMixin:
             },
         }
 
+        # ── Fleet-wide packet loss ─────────────────────────────────────────
+        fleet_avg_packet_loss = None
+        if uptime_stats and hasattr(uptime_stats, 'avg_packet_loss') and uptime_stats.avg_packet_loss is not None:
+            fleet_avg_packet_loss = round(uptime_stats.avg_packet_loss, 2)
+        elif raw_uptime_rows:
+            _pls = [float(r.avg_packet_loss) for r in raw_uptime_rows if getattr(r, 'avg_packet_loss', None) is not None]
+            fleet_avg_packet_loss = round(sum(_pls) / len(_pls), 2) if _pls else None
+
+        # ── Estimated downtime hours ──────────────────────────────────────
+        downtime_hours = None
+        if uptime_score is not None:
+            downtime_hours = round((1.0 - uptime_score / 100.0) * trend_window_days * 24, 2)
+
+        # ── Fleet-wide p95 latency (from raw scan history) ────────────────
+        avg_p95_latency_ms = None
+        if db.engine.dialect.name != "sqlite":
+            try:
+                from sqlalchemy import text as _text
+                _p95_sql = _text("""
+                    SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY ping_time_ms)
+                           FILTER (WHERE ping_time_ms IS NOT NULL AND ping_time_ms < 1e15)
+                           AS p95_latency_ms
+                    FROM device_scan_history
+                    WHERE device_ip IN (
+                        SELECT d.device_ip FROM device d
+                        WHERE d.is_monitored = true AND d.device_ip IS NOT NULL
+                    )
+                    AND scan_timestamp BETWEEN :start_date AND :end_date
+                """)
+                _p95_row = db.session.execute(_p95_sql, {
+                    "start_date": start_date, "end_date": end_date
+                }).fetchone()
+                if _p95_row and _p95_row.p95_latency_ms is not None:
+                    avg_p95_latency_ms = round(float(_p95_row.p95_latency_ms), 2)
+            except Exception:
+                pass
+
         return {
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
             "uptime_score": uptime_score,
             "avg_latency": avg_latency,
+            "avg_packet_loss": fleet_avg_packet_loss,
+            "avg_p95_latency_ms": avg_p95_latency_ms,
+            "downtime_hours": downtime_hours,
             "availability_basis": availability_basis,
             "prev_uptime_score": prev_uptime_score,
             "data_health": {
@@ -229,9 +379,25 @@ class ExecutiveReportMixin:
                         if hasattr(row, "avg_uptime") and row.avg_uptime is not None
                         else self._availability_pct(row.online_scans, row.total_scans)
                     ),
+                    "avg_latency_ms": (
+                        round(row.avg_latency_ms, 2)
+                        if hasattr(row, "avg_latency_ms") and row.avg_latency_ms is not None
+                        else (round(row.avg_latency, 2) if hasattr(row, "avg_latency") and row.avg_latency is not None else None)
+                    ),
+                    "avg_packet_loss_pct": (
+                        round(row.avg_packet_loss_pct, 2)
+                        if hasattr(row, "avg_packet_loss_pct") and row.avg_packet_loss_pct is not None
+                        else (round(row.avg_packet_loss, 2) if hasattr(row, "avg_packet_loss") and row.avg_packet_loss is not None else None)
+                    ),
+                    "degradation_score": self._degradation_score(
+                        row.avg_uptime if hasattr(row, "avg_uptime") else self._availability_pct(getattr(row, 'online_scans', None), getattr(row, 'total_scans', None)),
+                        row.avg_latency_ms if hasattr(row, "avg_latency_ms") else getattr(row, 'avg_latency', None),
+                        row.avg_packet_loss_pct if hasattr(row, "avg_packet_loss_pct") else getattr(row, 'avg_packet_loss', None),
+                    ),
                 }
                 for row in problematic_devices
             ],
+            "chronically_offline": chronically_offline,
             "total_devices": int(self._inventory_devices_query().count()),
             "_confidence": _confidence,
         }

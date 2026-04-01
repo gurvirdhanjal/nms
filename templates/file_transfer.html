@@ -5,36 +5,7 @@
 {% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<style>
-    /* Custom Scrollbar for explorers */
-    .explorer-scrollbar::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    .explorer-scrollbar::-webkit-scrollbar-track {
-        background: rgba(15, 23, 42, 0.6); /* slate-900 */
-        border-radius: 4px;
-    }
-    .explorer-scrollbar::-webkit-scrollbar-thumb {
-        background: rgba(51, 65, 85, 0.8); /* slate-700 */
-        border-radius: 4px;
-    }
-    .explorer-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: rgba(71, 85, 105, 1); /* slate-600 */
-    }
-
-    /* Selected state */
-    .file-item.selected {
-        background-color: rgba(59, 130, 246, 0.15); /* blue-500/15 */
-        border-color: rgba(59, 130, 246, 0.5); /* blue-500/50 */
-    }
-
-    /* Drag over state */
-    .upload-area.dragover {
-        border-color: #3b82f6; /* blue-500 */
-        background-color: rgba(59, 130, 246, 0.05);
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/file_transfer.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -357,7 +328,7 @@
                     <h3 class="text-lg leading-6 font-medium text-white flex items-center gap-2">
                         <i data-lucide="info" class="w-5 h-5 text-cyan-400"></i> Client System Information
                     </h3>
-                    <button type="button" onclick="closeModal('systemInfoModal')" class="text-slate-400 hover:text-white transition-colors">
+                    <button type="button" onclick="closeModal('systemInfoModal')" class="text-slate-400 hover:text-white transition-colors" aria-label="Close">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>

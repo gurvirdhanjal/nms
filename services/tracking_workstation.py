@@ -226,10 +226,15 @@ def persist_availability_event(
         return event
 
     if _is_postgres():
-        db.session.execute(
-            text("SELECT id FROM tracked_devices WHERE id = :device_id FOR UPDATE"),
-            {"device_id": int(device.id)},
-        )
+        try:
+            db.session.execute(
+                text("SELECT id FROM tracked_devices WHERE id = :device_id FOR UPDATE"),
+                {"device_id": int(device.id)},
+            )
+        except Exception:
+            # Lock acquisition failed — propagate rather than calling _write_event_locked()
+            # inside an already-aborted transaction.
+            raise
         return _write_event_locked()
 
     lock = _get_device_lock(int(device.id))

@@ -2,240 +2,10 @@
 {% from "components/ui_components.html" import ui_page_header, ui_search_bar, ui_table_container, ui_slide_over, ui_badge, ui_empty_state, ui_table_loading %}
 
 {% block title %}Departments - Device Monitoring System{% endblock %}
-{% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
+{% block ui_assets %}{% include "components/ui_assets.html" %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<!-- Specific department styles not covered by global layout -->
-<style>
-    .departments-page .page-container {
-        padding: 1.2rem 1rem;
-        max-width: 94rem;
-    }
-
-    @media (min-width: 640px) {
-        .departments-page .page-container {
-            padding: 1.45rem 1.4rem;
-        }
-    }
-
-    .departments-page .page-body {
-        gap: 0.9rem;
-    }
-
-    .departments-header-shell {
-        margin-bottom: 1rem;
-    }
-
-    .departments-header {
-        margin-bottom: 0 !important;
-        gap: 0.8rem;
-    }
-
-    .departments-header h1 {
-        font-size: 1.7rem;
-        margin-bottom: 0.3rem !important;
-    }
-
-    .departments-header p {
-        font-size: 0.82rem;
-        line-height: 1.35;
-    }
-
-    .departments-toolbar {
-        gap: 0.55rem !important;
-        flex-wrap: wrap;
-    }
-
-    .departments-secondary-btn,
-    .departments-primary-btn {
-        min-height: 38px;
-        padding: 0.58rem 0.88rem !important;
-        border-radius: 0.7rem !important;
-        font-size: 0.82rem !important;
-    }
-
-    .departments-secondary-btn {
-        background: rgba(16, 19, 27, 0.92);
-        border-color: rgba(148, 163, 184, 0.16) !important;
-        color: #c3cfdb;
-    }
-
-    .departments-secondary-btn:hover {
-        background: rgba(30, 41, 59, 0.96) !important;
-        border-color: rgba(148, 163, 184, 0.3) !important;
-        color: #ffffff !important;
-    }
-
-    /* KPI Summary Strip */
-    .enterprise-kpi-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 0.55rem;
-        margin-bottom: 0.95rem;
-    }
-
-    .enterprise-kpi {
-        background: rgba(16, 19, 27, 0.92);
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 5px;
-        padding: 0.66rem 0.82rem;
-    }
-
-    .enterprise-kpi .stat-label {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 0.65rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: #8a97a6;
-        margin-bottom: 0.35rem;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-    }
-
-    .enterprise-kpi .stat-label::before {
-        content: '';
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: rgba(148, 163, 184, 0.32);
-    }
-
-    .enterprise-kpi .stat-value {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 1.08rem;
-        font-weight: 700;
-        color: #e6edf5;
-        line-height: 1.1;
-    }
-    
-    .enterprise-kpi .metric-sub {
-        font-size: 0.67rem;
-        color: #8a97a6;
-        margin-top: 0.24rem;
-        line-height: 1.25;
-    }
-
-    .departments-filter-shell {
-        margin-bottom: 0 !important;
-        gap: 0.65rem !important;
-        padding: 0.62rem 0.78rem;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 0.9rem;
-        background: rgba(16, 19, 27, 0.92);
-        backdrop-filter: blur(10px);
-    }
-
-    .departments-filter-shell input,
-    .departments-filter-shell select {
-        background: rgba(10, 14, 21, 0.88) !important;
-        padding-top: 0.65rem !important;
-        padding-bottom: 0.65rem !important;
-        font-size: 0.83rem !important;
-        border-radius: 0.7rem !important;
-    }
-
-    #departmentsTable thead th {
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-        font-size: 0.64rem;
-        background: rgba(15, 18, 26, 0.96);
-    }
-
-    #departmentsTable tbody tr {
-        background: rgba(255, 255, 255, 0.012);
-    }
-
-    #departmentsTable tbody tr:nth-child(even) {
-        background: rgba(255, 255, 255, 0.022);
-    }
-
-    #departmentsTable tbody tr:hover {
-        background: rgba(148, 163, 184, 0.1) !important;
-    }
-
-    #departmentsTable tbody td {
-        padding-top: 0.56rem;
-        padding-bottom: 0.56rem;
-        font-size: 0.82rem;
-    }
-
-    .departments-page .table-action-btn {
-        padding: 0.24rem 0.42rem;
-    }
-
-    /* Assign context grid */
-    .assign-context {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.4rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .assign-context-item {
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 4px;
-        background: rgba(148, 163, 184, 0.07);
-        padding: 0.36rem 0.54rem;
-        font-size: 0.76rem;
-        color: #c3cfdb;
-    }
-
-    .assign-context-item strong {
-        color: #8a97a6;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        font-size: 0.7rem;
-        margin-right: 0.4rem;
-    }
-
-    .drawer-form .field-label {
-        display: block;
-        margin-bottom: 0.22rem;
-        font-size: 0.69rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        color: #c3cfdb;
-    }
-
-    .drawer-form .field-help {
-        margin-top: 0.22rem;
-        font-size: 0.69rem;
-        color: #7c8aa0;
-    }
-
-    #departmentForm {
-        gap: 0.9rem !important;
-    }
-
-    #department-slide-over input,
-    #department-slide-over select,
-    #department-slide-over textarea,
-    #assign-devices-slide-over input {
-        padding-top: 0.58rem !important;
-        padding-bottom: 0.58rem !important;
-        font-size: 0.82rem !important;
-    }
-
-    #department-slide-over .sticky,
-    #assign-devices-slide-over .sticky {
-        padding-top: 0.85rem;
-    }
-
-    #inventoryDevicesTable thead th,
-    #inventoryDevicesTable tbody td {
-        padding-top: 0.46rem;
-        padding-bottom: 0.46rem;
-    }
-
-    #assignDevicesNoSiteAlert,
-    #subnetInfoAlert,
-    #subnetWarningAlert {
-        padding: 0.7rem !important;
-        margin-bottom: 0.75rem !important;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/departments.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -537,46 +307,20 @@
         };
     }
 
-    // Toast Notification System
     function showAlert(message, type = 'info') {
-        const bgColors = {
-            'success': 'bg-emerald-500',
-            'danger': 'bg-red-500',
-            'warning': 'bg-amber-500',
-            'info': 'bg-blue-500'
-        };
-        const bgColor = bgColors[type] || bgColors['info'];
-        
-        let container = document.getElementById('toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'toast-container';
-            container.className = 'fixed top-4 right-4 z-[60] flex flex-col gap-2 pointer-events-none';
-            document.body.appendChild(container);
+        if (window.UI?.Toast?.show) {
+            window.UI.Toast.show(message, type);
+            return;
         }
-
-        const toast = document.createElement('div');
-        toast.className = `max-w-sm w-full shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 translate-y-[-100%] opacity-0 ${bgColor} text-white px-4 py-3 flex items-center justify-between`;
-        toast.innerHTML = `
-            <div class="text-sm font-medium truncate">${escapeHtml(message)}</div>
-            <button type="button" class="ml-4 flex-shrink-0 focus:outline-none" onclick="this.parentElement.remove()">
-                <i class="fas fa-times opacity-80 hover:opacity-100"></i>
-            </button>
-        `;
-        
-        container.prepend(toast);
-        
-        // Trigger animate in
-        requestAnimationFrame(() => {
-            toast.classList.remove('translate-y-[-100%]', 'opacity-0');
-        });
-
-        // Auto remove
-        setTimeout(() => {
-            toast.classList.add('opacity-0');
-            setTimeout(() => toast.remove(), 300);
-        }, 4500);
+        console.warn('[Departments]', type, message);
     }
+
+    const loadingApi = window.UI?.Loading ?? {
+        setTableState(tbody, config) {
+            if (!tbody) return;
+            tbody.innerHTML = `<tr><td colspan="${config.colspan || 1}" class="text-center text-secondary p-3">${config.title || ''}</td></tr>`;
+        }
+    };
 
     function normalizeHttpError(response, payload, fallbackMessage) {
         const payloadMessage = payload && (
@@ -812,7 +556,7 @@
         const subnetInfoAlert = document.getElementById('subnetInfoAlert');
         const subnetWarningAlert = document.getElementById('subnetWarningAlert');
 
-        if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 text-sm py-4 animate-pulse">Scanning logical subnets...</td></tr>';
+        loadingApi.setTableState(tbody, { state: 'loading', colspan: 3, title: 'Scanning logical subnets...' });
         
         // Hide alerts initially
         if (subnetInfoAlert) subnetInfoAlert.classList.add('hidden');
@@ -841,7 +585,7 @@
             }
         } catch (error) {
             showAlert('Error mapping topology: ' + error.message, 'danger');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="text-center text-red-400 text-sm py-4">Subnet synchronization failed</td></tr>';
+            loadingApi.setTableState(tbody, { state: 'error', colspan: 3, title: 'Subnet synchronization failed', detail: error.message });
         }
     }
 

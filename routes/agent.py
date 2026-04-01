@@ -81,7 +81,7 @@ def receive_metrics():
         memory_data = data.get('memory', {}) if isinstance(data.get('memory', {}), dict) else {}
         memory = memory_data.get('percent')
         disk = data.get('disk', {}).get('percent')
-        uptime = data.get('uptime_seconds')
+        uptime = data.get('uptime_seconds') or data.get('uptime')
         
         # Network I/O
         net = data.get('network', {})

@@ -1,5 +1,10 @@
+import logging
+import time
+import threading
 import uuid
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from extensions import db
 from models.dashboard import DashboardEvent
@@ -32,8 +37,15 @@ class AlertManager:
 
     STRIKES_REQUIRED = 3
     RESOLVE_STRIKES_REQUIRED = 2
+    OFFLINE_COOLDOWN_S = 1800  # 30-min post-resolution cooldown (anti-flapping)
+
+    # Class-level RLock guards all in-memory recovery/cooldown dicts.
+    # RLock (re-entrant) allows the same thread to acquire it multiple times,
+    # which is needed because process_scan_result calls _trigger_alert/_resolve_alert.
+    _lock: threading.RLock = threading.RLock()
 
     _status_recovery = {}
+    _offline_cooldown: dict = {}  # device_id → unix timestamp of cooldown expiry
     _health_recovery = {}
     _latency_recovery = {}
     _packet_loss_recovery = {}
@@ -65,84 +77,139 @@ class AlertManager:
         is_server = str(device.device_type).lower() == "server"
         should_monitor = device.is_monitored
 
-        if should_monitor:
-            status_key = (device.device_id, "status")
-            if not is_online:
-                device.offline_strikes += 1
-                cls._status_recovery.pop(status_key, None)
-                if device.offline_strikes >= cls.STRIKES_REQUIRED:
-                    cls._trigger_alert(
-                        device,
-                        event_type="STATUS",
-                        severity="CRITICAL",
-                        metric="status",
-                        message=f"{'Server' if is_server else 'Device'} {device.device_name} ({device.device_ip}) is OFFLINE ({cls.STRIKES_REQUIRED} consecutive failures)",
-                        value=0,
-                        commit=commit,
-                        send_email=is_server,
-                    )
-            else:
-                if device.offline_strikes > 0:
-                    device.offline_strikes = 0
-
-                if cls._has_active_alert(device, metric="status"):
-                    recovery = cls._status_recovery.get(status_key, 0) + 1
-                    cls._status_recovery[status_key] = recovery
-                    if recovery >= cls.RESOLVE_STRIKES_REQUIRED:
-                        cls._resolve_alert(device, metric="status", commit=commit)
-                        cls._status_recovery.pop(status_key, None)
-                else:
+        with cls._lock:
+            if should_monitor:
+                status_key = (device.device_id, "status")
+                if not is_online:
+                    device.offline_strikes += 1
                     cls._status_recovery.pop(status_key, None)
+                    if device.offline_strikes >= cls.STRIKES_REQUIRED:
+                        cls._trigger_alert(
+                            device,
+                            event_type="STATUS",
+                            severity="CRITICAL",
+                            metric="status",
+                            message=f"{'Server' if is_server else 'Device'} {device.device_name} ({device.device_ip}) is OFFLINE ({cls.STRIKES_REQUIRED} consecutive failures)",
+                            value=0,
+                            commit=commit,
+                            send_email=is_server,
+                        )
+                else:
+                    if device.offline_strikes > 0:
+                        device.offline_strikes = 0
 
-        if not should_monitor:
-            cls._status_recovery.pop((device.device_id, "status"), None)
-            cls._resolve_alert(device, metric="status", commit=commit)
+                    if cls._has_active_alert(device, metric="status"):
+                        recovery = cls._status_recovery.get(status_key, 0) + 1
+                        cls._status_recovery[status_key] = recovery
+                        if recovery >= cls.RESOLVE_STRIKES_REQUIRED:
+                            cls._resolve_alert(device, metric="status", commit=commit)
+                            cls._status_recovery.pop(status_key, None)
+                    else:
+                        cls._status_recovery.pop(status_key, None)
 
-        if is_online:
-            if latency_ms is not None and latency_ms >= cls.LATENCY_THRESHOLD_MS:
-                device.latency_strikes = (getattr(device, "latency_strikes", None) or 0) + 1
-                cls._latency_recovery.pop((device.device_id, "latency"), None)
-                if device.latency_strikes >= cls.STRIKES_REQUIRED:
-                    cls._trigger_alert(
-                        device,
-                        event_type="PING",
-                        severity="WARNING",
-                        metric="latency",
-                        message=f"Sustained high latency: {latency_ms:.1f}ms ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.LATENCY_THRESHOLD_MS}ms)",
-                        value=latency_ms,
-                        commit=commit,
-                        send_email=False,
-                    )
+            if not should_monitor:
+                cls._status_recovery.pop((device.device_id, "status"), None)
+                cls._resolve_alert(device, metric="status", commit=commit)
+
+            if is_online:
+                icmp = cls._get_icmp_thresholds(device)
+                if latency_ms is not None and latency_ms >= icmp['latency_warning_ms']:
+                    device.latency_strikes = (getattr(device, "latency_strikes", None) or 0) + 1
+                    cls._latency_recovery.pop((device.device_id, "latency"), None)
+                    if device.latency_strikes >= cls.STRIKES_REQUIRED:
+                        cls._trigger_alert(
+                            device,
+                            event_type="PING",
+                            severity="WARNING",
+                            metric="latency",
+                            message=f"Sustained high latency: {latency_ms:.1f}ms ({cls.STRIKES_REQUIRED} consecutive scans >= {icmp['latency_warning_ms']}ms)",
+                            value=latency_ms,
+                            commit=commit,
+                            send_email=False,
+                        )
+                else:
+                    if getattr(device, "latency_strikes", 0) > 0:
+                        device.latency_strikes = 0
+                    cls._handle_icmp_recovery(device, "latency", commit=commit)
+
+                if packet_loss_pct is not None and packet_loss_pct >= icmp['packet_loss_warning_pct']:
+                    device.packet_loss_strikes = (getattr(device, "packet_loss_strikes", None) or 0) + 1
+                    cls._packet_loss_recovery.pop((device.device_id, "packet_loss"), None)
+                    if device.packet_loss_strikes >= cls.STRIKES_REQUIRED:
+                        cls._trigger_alert(
+                            device,
+                            event_type="PING",
+                            severity="WARNING",
+                            metric="packet_loss",
+                            message=f"Sustained packet loss: {packet_loss_pct:.1f}% ({cls.STRIKES_REQUIRED} consecutive scans >= {icmp['packet_loss_warning_pct']}%)",
+                            value=packet_loss_pct,
+                            commit=commit,
+                            send_email=False,
+                        )
+                else:
+                    if getattr(device, "packet_loss_strikes", 0) > 0:
+                        device.packet_loss_strikes = 0
+                    cls._handle_icmp_recovery(device, "packet_loss", commit=commit)
             else:
                 if getattr(device, "latency_strikes", 0) > 0:
                     device.latency_strikes = 0
-                cls._handle_icmp_recovery(device, "latency", commit=commit)
-
-            if packet_loss_pct is not None and packet_loss_pct >= cls.PACKET_LOSS_THRESHOLD_PCT:
-                device.packet_loss_strikes = (getattr(device, "packet_loss_strikes", None) or 0) + 1
-                cls._packet_loss_recovery.pop((device.device_id, "packet_loss"), None)
-                if device.packet_loss_strikes >= cls.STRIKES_REQUIRED:
-                    cls._trigger_alert(
-                        device,
-                        event_type="PING",
-                        severity="WARNING",
-                        metric="packet_loss",
-                        message=f"Sustained packet loss: {packet_loss_pct:.1f}% ({cls.STRIKES_REQUIRED} consecutive scans >= {cls.PACKET_LOSS_THRESHOLD_PCT}%)",
-                        value=packet_loss_pct,
-                        commit=commit,
-                        send_email=False,
-                    )
-            else:
                 if getattr(device, "packet_loss_strikes", 0) > 0:
                     device.packet_loss_strikes = 0
+                cls._handle_icmp_recovery(device, "latency", commit=commit)
                 cls._handle_icmp_recovery(device, "packet_loss", commit=commit)
-        else:
-            if getattr(device, "latency_strikes", 0) > 0:
-                device.latency_strikes = 0
-            if getattr(device, "packet_loss_strikes", 0) > 0:
-                device.packet_loss_strikes = 0
-            cls._handle_icmp_recovery(device, "latency", commit=commit)
-            cls._handle_icmp_recovery(device, "packet_loss", commit=commit)
+
+    @classmethod
+    def _get_icmp_thresholds(cls, device) -> dict:
+        """Return effective ICMP thresholds for a device.
+
+        Priority chain (highest → lowest):
+          1. Per-device override columns (icmp_latency_warning_ms etc.) if not None
+          2. Compliance profile rules_json ICMP keys (if profile assigned)
+          3. Class-level constants (LATENCY_THRESHOLD_MS / PACKET_LOSS_THRESHOLD_PCT)
+
+        Exception-safe: any failure falls back to class constants.
+        No additional DB queries in the hot path — reads from already-loaded device attrs.
+        """
+        latency_warn   = cls.LATENCY_THRESHOLD_MS
+        latency_crit   = cls.LATENCY_THRESHOLD_MS      # no separate critical constant yet — same
+        loss_warn      = cls.PACKET_LOSS_THRESHOLD_PCT
+        loss_crit      = cls.PACKET_LOSS_THRESHOLD_PCT  # same
+
+        try:
+            # Layer 2: compliance profile ICMP keys
+            profile_id = getattr(device, 'compliance_profile_id', None)
+            if profile_id:
+                from models.compliance_profile import ComplianceProfile
+                profile = ComplianceProfile.query.get(profile_id)
+                if profile and isinstance(getattr(profile, 'rules_json', None), dict):
+                    rj = profile.rules_json
+                    if rj.get('latency_warning_ms') is not None:
+                        latency_warn = int(rj['latency_warning_ms'])
+                    if rj.get('latency_critical_ms') is not None:
+                        latency_crit = int(rj['latency_critical_ms'])
+                    if rj.get('packet_loss_warning_pct') is not None:
+                        loss_warn = float(rj['packet_loss_warning_pct'])
+                    if rj.get('packet_loss_critical_pct') is not None:
+                        loss_crit = float(rj['packet_loss_critical_pct'])
+
+            # Layer 1: per-device override (wins over profile)
+            if getattr(device, 'icmp_latency_warning_ms', None) is not None:
+                latency_warn = device.icmp_latency_warning_ms
+            if getattr(device, 'icmp_latency_critical_ms', None) is not None:
+                latency_crit = device.icmp_latency_critical_ms
+            if getattr(device, 'icmp_packet_loss_warning_pct', None) is not None:
+                loss_warn = device.icmp_packet_loss_warning_pct
+            if getattr(device, 'icmp_packet_loss_critical_pct', None) is not None:
+                loss_crit = device.icmp_packet_loss_critical_pct
+        except Exception:
+            pass  # Always fall back to class constants — never break alerting
+
+        return {
+            'latency_warning_ms':       latency_warn,
+            'latency_critical_ms':      latency_crit,
+            'packet_loss_warning_pct':  loss_warn,
+            'packet_loss_critical_pct': loss_crit,
+        }
 
     @classmethod
     def _get_thresholds(cls, device) -> dict:
@@ -260,62 +327,112 @@ class AlertManager:
         device.health_alert_strikes = active_breaches
 
         if commit:
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as exc:
+                logger.error(
+                    "[AlertManager] check_server_health commit failed device=%s: %s",
+                    getattr(device, 'device_id', '?'), exc,
+                )
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
 
     @classmethod
     def _trigger_alert(cls, device, event_type, severity, metric, message, value, commit=True, send_email=False):
-        existing = DashboardEvent.query.filter_by(
-            device_id=device.device_id,
-            metric_name=metric,
-            resolved=False,
-        ).first()
+        # Check in-memory cooldown only (narrow lock — no DB work here)
+        if metric == "status":
+            with cls._lock:
+                cooldown_until = cls._offline_cooldown.get(device.device_id, 0)
+                if time.time() < cooldown_until:
+                    return  # Suppressed within 30-min anti-flapping window
 
-        if existing:
-            existing.value = value
-            existing.message = message
-            existing.severity = severity
-            existing.timestamp = datetime.utcnow()
-            if commit:
-                db.session.commit()
-        else:
-            event = DashboardEvent(
-                event_id=str(uuid.uuid4()),
+        # DB operations run outside the class lock — each thread has its own
+        # SQLAlchemy scoped session; the DB handles concurrency via MVCC.
+        # All writes are wrapped so a DB error (lock_timeout, constraint, stale row)
+        # never propagates up and contaminates the caller's session.
+        try:
+            existing = DashboardEvent.query.filter_by(
                 device_id=device.device_id,
-                device_ip=device.device_ip,
-                event_type=event_type,
-                severity=severity,
                 metric_name=metric,
-                message=message,
-                value=value,
-                timestamp=datetime.utcnow(),
                 resolved=False,
+            ).first()
+
+            if existing:
+                existing.value = value
+                existing.message = message
+                existing.severity = severity
+                existing.timestamp = datetime.utcnow()
+                if commit:
+                    db.session.commit()
+            else:
+                event = DashboardEvent(
+                    event_id=str(uuid.uuid4()),
+                    device_id=device.device_id,
+                    device_ip=device.device_ip,
+                    event_type=event_type,
+                    severity=severity,
+                    metric_name=metric,
+                    message=message,
+                    value=value,
+                    timestamp=datetime.utcnow(),
+                    resolved=False,
+                    site_id=getattr(device, 'site_id', None),
+                    department_id=getattr(device, 'department_id', None),
+                )
+                db.session.add(event)
+                if commit:
+                    db.session.commit()
+        except Exception as exc:
+            logger.error(
+                "[AlertManager] _trigger_alert write failed device=%s metric=%s: %s",
+                getattr(device, 'device_id', '?'), metric, exc,
             )
-            db.session.add(event)
-            if commit:
-                db.session.commit()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return  # Skip notification — no event was persisted
 
-            if send_email and severity in ("CRITICAL", "WARNING"):
-                try:
-                    from services.notification_service import NotificationService
-
-                    NotificationService.send_alert(device, metric, value, message, severity=severity)
-                except Exception as exc:
-                    print(f"[ERROR] Failed to send notification: {exc}")
+        if send_email and severity in ("CRITICAL", "WARNING"):
+            try:
+                from services import alert_routing_service
+                alert_routing_service.route_alert(device, metric, value, message, severity)
+            except Exception as exc:
+                logger.error("[AlertManager] Failed to route alert: %s", exc)
 
     @classmethod
     def _resolve_alert(cls, device, metric, commit=True):
-        existing = DashboardEvent.query.filter_by(
-            device_id=device.device_id,
-            metric_name=metric,
-            resolved=False,
-        ).first()
+        # DB operations run outside the class lock — each thread has its own
+        # SQLAlchemy scoped session; the DB handles concurrency via MVCC.
+        # Wrapped so a DB error never propagates up and contaminates the caller's session.
+        try:
+            existing = DashboardEvent.query.filter_by(
+                device_id=device.device_id,
+                metric_name=metric,
+                resolved=False,
+            ).first()
 
-        if existing:
-            existing.resolved = True
-            existing.resolved_at = datetime.utcnow()
-            existing.message += " [RESOLVED]"
-            if commit:
-                db.session.commit()
+            if existing:
+                existing.resolved = True
+                existing.resolved_at = datetime.utcnow()
+                existing.message += " [RESOLVED]"
+                if commit:
+                    db.session.commit()
+                # Anti-flap: narrow lock only for in-memory cooldown dict write
+                if metric == "status":
+                    with cls._lock:
+                        cls._offline_cooldown[device.device_id] = time.time() + cls.OFFLINE_COOLDOWN_S
+        except Exception as exc:
+            logger.error(
+                "[AlertManager] _resolve_alert write failed device=%s metric=%s: %s",
+                getattr(device, 'device_id', '?'), metric, exc,
+            )
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
     @classmethod
     def _has_active_alert(cls, device, metric):

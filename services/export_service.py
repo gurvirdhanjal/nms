@@ -1468,25 +1468,9 @@ def _pdf_operational(report_data, report_type):
 
 
 def _pdf_device_health(report_data, report_type):
-    from reportlab.platypus import Table
-    from services.enterprise_pdf_service import base_table_style, normal_paragraph
-
-    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Device Health Report")
-
-    headers, rows = _flatten_report_rows(report_data, report_type)
-    if not rows:
-        story.append(normal_paragraph("No data available for this period.", styles))
-    else:
-        table_data = [headers]
-        for row in rows[:250]:
-            table_data.append([_pdf_cell_value(row.get(h, "—"), h) for h in headers])
-        table = Table(table_data, repeatRows=1)
-        table.setStyle(base_table_style())
-        story.append(table)
-
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
-    buf.seek(0)
-    return buf
+    """Delegate to the enterprise-grade device health PDF builder."""
+    from services.enterprise_pdf_service import generate_device_health_pdf
+    return generate_device_health_pdf(report_data)
 
 
 def _pdf_cell_value(val, col_name=""):
@@ -1504,153 +1488,9 @@ def _pdf_cell_value(val, col_name=""):
 
 
 def _pdf_alerts(report_data, report_type):
-    from reportlab.platypus import Spacer, Table, Paragraph as RLParagraph
-    from reportlab.lib.pagesizes import landscape, A4
-    from reportlab.lib.styles import ParagraphStyle
-    from services.enterprise_pdf_service import (
-        base_table_style, normal_paragraph, section_heading, hex_color,
-        _build_narrative_section,
-    )
-
-    doc, story, styles, buf, footer = _pdf_builder_base(report_data, report_type, "Alert History Report")
-
-    # Landscape A4 usable width (page width minus left+right margins)
-    _W = landscape(A4)[0] - 56  # ~773pt
-
-    # Cell style with word-wrap for long strings (URLs, error messages)
-    _cs = ParagraphStyle('alertcell', fontName='Helvetica', fontSize=7.5,
-                         leading=9, wordWrap='CJK')
-
-    def _cell(val):
-        return RLParagraph(str(val if val not in (None, '') else '—'), _cs)
-
-    # ── Narrative block (Master Spec) ─────────────────────────────────────
-    narrative = report_data.get("narrative")
-    story.extend(_build_narrative_section(narrative, styles))
-
-    # ── Intelligence annotations ──────────────────────────────────────────
-    annotations = report_data.get("intelligence_annotations", [])
-    for a in annotations[:5]:
-        sev_color = "#ef4444" if a.get("severity") == "critical" else "#f59e0b"
-        story.append(RLParagraph(
-            f'<font color="{sev_color}">&#x25CF;</font> <b>{a.get("text", "")}</b>'
-            f'{" — " + a.get("action", "") if a.get("action") else ""}',
-            ParagraphStyle('annotation', parent=styles['Normal'], fontSize=8, leading=11,
-                           spaceBefore=2, spaceAfter=2),
-        ))
-
-    # ── Severity breakdown ────────────────────────────────────────────────
-    breakdown = report_data.get("severity_breakdown") or {}
-    if breakdown:
-        summary_parts = [f"{k}: {v}" for k, v in breakdown.items()]
-        story.append(normal_paragraph(f"Severity Breakdown: {', '.join(summary_parts)}", styles))
-        story.append(Spacer(1, 4))
-
-    # ── Alert type breakdown (PR 18) ──────────────────────────────────────
-    type_breakdown = report_data.get("alert_type_breakdown", [])
-    if type_breakdown:
-        story.append(normal_paragraph("<b>Alert Type Breakdown</b>", styles))
-        _tb_w = [_W * p for p in [0.40, 0.30, 0.30]]
-        tb_data = [["Type", "Count", "% of Total"]]
-        for tb in type_breakdown:
-            tb_data.append([_cell(tb.get("type", "—")), _cell(tb.get("count", 0)),
-                            _cell(f"{tb.get('pct_of_total', 0)}%")])
-        t = Table(tb_data, colWidths=_tb_w, repeatRows=1)
-        t.setStyle(base_table_style())
-        story.append(t)
-        story.append(Spacer(1, 6))
-
-    # ── Top alerted devices ───────────────────────────────────────────────
-    top_devices = report_data.get("top_alerted_devices", [])
-    if top_devices:
-        story.append(normal_paragraph("<b>Most Impacted Devices</b>", styles))
-        _td_w = [_W * p for p in [0.40, 0.35, 0.25]]
-        td_data = [["Device", "IP", "Alert Count"]]
-        for d in top_devices[:10]:
-            td_data.append([_cell(d.get("device_name", "—")),
-                            _cell(d.get("device_ip", "—")),
-                            _cell(d.get("alert_count", 0))])
-        t = Table(td_data, colWidths=_td_w, repeatRows=1)
-        t.setStyle(base_table_style())
-        story.append(t)
-        story.append(Spacer(1, 6))
-
-    # ── Unresolved aging (PR 18) ──────────────────────────────────────────
-    aging = report_data.get("unresolved_aging", {})
-    if aging and any(v > 0 for v in aging.values()):
-        story.append(normal_paragraph("<b>Unresolved Alert Aging</b>", styles))
-        _ag_w = [_W * p for p in [0.60, 0.40]]
-        ag_data = [["Age Bucket", "Count"]]
-        for bucket, count in aging.items():
-            ag_data.append([_cell(bucket), _cell(count)])
-        t = Table(ag_data, colWidths=_ag_w, repeatRows=1)
-        t.setStyle(base_table_style())
-        story.append(t)
-        story.append(Spacer(1, 6))
-
-    # ── Subnet analysis (PR 18) ───────────────────────────────────────────
-    subnets = report_data.get("subnet_analysis", [])
-    if subnets:
-        story.append(normal_paragraph("<b>Subnet Analysis</b>", styles))
-        _sn_w = [_W * p for p in [0.20, 0.12, 0.12, 0.14, 0.14, 0.14, 0.14]]
-        sn_data = [["Subnet", "Total", "Offline", "Latency", "Pkt Loss", "Devices", "Flag"]]
-        for s in subnets[:10]:
-            sn_data.append([
-                _cell(s.get("subnet", "—")), _cell(s.get("total", 0)),
-                _cell(s.get("offline", 0)), _cell(s.get("latency", 0)),
-                _cell(s.get("pkt_loss", 0)), _cell(s.get("device_count", 0)),
-                _cell(s.get("flag", "")),
-            ])
-        t = Table(sn_data, colWidths=_sn_w, repeatRows=1)
-        t.setStyle(base_table_style())
-        story.append(t)
-        story.append(Spacer(1, 6))
-
-    # ── Recent alerts table (capped at 50) ────────────────────────────────
-    _, flat_rows = _flatten_report_rows(report_data, report_type)
-    total_count = report_data.get("alerts_total_count", len(flat_rows))
-    truncated = report_data.get("alerts_truncated", False)
-
-    if not flat_rows:
-        story.append(normal_paragraph("No alerts recorded for this period.", styles))
-    else:
-        story.append(normal_paragraph(
-            f"<b>Recent Alerts</b> (showing {min(len(flat_rows), 50)} of {total_count})"
-            + (" — full list available via CSV/XLSX export" if truncated else ""),
-            styles,
-        ))
-        # 8 visible columns — merge Label/Value into Message for audit traceability
-        alert_headers = ["Timestamp", "Device", "IP", "Severity", "Type",
-                         "Message", "Ack", "Resolved"]
-        _al_w = [_W * p for p in [0.13, 0.14, 0.10, 0.08, 0.10, 0.25, 0.08, 0.08]]
-        # Remaining 4% absorbed by rounding; fits within page
-        table_data = [alert_headers]
-        for row in flat_rows[:50]:
-            if row.get("Section") != "alerts":
-                continue
-            # Merge Label/Value into Message to preserve forensic info
-            msg = str(row.get("Message") or "—")
-            label = row.get("Label", "")
-            value = row.get("Value", "")
-            if label and value:
-                msg = f"{msg} [{label}: {value}]"
-            table_data.append([
-                _cell(row.get("Timestamp", "—")),
-                _cell(row.get("Device", "—")),
-                _cell(row.get("IP", "—")),
-                _cell(row.get("Severity", "—")),
-                _cell(row.get("Type", "—")),
-                _cell(msg),
-                _cell(row.get("Acknowledged", "—")),
-                _cell(row.get("Resolved", "—")),
-            ])
-        table = Table(table_data, colWidths=_al_w, repeatRows=1)
-        table.setStyle(base_table_style())
-        story.append(table)
-
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
-    buf.seek(0)
-    return buf
+    """Delegate to the enterprise-grade alert PDF builder."""
+    from services.enterprise_pdf_service import generate_alert_report_pdf
+    return generate_alert_report_pdf(report_data)
 
 
 def _pdf_network(report_data, report_type):

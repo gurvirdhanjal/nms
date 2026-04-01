@@ -1,0 +1,349 @@
+/* ══════════════════════════════════════════════════════════════
+   ADMIN PAGES — Extracted from templates/admin/ — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Compliance Profiles (compliance_profiles.html) ── */
+
+.metric-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.metric-card {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.metric-card .stat-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.metric-card .stat-value {
+    font-family: var(--ui-font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ui-text-primary);
+    line-height: 1.1;
+}
+
+.threshold-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1rem;
+}
+
+.threshold-group-label {
+    grid-column: span 2;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+    padding-top: 0.5rem;
+}
+
+.cp-field-label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ui-text-secondary);
+}
+
+.cp-rule-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 3px;
+    padding: 0.14rem 0.42rem;
+    font-size: 0.59rem;
+    font-family: var(--ui-font-mono);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid;
+    margin: 0.1rem 0.1rem 0 0;
+}
+
+.cp-rule-chip.warning {
+    color: var(--status-warning);
+    border-color: var(--status-warning-bd);
+    background: var(--status-warning-bg);
+}
+
+.cp-rule-chip.critical {
+    color: var(--status-critical);
+    border-color: var(--status-critical-bd);
+    background: var(--status-critical-bg);
+}
+
+.cp-rule-chip.default {
+    color: var(--ui-text-muted);
+    border-color: var(--ui-border-strong);
+    background: var(--ui-hover);
+}
+
+/* ── Restricted Sites Policy (restricted_sites_policy.html) — Phase 3 ── */
+
+.restricted-policy-page {
+    background-color: var(--ui-bg);
+}
+
+.restricted-policy-page .enterprise-panel {
+    background: var(--ui-surface-2) !important;
+    border: 1px solid var(--ui-border) !important;
+    border-radius: 2px !important;
+}
+
+.restricted-policy-page .panel-header {
+    border-bottom: 1px solid var(--ui-border);
+    padding: 0.8rem 1rem;
+}
+
+.restricted-policy-page .panel-header h5 {
+    font-family: var(--ui-font-sans);
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ui-text-primary);
+    letter-spacing: 0.02em;
+}
+
+.restricted-policy-page .panel-header .text-muted {
+    font-family: var(--ui-font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted) !important;
+}
+
+.restricted-policy-page .badge {
+    font-family: var(--ui-font-mono);
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    border: 1px solid var(--ui-border);
+}
+
+.restricted-policy-page .bg-danger {
+    color: var(--status-critical) !important;
+    background: var(--status-critical-bg) !important;
+    border-color: var(--status-critical) !important;
+}
+
+.restricted-policy-page .bg-secondary {
+    color: var(--ui-accent) !important;
+    background: var(--ui-accent-soft) !important;
+    border-color: var(--ui-border-accent) !important;
+}
+
+.restricted-policy-page .panel-body {
+    padding: 1rem;
+    background: var(--ui-surface-2);
+}
+
+.restricted-policy-page .policy-section-card {
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    background: var(--ui-surface-3);
+    padding: 0.8rem;
+    min-height: 100%;
+}
+
+.restricted-policy-page .policy-meta-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-content: start;
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    background: var(--ui-surface-3);
+    padding: 0.8rem;
+    min-width: 0;
+}
+
+.restricted-policy-page .policy-preview-title {
+    font-family: var(--ui-font-mono);
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+
+.restricted-policy-page .policy-meta-item {
+    border: none;
+    border-bottom: 1px solid var(--ui-hover);
+    border-radius: 0;
+    padding: 6px 0;
+    background: transparent;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.restricted-policy-page .policy-meta-item:last-child {
+    border-bottom: none;
+}
+
+.restricted-policy-page .policy-meta-item span {
+    color: var(--ui-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    font-family: var(--ui-font-mono);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.restricted-policy-page .policy-meta-item strong {
+    color: var(--ui-text-primary);
+    font-size: 12px;
+    font-family: var(--ui-font-mono);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+}
+
+.restricted-policy-page .policy-domain-stats {
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    background: var(--ui-surface-2);
+    color: var(--ui-text-primary);
+    padding: 2px 6px;
+    font-size: 10px;
+    font-family: var(--ui-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.restricted-policy-page .form-label {
+    color: var(--ui-text-muted);
+    font-size: 10px;
+    font-family: var(--ui-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.restricted-policy-page .form-check-label {
+    color: var(--ui-text-primary);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    font-family: var(--ui-font-mono);
+    text-transform: uppercase;
+}
+
+.restricted-policy-page .form-control,
+.restricted-policy-page .form-select {
+    background: var(--ui-surface-2) !important;
+    border: 1px solid var(--ui-border) !important;
+    color: var(--ui-text-primary) !important;
+    border-radius: 2px !important;
+    font-family: var(--ui-font-mono) !important;
+    font-size: 12px !important;
+    padding: 0.3rem 0.5rem !important;
+    box-shadow: none !important;
+}
+
+.restricted-policy-page .form-control:focus,
+.restricted-policy-page .form-select:focus {
+    border-color: var(--ui-accent) !important;
+    outline: none !important;
+}
+
+.restricted-policy-page .tactical-btn {
+    border-radius: 2px;
+    font-family: var(--ui-font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ui-text-primary);
+    padding: 0 12px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.restricted-policy-page .tactical-btn-outline {
+    border-color: var(--ui-border);
+    background: var(--ui-hover);
+}
+
+.restricted-policy-page .tactical-btn-outline:hover {
+    background: var(--ui-surface-3);
+    border-color: var(--ui-border-strong);
+    color: var(--ui-text-primary);
+}
+
+.restricted-policy-page .tactical-btn.btn-primary {
+    background: var(--ui-accent);
+    color: var(--ui-text-on-accent);
+    border-color: var(--ui-accent);
+}
+
+.restricted-policy-page .tactical-btn.btn-primary:hover {
+    background: var(--ui-accent-strong);
+    border-color: var(--ui-accent-strong);
+    color: var(--ui-text-on-accent);
+}
+
+.restricted-policy-page .tactical-btn.text-danger {
+    color: var(--status-critical) !important;
+    border-color: var(--status-critical-bd) !important;
+    background: var(--status-critical-bg) !important;
+}
+
+.restricted-policy-page .tactical-btn.text-danger:hover {
+    background: var(--status-critical-bg) !important;
+    border-color: var(--status-critical) !important;
+    color: var(--ui-text-primary) !important;
+}
+
+.restricted-policy-page .policy-domain-list {
+    margin-top: 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    background: var(--ui-bg);
+}
+
+.restricted-policy-page .policy-domain-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.restricted-policy-page .policy-domain-list::-webkit-scrollbar-track {
+    background: var(--ui-bg);
+}
+
+.restricted-policy-page .policy-domain-list::-webkit-scrollbar-thumb {
+    background-color: var(--ui-border-strong);
+    border-radius: 2px;
+}

@@ -1,0 +1,32 @@
+/* ══════════════════════════════════════════════════════════════
+   FILE TRANSFER PAGE — Extracted from templates/file_transfer.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+/* Custom Scrollbar for explorers */
+.explorer-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.explorer-scrollbar::-webkit-scrollbar-track {
+    background: var(--ui-surface-2);
+    border-radius: 4px;
+}
+.explorer-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--ui-surface-4);
+    border-radius: 4px;
+}
+.explorer-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--ui-border-strong);
+}
+
+/* Selected state */
+.file-item.selected {
+    background-color: rgba(0, 212, 170, 0.12);
+    border-color: rgba(0, 212, 170, 0.45);
+}
+
+/* Drag over state */
+.upload-area.dragover {
+    border-color: var(--ui-accent);
+    background-color: rgba(0, 212, 170, 0.04);
+}

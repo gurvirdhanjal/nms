@@ -44,16 +44,16 @@
         </div>
         <div class="col-md-3 text-end">
             <div class="btn-group server-range-toggle d-flex" role="group" aria-label="Server time range">
-                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
-                    style="font-size: 10px; padding: 2px 0;" data-range="15m">15M</button>
-                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
-                    style="font-size: 10px; padding: 2px 0;" data-range="1h">1H</button>
-                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
-                    style="font-size: 10px; padding: 2px 0;" data-range="6h">6H</button>
-                <button type="button" class="btn btn-sm tactical-btn-primary rounded-pill flex-grow-1 active"
-                    style="font-size: 10px; padding: 2px 0;" data-range="24h">24H</button>
-                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1"
-                    style="font-size: 10px; padding: 2px 0;" data-range="7d">7D</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1 server-time-btn"
+                    data-range="15m">15M</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1 server-time-btn"
+                    data-range="1h">1H</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1 server-time-btn"
+                    data-range="6h">6H</button>
+                <button type="button" class="btn btn-sm tactical-btn-primary rounded-pill flex-grow-1 active server-time-btn"
+                    data-range="24h">24H</button>
+                <button type="button" class="btn btn-sm tactical-btn-ghost rounded-pill flex-grow-1 server-time-btn"
+                    data-range="7d">7D</button>
             </div>
         </div>
     </div>
@@ -93,6 +93,8 @@
                 id="{{ telemetry_prefix }}-hardware">-</div>
         </div>
     </div>
+
+    <div class="smc-section-label">Performance</div>
 
     <div class="row g-4">
         <div class="col-md-4">
@@ -160,6 +162,8 @@
         </div>
     </div>
 
+    <div class="smc-section-label">Network</div>
+
     <div class="row g-4 mt-1">
         <div class="col-md-12">
             <div class="tactical-card h-100 border-0" style="background: var(--bg-card); border-radius: 8px;">
@@ -219,14 +223,14 @@
         </div>
         <div class="col-md-6">
             <div class="tactical-card h-100 border-0"
-                style="background: var(--bg-surface); border: 1px solid var(--tactical-border-accent) !important; border-radius: 8px; overflow: hidden;">
+                style="background: var(--ui-surface-3); border: 1px solid var(--ui-border-accent) !important; border-radius: 8px; overflow: hidden;">
                 <div class="card-header border-bottom d-flex justify-content-between align-items-center"
                     style="padding: 10px 16px; border-color: rgba(255,255,255,0.06) !important; background: transparent;">
                     <span class="text-uppercase fw-bold"
                         style="font-size: 10px; color: var(--text-primary); letter-spacing: 0.05em;">CONNECTION SNAPSHOT
                         (AGENT)</span>
                     <button type="button" class="btn btn-sm tactical-btn-ghost rounded border"
-                        style="font-size: 10px; padding: 2px 8px; color: var(--teal); border-color: var(--teal) !important;"
+                        style="font-size: 10px; padding: 2px 8px; color: var(--ui-accent); border-color: var(--ui-accent) !important;"
                         id="{{ telemetry_prefix }}-refresh-snapshot">
                         <i class="fas fa-sync-alt me-1"></i>REFRESH NOW
                     </button>
@@ -257,6 +261,8 @@
             </div>
         </div>
     </div>
+
+    <div class="smc-section-label">System Telemetry</div>
 
     <div class="row g-3 mt-3">
         <div class="col-md-4">
@@ -368,6 +374,20 @@
                         <div class="col-md-3 col-6">
                             <div class="text-secondary">Write Latency</div>
                             <div class="fw-bold" id="{{ telemetry_prefix }}-disk-write-latency">-</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-6">
+                            <div class="text-secondary" style="font-size:.65rem;">Read MB/s trend</div>
+                            <div class="disk-sparkline-wrapper">
+                                <canvas id="{{ telemetry_prefix }}-chart-disk-read-spark"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-secondary" style="font-size:.65rem;">Write MB/s trend</div>
+                            <div class="disk-sparkline-wrapper">
+                                <canvas id="{{ telemetry_prefix }}-chart-disk-write-spark"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>

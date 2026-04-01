@@ -46,7 +46,7 @@ class DiscoveryService:
     }
 
     def __init__(self):
-        print(f"[DEBUG] DiscoveryService Initialized: {id(self)}")
+        logger.debug("DiscoveryService Initialized: %d", id(self))
         self.scanner = NetworkScanner()
         self.active_scans = {}
         self.active_scans_lock = threading.Lock()
@@ -378,7 +378,7 @@ class DiscoveryService:
                 except Exception as e:
                     # Rollback to prevent session pollution from affecting subsequent devices
                     db.session.rollback()
-                    print(f"[Discovery] Failed to add device {device_data.get('ip', 'unknown')}: {e}")
+                    logger.error("[Discovery] Failed to add device %s: %s", device_data.get('ip', 'unknown'), e)
                     continue
 
             if count_added > 0 or count_updated > 0:
@@ -386,7 +386,7 @@ class DiscoveryService:
                     db.session.commit()
                 except Exception as e:
                     db.session.rollback()
-                    print(f"[Discovery] Failed to commit scan results: {e}")
+                    logger.error("[Discovery] Failed to commit scan results: %s", e)
 
             with self.active_scans_lock:
                 if scan_id and scan_id in self.active_scans:
@@ -400,7 +400,7 @@ class DiscoveryService:
             with app.app_context():
                 return _persist()
         except Exception as e:
-            print(f"[Discovery] Failed to save scan results: {e}")
+            logger.error("[Discovery] Failed to save scan results: %s", e)
             return {'added': 0, 'updated': 0}
     def start_recursive_discovery(self, seed_ip):
         """
@@ -410,12 +410,12 @@ class DiscoveryService:
         from services.ssh_service import SSHService
         from models import Device, db
         
-        print(f"[Discovery] Starting recursive scan from {seed_ip}")
-        
+        logger.info("[Discovery] Starting recursive scan from %s", seed_ip)
+
         # 1. Ensure seed device exists
         seed_device = Device.query.filter_by(device_ip=seed_ip).first()
         if not seed_device:
-            print(f"[Discovery] Seed device {seed_ip} not found in inventory. Adding placeholder.")
+            logger.info("[Discovery] Seed device %s not found in inventory. Adding placeholder.", seed_ip)
             seed_device = Device(
                 device_ip=seed_ip, 
                 device_name=f"Seed-Core-{seed_ip}",
@@ -428,7 +428,7 @@ class DiscoveryService:
         # 2. Get Neighbors via SSH
         ssh_svc = SSHService()
         neighbors = ssh_svc.get_lldp_neighbors(seed_device)
-        print(f"[Discovery] Found {len(neighbors)} neighbors for {seed_ip}")
+        logger.info("[Discovery] Found %d neighbors for %s", len(neighbors), seed_ip)
         
         # 3. Process Neighbors
         for n in neighbors:
@@ -446,7 +446,7 @@ class DiscoveryService:
                     last_discovery_method='LLDP'
                 )
                 db.session.add(neighbor)
-                print(f"[Discovery] Added new neighbor {remote_ip}")
+                logger.info("[Discovery] Added new neighbor %s", remote_ip)
             else:
                 # Update topology info
                 neighbor.parent_switch_id = seed_device.device_id
@@ -459,7 +459,7 @@ class DiscoveryService:
         Analyze topology table (if populated) and update parent/child relationships.
         For now, this is a placeholder or basic implementation.
         """
-        print("[Discovery] Mapping devices to ports...")
+        logger.info("[Discovery] Mapping devices to ports...")
         # In a real implementation effectively use SwitchTopology table
         # to set parent_port_id on devices.
         pass

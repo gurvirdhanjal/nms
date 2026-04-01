@@ -1033,7 +1033,8 @@ def _ping_host(ip_address, timeout=2.0):
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=creationflags
+                creationflags=creationflags,
+                timeout=timeout + 1.0,
             )
             return result.returncode == 0
         else:
@@ -1043,7 +1044,8 @@ def _ping_host(ip_address, timeout=2.0):
             result = subprocess.run(
                 cmd,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                timeout=timeout + 1.0,
             )
             return result.returncode == 0
     except Exception:
@@ -1158,10 +1160,11 @@ class NetworkScanner:
             
             # Safe subprocess call with suppression flags
             arp_output = subprocess.check_output(
-                cmd, 
+                cmd,
                 stderr=subprocess.DEVNULL,
                 startupinfo=startupinfo,
-                creationflags=creationflags
+                creationflags=creationflags,
+                timeout=3,
             ).decode('utf-8', errors='ignore')
             
             for line in arp_output.splitlines():
@@ -5482,7 +5485,7 @@ def api_tracking_list():
             'id': d.id,
             'device_name': d.device_name or '',
             'employee_name': d.employee_name or '',
-            'device_ip': d.device_ip or '',
+            'device_ip': d.ip_address or '',
             'mac_address': d.mac_address or '',
         } for d in devices])
     except Exception as e:

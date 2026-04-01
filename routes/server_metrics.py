@@ -407,6 +407,37 @@ def _build_server_telemetry_payload(device, time_range):
             net_in_data.append(bucket.network_in_bps)
             net_out_data.append(bucket.network_out_bps)
 
+    # ── Availability from scan history (always a fixed 24h window) ──────────────
+    from models.scan_history import DeviceScanHistory as _DSH
+    _cutoff_24h = _utcnow_naive() - timedelta(hours=24)
+    _scans_24h = (
+        _DSH.query
+        .filter(_DSH.device_ip == device.device_ip, _DSH.scan_timestamp >= _cutoff_24h)
+        .order_by(_DSH.scan_timestamp.asc())
+        .all()
+    )
+    _sc_total = len(_scans_24h)
+    _sc_online = sum(1 for s in _scans_24h if (s.status or "").lower() == "online")
+    availability_24h_pct = round(_sc_online / _sc_total * 100, 1) if _sc_total > 0 else None
+    _dt_secs = 0.0
+    for _i, _s in enumerate(_scans_24h):
+        if (_s.status or "").lower() != "online":
+            _dt_secs += (_scans_24h[_i + 1].scan_timestamp - _s.scan_timestamp).total_seconds() \
+                if _i + 1 < _sc_total else 300.0
+    downtime_24h_min = round(_dt_secs / 60.0, 1) if _sc_total > 0 else None
+    _now = _utcnow_naive()
+    uptime_timeline = []
+    for _h in range(23, -1, -1):
+        _bend = _now - timedelta(hours=_h)
+        _bstart = _bend - timedelta(hours=1)
+        _bucket = [s for s in _scans_24h if _bstart <= s.scan_timestamp < _bend]
+        if not _bucket:
+            uptime_timeline.append("unknown")
+        else:
+            _up = sum(1 for s in _bucket if (s.status or "").lower() == "online")
+            _r = _up / len(_bucket)
+            uptime_timeline.append("up" if _r >= 0.8 else ("partial" if _r > 0 else "down"))
+
     profile, threshold_payload = _merged_threshold_payload()
     latest_metrics = extract_latest_metrics(last_log)
     health_summary = summarize_health(last_log, {"metrics": threshold_payload.get("metrics", {})}) if last_log else None
@@ -538,6 +569,9 @@ def _build_server_telemetry_payload(device, time_range):
         "top_processes_cpu": last_log.top_processes_cpu if last_log and last_log.top_processes_cpu else [],
         "process_catalog": merged_processes,
         "alerts": last_log.alerts if last_log and last_log.alerts else [],
+        "availability_24h_pct": availability_24h_pct,
+        "downtime_24h_min": downtime_24h_min,
+        "uptime_timeline": uptime_timeline,
     }
 
 
@@ -651,6 +685,22 @@ def _create_threshold_audit_log(previous_version, next_version, changed_metric_k
     )
 
 
+@server_metrics_bp.route("/devices/<int:device_id>/server-monitoring")
+@require_login
+def server_monitoring_page(device_id):
+    """Full-page server telemetry view for a single device."""
+    from flask import render_template, session
+    from models.device import Device
+    from middleware.rbac import scoped_query
+
+    device = scoped_query(Device).get_or_404(device_id)
+    return render_template(
+        "server_details_page.html",
+        device=device,
+        can_edit_server_thresholds=str(session.get("role") or "").strip().lower() == "admin",
+    )
+
+
 @server_metrics_bp.route("/api/server/fleet-metrics")
 def get_fleet_metrics():
     try:
@@ -737,6 +787,144 @@ def get_server_health_summary():
     except Exception as exc:
         current_app.logger.exception("[server_health] Failed to build health summary")
         return jsonify({"error": str(exc)}), 500
+
+
+@server_metrics_bp.route("/api/server/<int:device_id>/snapshot")
+@require_login
+def server_snapshot(device_id):
+    """Lightweight operational snapshot for the modal quick-view.
+
+    Returns only the data needed for the compact modal:
+    uptime, 24h availability/downtime, ping stats, CPU/mem/disk summaries,
+    SNMP config, mini CPU chart (1h), and hourly uptime timeline (24h).
+    """
+    from models.scan_history import DeviceScanHistory
+    from models.snmp_config import DeviceSnmpConfig
+
+    device = scoped_query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        return jsonify({"error": "Device not found"}), 404
+
+    # Latest agent telemetry log
+    last_log = (
+        ServerHealthLog.query
+        .filter_by(device_id=device_id, source="agent")
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
+
+    # 24h scan history (keyed by device IP — no device_id FK on this table)
+    cutoff_24h = _utcnow_naive() - timedelta(hours=24)
+    scans = (
+        DeviceScanHistory.query
+        .filter(
+            DeviceScanHistory.device_ip == device.device_ip,
+            DeviceScanHistory.scan_timestamp >= cutoff_24h,
+        )
+        .order_by(DeviceScanHistory.scan_timestamp.asc())
+        .all()
+    )
+
+    total = len(scans)
+    online_ct = sum(1 for s in scans if (s.status or "").lower() == "online")
+    availability_pct = round(online_ct / total * 100, 1) if total > 0 else None
+
+    # Downtime from consecutive offline spans
+    downtime_secs = 0.0
+    for i, scan in enumerate(scans):
+        if (scan.status or "").lower() != "online":
+            if i + 1 < len(scans):
+                delta = (scans[i + 1].scan_timestamp - scan.scan_timestamp).total_seconds()
+                downtime_secs += max(0.0, delta)
+            else:
+                downtime_secs += 300.0  # trailing offline ~ one poll interval
+    downtime_min = round(downtime_secs / 60.0, 1) if total > 0 else None
+
+    # Ping / jitter / packet loss averages
+    pings = [s.ping_time_ms for s in scans if s.ping_time_ms is not None]
+    losses = [s.packet_loss for s in scans if s.packet_loss is not None]
+    jitters = [s.jitter for s in scans if s.jitter is not None]
+    avg_ping = round(sum(pings) / len(pings), 1) if pings else None
+    avg_loss = round(sum(losses) / len(losses), 2) if losses else None
+    avg_jitter = round(sum(jitters) / len(jitters), 1) if jitters else None
+
+    def _net_status(ping, loss):
+        if ping is None and loss is None:
+            return "no data"
+        if (loss or 0) >= 5 or (ping or 0) >= 200:
+            return "degraded"
+        if (loss or 0) >= 1 or (ping or 0) >= 100:
+            return "warning"
+        return "stable"
+
+    # SNMP config
+    snmp_cfg = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
+    snmp_enabled = bool(snmp_cfg and snmp_cfg.is_enabled)
+
+    # Health + uptime
+    health_status = compute_server_health(last_log)
+    health_summary = summarize_health(last_log) if last_log else None
+    uptime_sec = _parse_uptime_seconds(last_log.uptime if last_log else None)
+
+    # Mini CPU chart — last 1h, capped at 60 points
+    cutoff_1h = _utcnow_naive() - timedelta(hours=1)
+    cpu_logs = (
+        ServerHealthLog.query
+        .filter(
+            ServerHealthLog.device_id == device_id,
+            ServerHealthLog.source == "agent",
+            ServerHealthLog.timestamp >= cutoff_1h,
+        )
+        .order_by(ServerHealthLog.timestamp.asc())
+        .limit(60)
+        .all()
+    )
+    cpu_labels = [_iso_utc(lg.timestamp) for lg in cpu_logs]
+    cpu_data = [_safe_float(lg.cpu_usage) for lg in cpu_logs]
+
+    # Hourly uptime timeline — 24 buckets oldest-first
+    now = _utcnow_naive()
+    timeline = []
+    for h in range(23, -1, -1):
+        bucket_end = now - timedelta(hours=h)
+        bucket_start = bucket_end - timedelta(hours=1)
+        bucket = [s for s in scans if bucket_start <= s.scan_timestamp < bucket_end]
+        if not bucket:
+            timeline.append("unknown")
+        else:
+            up_ct = sum(1 for s in bucket if (s.status or "").lower() == "online")
+            ratio = up_ct / len(bucket)
+            timeline.append("up" if ratio >= 0.8 else ("partial" if ratio > 0 else "down"))
+
+    return jsonify({
+        "device_id": device_id,
+        "device_name": device.device_name,
+        "ip": device.device_ip,
+        "hostname": device.hostname,
+        "os_name": last_log.os_name if last_log else None,
+        "monitoring_mode": getattr(device, "monitoring_mode", "ping"),
+        "status": health_status,
+        "health_score": health_summary.score if health_summary else 0,
+        "last_seen": _iso_utc(last_log.timestamp) if last_log and last_log.timestamp else None,
+        "uptime_seconds": uptime_sec,
+        "availability_24h_pct": availability_pct,
+        "downtime_24h_min": downtime_min,
+        "ping_ms": avg_ping,
+        "jitter_ms": avg_jitter,
+        "packet_loss_pct": avg_loss,
+        "network_status": _net_status(avg_ping, avg_loss),
+        "snmp_enabled": snmp_enabled,
+        "snmp_version": snmp_cfg.snmp_version if snmp_cfg else None,
+        "snmp_port": snmp_cfg.snmp_port if snmp_cfg else None,
+        "snmp_last_poll": _iso_utc(snmp_cfg.last_successful_poll) if snmp_cfg and snmp_cfg.last_successful_poll else None,
+        "cpu_current": _safe_float(last_log.cpu_usage if last_log else None),
+        "memory_current": _safe_float(last_log.memory_usage if last_log else None),
+        "disk_current": _safe_float(last_log.disk_usage if last_log else None),
+        "cpu_chart_labels": cpu_labels,
+        "cpu_chart_data": cpu_data,
+        "uptime_timeline": timeline,
+        "alerts": last_log.alerts if last_log and last_log.alerts else [],
+    })
 
 
 def _get_server_device_for_metrics(device_id):

@@ -24,6 +24,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, inch
 from reportlab.platypus import (
     HRFlowable,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -38,6 +39,15 @@ from services.core_metrics_service import (
     SLA_BRONZE,
     SLA_WARNING,
 )
+from services.report_rules import (
+    MAX_ALERTS_EXECUTIVE,
+    MAX_COLS_LANDSCAPE,
+    MAX_EXCEPTION_ROWS,
+    MAX_EXCEPTION_SHORT,
+    truncate_name,
+    should_render_exception_table,
+)
+from services.pdf_style_registry import PDFStyleRegistry
 
 # ── Colour palette ───────────────────────────────────────────────────────────
 NAVY        = "#1B2A4A"
@@ -224,6 +234,129 @@ def base_table_style(header_rows: int = 1):
     ])
 
 
+# ── Spacer rhythm constants ───────────────────────────────────────────────────
+SP_CAPTION    = Spacer(1, 4)
+SP_BLOCK      = Spacer(1, 8)
+SP_TABLE_GAP  = Spacer(1, 10)
+SP_SECTION    = Spacer(1, 14)
+SP_AFTER_TITLE = Spacer(1, 6)
+
+
+def sla_bar_cell(pct: float, color_hex: str, width: int = 150) -> Table:
+    """Native ReportLab colour bar replacing the ASCII █░ bar.
+
+    Renders a two-cell inner Table: a filled colour slab + a muted empty slab.
+    Safe for edge cases: 0% and 100% both produce valid colWidths.
+    """
+    filled_w = max(0.5, int(pct * width / 100))
+    empty_w  = max(0.5, width - filled_w)
+    bar = Table([["", ""]], colWidths=[filled_w, empty_w], rowHeights=[7])
+    bar.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (0, 0), HexColor(color_hex)),
+        ("BACKGROUND",    (1, 0), (1, 0), HexColor("#1E293B")),
+        ("BOX",           (0, 0), (-1, -1), 0.3, HexColor("#334155")),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return bar
+
+
+def _kpi_color(val: float, high: float = 90.0, med: float = 70.0) -> str:
+    """Return a hex color string based on value thresholds (green/amber/red)."""
+    if val >= high:
+        return "#16A34A"
+    if val >= med:
+        return "#D97706"
+    return "#DC2626"
+
+
+def kpi_strip(items: list) -> Table:
+    """Build a dark-background KPI card strip.
+
+    items: [{"label": str, "value": str, "color": str (hex)}, ...]
+    Max 5 items. Returns a full-width Table flowable.
+    """
+    _cell_style = ParagraphStyle(
+        "_ks_cell",
+        fontName="Helvetica",
+        fontSize=7,
+        alignment=1,      # CENTER
+        leading=10,
+        textColor=HexColor("#64748B"),
+    )
+    cells = []
+    for item in items:
+        text = (
+            f'<font name="Helvetica-Bold" size="18" color="{item["color"]}">'
+            f'{item["value"]}</font><br/>'
+            f'<font name="Helvetica" size="7" color="#64748B">{item["label"]}</font>'
+        )
+        cells.append(Paragraph(text, _cell_style))
+
+    n = len(items)
+    col_w = [f"{100 // n}%" for _ in items]
+    t = Table([cells], colWidths=col_w, rowHeights=[46])
+    t.setStyle(TableStyle([
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEAFTER",     (0, 0), (-2, -1), 0.4, HexColor("#334155")),
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#0F172A")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+    ]))
+    return t
+
+
+def _render_narrative_kpis(narrative: dict) -> list:
+    """Build KPI strip from narrative executive_banner.kpis list.
+
+    Returns [kpi_strip_table, SP_BLOCK] when kpis exist, else [].
+    Bridges the narrative service's typed KPI objects (with delta badges)
+    into the PDF renderer — previously these were silently dropped.
+    """
+    banner = narrative.get("executive_banner") if narrative else None
+    if not isinstance(banner, dict):
+        return []
+    kpis = banner.get("kpis") or []
+    if not kpis:
+        return []
+    _STATUS_COLORS = {"ok": "#16A34A", "warning": "#D97706", "critical": "#DC2626"}
+    items = []
+    for kpi in kpis[:5]:
+        color = _STATUS_COLORS.get(kpi.get("status", "ok"), "#94A3B8")
+        value = str(kpi.get("value", "—"))
+        delta = kpi.get("delta")
+        if delta:
+            value = f"{value}  {delta}"
+        items.append({"label": kpi.get("label", ""), "value": value, "color": color})
+    return [kpi_strip(items), SP_BLOCK] if items else []
+
+
+def section_title_flowable(title: str, subtitle: str = "") -> list:
+    """Standard section opener: rule + 11pt bold heading.
+
+    Returns a list of flowables to extend into the story.
+    """
+    sub = f'  <font size="7.5" color="#64748B">{subtitle}</font>' if subtitle else ""
+    heading_style = ParagraphStyle(
+        "_sec_title",
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=HexColor(NAVY),
+        leading=14,
+    )
+    return [
+        SP_SECTION,
+        HRFlowable(width="100%", thickness=1.5, color=HexColor(NAVY), spaceAfter=4),
+        Paragraph(f"<b>{title}</b>{sub}", heading_style),
+        SP_AFTER_TITLE,
+    ]
+
+
 # ── Section helpers ───────────────────────────────────────────────────────────
 
 def section_heading(text: str, styles):
@@ -254,6 +387,82 @@ def _subheading(text: str, styles):
     return Paragraph(text, style)
 
 
+def section_heading_with_meta(text: str, styles, meta_text: str = "") -> Table:
+    """Section heading with optional right-aligned confidence/source metadata.
+
+    Returns a 2-cell Table: left = bold section title, right = 7pt muted metadata.
+    Falls back to plain section_heading when meta_text is empty.
+    """
+    title_style = ParagraphStyle(
+        "SectionHeadingMeta_title",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=hex_color(NAVY),
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+    meta_style = ParagraphStyle(
+        "SectionHeadingMeta_meta",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        textColor=hex_color(TEXT_LIGHT),
+        spaceBefore=0,
+        spaceAfter=0,
+        alignment=2,  # RIGHT
+    )
+    row = [[Paragraph(text, title_style), Paragraph(meta_text or "", meta_style)]]
+    tbl = Table(row, colWidths=["60%", "40%"])
+    tbl.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 14),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (0, -1), 0),
+        ("RIGHTPADDING",  (-1, 0), (-1, -1), 0),
+        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, hex_color(NAVY)),
+    ]))
+    return tbl
+
+
+def _confidence_meta_text(confidence: dict, key: str, period: dict | None = None,
+                           device_count: int | None = None) -> str:
+    """Build the 7pt right-aligned metadata string for section headings.
+
+    Format: 'Data: <source> (<LEVEL>) · <period> · <N> devices'
+    Returns empty string when confidence data is absent.
+    """
+    info = confidence.get(key, {}) if isinstance(confidence, dict) else {}
+    if not info:
+        return ""
+    level = (info.get("level") or "UNKNOWN").upper()
+    source = info.get("source") or ("Daily rollup" if level == "HIGH" else "Raw scans")
+    color = _CONFIDENCE_COLORS.get(level, _CONFIDENCE_COLORS["NO_DATA"])
+    parts = [f'Data: {source} (<font color="{color}"><b>{level}</b></font>)']
+    if period and period.get("start") and period.get("end"):
+        try:
+            fmt = lambda s: datetime.fromisoformat(str(s).replace("Z", "+00:00")).strftime("%b %-d")
+            parts.append(f'{fmt(period["start"])} – {fmt(period["end"])}')
+        except Exception:
+            pass
+    if device_count is not None and device_count > 0:
+        parts.append(f"{device_count} devices")
+    return " · ".join(parts)
+
+
+def _table_label(text: str, styles) -> Paragraph:
+    """'TABLE N of 2 — …' caption rendered above each main executive table."""
+    return Paragraph(text, ParagraphStyle(
+        "TableLabel",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        textColor=hex_color(NAVY_MID),
+        spaceBefore=12,
+        spaceAfter=4,
+    ))
+
+
 def normal_paragraph(text: str, styles, size: int = 8, color: str = TEXT_DARK):
     style = ParagraphStyle(
         "NormalCustom",
@@ -263,6 +472,180 @@ def normal_paragraph(text: str, styles, size: int = 8, color: str = TEXT_DARK):
         textColor=hex_color(color),
     )
     return Paragraph(text, style)
+
+
+# ── Fleet table builder (P5) ─────────────────────────────────────────────────
+
+def build_fleet_table(rows: list, col_specs: list, caption: str = "") -> list:
+    """Column-spec driven fleet table builder (Step 8.9).
+
+    Replaces per-row color loops with a declarative column spec, enforces
+    the 9-column budget, and applies all styling in a single pass.
+
+    Args:
+        rows:      List of row dicts from the report service.
+        col_specs: List of column spec dicts — max 9, each with:
+            "header"    str   — column header text
+            "width"     str   — e.g. "12%"
+            "key"       str   — row dict key to read (optional if fmt provided)
+            "fmt"       callable(row) → str  (optional; overrides key lookup)
+            "align"     str   — "LEFT" | "CENTER" | "RIGHT" (default LEFT)
+            "color_fn"  callable(row) → (text_hex, bg_hex) | None  (optional)
+            "bold_fn"   callable(row) → bool  (optional; bold when True)
+            "max_chars" int   — truncate cell value (optional)
+        caption:   Optional footnote text shown below the table.
+
+    Returns:
+        List of flowables: [Table] + optional caption Paragraph.
+    """
+    assert len(col_specs) <= MAX_COLS_LANDSCAPE, (
+        f"build_fleet_table: {len(col_specs)} columns exceeds budget of {MAX_COLS_LANDSCAPE}"
+    )
+
+    headers = [spec["header"] for spec in col_specs]
+    col_w   = [spec["width"]  for spec in col_specs]
+
+    # Build data rows
+    table_data: List[Any] = [headers]
+    for r in rows:
+        cells = []
+        for spec in col_specs:
+            if "fmt" in spec:
+                val = spec["fmt"](r)
+            else:
+                raw = r.get(spec.get("key", ""), None)
+                val = str(raw) if raw is not None else "—"
+            max_c = spec.get("max_chars")
+            if max_c and len(val) > max_c:
+                val = val[:max_c]
+            cells.append(val)
+        table_data.append(cells)
+
+    table = Table(table_data, colWidths=col_w, repeatRows=1)
+    ts = base_table_style()
+
+    # Apply per-column alignment from spec header row
+    for col_idx, spec in enumerate(col_specs):
+        align = spec.get("align", "LEFT").upper()
+        if align != "LEFT":
+            ts.add("ALIGN", (col_idx, 1), (col_idx, -1), align)
+
+    # Apply per-cell colors via color_fn + bold_fn
+    for row_idx, r in enumerate(rows, start=1):
+        for col_idx, spec in enumerate(col_specs):
+            color_fn = spec.get("color_fn")
+            if color_fn:
+                result = color_fn(r)
+                if result is not None:
+                    text_c, bg_c = result
+                    if bg_c:
+                        ts.add("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), hex_color(bg_c))
+                    if text_c:
+                        ts.add("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), hex_color(text_c))
+                        ts.add("FONTNAME",  (col_idx, row_idx), (col_idx, row_idx), "Helvetica-Bold")
+            bold_fn = spec.get("bold_fn")
+            if bold_fn and bold_fn(r):
+                ts.add("FONTNAME", (col_idx, row_idx), (col_idx, row_idx), "Helvetica-Bold")
+
+    table.setStyle(ts)
+    result_elems: List[Any] = [table]
+    if caption:
+        result_elems.append(SP_CAPTION)
+        result_elems.append(normal_paragraph(caption, getSampleStyleSheet(), size=6.5, color=TEXT_LIGHT))
+    return result_elems
+
+
+# ── Exception strip (P3) ─────────────────────────────────────────────────────
+
+def _build_exception_strip(
+    rows: list,
+    col_headers: list,
+    row_fn,
+    label: str,
+    styles,
+    total_rows: Optional[int] = None,
+) -> list:
+    """Compact top-5 exception table shown before the full fleet table.
+
+    Only renders when the rows contain Warning/Critical SLA-tier devices.
+    Rows are sorted worst-first (ascending uptime_pct, None last).
+
+    Args:
+        rows:        All fleet rows (unsorted).
+        col_headers: Column header list (max 5 — exception strip is compact).
+        row_fn:      Callable(row) → list of cell values.
+        label:       Section label text shown above the strip.
+        styles:      ReportLab stylesheet.
+        total_rows:  Full fleet row count for caption (defaults to len(rows)).
+    """
+    if not should_render_exception_table(rows):
+        return []
+
+    exception_rows = sorted(
+        [r for r in rows if r.get("sla_tier") in ("Warning", "Critical")],
+        key=lambda r: (r.get("uptime_pct") is None, r.get("uptime_pct") or 0),
+    )[:MAX_EXCEPTION_SHORT]
+
+    if not exception_rows:
+        return []
+
+    _AMBER = "#92400E"
+    elems: List[Any] = [
+        Spacer(1, 6),
+        Paragraph(label, ParagraphStyle(
+            "ExcStripLabel",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.5,
+            textColor=hex_color(_AMBER),
+            spaceBefore=4,
+            spaceAfter=3,
+        )),
+    ]
+
+    strip_data: List[Any] = [col_headers]
+    for r in exception_rows:
+        strip_data.append(row_fn(r))
+
+    strip = Table(strip_data, repeatRows=1)
+    st = TableStyle([
+        # Header
+        ("BACKGROUND",    (0, 0), (-1, 0), hex_color("#78350F")),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 7.5),
+        ("TOPPADDING",    (0, 0), (-1, 0), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+        # Body
+        ("FONTSIZE",      (0, 1), (-1, -1), 7.5),
+        ("TOPPADDING",    (0, 1), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+        ("ROWBACKGROUNDS",(0, 1), (-1, -1), [hex_color("#FFFBEB"), hex_color("#FEF3C7")]),
+        ("GRID",          (0, 0), (-1, -1), 0.4, hex_color("#D97706")),
+        ("BOX",           (0, 0), (-1, -1), 1.5, hex_color("#D97706")),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ])
+    # Colour-code SLA column (assumed last col)
+    sla_col = len(col_headers) - 1
+    for idx, r in enumerate(exception_rows, start=1):
+        tier = r.get("sla_tier", "Unknown")
+        text_c, bg_c = _sla_badge_style(tier)
+        st.add("BACKGROUND", (sla_col, idx), (sla_col, idx), hex_color(bg_c))
+        st.add("TEXTCOLOR",  (sla_col, idx), (sla_col, idx), hex_color(text_c))
+        st.add("FONTNAME",   (sla_col, idx), (sla_col, idx), "Helvetica-Bold")
+
+    strip.setStyle(st)
+    elems.append(strip)
+
+    total = total_rows if total_rows is not None else len(rows)
+    caption = (
+        f"Exception strip: {len(exception_rows)} of {total} devices below SLA threshold, "
+        f"ranked by uptime."
+    )
+    elems.append(SP_CAPTION)
+    elems.append(normal_paragraph(caption, styles, size=6.5, color=TEXT_LIGHT))
+    elems.append(Spacer(1, 8))
+    return elems
 
 
 # ── Cover page ────────────────────────────────────────────────────────────────
@@ -292,49 +675,23 @@ def _build_cover(report: dict, styles, fleet: str = "all") -> list:
     }
     subtitle_text = _subtitles.get(fleet, _subtitles["all"])
 
-    title_style = ParagraphStyle(
-        "CoverTitle",
-        fontName="Helvetica-Bold",
-        fontSize=26,
-        textColor=hex_color(WHITE),
-        leading=32,
-        spaceAfter=6,
-    )
-    subtitle_style = ParagraphStyle(
-        "CoverSubtitle",
-        fontName="Helvetica",
-        fontSize=13,
-        textColor=hex_color(TEAL),
-        spaceAfter=4,
-    )
-    meta_style = ParagraphStyle(
-        "CoverMeta",
-        fontName="Helvetica",
-        fontSize=9,
-        textColor=hex_color(BG_ALT),
-        spaceAfter=3,
-    )
+    _reg = PDFStyleRegistry()
 
     # Return cover flowables directly — wrapping in a Table prevents PageBreak from working.
     # The navy background is painted by the _draw_cover_bg canvas callback in generate_enterprise_pdf.
     return [
         Spacer(1, 1.2 * inch),
-        Paragraph(title_line1, title_style),
-        Paragraph(title_line2, title_style),
+        Paragraph(title_line1, _reg.cover_title),
+        Paragraph(title_line2, _reg.cover_title),
         Spacer(1, 0.3 * inch),
-        Paragraph(subtitle_text, subtitle_style),
+        Paragraph(subtitle_text, _reg.cover_subtitle),
         Spacer(1, 0.6 * inch),
         HRFlowable(width="100%", thickness=1, color=hex_color(TEAL), spaceAfter=16),
-        Paragraph(f"Report Period:  {_start_str()}  →  {_end_str()}", meta_style),
-        Paragraph(f"Days Covered:   {period.get('days', '—')}", meta_style),
-        Paragraph(f"Generated:      {gen_at} UTC", meta_style),
+        Paragraph(f"Report Period:  {_start_str()}  →  {_end_str()}", _reg.cover_meta),
+        Paragraph(f"Days Covered:   {period.get('days', '—')}", _reg.cover_meta),
+        Paragraph(f"Generated:      {gen_at} UTC", _reg.cover_meta),
         Spacer(1, 0.4 * inch),
-        Paragraph("CONFIDENTIAL — Internal Use Only", ParagraphStyle(
-            "CoverConfidential",
-            fontName="Helvetica-Oblique",
-            fontSize=8,
-            textColor=hex_color(TEXT_LIGHT),
-        )),
+        Paragraph("CONFIDENTIAL — Internal Use Only", _reg.cover_confidential),
         PageBreak(),
     ]
 
@@ -347,6 +704,7 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
     if not narrative:
         return []
 
+    _reg = PDFStyleRegistry(styles)
     elems = []
 
     # Action Required block
@@ -363,17 +721,12 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
             if ip:
                 action_text += f'<font color="{TEXT_MID}">({ip})</font> '
             action_text += f'<font color="{TEXT_DARK}">{text}</font><br/>'
-        elems.append(Paragraph(action_text, ParagraphStyle(
-            'action_required', parent=styles['Normal'], fontSize=8, spaceBefore=4, spaceAfter=6,
-            leading=12, borderWidth=1, borderColor=hex_color("#ef4444"), borderPadding=6,
-            backColor=hex_color("#FEF2F2"),
-        )))
+        elems.append(Paragraph(action_text, _reg.narrative_action_required))
     elif narrative.get("section_intro"):
         # No action required — show green banner
         elems.append(Paragraph(
-            f'<font color="#22c55e">&#x2713; No immediate action required</font>',
-            ParagraphStyle('no_action', parent=styles['Normal'], fontSize=8,
-                           spaceBefore=2, spaceAfter=4, textColor=hex_color("#22c55e")),
+            '<font color="#22c55e">&#x2713; No immediate action required</font>',
+            _reg.narrative_no_action,
         ))
 
     # Risk summary (executive only)
@@ -381,11 +734,7 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
     if risk:
         elems.append(Paragraph(
             f'<font color="{TEXT_DARK}">{risk}</font>',
-            ParagraphStyle('risk_summary', parent=styles['Normal'], fontSize=8,
-                           spaceBefore=2, spaceAfter=6, leading=12,
-                           borderWidth=1, borderColor=hex_color("#ef4444"),
-                           borderPadding=5, leftIndent=3,
-                           backColor=hex_color("#FEF2F2")),
+            _reg.narrative_risk_summary,
         ))
 
     # Section intro
@@ -393,8 +742,7 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
     if intro:
         elems.append(Paragraph(
             f'<font color="{TEXT_DARK}">{intro}</font>',
-            ParagraphStyle('section_intro', parent=styles['Normal'], fontSize=9,
-                           spaceBefore=2, spaceAfter=4, leading=13),
+            _reg.narrative_section_intro,
         ))
 
     # Top findings
@@ -409,19 +757,14 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
             if f.get("detail"):
                 findings_text += f' <font color="{TEXT_MID}">({f["detail"]})</font>'
             findings_text += '<br/>'
-        elems.append(Paragraph(findings_text, ParagraphStyle(
-            'findings', parent=styles['Normal'], fontSize=8, spaceBefore=2,
-            spaceAfter=4, leading=11,
-        )))
+        elems.append(Paragraph(findings_text, _reg.narrative_findings))
 
     # Interpretation
     interp = narrative.get("interpretation")
     if interp:
         elems.append(Paragraph(
             f'<i><font color="{TEXT_MID}">{interp}</font></i>',
-            ParagraphStyle('interpretation', parent=styles['Normal'], fontSize=8,
-                           spaceBefore=2, spaceAfter=4, leading=11,
-                           backColor=hex_color("#F0F9FF"), borderPadding=4),
+            _reg.narrative_interpretation,
         ))
 
     # Recommended actions
@@ -430,59 +773,185 @@ def _build_narrative_section(narrative: Optional[dict], styles) -> list:
         actions_text = f'<font color="{TEAL}"><b>Recommended Actions:</b></font><br/>'
         for i, act in enumerate(actions[:5], 1):
             actions_text += f'<font color="{TEXT_MID}">{i}. {act}</font><br/>'
-        elems.append(Paragraph(actions_text, ParagraphStyle(
-            'rec_actions', parent=styles['Normal'], fontSize=8, spaceBefore=2,
-            spaceAfter=6, leading=11,
-        )))
+        elems.append(Paragraph(actions_text, _reg.narrative_rec_actions))
 
     return elems
+
+
+# ── Decision banner ───────────────────────────────────────────────────────────
+
+_BANNER_STYLE: Dict[str, tuple] = {
+    # (label, text_color, bg_color, border_color)
+    "ok":       ("GREEN",    "#16A34A", "#F0FDF4", "#22C55E"),
+    "warning":  ("AMBER",    "#D97706", "#FFFBEB", "#F59E0B"),
+    "critical": ("RED",      "#DC2626", "#FEF2F2", "#EF4444"),
+}
+# Usable width: landscape A4 minus 28pt margins each side
+_BANNER_W = landscape(A4)[0] - 56
+
+
+def _build_decision_banner(cross_report: Optional[dict], styles) -> list:
+    """Full-width colored RAG banner for the executive summary page.
+
+    Returns a list containing a single KeepTogether flowable, or an empty list
+    when cross_report is absent.
+    """
+    if not cross_report:
+        return []
+
+    fleet_status = (cross_report.get("fleet_status") or "ok").lower()
+    label, text_color, bg_color, border_color = _BANNER_STYLE.get(fleet_status, _BANNER_STYLE["ok"])
+
+    uptime     = cross_report.get("fleet_uptime")
+    crit       = cross_report.get("critical_device_count") or 0
+    unres      = cross_report.get("unresolved_alert_count") or 0
+    action_str = cross_report.get("composite_action") or ""
+    risks      = (cross_report.get("top_risks") or [])[:2]
+
+    # Headline sentence
+    if fleet_status == "ok":
+        uptime_part = f" — {uptime:.2f}% availability." if uptime is not None else "."
+        headline = f"Fleet Healthy{uptime_part} No critical issues."
+    elif fleet_status == "warning":
+        parts = []
+        if uptime is not None:
+            parts.append(f"{uptime:.2f}% availability")
+        if crit:
+            parts.append(f"{crit} device(s) below SLA")
+        if unres:
+            parts.append(f"{unres} unresolved alert(s)")
+        headline = "Fleet At Risk" + (" — " + ". ".join(parts) + "." if parts else ".")
+    else:
+        headline = f"Fleet Critical — {crit or '?'} device(s) degraded. Immediate action required."
+
+    _reg = PDFStyleRegistry(styles)
+    text_c = text_color
+
+    lines = (
+        f'<b><font color="{text_c}">{label}</font></b>'
+        f'  <font color="{TEXT_DARK}">{headline}</font>'
+    )
+    for r in risks:
+        lines += f'<br/><font color="{TEXT_MID}" size="7">• {r}</font>'
+    if action_str:
+        lines += f'<br/><font color="{text_c}" size="7"><i>→ {action_str}</i></font>'
+
+    inner_style = ParagraphStyle(
+        "_BannerPara",
+        parent=_reg["body"],
+        fontSize=8.5,
+        leading=12,
+    )
+    para = Paragraph(lines, inner_style)
+
+    # Single-cell table; LINEBEFORE gives the left color stripe
+    tbl = Table([[para]], colWidths=[_BANNER_W])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), hex_color(bg_color)),
+        ("LINEBEFORE",    (0, 0), (0, -1),  3, hex_color(border_color)),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]))
+    return [KeepTogether([tbl, Spacer(1, 8)])]
 
 
 # ── Executive summary page ────────────────────────────────────────────────────
 
 def _build_executive_summary(report: dict, styles) -> list:
+    """
+    Executive summary page — exactly two main data tables:
+
+      TABLE 1 — Fleet Health Scorecard
+        Section A: capacity KPIs (big-number row)
+        Section B: SLA tier distribution with bar chart
+
+      TABLE 2 — Devices Requiring Attention
+        Ranked by downtime; rank indicator + colour-coded SLA cells
+    """
     summary = report.get("summary", {})
-    period = report.get("period", {})
     fleet_avg = summary.get("fleet_avg_uptime")
     sla_dist = summary.get("sla_distribution", {})
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    elems = [
+    total_devices = max(summary.get("total_devices", 1), 1)
+
+    # ── Page heading ────────────────────────────────────────────────────────────────────────────
+    elems: List[Any] = [
         section_heading("Executive Summary", styles),
-        HRFlowable(width="100%", thickness=1, color=hex_color(BORDER), spaceAfter=8),
+        HRFlowable(width="100%", thickness=1.5, color=hex_color(NAVY), spaceAfter=10),
     ]
 
-    # ── Insights box (rule-based + optional Gemini) ──────────────────────────
+    # ── Decision Banner (RAG fleet status) ─────────────────────────────────────────────────────
+    elems.extend(_build_decision_banner(report.get("cross_report"), styles))
+
+    # ── Insights box ────────────────────────────────────────────────────────────────────────────
     insights = report.get("insights")
     if insights and insights.get("findings"):
         insight_text = f'<font color="{TEAL}"><b>Analysis:</b></font> '
         insight_text += f'<font color="{TEXT_DARK}">{insights.get("executive_summary", "")}</font><br/>'
         for f in insights["findings"][:3]:
-            sev_color = "#ef4444" if f["severity"] == "critical" else "#f59e0b" if f["severity"] == "warning" else "#22c55e"
-            insight_text += f'<font color="{sev_color}">&#x25CF;</font> <font color="{TEXT_DARK}">{f["text"]}</font><br/>'
+            sev_c = "#ef4444" if f["severity"] == "critical" else "#f59e0b" if f["severity"] == "warning" else "#22c55e"
+            insight_text += f'<font color="{sev_c}">&#x25CF;</font> <font color="{TEXT_DARK}">{f["text"]}</font><br/>'
         if insights.get("recommendations"):
             insight_text += f'<br/><font color="{TEAL}"><b>Recommendations:</b></font><br/>'
             for i, rec in enumerate(insights["recommendations"][:3], 1):
                 insight_text += f'<font color="{TEXT_MID}">{i}. {rec}</font><br/>'
-        elems.append(Paragraph(insight_text, ParagraphStyle(
-            'insights', parent=styles['Normal'], fontSize=8, spaceBefore=4, spaceAfter=8,
-            leading=12, borderWidth=1, borderColor=hex_color(TEAL), borderPadding=6,
-            backColor=hex_color("#F0F9FF"),
-        )))
+        _reg = PDFStyleRegistry(styles)
+        elems.append(Paragraph(insight_text, _reg.insights_block))
         source_label = insights.get("insight_source", "rule_based").replace("_", " ").title()
         elems.append(Paragraph(
             f'<font color="{TEXT_LIGHT}" size="6"><i>Insights: {source_label}</i></font>',
-            ParagraphStyle('insight_src', parent=styles['Normal'], fontSize=6, spaceAfter=6),
+            _reg.insights_source,
         ))
 
-    # ── Narrative section (Master Spec progressive disclosure) ───────────────
+    # ── Narrative (progressive disclosure) ────────────────────────────────────────────────────────────
     narratives = report.get("narratives", {})
     exec_narrative = narratives.get("executive") or report.get("narrative")
     elems.extend(_build_narrative_section(exec_narrative, styles))
 
-    # ── Fleet KPI row ─────────────────────────────────────────────────────────
+    # ── Narrative KPI strip (executive_banner.kpis — previously silently dropped) ────────────────────
+    elems.extend(_render_narrative_kpis(exec_narrative))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # TABLE 1 of 2 — Fleet Health Scorecard
+    # Section A: capacity KPI big-numbers.
+    # Section B: SLA tier distribution with bar chart.
+    # ════════════════════════════════════════════════════════════════════════
+    elems.append(_table_label("TABLE 1 of 2  —  Fleet Health Scorecard", styles))
+
+    if fleet_avg is None:
+        avg_color = TEXT_MID
+    elif fleet_avg >= SLA_GOLD:
+        avg_color = "#16A34A"
+    elif fleet_avg >= SLA_SILVER:
+        avg_color = "#65A30D"
+    elif fleet_avg >= SLA_BRONZE:
+        avg_color = "#D97706"
+    else:
+        avg_color = "#DC2626"
+
     fleet_uptime_str = f"{fleet_avg:.3f}%" if fleet_avg is not None else "—"
-    kpi_data = [
+
+    sla_thresholds = {
+        "Gold":     f"≥ {SLA_GOLD}%",
+        "Silver":   f"≥ {SLA_SILVER}%",
+        "Bronze":   f"≥ {SLA_BRONZE}%",
+        "Warning":  f"≥ {SLA_WARNING}%",
+        "Critical": f"< {SLA_WARNING}%",
+        "Unknown":  "No Data",
+    }
+
+    # Row layout:
+    #  0  SECTION A header (spans all 5 cols)
+    #  1  KPI column labels (small, muted)
+    #  2  KPI big values (18pt bold)
+    #  3  SECTION B header (spans all 5 cols)
+    #  4  SLA column headers
+    #  5-10  SLA tier data rows
+    scorecard_data: List[List[str]] = [
+        ["SECTION A  —  CAPACITY OVERVIEW", "", "", "", ""],
         ["Total Devices", "With Data", "Server Fleet", "Employee Fleet", "Fleet Avg Uptime"],
         [
             str(summary.get("total_devices", 0)),
@@ -491,82 +960,292 @@ def _build_executive_summary(report: dict, styles) -> list:
             str(summary.get("tracked_devices", 0)),
             fleet_uptime_str,
         ],
+        ["SECTION B  —  SLA TIER DISTRIBUTION", "", "", "", ""],
+        ["Tier", "Threshold", "Distribution Bar", "Count", "% of Fleet"],
     ]
-    kpi_table = Table(kpi_data, colWidths=["20%"] * 5)
-    kpi_table.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY_MID)),
-        ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 0), (-1, 0), 8),
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME",      (0, 1), (-1, 1), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 1), (-1, 1), 14),
-        ("TEXTCOLOR",     (0, 1), (-1, 1), hex_color(NAVY)),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("GRID",          (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
-        ("ROWBACKGROUNDS", (0, 1), (-1, 1), [hex_color(BG_LIGHT)]),
-    ]))
-    elems += [kpi_table, Spacer(1, 12)]
 
-    # ── SLA distribution table ────────────────────────────────────────────────
-    elems.append(_subheading("SLA Tier Distribution", styles))
-    sla_header = ["SLA Tier", "Threshold", "Devices", "Distribution"]
-    total_devices = max(summary.get("total_devices", 1), 1)
-    sla_thresholds = {
-        "Gold":    f"\u2265 {SLA_GOLD}%",
-        "Silver":  f"\u2265 {SLA_SILVER}%",
-        "Bronze":  f"\u2265 {SLA_BRONZE}%",
-        "Warning": f"\u2265 {SLA_WARNING}%",
-        "Critical": f"< {SLA_WARNING}%",
-        "Unknown": "No Data",
-    }
-    sla_rows = [sla_header]
+    tier_row_map: Dict[str, int] = {}
     for tier in ("Gold", "Silver", "Bronze", "Warning", "Critical", "Unknown"):
         count = sla_dist.get(tier, 0)
-        pct_val = count / total_devices * 100 if count else 0
-        # Unicode progress bar: 10 chars, filled proportional to pct
-        filled = round(pct_val / 10)
-        bar = "\u2588" * filled + "\u2591" * (10 - filled)
-        pct_str = f"{pct_val:.1f}%  ({count})" if count else "\u2014"
-        sla_rows.append([tier, sla_thresholds[tier], f"{bar}", pct_str])
+        pct = count / total_devices * 100 if count else 0.0
+        tier_color = _SLA_COLORS.get(tier, _SLA_COLORS["Unknown"])
+        bar_cell = sla_bar_cell(pct, tier_color)
+        scorecard_data.append([
+            tier,
+            sla_thresholds[tier],
+            bar_cell,
+            str(count) if count else "—",
+            f"{pct:.1f}%" if count else "—",
+        ])
+        tier_row_map[tier] = len(scorecard_data) - 1
 
-    sla_table = Table(sla_rows, colWidths=["25%", "25%", "25%", "25%"])
-    sla_ts = base_table_style()
-    for i, tier in enumerate(("Gold", "Silver", "Bronze", "Warning", "Critical", "Unknown"), start=1):
+    scorecard = Table(scorecard_data, colWidths=["20%", "20%", "25%", "15%", "20%"])
+    sc_style = TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 1.5, hex_color(NAVY)),
+        ("GRID",          (0, 0), (-1, -1), 0.3, hex_color(BORDER)),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME",      (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE",      (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        # Row 0: SECTION A header
+        ("SPAN",          (0, 0), (-1, 0)),
+        ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 9),
+        ("ALIGN",         (0, 0), (-1, 0), "LEFT"),
+        ("LEFTPADDING",   (0, 0), (-1, 0), 10),
+        ("TOPPADDING",    (0, 0), (-1, 0), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 9),
+        # Row 1: KPI column labels
+        ("BACKGROUND",    (0, 1), (-1, 1), hex_color(BG_ALT)),
+        ("TEXTCOLOR",     (0, 1), (-1, 1), hex_color(TEXT_MID)),
+        ("FONTNAME",      (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 1), (-1, 1), 7),
+        ("ALIGN",         (0, 1), (-1, 1), "CENTER"),
+        ("TOPPADDING",    (0, 1), (-1, 1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 5),
+        # Row 2: KPI big values
+        ("BACKGROUND",    (0, 2), (-1, 2), hex_color(BG_LIGHT)),
+        ("FONTNAME",      (0, 2), (-1, 2), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 2), (-1, 2), 18),
+        ("ALIGN",         (0, 2), (-1, 2), "CENTER"),
+        ("TEXTCOLOR",     (0, 2), (3, 2),  hex_color(NAVY)),
+        ("TEXTCOLOR",     (4, 2), (4, 2),  hex_color(avg_color)),
+        ("TOPPADDING",    (0, 2), (-1, 2), 12),
+        ("BOTTOMPADDING", (0, 2), (-1, 2), 12),
+        # Row 3: SECTION B header
+        ("SPAN",          (0, 3), (-1, 3)),
+        ("BACKGROUND",    (0, 3), (-1, 3), hex_color(NAVY_MID)),
+        ("TEXTCOLOR",     (0, 3), (-1, 3), colors.white),
+        ("FONTNAME",      (0, 3), (-1, 3), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 3), (-1, 3), 9),
+        ("ALIGN",         (0, 3), (-1, 3), "LEFT"),
+        ("LEFTPADDING",   (0, 3), (-1, 3), 10),
+        ("TOPPADDING",    (0, 3), (-1, 3), 8),
+        ("BOTTOMPADDING", (0, 3), (-1, 3), 8),
+        # Row 4: SLA column headers
+        ("BACKGROUND",    (0, 4), (-1, 4), hex_color(NAVY)),
+        ("TEXTCOLOR",     (0, 4), (-1, 4), colors.white),
+        ("FONTNAME",      (0, 4), (-1, 4), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 4), (-1, 4), 7.5),
+        ("ALIGN",         (0, 4), (-1, 4), "CENTER"),
+        ("TOPPADDING",    (0, 4), (-1, 4), 6),
+        ("BOTTOMPADDING", (0, 4), (-1, 4), 6),
+        # Rows 5-10: SLA tier data
+        ("ROWBACKGROUNDS",(0, 5), (-1, -1), [colors.white, hex_color(BG_ALT)]),
+        ("FONTSIZE",      (0, 5), (-1, -1), 8),
+        ("ALIGN",         (1, 5), (-1, -1), "CENTER"),
+        ("ALIGN",         (0, 5), (0, -1),  "LEFT"),
+        ("LEFTPADDING",   (0, 5), (0, -1),  8),
+        # col 2 is now a native colour-bar Table — no text styling needed
+        ("ALIGN",         (2, 5), (2, -1),  "CENTER"),
+        ("VALIGN",        (2, 5), (2, -1),  "MIDDLE"),
+    ])
+    for tier, row_idx in tier_row_map.items():
         text_c, bg_c = _sla_badge_style(tier)
-        sla_ts.add("BACKGROUND", (0, i), (0, i), hex_color(bg_c))
-        sla_ts.add("TEXTCOLOR",  (0, i), (0, i), hex_color(text_c))
-        sla_ts.add("FONTNAME",   (0, i), (0, i), "Helvetica-Bold")
-    sla_table.setStyle(sla_ts)
-    elems += [sla_table, Spacer(1, 12)]
+        sc_style.add("BACKGROUND", (0, row_idx), (0, row_idx), hex_color(bg_c))
+        sc_style.add("TEXTCOLOR",  (0, row_idx), (0, row_idx), hex_color(text_c))
+        sc_style.add("FONTNAME",   (0, row_idx), (0, row_idx), "Helvetica-Bold")
+        if sla_dist.get(tier, 0):
+            sc_style.add("FONTNAME",  (3, row_idx), (3, row_idx), "Helvetica-Bold")
+            sc_style.add("TEXTCOLOR", (3, row_idx), (3, row_idx), hex_color(text_c))
+            sc_style.add("TEXTCOLOR", (4, row_idx), (4, row_idx), hex_color(text_c))
+    scorecard.setStyle(sc_style)
+    elems += [scorecard, Spacer(1, 16)]
 
-    # ── Worst 5 devices ───────────────────────────────────────────────────────
+    # ── Teal dashed divider between the two tables ───────────────────────────────────────────────────────
+    elems.append(HRFlowable(
+        width="100%", thickness=2, color=hex_color(TEAL),
+        dash=(5, 4), spaceAfter=12,
+    ))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # TABLE 2 of 2 — Devices Requiring Attention (ranked by downtime)
+    # ════════════════════════════════════════════════════════════════════════
+    elems.append(_table_label(
+        "TABLE 2 of 2  —  Devices Requiring Attention  (Ranked by Degradation)",
+        styles,
+    ))
+
     worst = summary.get("worst_devices") or []
-    if worst:
-        elems.append(_subheading("Top 5 Devices by Downtime", styles))
-        w_header = ["Device", "IP", "Type / Role", "Uptime %", "Downtime Hours", "SLA Tier"]
-        w_rows = [w_header]
-        for r in worst:
+    _total_worst = len(worst)
+    worst = worst[:10]
+    if not worst:
+        elems.append(normal_paragraph(
+            "No device downtime data available for this period.", styles, color=TEXT_MID,
+        ))
+    else:
+        attn_header = [
+            "#", "●",
+            "Device Name", "IP Address", "Type / Role",
+            "Uptime %", "Downtime", "SLA Tier",
+        ]
+        attn_data: List[List[str]] = [attn_header]
+
+        for rank, r in enumerate(worst, start=1):
             tier = r.get("sla_tier", "Unknown")
-            w_rows.append([
-                r.get("device_name", "—")[:30],
+            if tier in ("Gold", "Silver"):
+                indicator = "✓"    # checkmark
+            elif tier in ("Bronze", "Warning"):
+                indicator = "▲"    # triangle warning
+            else:
+                indicator = "✕"    # X critical
+
+            attn_data.append([
+                str(rank),
+                indicator,
+                (r.get("device_name") or "—")[:28],
                 r.get("device_ip", "—"),
-                r.get("device_type", r.get("employee_name", "Employee"))[:20],
+                (r.get("device_type") or r.get("employee_name") or "—")[:18],
                 _fmt_uptime(r.get("uptime_pct")),
                 _fmt_hours(r.get("downtime_hours")),
                 tier,
             ])
-        w_table = Table(w_rows, colWidths=["25%", "13%", "16%", "12%", "16%", "18%"])
-        w_ts = base_table_style()
-        for i, r in enumerate(worst, start=1):
+
+        attn_table = Table(
+            attn_data,
+            colWidths=["5%", "5%", "24%", "13%", "14%", "12%", "13%", "14%"],
+        )
+        attn_ts = TableStyle([
+            # Header
+            ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, 0), 8),
+            ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
+            ("TOPPADDING",    (0, 0), (-1, 0), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+            # Body
+            ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",      (0, 1), (-1, -1), 8),
+            ("TOPPADDING",    (0, 1), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, hex_color(BG_ALT)]),
+            # Grid + outer border
+            ("GRID",  (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
+            ("BOX",   (0, 0), (-1, -1), 1.5, hex_color(NAVY)),
+            ("VALIGN",(0, 0), (-1, -1), "MIDDLE"),
+            # Rank col: centred, muted
+            ("ALIGN",     (0, 0), (0, -1), "CENTER"),
+            ("TEXTCOLOR", (0, 1), (0, -1), hex_color(TEXT_LIGHT)),
+            ("FONTNAME",  (0, 1), (0, -1), "Helvetica-Bold"),
+            # Indicator col: centred, larger glyph
+            ("ALIGN",    (1, 0), (1, -1), "CENTER"),
+            ("FONTSIZE", (1, 1), (1, -1), 10),
+            ("FONTNAME", (1, 1), (1, -1), "Helvetica-Bold"),
+            # Uptime col: right-aligned, bold
+            ("ALIGN",    (5, 0), (5, -1), "RIGHT"),
+            ("FONTNAME", (5, 1), (5, -1), "Helvetica-Bold"),
+            # Downtime col: right-aligned
+            ("ALIGN",    (6, 0), (6, -1), "RIGHT"),
+            # SLA tier col: centred
+            ("ALIGN",    (7, 0), (7, -1), "CENTER"),
+        ])
+
+        for row_idx, r in enumerate(worst, start=1):
             tier = r.get("sla_tier", "Unknown")
             text_c, bg_c = _sla_badge_style(tier)
-            w_ts.add("BACKGROUND", (5, i), (5, i), hex_color(bg_c))
-            w_ts.add("TEXTCOLOR",  (5, i), (5, i), hex_color(text_c))
-            w_ts.add("FONTNAME",   (5, i), (5, i), "Helvetica-Bold")
-        w_table.setStyle(w_ts)
-        elems += [w_table, Spacer(1, 12)]
+            # SLA tier cell: coloured badge
+            attn_ts.add("BACKGROUND", (7, row_idx), (7, row_idx), hex_color(bg_c))
+            attn_ts.add("TEXTCOLOR",  (7, row_idx), (7, row_idx), hex_color(text_c))
+            attn_ts.add("FONTNAME",   (7, row_idx), (7, row_idx), "Helvetica-Bold")
+            # Uptime cell: same colour as SLA tier
+            attn_ts.add("TEXTCOLOR",  (5, row_idx), (5, row_idx), hex_color(text_c))
+            # Indicator glyph colour
+            if tier in ("Gold", "Silver"):
+                ind_c = "#16A34A"
+            elif tier in ("Bronze", "Warning"):
+                ind_c = "#D97706"
+            else:
+                ind_c = "#DC2626"
+            attn_ts.add("TEXTCOLOR", (1, row_idx), (1, row_idx), hex_color(ind_c))
+            # Rank-1 row: subtle red tint on rank cell to flag worst device
+            if row_idx == 1:
+                attn_ts.add("BACKGROUND", (0, 1), (0, 1), hex_color("#FEE2E2"))
+                attn_ts.add("TEXTCOLOR",  (0, 1), (0, 1), hex_color("#991B1B"))
+
+        attn_table.setStyle(attn_ts)
+        elems.append(attn_table)
+        if _total_worst > 10:
+            elems.append(SP_CAPTION)
+            elems.append(normal_paragraph(
+                f"Showing top 10 of {_total_worst} devices requiring attention.",
+                styles, size=6.5, color=TEXT_LIGHT,
+            ))
+
+    # ── Chronically offline footnote ─────────────────────────────────────────────
+    _offline_summary = summary.get("chronically_offline") or report.get("chronically_offline")
+    if isinstance(_offline_summary, dict) and _offline_summary.get("count", 0) > 0:
+        _off_count = _offline_summary["count"]
+        _off_names = ", ".join(
+            d.get("name", "—") for d in (_offline_summary.get("devices") or [])[:3]
+        )
+        _off_text = (
+            f'<font color="{TEXT_MID}"><i>'
+            f'Note: {_off_count} device(s) with 0% uptime for the entire period '
+            f'are excluded from the attention table above '
+            f'(e.g. {_off_names}{"..." if _off_count > 3 else ""}). '
+            f'Consider decommission review or physical inspection.'
+            f'</i></font>'
+        )
+        elems.append(SP_CAPTION)
+        elems.append(Paragraph(_off_text, ParagraphStyle(
+            "_OfflineFootnote", parent=styles["Normal"],
+            fontName="Helvetica", fontSize=7, leading=9,
+            textColor=hex_color(TEXT_MID),
+        )))
+
+    # ── Top Alert Sources (compact, capped at MAX_ALERTS_EXECUTIVE = 5) ─────────
+    # Pulls total_alerts from existing fleet rows — no additional query needed.
+    all_alert_rows = (
+        (report.get("server_rows") or []) + (report.get("tracked_rows") or [])
+    )
+    alert_sources = sorted(
+        [r for r in all_alert_rows if r.get("total_alerts", 0) > 0],
+        key=lambda r: r.get("total_alerts", 0),
+        reverse=True,
+    )[:MAX_ALERTS_EXECUTIVE]
+
+    if alert_sources:
+        elems.append(Spacer(1, 10))
+        elems.append(_table_label(
+            "Top Alert Sources  (devices with most alerts this period)",
+            styles,
+        ))
+        alert_hdr = ["Device", "IP", "Type", "SLA Tier", "Alerts"]
+        alert_data: List[Any] = [alert_hdr]
+        for r in alert_sources:
+            alert_data.append([
+                truncate_name(r.get("device_name"), 28),
+                r.get("device_ip", "—"),
+                (r.get("device_type") or r.get("employee_name") or "—")[:16],
+                r.get("sla_tier", "Unknown"),
+                str(r.get("total_alerts", 0)),
+            ])
+        alert_tbl = Table(alert_data, colWidths=["28%", "18%", "20%", "18%", "16%"])
+        alert_ts = TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, -1), 7.5),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("GRID",          (0, 0), (-1, -1), 0.3, hex_color(BORDER)),
+            ("BOX",           (0, 0), (-1, -1), 1.0, hex_color(NAVY)),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, hex_color(BG_ALT)]),
+            ("ALIGN",         (4, 0), (4, -1),  "CENTER"),
+            ("FONTNAME",      (4, 1), (4, -1),  "Helvetica-Bold"),
+        ])
+        for idx, r in enumerate(alert_sources, start=1):
+            tier = r.get("sla_tier", "Unknown")
+            text_c, bg_c = _sla_badge_style(tier)
+            alert_ts.add("BACKGROUND", (3, idx), (3, idx), hex_color(bg_c))
+            alert_ts.add("TEXTCOLOR",  (3, idx), (3, idx), hex_color(text_c))
+            alert_ts.add("FONTNAME",   (3, idx), (3, idx), "Helvetica-Bold")
+        alert_tbl.setStyle(alert_ts)
+        elems.append(alert_tbl)
 
     elems.append(PageBreak())
     return elems
@@ -575,169 +1254,212 @@ def _build_executive_summary(report: dict, styles) -> list:
 # ── Server fleet section ──────────────────────────────────────────────────────
 
 def _build_server_fleet(report: dict, styles) -> list:
+    from services.pdf_section_builder import ReportSectionBuilder
     rows = report.get("server_rows", [])
-    elems = [
-        section_heading(f"Server & Network Fleet  ({len(rows)} devices)", styles),
-        normal_paragraph(
+    narratives = report.get("narratives", {})
+    elems: List[Any] = (
+        ReportSectionBuilder(f"Server & Network Fleet  ({len(rows)} devices)", styles)
+        .confidence_meta(report.get("_confidence", {}), "server_fleet", report.get("period"), len(rows))
+        .description(
             "Inventory devices managed via SNMP / ICMP scanning and server_agent telemetry. "
             "Uptime from DailyDeviceStats rollups or raw scan history. "
-            "Latency & packet-loss from DailyDeviceStats.",
-            styles, color=TEXT_MID,
-        ),
-        HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER), spaceAfter=6),
-        Spacer(1, 4),
-    ]
-
-    # Narrative section (Master Spec)
-    narratives = report.get("narratives", {})
-    srv_narrative = narratives.get("server_fleet")
-    elems.extend(_build_narrative_section(srv_narrative, styles))
+            "Latency & packet-loss from DailyDeviceStats."
+        )
+        .narrative(narratives.get("server_fleet"))
+        .build()
+    )
 
     if not rows:
         elems.append(normal_paragraph("No inventory devices found for this period.", styles))
-        elems.append(PageBreak())
         return elems
 
-    # 9 columns — landscape A4 (773pt wide after 28pt margins each side)
-    headers = [
-        "Device Name", "IP Address", "Type",
-        "Uptime %", "Downtime", "Timeout",
-        "Latency", "Pkt Loss", "SLA Tier",
-    ]
-    col_w = ["20%", "13%", "10%", "10%", "10%", "7%", "10%", "9%", "11%"]
+    # ── Server Fleet KPI strip ────────────────────────────────────────────────
+    total_srv = len(rows)
+    critical_count = sum(1 for r in rows if (r.get("uptime_pct") or 100.0) < 70.0)
+    avg_uptime = (
+        sum(r.get("uptime_pct") or 0 for r in rows) / total_srv
+        if total_srv else 0.0
+    )
+    good_sla = sum(1 for r in rows if r.get("sla_tier") in ("Gold", "Silver"))
+    good_sla_pct = good_sla / total_srv * 100 if total_srv else 0.0
 
-    table_data = [headers]
-    for r in rows:
-        tier = r.get("sla_tier", "Unknown")
-        no_resp = r.get("timeout_count", 0)
-        table_data.append([
-            (r.get("device_name") or "—")[:24],
+    elems.append(SP_BLOCK)
+    elems.append(kpi_strip([
+        {"label": "Total Servers",   "value": str(total_srv),
+         "color": "#94A3B8"},
+        {"label": "Critical (<70%)", "value": str(critical_count),
+         "color": "#DC2626" if critical_count > 0 else "#16A34A"},
+        {"label": "Avg Uptime",      "value": f"{avg_uptime:.1f}%",
+         "color": _kpi_color(avg_uptime)},
+        {"label": "SLA Compliant",   "value": f"{good_sla_pct:.0f}%",
+         "color": _kpi_color(good_sla_pct)},
+    ]))
+    elems.append(SP_BLOCK)
+
+    # ── Exception strip — top 5 worst servers before full table (P3) ─────────
+    elems.extend(_build_exception_strip(
+        rows,
+        col_headers=["Device Name", "IP Address", "Uptime %", "SLA Tier", "Downtime"],
+        row_fn=lambda r: [
+            truncate_name(r.get("device_name"), 28),
             r.get("device_ip", "—"),
-            (r.get("device_type") or "—")[:12],
             _fmt_uptime(r.get("uptime_pct")),
+            r.get("sla_tier", "Unknown"),
             _fmt_hours(r.get("downtime_hours")),
-            str(no_resp) if no_resp else "—",
-            _fmt_num(r.get("avg_latency_ms"), " ms"),
-            _fmt_num(r.get("avg_packet_loss_pct"), "%"),
-            tier,
-        ])
+        ],
+        label="Exception Strip — Servers Below SLA Threshold",
+        styles=styles,
+        total_rows=len(rows),
+    ))
 
-    table = Table(table_data, colWidths=col_w, repeatRows=1)
-    ts = base_table_style()
+    # 9-column spec — build_fleet_table enforces MAX_COLS_LANDSCAPE budget
+    def _sla_color(r):
+        return _sla_badge_style(r.get("sla_tier", "Unknown"))
 
-    # Colour uptime col (3) and SLA col (8)
-    for i, r in enumerate(rows, start=1):
-        tier = r.get("sla_tier", "Unknown")
-        text_c, bg_c = _sla_badge_style(tier)
-        ts.add("BACKGROUND", (8, i), (8, i), hex_color(bg_c))
-        ts.add("TEXTCOLOR",  (8, i), (8, i), hex_color(text_c))
-        ts.add("FONTNAME",   (8, i), (8, i), "Helvetica-Bold")
-        ts.add("TEXTCOLOR",  (3, i), (3, i), hex_color(text_c))
-        ts.add("FONTNAME",   (3, i), (3, i), "Helvetica-Bold")
-        # Highlight timeout column if non-zero
-        no_resp = r.get("timeout_count", 0)
-        if no_resp and no_resp > 0:
-            ts.add("TEXTCOLOR", (5, i), (5, i), hex_color("#EA580C"))
-            ts.add("FONTNAME",  (5, i), (5, i), "Helvetica-Bold")
-        # Severity colors for latency (col 6) and packet loss (col 7)
+    def _latency_color(r):
         lat = r.get("avg_latency_ms")
-        if lat is not None and lat > 200:
-            ts.add("TEXTCOLOR", (6, i), (6, i), hex_color("#DC2626"))
-            ts.add("FONTNAME",  (6, i), (6, i), "Helvetica-Bold")
-        elif lat is not None and lat > 100:
-            ts.add("TEXTCOLOR", (6, i), (6, i), hex_color("#D97706"))
-        pkt = r.get("avg_packet_loss_pct")
-        if pkt is not None and pkt > 15:
-            ts.add("TEXTCOLOR", (7, i), (7, i), hex_color("#DC2626"))
-            ts.add("FONTNAME",  (7, i), (7, i), "Helvetica-Bold")
-        elif pkt is not None and pkt > 5:
-            ts.add("TEXTCOLOR", (7, i), (7, i), hex_color("#D97706"))
+        if lat is None:
+            return None
+        if lat > 200:
+            return ("#DC2626", None)
+        if lat > 100:
+            return ("#D97706", None)
+        return None
 
-    table.setStyle(ts)
-    elems.append(table)
-    elems.append(PageBreak())
+    def _pktloss_color(r):
+        pkt = r.get("avg_packet_loss_pct")
+        if pkt is None:
+            return None
+        if pkt > 15:
+            return ("#DC2626", None)
+        if pkt > 5:
+            return ("#D97706", None)
+        return None
+
+    server_col_specs = [
+        {"header": "Device Name", "width": "20%",
+         "fmt": lambda r: (r.get("device_name") or "—")[:24]},
+        {"header": "IP Address",  "width": "13%", "key": "device_ip"},
+        {"header": "Type",        "width": "10%",
+         "fmt": lambda r: (r.get("device_type") or "—")[:12]},
+        {"header": "Uptime %",    "width": "10%",
+         "fmt": lambda r: _fmt_uptime(r.get("uptime_pct")),
+         "color_fn": _sla_color, "align": "RIGHT"},
+        {"header": "Downtime",    "width": "10%",
+         "fmt": lambda r: _fmt_hours(r.get("downtime_hours")), "align": "RIGHT"},
+        {"header": "Timeout",     "width": "7%",
+         "fmt": lambda r: str(r.get("timeout_count", 0)) if r.get("timeout_count") else "—",
+         "color_fn": lambda r: ("#EA580C", None) if r.get("timeout_count", 0) > 0 else None,
+         "align": "CENTER"},
+        {"header": "Latency",     "width": "10%",
+         "fmt": lambda r: _fmt_num(r.get("avg_latency_ms"), " ms"),
+         "color_fn": _latency_color, "align": "RIGHT"},
+        {"header": "Pkt Loss",    "width": "9%",
+         "fmt": lambda r: _fmt_num(r.get("avg_packet_loss_pct"), "%"),
+         "color_fn": _pktloss_color, "align": "RIGHT"},
+        {"header": "SLA Tier",    "width": "11%",
+         "fmt": lambda r: r.get("sla_tier", "Unknown"),
+         "color_fn": _sla_color, "align": "CENTER"},
+    ]
+    elems.extend(build_fleet_table(rows, server_col_specs))
     return elems
 
 
 # ── Employee / tracking fleet section ────────────────────────────────────────
 
 def _build_tracked_fleet(report: dict, styles) -> list:
+    from services.pdf_section_builder import ReportSectionBuilder
     rows = report.get("tracked_rows", [])
-    elems = [
-        section_heading(f"Employee Device Fleet  ({len(rows)} devices)", styles),
-        normal_paragraph(
-            "Employee / workstation devices managed via the service.py tracking agent. "
-            "Uptime from tracked_device_availability_events stream. "
-            "Status reflects current availability. MTTR = mean time to recover (minutes).",
-            styles, color=TEXT_MID,
-        ),
-        HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER), spaceAfter=6),
-        Spacer(1, 4),
-    ]
-
-    # Narrative section (Master Spec)
     narratives = report.get("narratives", {})
-    ws_narrative = narratives.get("tracked_fleet")
-    elems.extend(_build_narrative_section(ws_narrative, styles))
+    elems: List[Any] = (
+        ReportSectionBuilder(f"Employee Device Fleet  ({len(rows)} devices)", styles)
+        .confidence_meta(report.get("_confidence", {}), "tracked_fleet", report.get("period"), len(rows))
+        .description(
+            "Employee / workstation devices managed via the tracking agent. "
+            "Uptime from tracked_device_availability_events stream. "
+            "Status reflects current availability."
+        )
+        .narrative(narratives.get("tracked_fleet"))
+        .build()
+    )
 
     if not rows:
         elems.append(normal_paragraph("No tracked devices found for this period.", styles))
         return elems
 
-    # 12 columns
-    headers = [
-        "Device Name", "Employee", "Department",
-        "IP Address", "Status",
-        "Uptime %", "Downtime",
-        "Incidents", "MTTR", "MTBF",
-        "Last Seen", "SLA Tier",
-    ]
-    col_w = ["14%", "11%", "10%", "9%", "7%", "8%", "7%", "6%", "6%", "6%", "9%", "7%"]
+    # ── Tracked Fleet KPI strip ───────────────────────────────────────────────
+    total_ws = len(rows)
+    offline_count = sum(
+        1 for r in rows if (r.get("availability_status") or "").lower() == "offline"
+    )
+    avg_avail = (
+        sum(r.get("uptime_pct") or 0 for r in rows) / total_ws
+        if total_ws else 0.0
+    )
+    high_risk = sum(1 for r in rows if r.get("sla_tier") in ("Warning", "Critical"))
 
-    table_data = [headers]
-    for r in rows:
-        tier = r.get("sla_tier", "Unknown")
-        last_seen = _fmt_ts_short(r.get("last_seen"))
-        mttr = r.get("mttr_min")
-        mtbf = r.get("mtbf_hours")
-        status_raw = (r.get("availability_status") or "unknown").lower()
-        table_data.append([
-            (r.get("device_name") or "—")[:20],
+    elems.append(SP_BLOCK)
+    elems.append(kpi_strip([
+        {"label": "Total Tracked",     "value": str(total_ws),
+         "color": "#94A3B8"},
+        {"label": "Offline",           "value": str(offline_count),
+         "color": "#DC2626" if offline_count > 0 else "#16A34A"},
+        {"label": "Avg Availability",  "value": f"{avg_avail:.1f}%",
+         "color": _kpi_color(avg_avail)},
+        {"label": "High Risk",         "value": str(high_risk),
+         "color": "#DC2626" if high_risk > 0 else "#16A34A"},
+    ]))
+    elems.append(SP_BLOCK)
+
+    # ── Exception strip — top 5 worst workstations before full table (P3) ────
+    elems.extend(_build_exception_strip(
+        rows,
+        col_headers=["Device Name", "Employee", "Status", "Uptime %", "SLA Tier"],
+        row_fn=lambda r: [
+            truncate_name(r.get("device_name"), 24),
             (r.get("employee_name") or "—")[:16],
-            (r.get("department") or "—")[:14],
-            r.get("device_ip", "—"),
-            status_raw.capitalize(),
+            (r.get("availability_status") or "unknown").capitalize(),
             _fmt_uptime(r.get("uptime_pct")),
-            _fmt_hours(r.get("downtime_hours")),
-            str(r.get("incident_count") or "0"),
-            f"{mttr:.0f} min" if mttr is not None else "—",
-            f"{mtbf:.1f} h" if mtbf is not None else "—",
-            last_seen,
-            tier,
-        ])
+            r.get("sla_tier", "Unknown"),
+        ],
+        label="Exception Strip — Workstations Below SLA Threshold",
+        styles=styles,
+        total_rows=len(rows),
+    ))
 
-    table = Table(table_data, colWidths=col_w, repeatRows=1)
-    ts = base_table_style()
+    # 9-column spec — MTTR, MTBF, Incidents removed (available in Device Inspector)
+    def _sla_col(r):
+        return _sla_badge_style(r.get("sla_tier", "Unknown"))
 
-    for i, r in enumerate(rows, start=1):
-        tier = r.get("sla_tier", "Unknown")
-        status_raw = (r.get("availability_status") or "unknown").lower()
-        sla_text_c, sla_bg_c = _sla_badge_style(tier)
-        st_text_c, st_bg_c = _status_style(status_raw)
-        # SLA col (11)
-        ts.add("BACKGROUND", (11, i), (11, i), hex_color(sla_bg_c))
-        ts.add("TEXTCOLOR",  (11, i), (11, i), hex_color(sla_text_c))
-        ts.add("FONTNAME",   (11, i), (11, i), "Helvetica-Bold")
-        # Uptime col (5)
-        ts.add("TEXTCOLOR",  (5, i), (5, i), hex_color(sla_text_c))
-        ts.add("FONTNAME",   (5, i), (5, i), "Helvetica-Bold")
-        # Status col (4)
-        ts.add("BACKGROUND", (4, i), (4, i), hex_color(st_bg_c))
-        ts.add("TEXTCOLOR",  (4, i), (4, i), hex_color(st_text_c))
-        ts.add("FONTNAME",   (4, i), (4, i), "Helvetica-Bold")
+    def _status_col(r):
+        return _status_style((r.get("availability_status") or "unknown").lower())
 
-    table.setStyle(ts)
-    elems.append(table)
+    ws_col_specs = [
+        {"header": "Device Name",  "width": "19%",
+         "fmt": lambda r: (r.get("device_name") or "—")[:28]},
+        {"header": "Employee",     "width": "12%",
+         "fmt": lambda r: (r.get("employee_name") or "—")[:16]},
+        {"header": "Department",   "width": "11%",
+         "fmt": lambda r: (r.get("department") or "—")[:14]},
+        {"header": "IP Address",   "width": "10%", "key": "device_ip"},
+        {"header": "Status",       "width": "9%",
+         "fmt": lambda r: (r.get("availability_status") or "unknown").capitalize(),
+         "color_fn": _status_col, "align": "CENTER"},
+        {"header": "Uptime %",     "width": "10%",
+         "fmt": lambda r: _fmt_uptime(r.get("uptime_pct")),
+         "color_fn": _sla_col, "align": "RIGHT"},
+        {"header": "Downtime",     "width": "8%",
+         "fmt": lambda r: _fmt_hours(r.get("downtime_hours")), "align": "RIGHT"},
+        {"header": "Last Seen",    "width": "12%",
+         "fmt": lambda r: _fmt_ts_short(r.get("last_seen"))},
+        {"header": "SLA Tier",     "width": "9%",
+         "fmt": lambda r: r.get("sla_tier", "Unknown"),
+         "color_fn": _sla_col, "align": "CENTER"},
+    ]
+    elems.extend(build_fleet_table(
+        rows, ws_col_specs,
+        caption="\u2020 MTTR, MTBF, and Incident counts available per device in the Device Inspector report.",
+    ))
     return elems
 
 
@@ -751,16 +1473,25 @@ class PageFooter:
 
     def __call__(self, canvas, doc):
         canvas.saveState()
+        w, h = doc.pagesize
+        # ── Inner-page header (pages 2+) ────────────────────────────────────
+        if doc.page >= 2:
+            top_y = h - doc.topMargin + 2
+            canvas.setFillColor(hex_color(NAVY))
+            canvas.rect(doc.leftMargin, top_y, doc.width, 16, fill=1, stroke=0)
+            canvas.setFillColor(colors.white)
+            canvas.setFont("Helvetica", 6.5)
+            canvas.drawString(doc.leftMargin + 6, top_y + 5, "CONFIDENTIAL")
+            canvas.drawRightString(doc.leftMargin + doc.width - 6, top_y + 5, self.title)
+        # ── Page footer ─────────────────────────────────────────────────────
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(hex_color(TEXT_LIGHT))
-        w, h = doc.pagesize
-        # Master Spec: classification marking + generated by
+        # Classification marking · title
         canvas.drawString(doc.leftMargin, doc.bottomMargin - 10,
-                          f"CONFIDENTIAL  --  Internal Use Only   |   {self.title}")
-        source_label = self.insight_source.replace("_", " ").title()
+                          f"CONFIDENTIAL \u00b7 Internal Use Only \u00b7 {self.title}")
         canvas.drawRightString(
             w - doc.rightMargin, doc.bottomMargin - 10,
-            f"Generated {self.gen_at} UTC   |   Rule-Based Insights Engine   |   Page {doc.page}",
+            f"Generated {self.gen_at} UTC \u00b7 Rule-Based Insights Engine \u00b7 Page {doc.page}",
         )
         canvas.restoreState()
 
@@ -800,30 +1531,18 @@ def _build_violations_section(report: dict, styles) -> list:
     affected_devices = len(top_offenders)
     top_device = top_offenders[0] if top_offenders else None
 
-    kpi_data = [
-        ["Total Violations", "Affected Devices", "Top Offender"],
-        [
-            str(total),
-            str(affected_devices),
-            (top_device.get("device_name", "—") if top_device else "—"),
-        ],
-    ]
-    kpi_table = Table(kpi_data, colWidths=["33%", "33%", "34%"])
-    kpi_table.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY_MID)),
-        ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 0), (-1, 0), 8),
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME",      (0, 1), (-1, 1), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 1), (-1, 1), 14),
-        ("TEXTCOLOR",     (0, 1), (-1, 1), hex_color(NAVY)),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("GRID",          (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
-        ("ROWBACKGROUNDS", (0, 1), (-1, 1), [hex_color(BG_LIGHT)]),
+    story.append(kpi_strip([
+        {"label": "Total Violations",
+         "value": str(total),
+         "color": "#DC2626" if total > 0 else "#16A34A"},
+        {"label": "Affected Devices",
+         "value": str(affected_devices),
+         "color": "#DC2626" if affected_devices > 0 else "#16A34A"},
+        {"label": "Top Offender",
+         "value": (top_device.get("device_name", "—") if top_device else "—"),
+         "color": "#94A3B8"},
     ]))
-    story += [kpi_table, Spacer(1, 0.4 * cm)]
+    story.append(SP_BLOCK)
 
     # ── Top violating domains ─────────────────────────────────────────────────
     # Aggregate domain counts from tracked_rows violation data
@@ -879,9 +1598,8 @@ def _build_confidence_footnotes(report: dict, styles) -> list:
         '<font color="#9CA3AF">N/A</font> = no data available'
         '</font>'
     )
-    story.append(Paragraph(legend, ParagraphStyle(
-        'confidence_legend', parent=styles['Normal'], fontSize=7, spaceBefore=4,
-    )))
+    _reg = PDFStyleRegistry(styles)
+    story.append(Paragraph(legend, _reg.confidence_legend))
 
     # Per-section confidence
     for key, info in confidence.items():
@@ -893,9 +1611,7 @@ def _build_confidence_footnotes(report: dict, styles) -> list:
         if source:
             text += f' ({source})'
         text += '</font>'
-        story.append(Paragraph(text, ParagraphStyle(
-            f'conf_{key}', parent=styles['Normal'], fontSize=6, spaceBefore=1,
-        )))
+        story.append(Paragraph(text, _reg.confidence_item))
 
     return story
 
@@ -946,19 +1662,490 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
         _draw_cover_bg(canvas, doc)
         footer(canvas, doc)
 
+    # ── Gemini Layer-2 narrative enhancement (optional) ─────────────────────
+    import os as _os
+    if _os.environ.get("GEMINI_API_KEY"):
+        try:
+            from services.gemini_pdf_narrative import enhance_pdf_narratives
+            report = dict(report)
+            report["narratives"] = enhance_pdf_narratives(
+                report.get("narratives") or {}, report
+            )
+            logger.debug("[EnterprisePDF] Gemini narrative enhancement applied")
+        except Exception as _e:
+            logger.warning("[EnterprisePDF] Gemini narrative enhancement skipped: %s", _e)
+
+    from services.report_context import ReportContext
+    ctx = ReportContext(report)
+
     story = []
     story += _build_cover(report, styles, fleet=fleet)
     story += _build_executive_summary(report, styles)
-    if fleet in ("all", "server"):
+    if fleet in ("all", "server") and ctx.should_render_server_fleet():
         story += _build_server_fleet(report, styles)
-    if fleet in ("all", "workstation"):
+    if fleet in ("all", "workstation") and ctx.should_render_tracked_fleet():
         story += _build_tracked_fleet(report, styles)
-    story += _build_violations_section(report, styles)
+    if ctx.should_render_violations():
+        story += _build_violations_section(report, styles)
     story += _build_confidence_footnotes(report, styles)
 
     doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
     buf.seek(0)
     logger.info("[EnterprisePDF] PDF complete: %d bytes", len(buf.getvalue()))
+    return buf
+
+
+def generate_alert_report_pdf(report_data: dict) -> io.BytesIO:
+    """Structured Alert History Report PDF.
+
+    Follows the enterprise 8-step section pipeline:
+      Cover → KPI strip → Narrative → Exception strip (top 5) →
+      Severity breakdown → Top alerted devices → Unresolved aging →
+      Confidence footnotes
+    """
+    period = report_data.get("period", {})
+    gen_at = _fmt_ts(report_data.get("generated_at") or datetime.utcnow())
+    start_str = _fmt_ts(period.get("start"))
+    end_str   = _fmt_ts(period.get("end"))
+    report_title = f"Alert History Report  |  {start_str} — {end_str}"
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=28, rightMargin=28,
+        topMargin=28,  bottomMargin=36,
+        title=report_title,
+        author="Device Monitoring Tactical",
+    )
+    styles = getSampleStyleSheet()
+    _reg = PDFStyleRegistry(styles)
+    footer = PageFooter(report_title, gen_at)
+
+    def _first_page(canvas, doc):
+        _draw_cover_bg(canvas, doc)
+        footer(canvas, doc)
+
+    # ── Cover ──────────────────────────────────────────────────────────────────
+    story: List[Any] = [
+        Spacer(1, 1.2 * inch),
+        Paragraph("Alert History", _reg.cover_title),
+        Paragraph("Report", _reg.cover_title),
+        Spacer(1, 0.3 * inch),
+        Paragraph("System Alerts — Severity, Response Times &amp; Unresolved Aging", _reg.cover_subtitle),
+        Spacer(1, 0.2 * inch),
+        Paragraph(f"Period:  {start_str} — {end_str}", _reg.cover_meta),
+        Paragraph(f"Generated:  {gen_at}", _reg.cover_meta),
+        Spacer(1, 0.15 * inch),
+        Paragraph("CONFIDENTIAL — INTERNAL USE ONLY", _reg.cover_confidential),
+        PageBreak(),
+    ]
+
+    # ── KPI strip ──────────────────────────────────────────────────────────────
+    sev = report_data.get("severity_breakdown") or {}
+    alerts_total   = report_data.get("alerts_total_count") or len(report_data.get("alerts") or [])
+    critical_count = sev.get("CRITICAL", 0)
+    unresolved     = sum(
+        v for k, v in (report_data.get("unresolved_aging") or {}).items()
+    )
+    tta_human = (report_data.get("tta") or {}).get("human") or "—"
+    tta_human = tta_human.split(",")[0] if tta_human != "—" else "—"
+
+    _alert_meta = _confidence_meta_text(
+        {"alerts": {"level": "HIGH", "source": "DashboardEvent log"}},
+        "alerts", period, alerts_total or None,
+    )
+    story.append(section_heading_with_meta("Alert Summary", styles, _alert_meta))
+    story.append(kpi_strip([
+        {"label": "Total Alerts",   "value": str(alerts_total),
+         "color": "#DC2626" if alerts_total > 0 else "#16A34A"},
+        {"label": "Critical",       "value": str(critical_count),
+         "color": "#DC2626" if critical_count > 0 else "#16A34A"},
+        {"label": "Unresolved",     "value": str(unresolved),
+         "color": "#DC2626" if unresolved > 0 else "#16A34A"},
+        {"label": "Avg TTA",        "value": tta_human,
+         "color": "#D97706" if tta_human != "—" else "#94A3B8"},
+    ]))
+    story.append(SP_BLOCK)
+
+    # ── Narrative ──────────────────────────────────────────────────────────────
+    story.extend(_build_narrative_section(report_data.get("narrative"), styles))
+
+    # ── Exception strip — top 5 oldest unresolved critical alerts ─────────────
+    all_alerts = report_data.get("alerts") or []
+    unresolved_alerts = sorted(
+        [a for a in all_alerts if not a.get("resolved") and a.get("severity") == "CRITICAL"],
+        key=lambda a: a.get("timestamp") or "",
+    )[:5]
+    if unresolved_alerts:
+        story.append(SP_BLOCK)
+        story.append(_table_label("Exception Strip — Oldest Unresolved Critical Alerts", styles))
+        exc_headers = ["Device", "IP", "Type", "Since", "Age"]
+        exc_data: List[Any] = [exc_headers]
+        for a in unresolved_alerts:
+            ts_raw = a.get("timestamp", "")
+            since_str = _fmt_ts_short(ts_raw) if ts_raw else "—"
+            # Compute age from timestamp to now
+            try:
+                from datetime import timezone as _tz
+                ts_dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")) if ts_raw else None
+                age_h = round((datetime.now(_tz.utc) - ts_dt).total_seconds() / 3600) if ts_dt else None
+                age_str = f"{age_h}h" if age_h is not None else "—"
+            except Exception:
+                age_str = "—"
+            exc_data.append([
+                truncate_name(a.get("device_name"), 24),
+                a.get("device_ip", "—"),
+                (a.get("event_type") or "—")[:14],
+                since_str,
+                age_str,
+            ])
+        exc_tbl = Table(exc_data, colWidths=["28%", "18%", "16%", "22%", "16%"])
+        exc_ts = TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), hex_color("#78350F")),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, -1), 7.5),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [hex_color("#FFFBEB"), hex_color("#FEF3C7")]),
+            ("GRID",          (0, 0), (-1, -1), 0.4, hex_color("#D97706")),
+            ("BOX",           (0, 0), (-1, -1), 1.5, hex_color("#D97706")),
+        ])
+        exc_tbl.setStyle(exc_ts)
+        story.append(exc_tbl)
+        story.append(SP_CAPTION)
+
+    # ── Severity breakdown ─────────────────────────────────────────────────────
+    if sev:
+        story.append(SP_BLOCK)
+        story.append(_subheading("Severity Breakdown", styles))
+        sev_data: List[Any] = [["Severity", "Count"]]
+        _SEV_ORDER = ["CRITICAL", "WARNING", "INFO", "LOW"]
+        for s in _SEV_ORDER:
+            if s in sev:
+                sev_data.append([s, str(sev[s])])
+        for s, v in sev.items():
+            if s not in _SEV_ORDER:
+                sev_data.append([s, str(v)])
+        sev_tbl = Table(sev_data, colWidths=["50%", "50%"])
+        sev_ts = base_table_style()
+        for idx, s_key in enumerate(_SEV_ORDER, start=1):
+            if idx < len(sev_data):
+                color_map = {"CRITICAL": "#DC2626", "WARNING": "#D97706", "INFO": "#3B82F6", "LOW": "#6B7280"}
+                c = color_map.get(s_key, "#94A3B8")
+                sev_ts.add("TEXTCOLOR", (0, idx), (0, idx), hex_color(c))
+                sev_ts.add("FONTNAME",  (0, idx), (0, idx), "Helvetica-Bold")
+        sev_tbl.setStyle(sev_ts)
+        story.append(sev_tbl)
+
+    # ── Top alerted devices ────────────────────────────────────────────────────
+    top_devices = (report_data.get("top_alerted_devices") or [])[:MAX_EXCEPTION_ROWS]
+    if top_devices:
+        story.append(SP_BLOCK)
+        story.append(_subheading("Most Alerted Devices", styles))
+        td_data: List[Any] = [["Device", "IP", "Alert Count"]]
+        for d in top_devices:
+            td_data.append([
+                truncate_name(d.get("device_name"), 28),
+                d.get("device_ip", "—"),
+                str(d.get("alert_count", 0)),
+            ])
+        td_tbl = Table(td_data, colWidths=["45%", "30%", "25%"])
+        td_ts = base_table_style()
+        for idx in range(1, len(td_data)):
+            td_ts.add("ALIGN", (2, idx), (2, idx), "CENTER")
+            td_ts.add("FONTNAME", (2, idx), (2, idx), "Helvetica-Bold")
+        td_tbl.setStyle(td_ts)
+        story.append(td_tbl)
+
+    # ── Unresolved aging ───────────────────────────────────────────────────────
+    aging = report_data.get("unresolved_aging") or {}
+    if aging and any(v > 0 for v in aging.values()):
+        story.append(SP_BLOCK)
+        story.append(_subheading("Unresolved Alert Aging", styles))
+        ag_data: List[Any] = [["Age Bucket", "Count"]]
+        for bucket, count in aging.items():
+            ag_data.append([str(bucket), str(count)])
+        ag_tbl = Table(ag_data, colWidths=["60%", "40%"])
+        ag_ts = base_table_style()
+        ag_tbl.setStyle(ag_ts)
+        story.append(ag_tbl)
+
+    # ── Export note ────────────────────────────────────────────────────────────
+    if report_data.get("alerts_truncated"):
+        story.append(SP_BLOCK)
+        story.append(normal_paragraph(
+            report_data.get("alerts_export_note") or "Full alert list available via CSV/XLSX export.",
+            styles, size=6.5, color=TEXT_LIGHT,
+        ))
+
+    # ── Confidence footnotes ───────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(section_heading("Data Source", styles))
+    story.append(normal_paragraph(
+        "Alert data sourced from DashboardEvent table (dashboard_events). "
+        "Timestamps in IST (Asia/Kolkata). TTA/TTR computed from acknowledged_at and resolved_at fields.",
+        styles, color=TEXT_MID,
+    ))
+
+    doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
+    buf.seek(0)
+    logger.info("[AlertPDF] PDF complete: %d bytes", len(buf.getvalue()))
+    return buf
+
+
+def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
+    """Structured Device Health Report PDF.
+
+    Uses peaks_and_breaches ONLY — raw time_series is never passed to this function.
+    Follows the enterprise section pipeline:
+      Cover → KPI strip → Narrative → Capacity Runway table →
+      Breach Summary table → Per-device avg/max table → Confidence footnote
+    """
+    period = report_data.get("period", {})
+    gen_at = _fmt_ts(report_data.get("generated_at") or datetime.utcnow())
+    start_str = _fmt_ts(period.get("start"))
+    end_str   = _fmt_ts(period.get("end"))
+    report_title = f"Device Health Report  |  {start_str} — {end_str}"
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=28, rightMargin=28,
+        topMargin=28,  bottomMargin=36,
+        title=report_title,
+        author="Device Monitoring Tactical",
+    )
+    styles = getSampleStyleSheet()
+    _reg = PDFStyleRegistry(styles)
+    footer = PageFooter(report_title, gen_at)
+
+    def _first_page(canvas, doc):
+        _draw_cover_bg(canvas, doc)
+        footer(canvas, doc)
+
+    # ── Cover ──────────────────────────────────────────────────────────────────
+    story: List[Any] = [
+        Spacer(1, 1.2 * inch),
+        Paragraph("Device Health", _reg.cover_title),
+        Paragraph("Report", _reg.cover_title),
+        Spacer(1, 0.3 * inch),
+        Paragraph("CPU, Memory &amp; Disk Capacity Risks — Threshold Breaches &amp; Runway Estimates", _reg.cover_subtitle),
+        Spacer(1, 0.2 * inch),
+        Paragraph(f"Period:  {start_str} — {end_str}", _reg.cover_meta),
+        Paragraph(f"Generated:  {gen_at}", _reg.cover_meta),
+        PageBreak(),
+    ]
+
+    # ── Data from report ───────────────────────────────────────────────────────
+    peaks_and_breaches = report_data.get("peaks_and_breaches") or {}
+    data_note    = report_data.get("data_note")
+    granularity  = report_data.get("granularity", "hourly")
+    total_samples = report_data.get("total_samples", 0)
+    narrative    = report_data.get("narrative")
+
+    # KPI strip values
+    device_count    = len(peaks_and_breaches)
+    capacity_at_risk = sum(
+        1 for dev in peaks_and_breaches.values()
+        if any(r.get("estimated_days_to_breach", 999) < 60 for r in dev.get("capacity_runway", []))
+    )
+    breach_count = sum(len(dev.get("breaches", [])) for dev in peaks_and_breaches.values())
+    data_src_label = {
+        "raw": "Raw Logs",
+        "hourly": "Hourly Rollup",
+        "daily": "Daily Rollup",
+    }.get(granularity, granularity.capitalize())
+
+    # ── Section opener via ReportSectionBuilder ────────────────────────────────
+    from services.pdf_section_builder import ReportSectionBuilder
+    _health_confidence = {"device_health": {
+        "level": "HIGH" if granularity in ("hourly", "daily") else "MEDIUM",
+        "source": data_src_label,
+    }}
+    story.extend(
+        ReportSectionBuilder("Device Health Overview", styles)
+        .no_page_break()
+        .confidence_meta(_health_confidence, "device_health", period, device_count)
+        .narrative(narrative)
+        .build()
+    )
+    story.append(SP_BLOCK)
+    story.append(kpi_strip([
+        {"label": "Devices with Telemetry", "value": str(device_count),
+         "color": "#94A3B8"},
+        {"label": "Capacity at Risk (<60d)", "value": str(capacity_at_risk),
+         "color": "#DC2626" if capacity_at_risk > 0 else "#16A34A"},
+        {"label": "Breach Events", "value": str(breach_count),
+         "color": "#EA580C" if breach_count > 0 else "#16A34A"},
+        {"label": "Data Source", "value": data_src_label,
+         "color": "#94A3B8"},
+        {"label": "Total Samples", "value": str(total_samples),
+         "color": "#94A3B8"},
+    ]))
+    story.append(SP_BLOCK)
+
+    # ── No-data guard ──────────────────────────────────────────────────────────
+    if data_note == "no_data" or not peaks_and_breaches:
+        story.append(normal_paragraph(
+            "No telemetry data was found for this period. "
+            "Verify agent connectivity and that server health logging is active.",
+            styles, color=TEXT_MID,
+        ))
+        doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
+        buf.seek(0)
+        return buf
+
+    # ── Sparse data note ───────────────────────────────────────────────────────
+    if data_note == "sparse":
+        story.append(normal_paragraph(
+            "Note: telemetry data for this period is sparse. "
+            "Runway estimates and breach analysis may not be representative.",
+            styles, color="#D97706",
+        ))
+        story.append(SP_BLOCK)
+
+    # ── Capacity Runway table ──────────────────────────────────────────────────
+    runway_rows: List[dict] = []
+    for dev in peaks_and_breaches.values():
+        for r in dev.get("capacity_runway", []):
+            if r.get("estimated_days_to_breach", 999) < 60:
+                runway_rows.append({
+                    "device_name": dev.get("device_name", "—"),
+                    **r,
+                })
+    runway_rows.sort(key=lambda r: r.get("estimated_days_to_breach", 999))
+
+    if runway_rows:
+        story.append(section_heading("Capacity Runway — At-Risk Devices", styles))
+        story.append(normal_paragraph(
+            "Devices estimated to breach the warning threshold within 60 days (linear regression, R²≥0.3, growth≥0.1%/day).",
+            styles, color=TEXT_MID,
+        ))
+        story.append(SP_BLOCK)
+        rw_headers = ["Device", "Metric", "Current Avg", "Days to Breach", "Threshold", "Confidence"]
+        rw_data: List[Any] = [rw_headers]
+        for r in runway_rows[:10]:
+            days = r.get("estimated_days_to_breach")
+            urgency_color = "#DC2626" if (days or 999) < 14 else ("#D97706" if (days or 999) < 30 else "#16A34A")
+            rw_data.append([
+                truncate_name(r.get("device_name"), 28),
+                r.get("metric", "—"),
+                f"{r.get('current_avg', 0):.1f}%",
+                str(days) + " days" if days is not None else "—",
+                f"{r.get('threshold', 0):.0f}%",
+                (r.get("confidence") or "—").capitalize(),
+            ])
+        rw_tbl = Table(rw_data, colWidths=["25%", "15%", "13%", "16%", "12%", "14%"])
+        rw_ts = base_table_style()
+        for idx in range(1, len(rw_data)):
+            days_val = runway_rows[idx - 1].get("estimated_days_to_breach", 999)
+            c = "#DC2626" if days_val < 14 else ("#D97706" if days_val < 30 else "#16A34A")
+            rw_ts.add("TEXTCOLOR", (3, idx), (3, idx), hex_color(c))
+            rw_ts.add("FONTNAME",  (3, idx), (3, idx), "Helvetica-Bold")
+        rw_tbl.setStyle(rw_ts)
+        story.append(rw_tbl)
+        story.append(SP_BLOCK)
+    else:
+        story.append(normal_paragraph(
+            "No capacity risks detected within 60 days. All monitored metrics are within safe growth thresholds.",
+            styles, color="#16A34A",
+        ))
+        story.append(SP_BLOCK)
+
+    # ── Breach Summary table ───────────────────────────────────────────────────
+    breach_rows: List[dict] = []
+    for dev in peaks_and_breaches.values():
+        for b in dev.get("breaches", []):
+            if b.get("sustained_hours", 0) >= 2:
+                breach_rows.append({
+                    "device_name": dev.get("device_name", "—"),
+                    **b,
+                })
+    breach_rows.sort(key=lambda r: r.get("sustained_hours", 0), reverse=True)
+
+    if breach_rows:
+        story.append(section_heading("Sustained Threshold Breaches (≥2h)", styles))
+        story.append(SP_BLOCK)
+        br_headers = ["Device", "Metric", "Level", "Sustained (h)", "Breach Count", "First Breach"]
+        br_data: List[Any] = [br_headers]
+        for b in breach_rows[:10]:
+            br_data.append([
+                truncate_name(b.get("device_name"), 28),
+                b.get("metric", "—"),
+                (b.get("level") or "—").upper(),
+                f"{b.get('sustained_hours', 0):.1f}h",
+                str(b.get("breach_count", 0)),
+                _fmt_ts_short(b.get("first_breach_at")),
+            ])
+        br_tbl = Table(br_data, colWidths=["25%", "15%", "10%", "13%", "13%", "24%"])
+        br_ts = base_table_style()
+        _LEVEL_COLORS = {"CRITICAL": "#DC2626", "WARNING": "#D97706"}
+        for idx in range(1, len(br_data)):
+            lvl = (breach_rows[idx - 1].get("level") or "").upper()
+            c = _LEVEL_COLORS.get(lvl, TEXT_MID)
+            br_ts.add("TEXTCOLOR", (2, idx), (2, idx), hex_color(c))
+            br_ts.add("FONTNAME",  (2, idx), (2, idx), "Helvetica-Bold")
+        br_tbl.setStyle(br_ts)
+        story.append(br_tbl)
+        story.append(SP_BLOCK)
+
+    # ── Per-device avg/peak summary ────────────────────────────────────────────
+    story.append(section_heading("Per-Device Peak Metrics", styles))
+    story.append(SP_BLOCK)
+    pk_headers = ["Device", "CPU Avg", "CPU Peak", "Mem Avg", "Mem Peak", "Disk Avg", "Disk Peak"]
+    pk_data: List[Any] = [pk_headers]
+    PEAK_THRESHOLD = 85.0
+
+    for dev_id, dev in list(peaks_and_breaches.items())[:30]:
+        peaks_map = {p["metric"]: p for p in dev.get("peaks", [])}
+        row = [truncate_name(dev.get("device_name"), 26)]
+        for m in ("CPU", "Memory", "Disk"):
+            p = peaks_map.get(m, {})
+            avg_v = p.get("avg_value")
+            peak_v = p.get("peak_value")
+            row.append(f"{avg_v:.0f}%" if avg_v is not None else "—")
+            row.append(f"{peak_v:.0f}%" if peak_v is not None else "—")
+        pk_data.append(row)
+
+    pk_tbl = Table(pk_data, colWidths=["22%", "10%", "10%", "10%", "10%", "10%", "10%"])
+    pk_ts = base_table_style()
+    for idx in range(1, len(pk_data)):
+        dev_id_key = list(peaks_and_breaches.keys())[idx - 1]
+        dev = peaks_and_breaches.get(dev_id_key, {})
+        peaks_map = {p["metric"]: p for p in dev.get("peaks", [])}
+        for col_idx, metric in enumerate(("CPU", "Memory", "Disk")):
+            p = peaks_map.get(metric, {})
+            peak_v = p.get("peak_value")
+            if peak_v is not None and peak_v >= PEAK_THRESHOLD:
+                pk_ts.add("TEXTCOLOR", (2 * col_idx + 2, idx), (2 * col_idx + 2, idx), hex_color("#DC2626"))
+                pk_ts.add("FONTNAME",  (2 * col_idx + 2, idx), (2 * col_idx + 2, idx), "Helvetica-Bold")
+    pk_tbl.setStyle(pk_ts)
+    story.append(pk_tbl)
+    if len(peaks_and_breaches) > 30:
+        story.append(SP_CAPTION)
+        story.append(normal_paragraph(
+            f"Showing 30 of {len(peaks_and_breaches)} devices. Export CSV for full dataset.",
+            styles, size=6.5, color=TEXT_LIGHT,
+        ))
+
+    # ── Confidence footnote ────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(section_heading("Data Source", styles))
+    story.append(normal_paragraph(
+        f"Health metrics sourced from server_health_logs (TimescaleDB hypertable). "
+        f"Granularity: {data_src_label}. "
+        f"Capacity runway estimated via linear regression (R²≥0.3, growth≥0.1%/day). "
+        f"Timestamps in IST (Asia/Kolkata). "
+        f"Total samples in period: {total_samples}.",
+        styles, color=TEXT_MID,
+    ))
+
+    doc.build(story, onFirstPage=_first_page, onLaterPages=footer)
+    buf.seek(0)
+    logger.info("[HealthPDF] PDF complete: %d bytes", len(buf.getvalue()))
     return buf
 
 

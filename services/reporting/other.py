@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import and_, case, desc, func, or_
+from sqlalchemy import and_, case, cast, desc, func, or_, text
 
 from extensions import db
 from middleware.rbac import scoped_query
@@ -222,9 +222,21 @@ class OtherReportMixin:
                 db.session.query(
                     DailyDeviceStats.device_id,
                     Device.device_name,
-                    func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"),
-                    func.avg(DailyDeviceStats.avg_latency_ms).label("avg_latency"),
-                    func.avg(DailyDeviceStats.avg_packet_loss_pct).label("avg_packet_loss"),
+                    func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                        DailyDeviceStats.uptime_percent.isnot(None),
+                        DailyDeviceStats.uptime_percent >= 0,
+                        DailyDeviceStats.uptime_percent <= 200,
+                    ).label("avg_uptime"),
+                    func.avg(cast(DailyDeviceStats.avg_latency_ms, db.Float)).filter(
+                        DailyDeviceStats.avg_latency_ms.isnot(None),
+                        DailyDeviceStats.avg_latency_ms >= 0,
+                        DailyDeviceStats.avg_latency_ms < 1e15,
+                    ).label("avg_latency"),
+                    func.avg(cast(DailyDeviceStats.avg_packet_loss_pct, db.Float)).filter(
+                        DailyDeviceStats.avg_packet_loss_pct.isnot(None),
+                        DailyDeviceStats.avg_packet_loss_pct >= 0,
+                        DailyDeviceStats.avg_packet_loss_pct <= 100,
+                    ).label("avg_packet_loss"),
                 )
                 .join(Device, Device.device_id == DailyDeviceStats.device_id)
                 .filter(
@@ -253,6 +265,20 @@ class OtherReportMixin:
                     end_date=end_date,
                 )
             ]
+
+        # Enrich uptime_summary with p95 latency, jitter, and timeout rate
+        if uptime_summary and db.engine.dialect.name != "sqlite":
+            try:
+                dev_ids = [d["device_id"] for d in uptime_summary]
+                scan_stats = self._fetch_scan_stats_batch(dev_ids, start_date, end_date)
+                for dev in uptime_summary:
+                    ss = scan_stats.get(dev["device_id"], {})
+                    ta = ss.get("timeout_analysis") or {}
+                    dev["p95_latency_ms"] = ss.get("p95_latency_ms")
+                    dev["jitter_avg_ms"] = ss.get("jitter_avg_ms")
+                    dev["timeout_rate_pct"] = ta.get("timeout_rate_pct")
+            except Exception:
+                pass
 
         mttr = (
             self._scoped_dashboard_event_query(device_ids)
@@ -316,7 +342,11 @@ class OtherReportMixin:
                 DailyDeviceStats.device_id,
                 Device.device_name,
                 Device.device_ip,
-                func.avg(DailyDeviceStats.uptime_percent).label("avg_uptime"),
+                func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                    DailyDeviceStats.uptime_percent.isnot(None),
+                    DailyDeviceStats.uptime_percent >= 0,
+                    DailyDeviceStats.uptime_percent <= 200,
+                ).label("avg_uptime"),
             )
             .join(Device, Device.device_id == DailyDeviceStats.device_id)
             .filter(
@@ -325,7 +355,11 @@ class OtherReportMixin:
                 DailyDeviceStats.date <= end_date.date(),
             )
             .group_by(DailyDeviceStats.device_id, Device.device_name, Device.device_ip)
-            .order_by(func.avg(DailyDeviceStats.uptime_percent).asc())
+            .order_by(func.avg(cast(DailyDeviceStats.uptime_percent, db.Float)).filter(
+                DailyDeviceStats.uptime_percent.isnot(None),
+                DailyDeviceStats.uptime_percent >= 0,
+                DailyDeviceStats.uptime_percent <= 200,
+            ).asc().nullslast())
             .limit(20)
             .all()
         )

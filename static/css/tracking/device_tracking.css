@@ -66,7 +66,20 @@
 }
 
 .tracking-page-header {
-    gap: 0.9rem !important;
+    margin-bottom: 1.5rem;
+    /* Ensure dropdown inside header renders above KPI cards (which come later in DOM) */
+    position: relative;
+    z-index: 20;
+}
+
+.tracking-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 6px;
+    opacity: 0.85;
 }
 
 /* ── PAGE HEADER ─────────────────────────────────────────── */
@@ -258,8 +271,6 @@
 
 .ops-kpi-card:hover {
     border-color: var(--border-strong);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
 }
 
 .ops-kpi-accent {
@@ -670,7 +681,8 @@
 .tracking-table-wrap {
     overflow: auto;
     min-height: 220px;
-    max-height: calc(100vh - 320px);
+    /* 320px was too small — page has ~440px of chrome above the table rows */
+    max-height: calc(100vh - 440px);
     margin-top: 0 !important;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
@@ -747,8 +759,13 @@
 }
 
 .ops-device-row:hover {
-    background: var(--bg-row-hover);
+    background: transparent;
+    border-left-color: var(--border-strong);
 }
+
+.ops-device-row.status-online:hover { border-left-color: var(--teal); }
+.ops-device-row.status-offline:hover { border-left-color: var(--red); }
+.ops-device-row.status-degraded:hover { border-left-color: var(--amber); }
 
 .ops-device-row td {
     transition: opacity 0.17s ease, transform 0.17s ease, padding 0.17s ease, border-color 0.17s ease;
@@ -781,9 +798,9 @@
     }
 }
 
-.ops-device-row.status-online { border-left-color: var(--teal); background: var(--bg-surface); }
-.ops-device-row.status-offline { border-left-color: var(--red); background: rgba(232, 69, 69, 0.035); }
-.ops-device-row.status-degraded { border-left-color: var(--amber); background: rgba(230, 149, 42, 0.03); }
+.ops-device-row.status-online { border-left-color: var(--teal); }
+.ops-device-row.status-offline { border-left-color: var(--red); }
+.ops-device-row.status-degraded { border-left-color: var(--amber); }
 
 .ops-table td {
     padding: 10px 12px;
@@ -1593,3 +1610,512 @@
 .border-top { border-top: 1px solid var(--border-medium) !important; }
 .text-muted { color: var(--text-muted) !important; }
 .d-none { display: none !important; }
+
+/* Dense hover normalization */
+.ops-btn-primary:hover,
+.ops-btn-ghost:hover,
+.ops-btn-live:hover,
+.ops-btn-icon:hover,
+.ops-btn-icon.delete-device:hover,
+.tactical-btn-outline:hover,
+.dropdown-item:hover {
+    box-shadow: none !important;
+}
+
+.ops-btn-primary:hover {
+    background: var(--s-healthy);
+    border-color: var(--s-healthy);
+    color: var(--e-bg-base, #070a10);
+    transform: translateY(-1px);
+}
+
+.ops-btn-ghost:hover {
+    border-color: var(--border-strong);
+    background: rgba(255, 255, 255, 0.04);
+    transform: translateY(-1px);
+}
+
+.ops-btn-live:hover {
+    background: rgba(0, 201, 141, 0.12);
+    border-color: rgba(0, 201, 141, 0.22);
+    color: var(--teal);
+    transform: translateY(-1px);
+}
+
+.ops-btn-icon:hover {
+    color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.12);
+    transform: translateY(-1px);
+}
+
+.ops-btn-icon.delete-device:hover {
+    color: #ffb4b4;
+    background: rgba(232, 69, 69, 0.14);
+    border-color: rgba(232, 69, 69, 0.26);
+    transform: translateY(-1px);
+}
+
+.ops-kpi-card:hover {
+    border-color: var(--border-strong);
+}
+
+.ops-device-row:hover {
+    background: transparent;
+    border-left-color: var(--teal);
+    box-shadow: none;
+    transform: none;
+}
+
+.ops-device-row:hover td {
+    border-color: rgba(148, 163, 184, 0.20);
+}
+
+.ops-discovery-stat:hover {
+    border-color: var(--border-strong);
+}
+
+.tactical-btn-outline:hover {
+    border-color: var(--border-strong);
+    background: rgba(255, 255, 255, 0.04);
+    transform: translateY(-1px);
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: var(--text-primary) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   POLISH v2.0 — ReactBits-inspired visual layer
+   Pure CSS — no new dependencies. Additive only.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 1. PAGE BACKDROP — subtle dot grid ─────────────────── */
+#tracking-device-page {
+    background-image:
+        radial-gradient(circle, rgba(148,163,184,.04) 1px, transparent 1px);
+    background-size: 26px 26px;
+    background-attachment: local;
+}
+
+/* ── 2. PAGE TITLE — slow shimmer sweep (text only) ─────── */
+.tracking-title-ops {
+    background: linear-gradient(
+        90deg,
+        var(--text-primary) 0%,
+        var(--text-primary) 28%,
+        var(--teal)         50%,
+        var(--text-primary) 72%,
+        var(--text-primary) 100%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: titleSweep 5s linear infinite;
+}
+/* Keep Lucide icon teal — SVG uses stroke:currentColor, not text-fill */
+.tracking-title-ops svg {
+    color: var(--teal) !important;
+    -webkit-text-fill-color: initial;
+}
+@keyframes titleSweep {
+    from { background-position: 150% center; }
+    to   { background-position: -50% center; }
+}
+
+/* ── 3. ACTION BAR — glass card + stacking context fix ──── */
+.ops-action-bar {
+    background: linear-gradient(
+        135deg,
+        rgba(20,25,37,0.94) 0%,
+        rgba(16,19,27,0.88) 100%
+    ) !important;
+    /* NOTE: no backdrop-filter — it creates a stacking context that clips
+       the dropdown below the KPI row. Use a solid gradient instead. */
+    border: 1px solid rgba(148,163,184,.1) !important;
+    border-radius: 10px !important;
+    padding: 8px 14px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);
+    gap: 0.7rem !important;
+    /* Raise stacking context above KPI row so dropdown is never clipped */
+    position: relative;
+    z-index: 20;
+}
+
+/* ── 4. KPI CARDS — shine sweep + stagger entry ─────────── */
+.ops-kpi-card {
+    overflow: hidden;
+}
+.ops-kpi-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        108deg,
+        transparent 30%,
+        rgba(255,255,255,.05) 50%,
+        transparent 70%
+    );
+    transform: translateX(-130%);
+    pointer-events: none;
+    z-index: 1;
+    transition: none;
+}
+.ops-kpi-card:hover::before {
+    transform: translateX(130%);
+    transition: transform 0.55s cubic-bezier(.4,0,.2,1);
+}
+
+/* Staggered page-load entry.
+   fill-mode: backwards (NOT both/forwards) — applies `from` during delay only.
+   After animation: element returns to own CSS (opacity:1, no transform → no stacking context).
+   Using `both`/`forwards` with a non-none transform in `to` creates a permanent stacking
+   context that causes the dropdown to render behind KPI cards.                            */
+#device-kpi-row > *:nth-child(1) .ops-kpi-card { animation: kpiEntry .4s ease-out .04s backwards; }
+#device-kpi-row > *:nth-child(2) .ops-kpi-card { animation: kpiEntry .4s ease-out .11s backwards; }
+#device-kpi-row > *:nth-child(3) .ops-kpi-card { animation: kpiEntry .4s ease-out .18s backwards; }
+#device-kpi-row > *:nth-child(4) .ops-kpi-card { animation: kpiEntry .4s ease-out .25s backwards; }
+@keyframes kpiEntry {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Critical offline card — red left-edge glow */
+.ops-kpi-critical.pulse-offline {
+    border-left: 3px solid var(--red);
+    box-shadow: -5px 0 14px rgba(220,53,69,.14), var(--shadow-sm);
+}
+
+/* ── 5. LIVE INDICATOR — pulsing ring ───────────────────── */
+.status-dot.healthy {
+    animation: liveRing 2.6s ease-in-out infinite;
+    will-change: box-shadow;
+}
+@keyframes liveRing {
+    0%,100% { box-shadow: 0 0 0 0   rgba(32,201,151,.55), 0 0 6px  var(--teal); }
+    50%     { box-shadow: 0 0 0 6px rgba(32,201,151,0),   0 0 14px var(--teal); }
+}
+
+/* ── 6. TABLE ROWS — fix tactical.css bleed + status hovers ─
+   tactical.css has `.status-online { background-color: #28a745 !important }`
+   which bleeds onto the <tr> element when it carries that class.
+   Override with higher-specificity ID+class selector at !important.       */
+#tracking-device-page .ops-device-row {
+    background: var(--bg-surface) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    animation: none !important;
+}
+#tracking-device-page .ops-table tbody .ops-device-row:nth-child(even) {
+    background: rgba(255,255,255,.012) !important;
+}
+/* Status-tinted hover only — never a persistent background */
+#tracking-device-page .ops-device-row:hover              { background: rgba(255,255,255,.025) !important; }
+#tracking-device-page .ops-device-row.status-online:hover  { background: rgba(32,201,151,.04)  !important; }
+#tracking-device-page .ops-device-row.status-offline:hover { background: rgba(220,53, 69,.04)  !important; }
+#tracking-device-page .ops-device-row.status-degraded:hover{ background: rgba(255,193,7,  .04) !important; }
+
+/* ── 7. STORED DEVICE CARD — width fix + hover glow ─────── */
+/* Direct child of .row without a col wrapper — ensure full width */
+.tracking-section-devices > .ops-stored-card {
+    width: 100%;
+    min-width: 0;
+}
+.ops-stored-card {
+    transition: border-color .25s ease, box-shadow .25s ease;
+}
+.ops-stored-card:hover {
+    border-color: rgba(0,201,141,.14);
+    box-shadow: 0 6px 24px rgba(0,0,0,.28), 0 0 0 1px rgba(0,201,141,.06);
+}
+
+/* ── 8. PIPELINE — animated connector + active pulse ─────── */
+.ops-step-divider.complete {
+    background: linear-gradient(90deg, var(--teal) 0%, rgba(32,201,151,.5) 50%, var(--teal) 100%);
+    background-size: 200% 100%;
+    animation: connFlow 3s linear infinite;
+    box-shadow: 0 0 8px rgba(32,201,151,.3);
+}
+@keyframes connFlow {
+    from { background-position: 200% center; }
+    to   { background-position:   0% center; }
+}
+
+.ops-step.active .ops-step-node {
+    animation: activeNodePulse 2.2s ease-in-out infinite;
+}
+@keyframes activeNodePulse {
+    0%,100% { box-shadow: 0 0 0 0   rgba(32,201,151,.4), 0 0 15px var(--teal-glow); }
+    50%     { box-shadow: 0 0 0 8px rgba(32,201,151,0),  0 0 15px var(--teal-glow); }
+}
+
+/* ── 9. DISCOVERY STATS — lift on hover + number glow ────── */
+.ops-discovery-stat:hover {
+    transform: translateY(-3px) scale(1.012);
+    border-color: rgba(0,201,141,.22);
+    box-shadow: 0 10px 22px rgba(0,0,0,.3), 0 0 0 1px rgba(0,201,141,.08);
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.stat-num.text-teal  { text-shadow: 0 0 18px rgba(32,201,151,.45); }
+.stat-num.text-amber { text-shadow: 0 0 18px rgba(255,193,7,  .45); }
+.stat-num.text-blue  { text-shadow: 0 0 18px rgba(77,143,255, .45); }
+
+/* ── 10. FILTER ROW — stronger frosted glass ────────────── */
+.tracking-filter-row {
+    background: rgba(7,10,16,.97) !important;
+    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(18px) !important;
+}
+
+/* Search input focus glow */
+.tracking-filter-search .input-group:focus-within {
+    border-color: rgba(0,201,141,.32) !important;
+    box-shadow: 0 0 0 3px rgba(0,201,141,.08) !important;
+}
+
+/* ── 11. SCAN INLINE NOTE — hover teal lift ──────────────── */
+.tracking-scan-inline-note {
+    transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.tracking-scan-inline-note:hover {
+    border-color: rgba(0,201,141,.22);
+    transform: translateY(-1px);
+    background:
+        linear-gradient(135deg, rgba(0,201,141,.08), transparent 46%),
+        linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
+}
+
+/* ── 12. MODALS — slide-up entrance + richer glass ───────── */
+.modal.show .modal-dialog {
+    animation: modalUp .22s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes modalUp {
+    from { opacity: 0; transform: translateY(18px) scale(.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);   }
+}
+
+/* Frosted glass backdrop */
+.modal-backdrop {
+    background-color: rgba(3,5,10,.82) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Modal inner top-edge shimmer */
+.modal-content::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    pointer-events: none;
+}
+
+/* ── 13. SECTION ENTRY — tracking table section ──────────── */
+.tracking-section-devices {
+    animation: sectionFade .35s ease-out .28s both;
+}
+.tracking-section-discovery {
+    animation: sectionFade .35s ease-out .42s both;
+}
+@keyframes sectionFade {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ── 14. LIVE button — breathing dot ────────────────────── */
+.ops-btn-live {
+    gap: 5px;
+}
+.ops-btn-live::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+    animation: liveDot 1.9s ease-in-out infinite;
+}
+@keyframes liveDot {
+    0%,100% { opacity: 1;  transform: scale(1);   }
+    50%     { opacity: .4; transform: scale(.65); }
+}
+
+/* ── 16. ACTION BAR — hierarchy slots ───────────────────── */
+
+/* Secondary CTA button (outline teal) */
+.ops-btn-secondary {
+    background: rgba(0,201,141,.08);
+    color: var(--teal);
+    border: 1px solid rgba(0,201,141,.35);
+    font-weight: 600;
+}
+.ops-btn-secondary:hover {
+    background: rgba(0,201,141,.15);
+    border-color: rgba(0,201,141,.55);
+    color: var(--teal);
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(0,201,141,.15);
+}
+
+/* Vertical separator between primary and secondary groups */
+.tracking-action-sep {
+    display: inline-block;
+    width: 1px;
+    height: 22px;
+    background: var(--border-medium);
+    border-radius: 1px;
+    flex-shrink: 0;
+    margin: 0 4px;
+}
+
+/* Dropdown toggle chevron */
+.ops-btn-ghost.dropdown-toggle::after {
+    display: none; /* Bootstrap caret — hide, we use Lucide */
+}
+
+/* ── 17. KPI CARD — trend line ────────────────────────────── */
+.kpi-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.kpi-click-hint {
+    width: 12px;
+    height: 12px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity .18s ease, color .18s ease, transform .18s ease;
+    flex-shrink: 0;
+}
+.kpi-clickable {
+    cursor: pointer;
+    user-select: none;
+}
+.kpi-clickable:hover .kpi-click-hint {
+    opacity: 1;
+    color: var(--teal);
+    transform: translateX(3px);
+}
+
+.kpi-trend {
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    min-height: 14px;
+    color: var(--text-muted);
+}
+.kpi-trend.up   { color: var(--teal); }
+.kpi-trend.down { color: var(--red);  }
+.kpi-trend.stable { color: var(--text-muted); }
+
+/* ── 18. FILTER TABS — strong active state ───────────────── */
+.ops-tab.active {
+    color: var(--teal) !important;
+    background: rgba(0,201,141,.1) !important;
+    border: 1px solid rgba(0,201,141,.32) !important;
+    border-radius: var(--radius-md) !important;
+    border-bottom: 1px solid rgba(0,201,141,.32) !important;
+}
+.ops-tab.active::after {
+    display: none; /* hide underline — border replaces it */
+}
+.ops-tab.active .ops-tab-count {
+    background: rgba(0,201,141,.18) !important;
+    color: var(--teal) !important;
+    border-color: rgba(0,201,141,.35) !important;
+}
+
+/* ── 19. ONLINE ROW — tone down saturation ───────────────── */
+/* Identity badge — remove green background, use muted dot style */
+.tracking-identity-badge-scanner {
+    color: var(--text-muted) !important;
+    background: transparent !important;
+    border-color: var(--border-subtle) !important;
+    font-size: 8px !important;
+    letter-spacing: 0.05em !important;
+}
+.tracking-identity-badge-scanner::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--teal);
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+/* ── 20. REFRESH INDICATOR — spin on update ─────────────── */
+.tracking-refresh-icon {
+    color: var(--text-muted);
+    transition: color .2s ease;
+    flex-shrink: 0;
+}
+.tracking-refresh-icon.spinning {
+    animation: spinRefresh .8s linear infinite;
+    color: var(--teal);
+}
+@keyframes spinRefresh {
+    from { transform: rotate(0deg);   }
+    to   { transform: rotate(360deg); }
+}
+
+/* ── 15. RESPONSIVE adjustments ─────────────────────────── */
+@media (max-width: 768px) {
+    .ops-action-bar {
+        padding: 8px 10px !important;
+        border-radius: 8px !important;
+    }
+    .tracking-title-ops {
+        font-size: 15px;
+    }
+    .ops-discovery-stat:hover {
+        transform: none;
+    }
+    .tracking-scan-inline-note:hover {
+        transform: none;
+    }
+}
+
+/* ── ADDITIONS: Dropdown z-index, status pulse, highlights ── */
+
+/* Ensure dropdowns render above all content (KPI stacking contexts) */
+#tracking-device-page .dropdown-menu {
+    z-index: 9999;
+}
+
+/* New-device row highlight — applied when device just added via UI */
+#tracking-device-page .ops-device-row.is-new {
+    background: rgba(0, 212, 170, 0.06) !important;
+    border-left: 3px solid #00d4aa !important;
+}
+
+/* Online status badge subtle pulse */
+@keyframes statusBadgePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(32, 201, 151, 0.4); }
+    60%     { box-shadow: 0 0 0 5px rgba(32, 201, 151, 0); }
+}
+#tracking-device-page .ops-device-row.status-online .ops-status-badge {
+    animation: statusBadgePulse 2.8s ease-in-out infinite;
+}
+
+/* Manual refresh button — cursor and focus */
+#trackingManualRefreshBtn {
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+#trackingManualRefreshBtn:hover {
+    opacity: 1;
+}
+#trackingManualRefreshBtn:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+    border-radius: 4px;
+}

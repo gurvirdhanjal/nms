@@ -4,7 +4,7 @@
 {% block ui_assets %}{% include "components/ui_primitives_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_history.css') }}?v=20260317a">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_history.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -277,7 +277,7 @@
 </div>
 </div>
 {% if linked_device_id %}<!-- Config Diff Modal -->
-<div class="modal fade" id="configDiffModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="configDiffModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content tactical-modal">
             <div class="modal-header">
@@ -315,6 +315,6 @@
         isAdmin: {{ is_admin | tojson }}
     };
 </script>
-<script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v=20260317a"></script>
-<script src="{{ url_for('static', filename='js/tracking/device_config_history.js') }}?v=20260313a"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_history.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_config_history.js') }}?v={{ asset_ver }}"></script>
 {% endblock %}

@@ -1,6 +1,7 @@
 from extensions import db
 from datetime import datetime
 import ipaddress
+from sqlalchemy import text
 
 
 class Subnet(db.Model):
@@ -45,40 +46,59 @@ class Subnet(db.Model):
     def get_best_match(ip_address):
         """
         Find the most specific subnet that contains the given IP address.
-        
-        Returns the Subnet object with the smallest prefix length (most specific)
-        that contains the IP, or None if no match found.
-        
-        Args:
-            ip_address (str): IP address to match (e.g., "172.16.1.50")
-        
+
+        On PostgreSQL: uses inet containment operator (<<) with masklen ordering —
+        single indexed query, O(log n) instead of a full table scan in Python.
+        On SQLite (tests/dev): falls back to the Python loop.
+
         Returns:
             Subnet object or None
         """
+        if not ip_address:
+            return None
+
+        backend = db.engine.url.get_backend_name()
+        if backend == 'postgresql':
+            try:
+                db.session.execute(text("SAVEPOINT _subnet_lookup"))
+                row = db.session.execute(
+                    text(
+                        """
+                        SELECT id FROM subnets
+                        WHERE :ip::inet << cidr::inet
+                        ORDER BY masklen(cidr::inet) DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"ip": ip_address},
+                ).fetchone()
+                db.session.execute(text("RELEASE SAVEPOINT _subnet_lookup"))
+                return db.session.get(Subnet, row[0]) if row else None
+            except Exception:
+                # Roll back to savepoint so the outer transaction stays healthy,
+                # then fall through to the Python loop fallback.
+                try:
+                    db.session.execute(text("ROLLBACK TO SAVEPOINT _subnet_lookup"))
+                except Exception:
+                    pass
+
+        # Python fallback (SQLite / unexpected DB error)
         try:
             ip_obj = ipaddress.ip_address(ip_address)
         except ValueError:
             return None
-        
-        # Get all subnets from database
-        all_subnets = Subnet.query.all()
-        
-        # Find matching subnets
-        matches = []
-        for subnet in all_subnets:
+
+        best = None
+        best_prefixlen = -1
+        for subnet in Subnet.query.all():
             try:
                 network = ipaddress.ip_network(subnet.cidr, strict=False)
-                if ip_obj in network:
-                    matches.append((subnet, network.prefixlen))
+                if ip_obj in network and network.prefixlen > best_prefixlen:
+                    best = subnet
+                    best_prefixlen = network.prefixlen
             except ValueError:
                 continue
-        
-        # Return the most specific match (highest prefix length)
-        if matches:
-            matches.sort(key=lambda x: x[1], reverse=True)
-            return matches[0][0]
-        
-        return None
+        return best
 
     @staticmethod
     def get_subnets_for_site(site_id):

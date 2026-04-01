@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from extensions import db
 from sqlalchemy.orm.exc import StaleDataError, ObjectDeletedError
 from services.network_scanner import NetworkScanner
 import statistics
+
+logger = logging.getLogger(__name__)
 
 class DeviceMonitor:
     def __init__(self):
@@ -46,7 +49,7 @@ class DeviceMonitor:
         Public method to hydrate collector with DB history.
         Must be called with app context.
         """
-        print("Hydrating MetricCollector from database...")
+        logger.info("Hydrating MetricCollector from database...")
         with app.app_context():
             try:
                 from models.device import Device
@@ -74,10 +77,10 @@ class DeviceMonitor:
                         self.collector.add_metrics(metrics)
                         total_loaded += 1
                         
-                print(f"Hydration complete. Loaded {total_loaded} metrics.")
+                logger.info("Hydration complete. Loaded %d metrics.", total_loaded)
                 
             except Exception as e:
-                print(f"Error hydrating collector: {e}")
+                logger.exception("Error hydrating collector: %s", e)
     
     async def monitor_stored_devices(self):
         """Monitor all stored devices and save results concurrently"""
@@ -86,18 +89,29 @@ class DeviceMonitor:
         from metrics.normalizer import MetricNormalizer
         from services.alert_manager import AlertManager
         
-        # Get active device data (IDs and IPs)
+        # Get active device data (IDs and IPs) — copy to plain tuples so we can
+        # release the DB connection before the long async ping phase.
         devices_query = db.session.query(Device.device_id, Device.device_ip, Device.device_name, Device.maintenance_mode).all()
-        active_devices = [d for d in devices_query if not getattr(d, 'maintenance_mode', False) and d.device_ip]
-        
-        print(f"Monitoring {len(active_devices)} stored devices...")
-        
+        active_devices = [
+            (d.device_id, d.device_ip, d.device_name, d.maintenance_mode)
+            for d in devices_query
+            if not getattr(d, 'maintenance_mode', False) and d.device_ip
+        ]
+
+        # Release the connection back to the pool NOW — asyncio.gather() below
+        # can hold the event loop for 5-30 s (239 concurrent ICMP timeouts).
+        # Holding a DB connection idle for that long exhausts the pool and
+        # blocks login / other requests.
+        db.session.remove()
+
+        logger.debug("Monitoring %d stored devices...", len(active_devices))
+
         async def fetch_status(device_info):
             device_id, device_ip, device_name, _ = device_info
-            
+
             # 1. Try Standard Ping
             status, latency, packet_loss, jitter, _ttl = await self.scanner.ping_device(device_ip)
-            
+
             # 2. Try Tactical Agent Port (5002) if Ping fails or timeout
             if status == 'Offline':
                 try:
@@ -108,7 +122,7 @@ class DeviceMonitor:
                             latency = 1.0  # Assumed healthy latency if agent replies
                 except:
                     pass
-            
+
             return {
                 'id': device_id,
                 'ip': device_ip,
@@ -119,13 +133,13 @@ class DeviceMonitor:
                 'jitter': jitter
             }
 
-        # Concurrently perform network I/O
+        # Concurrently perform network I/O (no DB connection held here)
         tasks = [fetch_status(device_info) for device_info in active_devices]
-        
+
         try:
             results = await asyncio.gather(*tasks)
         except Exception as e:
-            print(f"[ERROR] Failed during concurrent ping gather: {e}")
+            logger.error("[DeviceMonitor] Failed during concurrent ping gather: %s", e)
             results = []
 
         scan_results = []
@@ -165,7 +179,7 @@ class DeviceMonitor:
             try:
                 AlertManager.process_scan_result(live_device, is_online, latency, packet_loss, commit=False)
             except (StaleDataError, ObjectDeletedError) as e:
-                print(f"[WARN] Device became stale during alert processing for {device_ip}: {e}")
+                logger.warning("[DeviceMonitor] Device became stale during alert processing for %s: %s", device_ip, e)
                 db.session.rollback()
                 continue
 
@@ -180,17 +194,17 @@ class DeviceMonitor:
                         'jitter': jitter
                     })
                 except Exception as e:
-                    print(f"Batch Accumulation Error: {e}")
+                    logger.warning("[DeviceMonitor] Batch accumulation error: %s", e)
 
             db.session.add(scan_record)
 
             try:
                 db.session.commit()
             except (StaleDataError, ObjectDeletedError) as e:
-                print(f"[WARN] Device disappeared during commit for {device_ip}: {e}")
+                logger.warning("[DeviceMonitor] Device disappeared during commit for %s: %s", device_ip, e)
                 db.session.rollback()
             except Exception as e:
-                print(f"[ERROR] Failed to commit scan record for {device_ip}: {e}")
+                logger.error("[DeviceMonitor] Failed to commit scan record for %s: %s", device_ip, e)
                 db.session.rollback()
 
             scan_results.append({
@@ -211,7 +225,7 @@ class DeviceMonitor:
                 from services.sse_broadcaster import broadcast_event
                 broadcast_event('device_update_batch', {'devices': sse_update_batch})
             except Exception as e:
-                print(f"Bulk SSE Broadcast Error: {e}")
+                logger.error("[DeviceMonitor] Bulk SSE broadcast error: %s", e)
 
         return scan_results
     

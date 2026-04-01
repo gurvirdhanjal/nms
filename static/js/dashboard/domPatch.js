@@ -122,7 +122,11 @@ export function patchKeyedTableRows(tbody, items, options) {
 
     existing.forEach((staleRow) => staleRow.remove());
 
-    desiredRows.forEach((row) => {
-        tbody.appendChild(row);
+    // Insert rows in order using insertBefore; only moves rows that are out of position.
+    desiredRows.forEach((row, index) => {
+        const currentAtIndex = tbody.children[index];
+        if (currentAtIndex !== row) {
+            tbody.insertBefore(row, currentAtIndex || null);
+        }
     });
 }

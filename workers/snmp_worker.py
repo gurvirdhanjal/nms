@@ -236,7 +236,8 @@ def _execute_snmp_health(task_id, device):
     sys_info = snmp_service.get_system_info(
         device.device_ip, community, version, port
     )
-    uptime = str(sys_info.get('sys_uptime_seconds', ''))
+    _raw_uptime = sys_info.get('sys_uptime_seconds')
+    uptime = str(int(float(_raw_uptime))) if _raw_uptime not in (None, '') else None
 
     # Store health log
     health_log = ServerHealthLog(

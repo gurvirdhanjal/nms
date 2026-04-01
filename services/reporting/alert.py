@@ -157,10 +157,26 @@ class AlertReportMixin:
             DashboardEvent.timestamp >= start_date,
             DashboardEvent.timestamp <= end_date,
         )
-        # PR 18: Total counts + cap at 20 rows
-        _sec_alert_total = alerts_query.count()
+        # Single aggregation query replaces 4 separate COUNT() round-trips.
+        _agg = alerts_query.with_entities(
+            func.count(DashboardEvent.event_id).label("total"),
+            func.count(case((DashboardEvent.severity == "CRITICAL", 1))).label("critical"),
+            func.count(case((DashboardEvent.is_acknowledged.is_(True), 1))).label("acknowledged"),
+            func.count(case((DashboardEvent.resolved.is_(False), 1))).label("unresolved"),
+        ).first()
+        _sec_alert_total = int(_agg.total or 0) if _agg else 0
+        _agg_critical = int(_agg.critical or 0) if _agg else 0
+        _agg_acknowledged = int(_agg.acknowledged or 0) if _agg else 0
+        _agg_unresolved = int(_agg.unresolved or 0) if _agg else 0
+
         recent_alerts = alerts_query.order_by(DashboardEvent.timestamp.desc()).limit(20).all()
-        device_name_map = {row.device_id: row.device_name for row in self._inventory_devices_query().all()}
+        # Only fetch the two columns needed — avoids loading full ORM objects for a name map.
+        device_name_map = {
+            row.device_id: row.device_name
+            for row in self._inventory_devices_query().with_entities(
+                Device.device_id, Device.device_name
+            ).all()
+        }
         recent_audit_log = (
             self._scoped_audit_log_query()
             .filter(AuditLog.timestamp >= start_date, AuditLog.timestamp <= end_date)
@@ -237,10 +253,10 @@ class AlertReportMixin:
             )
         ]
         summary = {
-            "total_alerts": int(alerts_query.count()),
-            "critical_alerts": int(alerts_query.filter(DashboardEvent.severity == "CRITICAL").count()),
-            "acknowledged_alerts": int(alerts_query.filter(DashboardEvent.is_acknowledged.is_(True)).count()),
-            "unresolved_alerts": int(alerts_query.filter(DashboardEvent.resolved.is_(False)).count()),
+            "total_alerts": _sec_alert_total,
+            "critical_alerts": _agg_critical,
+            "acknowledged_alerts": _agg_acknowledged,
+            "unresolved_alerts": _agg_unresolved,
             "audit_rows": len(recent_audit_log),
             "restricted_site_violations": len(restricted_site_violations),
             "integrity_findings": int(sum(integrity_breakdown.values())),
@@ -319,6 +335,7 @@ def _build_unresolved_aging(base_query, end_date):
     unresolved = (
         base_query.with_entities(DashboardEvent.timestamp)
         .filter(DashboardEvent.resolved.is_(False))
+        .limit(5000)  # cap: age distribution is representative beyond this
         .all()
     )
     buckets = {"0-24h": 0, "1-7d": 0, "7-30d": 0, "30d+": 0}

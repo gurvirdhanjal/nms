@@ -3,7 +3,7 @@
 {% block title %}Fleet Monitoring{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/live_fleet.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/live_fleet.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block content %}
@@ -44,14 +44,14 @@
 
   <!-- KPI Strip -->
   <div class="kpi-grid-6">
-    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--e-text-muted)">
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--ui-text-muted)">
       <div class="stat-label kpi-label">Total Devices</div>
       <div class="kpi-row">
         <span class="stat-value kpi-value" id="kpiTotal">{{ saved_devices|length }}</span>
       </div>
       <span class="metric-sub kpi-sub">Managed endpoints</span>
     </div>
-    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-healthy)">
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--status-success)">
       <div class="stat-label kpi-label">Online</div>
       <div class="kpi-row">
         <span class="stat-value kpi-value clr-ok" id="kpiOnline">0</span>
@@ -59,14 +59,14 @@
       </div>
       <span class="metric-sub kpi-sub">Reachable now</span>
     </div>
-    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-warning)">
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--status-warning)">
       <div class="stat-label kpi-label">Degraded</div>
       <div class="kpi-row">
         <span class="stat-value kpi-value clr-warn" id="kpiDegraded">0</span>
       </div>
       <span class="metric-sub kpi-sub">Partial telemetry</span>
     </div>
-    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--s-critical)">
+    <div class="enterprise-kpi kpi-card fleet-kpi" style="--kpi-accent: var(--status-critical)">
       <div class="stat-label kpi-label">Offline</div>
       <div class="kpi-row">
         <span class="stat-value kpi-value clr-crit" id="kpiOffline">0</span>
@@ -314,5 +314,5 @@
 <script>
   window.TRACKING_LIVE_FLEET_CONFIG = { refreshMs: 5000 };
 </script>
-<script src="{{ url_for('static', filename='js/tracking/live_fleet.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/tracking/live_fleet.js') }}?v={{ asset_ver }}"></script>
 {% endblock %}

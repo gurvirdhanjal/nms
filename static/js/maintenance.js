@@ -6,12 +6,18 @@
 let allWindows = [];
 let allDevices = [];
 
+let _filterTimer = null;
+function debouncedFilter(fn) {
+    clearTimeout(_filterTimer);
+    _filterTimer = setTimeout(fn, 300);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDevices();
     loadWindows();
 
     // Filters and Listeners
-    document.getElementById('maintenanceSearch')?.addEventListener('input', filterWindows);
+    document.getElementById('maintenanceSearch')?.addEventListener('input', () => debouncedFilter(filterWindows));
     document.getElementById('maintenanceDeviceFilter')?.addEventListener('change', filterWindows);
     document.getElementById('maintenanceStatusFilter')?.addEventListener('change', filterWindows);
     document.getElementById('maintenanceIncludeInactive')?.addEventListener('change', () => {
@@ -26,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btnSubmitSchedule')?.addEventListener('click', submitSchedule);
 
-    document.getElementById('scheduleDeviceSearch')?.addEventListener('input', filterScheduleDevices);
+    document.getElementById('scheduleDeviceSearch')?.addEventListener('input', () => debouncedFilter(filterScheduleDevices));
 });
 
 function setTableMessage(tbody, colSpan, message, className = 'text-center py-4 text-muted') {
@@ -42,47 +48,19 @@ function escapeHtml(str) {
 }
 
 function showToast(message, type = 'info') {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.style.cssText = 'position:fixed;top:80px;right:20px;z-index:9999;';
-        document.body.appendChild(container);
-    }
-
-    const colors = {
-        success: { bg: 'rgba(0,255,136,0.15)', border: '#00ff88', text: '#00ff88' },
-        danger: { bg: 'rgba(255,59,92,0.15)', border: '#ff3b5c', text: '#ff3b5c' },
-        warning: { bg: 'rgba(255,170,0,0.15)', border: '#ffaa00', text: '#ffaa00' },
-        info: { bg: 'rgba(0,170,255,0.15)', border: '#00aaff', text: '#00aaff' },
-    };
-    const c = colors[type] || colors.info;
-
-    const toast = document.createElement('div');
-    toast.style.cssText = `background:${c.bg};border:1px solid ${c.border};color:${c.text};
-        padding:12px 20px;border-radius:8px;margin-bottom:10px;font-weight:600;
-        font-family:'Rajdhani',sans-serif;letter-spacing:0.5px;
-        box-shadow:0 4px 20px rgba(0,0,0,0.5);animation:slideIn 0.3s ease;`;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    window.UI?.Toast?.show(String(message || ''), type);
 }
 
 function getTypeIcon(type) {
     const icons = {
-        'Server': '<i class="fas fa-server" style="color:#00aaff;"></i>',
-        'Switch': '<i class="fas fa-network-wired" style="color:#00d4aa;"></i>',
-        'Router': '<i class="fas fa-route" style="color:#ffaa00;"></i>',
-        'Camera': '<i class="fas fa-video" style="color:#ff3b5c;"></i>',
-        'Workstation': '<i class="fas fa-desktop" style="color:#b8b8c8;"></i>',
-        'Printer': '<i class="fas fa-print" style="color:#6a6a80;"></i>',
+        'Server':      '<i class="fas fa-server icon-info"></i>',
+        'Switch':      '<i class="fas fa-network-wired icon-accent"></i>',
+        'Router':      '<i class="fas fa-route icon-warning"></i>',
+        'Camera':      '<i class="fas fa-video icon-danger"></i>',
+        'Workstation': '<i class="fas fa-desktop icon-muted"></i>',
+        'Printer':     '<i class="fas fa-print icon-dim"></i>',
     };
-    return icons[type] || '<i class="fas fa-microchip" style="color:#6a6a80;"></i>';
+    return icons[type] || '<i class="fas fa-microchip icon-dim"></i>';
 }
 
 async function loadDevices() {

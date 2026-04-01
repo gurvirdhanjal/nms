@@ -321,9 +321,14 @@ def reset_password():
                 break
             except OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
+                    db.session.rollback()
                     time.sleep(0.1 * (attempt + 1))
+                    user = User.query.get(session.get('user_id'))
+                    if user:
+                        user.password = hashed_password
                     continue
                 else:
+                    db.session.rollback()
                     raise e
         
         # Clear OTP session

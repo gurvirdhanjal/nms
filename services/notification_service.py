@@ -12,16 +12,9 @@ class NotificationService:
     Handles sending notifications (Email) for critical system events.
     Includes rate limiting to prevent spam.
     """
-    
+
     _last_sent = {} # Key: (device_id, metric, severity), Value: datetime
     RATE_LIMIT_MINUTES = 15
-    
-    # SMTP Configuration (In production, load from DB/Env)
-    SMTP_SERVER = "smtp.example.com"
-    SMTP_PORT = 587
-    SMTP_USER = "alerts@example.com"
-    SMTP_PASS = "password"
-    RECIPIENTS = ["admin@example.com"]
     
     @classmethod
     def send_alert(cls, device, metric, value, message, severity="CRITICAL"):
@@ -41,7 +34,7 @@ class NotificationService:
 
         rate_key = (device_id, metric, severity)
         if cls._is_rate_limited(rate_key):
-            print(f"[NOTE] Alert email suppressed for {device_ip} (Rate Limit)")
+            logger.debug("[NotificationService] Alert suppressed for %s (rate limit)", device_ip)
             return
 
         subject = f"[{severity}] Device {device_name} ({device_ip}) Alert"
@@ -65,9 +58,9 @@ class NotificationService:
 
         if cls._send_email(subject, body):
             cls._last_sent[rate_key] = datetime.utcnow()
-            print(f"[EMAIL] Sent {severity.lower()} alert for {device_ip}")
+            logger.info("[NotificationService] Sent %s alert for %s", severity.lower(), device_ip)
         else:
-            print(f"[EMAIL] Failed to send alert for {device_ip}")
+            logger.warning("[NotificationService] Failed to send alert for %s", device_ip)
 
     @classmethod
     def send_critical_alert(cls, device, metric, value, message):
@@ -76,6 +69,61 @@ class NotificationService:
     @classmethod
     def send_warning_alert(cls, device, metric, value, message):
         cls.send_alert(device, metric, value, message, severity="WARNING")
+
+    @classmethod
+    def _get_effective_smtp_config(cls) -> dict:
+        """Return SMTP config: DB-backed first, os.environ fallback."""
+        try:
+            from services.settings_service import get_smtp_config
+            config = get_smtp_config()
+            if config and config.get('smtp_server'):
+                return config
+        except Exception:
+            pass
+        # Env fallback
+        return {
+            'smtp_server': os.environ.get('SMTP_SERVER', '').strip(),
+            'smtp_port': int(os.environ.get('SMTP_PORT', 587)),
+            'smtp_user': os.environ.get('SMTP_USER', '').strip(),
+            'smtp_password': os.environ.get('SMTP_PASSWORD', '').strip(),
+            'smtp_from': os.environ.get('SMTP_FROM', '').strip(),
+            'smtp_recipients': os.environ.get('SMTP_RECIPIENTS', '').strip(),
+            'smtp_use_tls': os.environ.get('SMTP_USE_TLS', 'true').lower() != 'false',
+        }
+
+    @classmethod
+    def send_via_channel(cls, channel, device, message: str, severity: str) -> bool:
+        """Deliver an alert via a specific AlertChannel row.
+
+        Returns True if delivered, False on failure or unsupported channel type.
+        Rate limiting is handled by the caller (alert_routing_service) at the
+        device+metric+severity level — not per channel.
+        """
+        channel_type = (getattr(channel, 'channel_type', '') or '').lower()
+
+        if channel_type == 'email':
+            config = getattr(channel, 'config_json', None) or {}
+            recipients = config.get('recipients', [])
+            if isinstance(recipients, str):
+                recipients = [r.strip() for r in recipients.split(',') if r.strip()]
+            if not recipients:
+                logger.warning('[routing] Email channel "%s" has no recipients configured',
+                               getattr(channel, 'name', '?'))
+                return False
+
+            device_name = getattr(device, 'device_name', None) or 'Unknown Device'
+            device_ip = (getattr(device, 'device_ip', None)
+                         or getattr(device, 'ip_address', None)
+                         or 'Unknown IP')
+            subject = f"[{severity}] Alert: {device_name} ({device_ip})"
+            return cls._send_email(subject, message, recipients_override=recipients)
+
+        if channel_type in ('slack', 'teams'):
+            logger.info('[routing] %s channel not yet wired — skipping delivery', channel_type)
+            return False
+
+        logger.warning('[routing] Unknown channel type "%s" — skipping', channel_type)
+        return False
 
     @classmethod
     def _is_rate_limited(cls, key):
@@ -90,24 +138,39 @@ class NotificationService:
         return False
 
     @classmethod
-    def _send_email(cls, subject, body):
-        """Send plain-text email via smtplib. Returns True on success, False on failure."""
-        smtp_server = os.environ.get('SMTP_SERVER', '').strip()
+    def _send_email(cls, subject, body, recipients_override=None):
+        """Send plain-text email via smtplib. Returns True on success, False on failure.
+
+        `recipients_override` (list[str]) bypasses the global SMTP_RECIPIENTS config,
+        used by `send_via_channel()` to deliver to channel-specific address lists.
+        """
+        cfg = cls._get_effective_smtp_config()
+        smtp_server = cfg.get('smtp_server', '')
         if not smtp_server:
-            logger.warning('[email] SMTP_SERVER not set — skipping email send')
-            logger.debug('[email] MOCK: %s', subject)
+            logger.warning('[email] SMTP_SERVER not configured — skipping email send')
+            logger.debug('[email] MOCK subject: %s', subject)
             return True
 
-        smtp_port = int(os.environ.get('SMTP_PORT', 587))
-        smtp_user = os.environ.get('SMTP_USER', '').strip()
-        smtp_password = os.environ.get('SMTP_PASSWORD', '').strip()
-        smtp_from = os.environ.get('SMTP_FROM', '').strip() or smtp_user
-        recipients_raw = os.environ.get('SMTP_RECIPIENTS', '').strip()
-        recipients = [r.strip() for r in recipients_raw.split(',') if r.strip()]
-        use_tls = os.environ.get('SMTP_USE_TLS', 'true').lower() != 'false'
+        smtp_port = int(cfg.get('smtp_port', 587))
+        smtp_user = cfg.get('smtp_user', '')
+        smtp_password = cfg.get('smtp_password', '')
+        smtp_from = cfg.get('smtp_from', '') or smtp_user
+
+        if recipients_override:
+            recipients = list(recipients_override)
+        else:
+            recipients_raw = cfg.get('smtp_recipients', '')
+            if isinstance(recipients_raw, list):
+                recipients = recipients_raw
+            else:
+                recipients = [r.strip() for r in (recipients_raw or '').split(',') if r.strip()]
+
+        use_tls = cfg.get('smtp_use_tls', True)
+        if isinstance(use_tls, str):
+            use_tls = use_tls.lower() != 'false'
 
         if not recipients:
-            logger.warning('[email] SMTP_RECIPIENTS not set — skipping email send')
+            logger.warning('[email] No recipients configured — skipping email send')
             return True
 
         try:

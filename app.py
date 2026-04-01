@@ -30,12 +30,57 @@ def _safe_db_uri(uri: str) -> str:
         return "<unparseable>"
 
 
+def _compute_asset_version() -> str:
+    """Return a short build fingerprint for cache-busting static assets.
+
+    In debug/dev mode: uses a per-restart timestamp so every server restart
+    flushes browser CSS/JS caches immediately.
+    In production: uses the HEAD git commit hash (first 8 chars) so the version
+    only changes on deploy, minimising unnecessary cache invalidation.
+    """
+    import time
+    # Dev mode: per-restart timestamp — always flushes browser cache on reload
+    if os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true') or \
+       os.environ.get('FLASK_ENV', '') == 'development':
+        return hex(int(time.time()))[2:]
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short=8', 'HEAD'],
+            capture_output=True, text=True, timeout=3,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    # Fallback: per-restart timestamp
+    return hex(int(time.time()))[2:]
+
+
+_ASSET_VERSION = _compute_asset_version()
+
+
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
 
     if test_config:
         app.config.update(test_config)
+        # When tests override SQLALCHEMY_DATABASE_URI (e.g., to SQLite), the
+        # SQLALCHEMY_ENGINE_OPTIONS computed by Config may still contain
+        # PostgreSQL-specific connect_args (e.g., 'options' with lock_timeout).
+        # Replace those with SQLite-compatible options so db.create_all() works.
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        if db_uri.startswith('sqlite'):
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'pool_pre_ping': True,
+                'connect_args': {
+                    'timeout': 30,
+                    'check_same_thread': False,
+                },
+            }
 
     # Ensure production does not pay template reload overhead.
     if app.config.get('IS_PRODUCTION'):
@@ -192,6 +237,12 @@ def create_app(test_config=None):
         response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
         response.headers.setdefault('X-XSS-Protection', '1; mode=block')
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        # HTTP caching: stable reference data cached 60s; writes never cached.
+        if 'Cache-Control' not in response.headers:
+            if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+                response.headers['Cache-Control'] = 'no-store'
+            elif request.path.startswith('/api/sites') or request.path.startswith('/api/departments'):
+                response.headers['Cache-Control'] = 'private, max-age=60'
         return response
 
     # ---------------------------
@@ -248,17 +299,45 @@ def create_app(test_config=None):
             AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
         )
         from models.compliance_profile import ComplianceProfile
+        from models.app_settings import AppSettings
+        from models.alert_channel import AlertChannel
         from models.device_classification_cache import DeviceClassificationCache
         from models.discovery_config import DiscoveryConfig
-        from utils.db_migrations import ensure_server_health_columns, ensure_tracking_stabilization_columns
+        from utils.db_migrations import (
+            ensure_server_health_columns,
+            ensure_tracking_stabilization_columns,
+            ensure_app_settings_table,
+            ensure_device_icmp_threshold_columns,
+            ensure_alert_channels_table,
+        )
 
         from services.discovery_service import get_discovery_service
         ds = get_discovery_service()
-        
+
         if not os.environ.get('FLASK_RUN_FROM_CLI'):
             db.create_all()
             ensure_server_health_columns()
             ensure_tracking_stabilization_columns()
+            ensure_app_settings_table()
+            ensure_device_icmp_threshold_columns()
+            ensure_alert_channels_table()
+
+            # Seed AppSettings from environment variables (non-destructive).
+            _smtp_seeds = [
+                ('smtp_server',     'SMTP_SERVER',     'smtp', 'SMTP server hostname',          False),
+                ('smtp_port',       'SMTP_PORT',       'smtp', 'SMTP server port',              False),
+                ('smtp_user',       'SMTP_USERNAME',   'smtp', 'SMTP username',                 False),
+                ('smtp_password',   'SMTP_PASSWORD',   'smtp', 'SMTP password (encrypted)',     True),
+                ('smtp_from',       'SMTP_FROM',       'smtp', 'From address for alert emails', False),
+                ('smtp_recipients', 'SMTP_RECIPIENTS', 'smtp', 'Comma-separated alert recipients', False),
+                ('smtp_use_tls',    'SMTP_USE_TLS',    'smtp', 'Use TLS (true/false)',          False),
+            ]
+            _monitoring_seeds = [
+                ('monitoring_interval_seconds', 'MONITORING_INTERVAL', 'monitoring',
+                 'Device scan interval in seconds (60–3600)', False),
+            ]
+            for key, env_var, category, desc, is_secret in _smtp_seeds + _monitoring_seeds:
+                AppSettings.seed_from_env(key, env_var, category, desc, is_secret)
     
             # ---------------------------
             # Prime Discovery Service (Singleton)
@@ -330,6 +409,7 @@ def create_app(test_config=None):
     from routes.device_identity_admin import device_identity_admin_bp
     from routes.config_backup import config_backup_bp
     from routes.compliance_profiles import compliance_profiles_bp
+    from routes.settings import settings_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -360,6 +440,7 @@ def create_app(test_config=None):
         device_identity_admin_bp,
         config_backup_bp,
         compliance_profiles_bp,
+        settings_bp,
     ]
 
     for bp in protected_blueprints:
@@ -377,6 +458,10 @@ def create_app(test_config=None):
     def inject_rbac_context():
         from middleware.rbac import get_ui_rbac_context
         return {'rbac_context': get_ui_rbac_context()}
+
+    @app.context_processor
+    def inject_asset_version():
+        return {'asset_ver': _ASSET_VERSION}
 
     @app.get('/health')
     def health():

@@ -2,7 +2,7 @@
    TACTICAL CLOCK
    ============================================================ */
 .tactical-clock {
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     background: rgba(0, 0, 0, 0.4);
     padding: 0.5rem 1rem;
     border: 1px solid var(--tactical-border-accent);
@@ -46,53 +46,52 @@
    CSS VARIABLES - TACTICAL COLOR PALETTE
    ============================================================ */
 :root {
-    /* Background Colors — aliased to --ui-* tokens */
-    --tactical-bg-darkest: var(--ui-bg);
-    --tactical-bg-dark:    var(--ui-surface-1);
-    --tactical-bg-medium:  var(--ui-surface-2);
-    --tactical-bg-light:   var(--ui-surface-3);
-    --tactical-bg-surface: var(--ui-surface-3);
-    --tactical-bg-elevated:var(--ui-surface-4);
-    --tactical-bg-card:    var(--ui-surface-3);
+    /* Background Colors */
+    --tactical-bg-darkest: #0a0a0f;
+    --tactical-bg-dark: #0d0d14;
+    --tactical-bg-medium: #12121a;
+    --tactical-bg-light: #1a1a24;
+    --tactical-bg-surface: #1e1e2a;
+    --tactical-bg-elevated: #252532;
+    --tactical-bg-card: linear-gradient(145deg, #1e1e2a 0%, #252532 100%);
 
     /* Accent Colors */
-    --tactical-accent: var(--ui-accent);
-    --tactical-accent-bright: var(--ui-accent-strong);
-    --tactical-accent-dim: #0D9488;
-    --tactical-accent-glow: rgba(20, 184, 166, 0.22);
-    --tactical-accent-subtle: rgba(20, 184, 166, 0.10);
+    --tactical-accent: #00d4aa;
+    --tactical-accent-dim: #00a080;
+    --tactical-accent-glow: rgba(0, 212, 170, 0.25);
+    --tactical-accent-subtle: rgba(0, 212, 170, 0.1);
 
-    /* Status Colors — aliased to canonical --status-* tokens */
-    --tactical-success: var(--status-success);
-    --tactical-success-dim: #059669;
-    --tactical-success-glow: rgba(16, 185, 129, 0.20);
+    /* Status Colors */
+    --tactical-success: #00ff88;
+    --tactical-success-dim: #00cc6a;
+    --tactical-success-glow: rgba(0, 255, 136, 0.2);
 
-    --tactical-danger: var(--status-critical);
-    --tactical-danger-dim: #DC2626;
-    --tactical-danger-glow: rgba(239, 68, 68, 0.20);
+    --tactical-danger: #ff3b5c;
+    --tactical-danger-dim: #cc2f4a;
+    --tactical-danger-glow: rgba(255, 59, 92, 0.2);
 
-    --tactical-warning: var(--status-warning);
-    --tactical-warning-dim: #D97706;
-    --tactical-warning-glow: rgba(245, 158, 11, 0.20);
+    --tactical-warning: #ffaa00;
+    --tactical-warning-dim: #cc8800;
+    --tactical-warning-glow: rgba(255, 170, 0, 0.2);
 
-    --tactical-info: var(--status-info, #00aaff);
+    --tactical-info: #00aaff;
     --tactical-info-dim: #0088cc;
     --tactical-info-glow: rgba(0, 170, 255, 0.2);
 
     /* Text Colors */
-    --tactical-text-primary: var(--ui-text-primary);
-    --tactical-text-secondary: var(--ui-text-secondary);
-    --tactical-text-muted: var(--ui-text-muted);  /* was #00ffc8 (neon teal) — fixed */
-    --tactical-text-dim: var(--ui-text-dim);
+    --tactical-text-primary: #ffffff;
+    --tactical-text-secondary: #ffffff;
+    --tactical-text-muted: var(--ui-text-muted);
+    --tactical-text-dim: #b8b8c8;
 
     /* Border Colors */
-    --tactical-border: var(--ui-border);
-    --tactical-border-accent: rgba(20, 184, 166, 0.30);
-    --tactical-border-bright: rgba(20, 184, 166, 0.60);
+    --tactical-border: rgba(255, 255, 255, 0.08);
+    --tactical-border-accent: rgba(0, 212, 170, 0.3);
+    --tactical-border-bright: rgba(0, 212, 170, 0.6);
 
     /* Shadows */
     --tactical-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    --tactical-shadow-accent: 0 0 15px rgba(20, 184, 166, 0.12);
+    --tactical-shadow-accent: 0 0 15px rgba(0, 212, 170, 0.15);
     --tactical-glow-sm: 0 0 8px;
     --tactical-glow-md: 0 0 15px;
     --tactical-glow-lg: 0 0 30px;
@@ -114,44 +113,47 @@
     --tactical-small: 0.8rem;
     --tactical-tiny: 0.7rem;
 
+    /* Minimal Ops Variables */
+    --mo-bg-void: #0B0E14;
+    --mo-surface: #151A22;
+    --mo-border: #2A3241;
+    --mo-teal: #00E5A0;
+    --mo-amber: #FF9B05;
+    --mo-red: #FF3366;
+    --mo-blue: #3DB2FF;
+    --mo-muted: #64748B;
 
+    /* Tactical Ops Design V2 */
+    --bg-base: #0a0c0f;
+    --bg-surface: #111418;
+    --bg-elevated: #181c22;
+    --accent-primary: #00e5a0;
+    --accent-warn: #f5a623;
+    --accent-danger: #ff4d4d;
+    --accent-info: #4d9fff;
+    --text-primary: #e8edf2;
+    --text-muted: #556070;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-subtle: var(--border);
+    --border-medium: var(--border);
 
-    /* ── Typography Scale ── */
-    --t-kpi-value:    1.65rem;
-    --t-kpi-label:    0.60rem;
-    --t-table-header: 0.62rem;
-    --t-body:         0.82rem;
-    --t-mono:         var(--ui-font-mono);
-    --t-sans:         var(--ui-font-sans);
+    --teal: var(--accent-primary);
+    --amber: var(--accent-warn);
+    --red: var(--accent-danger);
+    --blue: var(--accent-info);
 
-    /* ── Animation Durations ── */
-    --a-micro:      130ms;
-    --a-transition: 180ms;
-    --a-panel:      300ms;
-    --a-max:        400ms;
-}
-
-/* ============================================================
-   SURFACE DEPTH — cards, panels, modals
-   Creates perceived elevation without gradients
-   ============================================================ */
-.card,
-.enterprise-panel,
-.modal-content,
-.tactical-panel {
-    box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.03),
-        0 8px 24px rgba(0, 0, 0, 0.35);
+    --font-sans: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Geist Mono', 'DM Mono', monospace;
 }
 
 /* ============================================================
    BASE STYLES
    ============================================================ */
 body.tactical-theme {
-    background-color: var(--ui-bg) !important;
+    background-color: var(--bg-base) !important;
     background-image: none !important;
     color: var(--text-primary);
-    font-family: var(--ui-font-sans);
+    font-family: var(--font-sans);
     min-height: 100vh;
 }
 
@@ -161,7 +163,7 @@ body.tactical-theme {
 .tactical-navbar {
     background: linear-gradient(180deg, var(--tactical-bg-medium) 0%, var(--tactical-bg-dark) 100%) !important;
     border-bottom: 1px solid var(--tactical-border-accent);
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(20, 184, 166, 0.1);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 212, 170, 0.1);
     padding: 0.5rem 1rem;
     position: relative;
 }
@@ -178,7 +180,7 @@ body.tactical-theme {
 
 .tactical-navbar .navbar-brand {
     color: var(--tactical-accent-bright) !important;
-    font-family: var(--ui-font-display);
+    font-family: 'Orbitron', 'Rajdhani', monospace;
     font-weight: 700;
     font-size: 1.4rem;
     letter-spacing: 2px;
@@ -212,7 +214,7 @@ body.tactical-theme {
 
 .tactical-navbar .nav-link.active {
     color: var(--tactical-accent-bright) !important;
-    background: rgba(20, 184, 166, 0.15);
+    background: rgba(0, 212, 170, 0.15);
     border: 1px solid var(--tactical-border-accent);
 }
 
@@ -273,7 +275,6 @@ body.tactical-theme {
     height: 2px;
     background: linear-gradient(90deg, transparent, var(--tactical-accent), transparent);
     opacity: 0.5;
-    display: none !important;
 }
 
 .tactical-card:hover {
@@ -285,7 +286,7 @@ body.tactical-theme {
 /* Stale data indicator — applied by dashboard/utils.js:checkStale() when data >5min old */
 .card-stale {
     opacity: 0.72;
-    border-left: 2px solid var(--status-warning);
+    border-left: 2px solid var(--s-warn, var(--ui-warning, #f0a500));
     position: relative;
 }
 
@@ -295,16 +296,16 @@ body.tactical-theme {
     top: 0.4rem;
     right: 0.6rem;
     font-size: 0.6rem;
-    font-family: var(--ui-font-mono);
-    color: var(--status-warning);
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--s-warn, var(--ui-warning, #f0a500));
     letter-spacing: 0.06em;
     text-transform: uppercase;
     pointer-events: none;
 }
 
 .tactical-card .card-header {
-    background: transparent;
-    border-bottom: 1px solid var(--ui-border);
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--tactical-border);
     color: var(--tactical-text-primary);
     font-weight: 600;
     text-transform: uppercase;
@@ -319,7 +320,7 @@ body.tactical-theme {
 }
 
 .tactical-card .card-body {
-    padding: 1.25rem 1.5rem;
+    padding: 0.75rem 1rem;
     color: var(--tactical-text-secondary);
 }
 
@@ -352,7 +353,6 @@ body.tactical-theme {
     width: 4px;
     height: 100%;
     background: var(--tactical-accent);
-    display: none !important;
 }
 
 .tactical-stat-card.success::before {
@@ -370,7 +370,7 @@ body.tactical-theme {
 .tactical-stat-card .stat-value {
     font-size: 2.5rem;
     font-weight: 700;
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     color: var(--tactical-text-primary);
     line-height: 1;
     margin-bottom: 0.5rem;
@@ -403,18 +403,18 @@ body.tactical-theme {
     font-size: 1.5rem;
     color: var(--tactical-accent);
     opacity: 0.8;
-    background: rgba(20, 184, 166, 0.1);
+    background: rgba(0, 212, 170, 0.1);
     padding: 0.5rem;
     border-radius: 8px;
-    border: 1px solid rgba(20, 184, 166, 0.2);
-    box-shadow: 0 0 15px rgba(20, 184, 166, 0.1);
+    border: 1px solid rgba(0, 212, 170, 0.2);
+    box-shadow: 0 0 15px rgba(0, 212, 170, 0.1);
 }
 
 /* ============================================================
    TACTICAL BUTTONS
    ============================================================ */
 .tactical-btn {
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     font-weight: 600;
     font-size: 0.875rem;
     text-transform: uppercase;
@@ -424,6 +424,22 @@ body.tactical-theme {
     border: 1px solid transparent;
     transition: var(--tactical-transition);
     position: relative;
+    overflow: hidden;
+}
+
+.tactical-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.5s;
+}
+
+.tactical-btn:hover::before {
+    left: 100%;
 }
 
 .tactical-btn-primary {
@@ -435,20 +451,20 @@ body.tactical-theme {
 .tactical-btn-primary:hover {
     background: var(--tactical-accent);
     box-shadow: var(--tactical-glow-md) var(--tactical-accent-glow);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     color: var(--tactical-bg-darkest);
 }
 
 .tactical-btn-ghost {
     background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.28);
+    border-color: rgba(148, 163, 184, 0.28);
     color: var(--tactical-text-secondary);
 }
 
 .tactical-btn-ghost:hover,
 .tactical-btn-ghost.active {
-    background: rgba(20, 184, 166, 0.12);
-    border-color: rgba(20, 184, 166, 0.42);
+    background: rgba(0, 212, 170, 0.12);
+    border-color: rgba(0, 212, 170, 0.42);
     color: var(--tactical-text-primary);
 }
 
@@ -474,8 +490,8 @@ body.tactical-theme {
 .tactical-btn-outline.active {
     border-color: var(--tactical-accent);
     color: var(--tactical-accent);
-    background: rgba(20, 184, 166, 0.05);
-    box-shadow: 0 0 10px rgba(20, 184, 166, 0.1);
+    background: rgba(0, 212, 170, 0.05);
+    box-shadow: 0 0 10px rgba(0, 212, 170, 0.1);
 }
 
 /* ============================================================
@@ -488,11 +504,11 @@ body.tactical-theme {
     padding: 0.5rem 1rem;
     font-size: 0.75rem;
     font-weight: 700;
-    font-family: var(--ui-font-sans);
+    font-family: 'IBM Plex Sans', sans-serif;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-radius: 2px;
-    transition: all 0.075s ease;
+    transition: background-color 0.075s ease, border-color 0.075s ease, color 0.075s ease, box-shadow 0.075s ease, transform 0.075s ease;
     border: 1px solid transparent;
     cursor: pointer;
     line-height: 1.5;
@@ -506,37 +522,37 @@ body.tactical-theme {
 }
 
 .mo-btn-primary {
-    background: var(--ui-accent);
+    background: var(--mo-teal);
     color: #000;
     box-shadow: 0 0 15px rgba(0, 229, 160, 0.15);
 }
 
 .mo-btn-primary:hover {
-    background: #10B981;
+    background: #00c98d;
     box-shadow: 0 0 20px rgba(0, 229, 160, 0.25);
     color: #000;
 }
 
 .mo-btn-destructive {
     background: transparent;
-    border-color: color-mix(in srgb, var(--status-critical) 50%, transparent);
-    color: var(--status-critical);
+    border-color: color-mix(in srgb, var(--mo-red) 50%, transparent);
+    color: var(--mo-red);
 }
 
 .mo-btn-destructive:hover {
-    background: color-mix(in srgb, var(--status-critical) 10%, transparent);
-    border-color: var(--status-critical);
-    color: var(--status-critical);
+    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
+    border-color: var(--mo-red);
+    color: var(--mo-red);
     box-shadow: 0 0 15px rgba(255, 51, 102, 0.2);
 }
 
 .mo-btn-ghost {
     background: transparent;
-    color: var(--ui-text-muted);
+    color: var(--mo-muted);
 }
 
 .mo-btn-ghost:hover {
-    background: var(--ui-border);
+    background: var(--mo-border);
     color: #fff;
 }
 
@@ -549,12 +565,12 @@ body.tactical-theme {
     border-bottom: 2px solid transparent;
     border-radius: 0;
     color: var(--text-muted);
-    font-family: var(--ui-font-sans);
+    font-family: 'IBM Plex Sans', var(--t-sans, sans-serif);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 0.5rem 1rem;
-    transition: all var(--a-micro, 150ms) ease;
+    transition: color var(--a-micro, 150ms) ease, border-color var(--a-micro, 150ms) ease, background-color var(--a-micro, 150ms) ease, opacity var(--a-micro, 150ms) ease;
     opacity: 0.7;
 }
 
@@ -579,8 +595,8 @@ body.tactical-theme {
 .tactical-btn-outline.active {
     border-color: var(--tactical-accent);
     color: var(--tactical-accent);
-    background: rgba(20, 184, 166, 0.05);
-    box-shadow: 0 0 10px rgba(20, 184, 166, 0.1);
+    background: rgba(0, 212, 170, 0.05);
+    box-shadow: 0 0 10px rgba(0, 212, 170, 0.1);
 }
 
 
@@ -666,15 +682,14 @@ body.tactical-theme {
 }
 
 .tactical-table thead th {
-    background: transparent;
-    color: var(--tactical-text-muted);
+    background: var(--tactical-bg-dark);
+    color: var(--tactical-accent);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
     font-size: 0.8rem;
     padding: 1rem;
-    border-bottom: 1px solid var(--tactical-border-accent);
-    border-top: none;
+    border-bottom: 2px solid var(--tactical-border-accent);
     text-align: left;
 }
 
@@ -684,8 +699,8 @@ body.tactical-theme {
 }
 
 .tactical-table tbody tr:hover {
-    background: rgba(20, 184, 166, 0.15);
-    box-shadow: inset 0 0 15px rgba(20, 184, 166, 0.05);
+    background: rgba(0, 212, 170, 0.15);
+    box-shadow: inset 0 0 15px rgba(0, 212, 170, 0.05);
     color: var(--tactical-text-primary);
 }
 
@@ -717,7 +732,7 @@ body.tactical-theme {
     border-radius: var(--tactical-radius-sm);
     color: var(--tactical-text-primary);
     padding: 0.75rem 1rem;
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     font-size: 1rem;
     transition: var(--tactical-transition);
     width: 100%;
@@ -750,7 +765,7 @@ body.tactical-theme {
     border-radius: var(--tactical-radius-sm);
     color: var(--tactical-text-primary);
     padding: 0.75rem 1rem;
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     cursor: pointer;
 }
 
@@ -774,7 +789,7 @@ body.tactical-theme {
     letter-spacing: 0.08em;
     border-radius: 3px;
     border: 1px solid transparent;
-    font-family: var(--ui-font-mono);
+    font-family: 'IBM Plex Mono', monospace;
     line-height: 1;
 }
 
@@ -790,27 +805,27 @@ body.tactical-theme {
     font-weight: 700;
     text-transform: uppercase;
     border-radius: 2px;
-    font-family: var(--ui-font-mono);
+    font-family: 'IBM Plex Mono', monospace;
     line-height: 1.2;
     border: 1px solid transparent;
 }
 
 .mo-badge-online {
-    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
-    color: var(--ui-accent);
-    border-color: color-mix(in srgb, var(--ui-accent) 20%, transparent);
+    background: color-mix(in srgb, var(--mo-teal) 10%, transparent);
+    color: var(--mo-teal);
+    border-color: color-mix(in srgb, var(--mo-teal) 20%, transparent);
 }
 
 .mo-badge-risk {
-    background: color-mix(in srgb, var(--status-warning) 10%, transparent);
-    color: var(--status-warning);
-    border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
+    background: color-mix(in srgb, var(--mo-amber) 10%, transparent);
+    color: var(--mo-amber);
+    border-color: color-mix(in srgb, var(--mo-amber) 30%, transparent);
 }
 
 .mo-badge-policy {
-    background: color-mix(in srgb, var(--status-critical) 10%, transparent);
-    color: var(--status-critical);
-    border-color: color-mix(in srgb, var(--status-critical) 30%, transparent);
+    background: color-mix(in srgb, var(--mo-red) 10%, transparent);
+    color: var(--mo-red);
+    border-color: color-mix(in srgb, var(--mo-red) 30%, transparent);
 }
 
 .mo-badge-pulse-dot {
@@ -818,6 +833,19 @@ body.tactical-theme {
     height: 6px;
     border-radius: 50%;
     background-color: currentColor;
+    animation: pulse-mo 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-mo {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
 }
 
 .tactical-badge-success {
@@ -877,7 +905,7 @@ body.tactical-theme {
     background: var(--tactical-bg-surface);
     border: 1px solid var(--tactical-border-accent);
     border-radius: var(--tactical-radius-lg);
-    box-shadow: var(--tactical-shadow), 0 0 60px rgba(20, 184, 166, 0.1);
+    box-shadow: var(--tactical-shadow), 0 0 60px rgba(0, 212, 170, 0.1);
 }
 
 .tactical-modal .modal-header {
@@ -888,7 +916,7 @@ body.tactical-theme {
 
 .tactical-modal .modal-title {
     color: var(--tactical-accent-bright);
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -992,10 +1020,7 @@ body.tactical-theme {
 .tactical-progress-bar {
     height: 100%;
     border-radius: var(--tactical-radius-sm);
-    transform: scaleX(0);
-    transform-origin: left;
-    will-change: transform;
-    transition: transform 0.5s ease;
+    transition: width 0.5s ease;
     position: relative;
 }
 
@@ -1007,6 +1032,17 @@ body.tactical-theme {
     right: 0;
     bottom: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: tactical-shimmer 2s infinite;
+}
+
+@keyframes tactical-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 .tactical-progress-bar.success {
@@ -1138,6 +1174,20 @@ body.tactical-theme {
     }
 }
 
+@keyframes tactical-blink {
+
+    0%,
+    50%,
+    100% {
+        opacity: 1;
+    }
+
+    25%,
+    75% {
+        opacity: 0.5;
+    }
+}
+
 .tactical-scan-effect::after {
     content: '';
     position: absolute;
@@ -1147,39 +1197,6 @@ body.tactical-theme {
     height: 2px;
     background: linear-gradient(90deg, transparent, var(--tactical-accent), transparent);
     animation: tactical-scan 4s infinite;
-}
-
-/* Pause scan animation when element is off-screen (toggled by IntersectionObserver) */
-.tactical-scan-paused.tactical-scan-effect::after {
-    animation-play-state: paused;
-}
-
-/* ── Skeleton shimmer — reusable loading placeholder ───────── */
-@keyframes skeleton-shimmer {
-    0%   { background-position: -400px 0; }
-    100% { background-position:  400px 0; }
-}
-
-.skeleton {
-    background: linear-gradient(
-        90deg,
-        var(--ui-surface-2) 25%,
-        var(--ui-surface-3) 50%,
-        var(--ui-surface-2) 75%
-    );
-    background-size: 800px 100%;
-    animation: skeleton-shimmer 1.6s ease-in-out infinite;
-    border-radius: 3px;
-    color: transparent !important;
-    pointer-events: none;
-    user-select: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .skeleton {
-        animation: none;
-        background: var(--ui-surface-3);
-    }
 }
 
 /* ============================================================
@@ -1202,6 +1219,20 @@ body.tactical-theme {
 /* ============================================================
    GLOBAL STATUS PULSE (Refined)
    ============================================================ */
+@keyframes heartbeat {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.3);
+        opacity: 0.7;
+    }
+}
+
 .status-indicator {
     display: inline-flex;
     align-items: center;
@@ -1211,18 +1242,22 @@ body.tactical-theme {
     border-radius: 50%;
 }
 
-.status-indicator.status-online {
-    background-color: var(--status-success);
+.status-online {
+    background-color: #28a745;
+    box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+    animation: heartbeat 2s infinite ease-in-out;
 }
 
-.status-indicator.status-online i,
-.status-indicator.status-offline i,
-.status-indicator.status-checking i {
+.status-online i,
+.status-offline i,
+.status-checking i {
     display: none;
 }
 
-.status-indicator.status-offline {
-    background-color: var(--status-critical);
+.status-offline {
+    background-color: #dc3545;
+    box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+    animation: heartbeat 3s infinite ease-in-out;
 }
 
 .metric-status {
@@ -1238,54 +1273,38 @@ body.tactical-theme {
 }
 
 .metric-status.status-healthy {
-    color: var(--status-success);
-    border-color: var(--status-success-bd);
-    background: var(--status-success-bg);
+    color: var(--tactical-success);
+    border-color: rgba(0, 255, 136, 0.4);
+    background: rgba(0, 255, 136, 0.12);
 }
 
 .metric-status.status-warning {
-    color: var(--status-warning);
-    border-color: var(--status-warning-bd);
-    background: var(--status-warning-bg);
+    color: var(--tactical-warning);
+    border-color: rgba(255, 170, 0, 0.5);
+    background: rgba(255, 170, 0, 0.12);
 }
 
 .metric-status.status-critical {
-    color: var(--status-critical);
-    border-color: var(--status-critical-bd);
-    background: var(--status-critical-bg);
+    color: var(--tactical-danger);
+    border-color: rgba(255, 59, 92, 0.5);
+    background: rgba(255, 59, 92, 0.12);
 }
 
-.status-indicator.status-maintenance {
-    background-color: var(--status-warning);
+.status-maintenance {
+    background-color: #ffc107;
+    box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+    animation: heartbeat 2.5s infinite ease-in-out;
 }
 
-.status-indicator.status-unknown {
-    background-color: var(--status-offline);
+.status-unknown {
+    background-color: #6c757d;
+    box-shadow: 0 0 10px rgba(108, 117, 125, 0.5);
 }
 
-.status-indicator.status-checking {
-    background-color: var(--status-offline);
+.status-checking {
+    background-color: #6c757d;
     width: 10px;
     height: 10px;
-}
-
-/* ============================================================
-   ACCESSIBILITY
-   ============================================================ */
-:focus-visible {
-    outline: 2px solid rgba(20, 184, 166, 0.55);
-    outline-offset: 2px;
-    border-radius: 3px;
-}
-
-/* ── Table row teal accent on hover ── */
-.tactical-theme .table-hover tbody tr {
-    transition: background 120ms ease;
-    border-left: 2px solid transparent;
-}
-.tactical-theme .table-hover tbody tr:hover {
-    background: rgba(255, 255, 255, 0.04) !important;
-    border-left-color: var(--ui-accent);
 }
 
 /* ============================================================
@@ -1359,15 +1378,14 @@ html {
 .gpu-accelerated,
 .tactical-card,
 .tactical-modal,
-.tactical-navbar,
-.btn,
-.nav-link,
-.status-indicator {
+.tactical-navbar {
     transform: translateZ(0);
     backface-visibility: hidden;
-    perspective: 1000px;
-    will-change: transform, opacity, box-shadow;
-    /* Hint to browser */
+}
+
+.gpu-accelerated {
+    will-change: transform, opacity;
+    /* Hint only on explicit animation surfaces */
 }
 
 /* Optimize Transitions */
@@ -1385,18 +1403,12 @@ html {
     /* Isolates layout recalculations */
 }
 
-/* Reduce repaints on scrolling */
-.sidebar,
-.main-content {
-    will-change: scroll-position;
-}
-
 /* ============================================================
    TACTICAL DROPDOWNS (Bootstrap Overrides)
    ============================================================ */
 .tactical-dropdown {
-    background: var(--ui-surface-3);
-    border: 1px solid var(--ui-border);
+    background: #11151c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     margin-top: 4px;
     /* Slight offset */
@@ -1404,20 +1416,20 @@ html {
 }
 
 .tactical-dropdown .dropdown-item {
-    color: var(--ui-text-secondary);
+    color: #cfe7f3;
     font-size: 0.85rem;
     padding: 0.6rem 1rem;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .tactical-dropdown .dropdown-item:hover {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10B981;
+    background: rgba(32, 201, 151, 0.1);
+    color: #20c997;
 }
 
 .tactical-dropdown .dropdown-item.active {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10B981;
+    background: rgba(32, 201, 151, 0.15);
+    color: #20c997;
     font-weight: 600;
 }
 
@@ -1432,9 +1444,9 @@ html {
     border-radius: 16px;
     /* Visual Hierarchy Refinement */
     background: linear-gradient(to bottom,
-            rgba(18, 18, 18, 0.85),
-            rgba(12, 12, 12, 0.85));
-    border: 1px solid rgba(16, 185, 129, 0.15);
+            rgba(18, 22, 32, 0.85),
+            rgba(12, 16, 24, 0.85));
+    border: 1px solid rgba(32, 201, 151, 0.15);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 
     position: relative;
@@ -1459,7 +1471,7 @@ html {
     display: flex;
     align-items: center;
     border-radius: 10px;
-    color: var(--ui-text-secondary);
+    color: #cfe7f3;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.12);
     width: 100%;
@@ -1481,8 +1493,8 @@ html {
 .alerts-filters input:focus,
 .alerts-filters .dropdown-toggle:focus,
 .alerts-filters .dropdown-toggle.show {
-    border-color: rgba(16, 185, 129, 0.6);
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+    border-color: rgba(32, 201, 151, 0.6);
+    box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.15);
     /* Focus Glow */
     outline: none;
 }
@@ -1524,7 +1536,7 @@ html {
     font-size: 0.72rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #A1A1AA;
+    color: #8b949e;
 }
 
 .alerts-kpi .stat-value {
@@ -1534,11 +1546,11 @@ html {
 }
 
 .alerts-kpi.critical .stat-value {
-    color: #EF4444;
+    color: #dc3545;
 }
 
 .alerts-kpi.warning .stat-value {
-    color: #F59E0B;
+    color: #ffc107;
 }
 
 .alerts-kpi.info .stat-value {
@@ -1553,9 +1565,9 @@ html {
 .alert-panel .tactical-table thead th {
     color: #6be6d3;
     background: linear-gradient(to bottom,
-            rgba(0, 0, 0, 0.95),
-            rgba(12, 12, 12, 0.95));
-    border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+            rgba(15, 18, 26, 0.95),
+            rgba(12, 15, 22, 0.95));
+    border-bottom: 1px solid rgba(32, 201, 151, 0.2);
     text-transform: uppercase;
     font-weight: 600;
 }
@@ -1572,14 +1584,14 @@ html {
 }
 
 .alert-row-critical {
-    border-left: 3px solid #EF4444;
-    background: rgba(239, 68, 68, 0.08);
+    border-left: 3px solid #dc3545;
+    background: rgba(220, 53, 69, 0.08);
     /* Careful with opacity */
 }
 
 .alert-row-warning {
-    border-left: 3px solid #F59E0B;
-    background: rgba(245, 158, 11, 0.04);
+    border-left: 3px solid #ffc107;
+    background: rgba(255, 193, 7, 0.04);
 }
 
 .alert-row-info,
@@ -1607,15 +1619,15 @@ html {
 
 /* Hover Effect */
 .alert-panel tbody tr:hover {
-    background: rgba(16, 185, 129, 0.06);
+    background: rgba(32, 201, 151, 0.06);
     transform: translateX(4px);
     transition: transform 0.2s ease, background 0.2s ease;
 }
 
 /* Agent Row (Scanning) */
 .tactical-agent-row {
-    box-shadow: inset 4px 0 0 var(--ui-accent-strong) !important;
-    background: var(--ui-accent-dim) !important;
+    box-shadow: inset 4px 0 0 #00ffc8 !important;
+    background: rgba(0, 255, 200, 0.05) !important;
 }
 
 /* Responsive adjustments for Alerts KPI */
@@ -1634,9 +1646,9 @@ html {
     padding: 28px 28px 20px;
     border-radius: var(--tactical-radius-lg);
     background: linear-gradient(to bottom,
-            rgba(18, 18, 18, 0.85),
-            rgba(12, 12, 12, 0.9));
-    border: 1px solid rgba(16, 185, 129, 0.12);
+            rgba(18, 22, 32, 0.85),
+            rgba(12, 16, 24, 0.9));
+    border: 1px solid rgba(32, 201, 151, 0.12);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
     margin-top: 24px;
     position: relative;
@@ -1668,7 +1680,10 @@ html {
     font-size: 1rem;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--ui-accent-strong);
+    color: var(--tactical-accent-bright);
+    /* Ensure this var exists or fallback */
+    color: #00ffc8;
+    /* Fallback based on typical tactical bright accent */
     margin-bottom: 4px;
     font-weight: 600;
 }
@@ -1705,7 +1720,7 @@ html {
     justify-content: space-between;
     gap: 16px;
     padding: 14px 20px;
-    background: rgba(14, 14, 14, 0.85);
+    background: rgba(14, 15, 22, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 8px;
     margin-bottom: 48px;
@@ -1726,7 +1741,7 @@ html {
     gap: 32px;
     flex-wrap: wrap;
     font-size: 0.72rem;
-    color: #A1A1AA;
+    color: #8b949e;
 }
 
 .enterprise-strip-item {
@@ -1739,7 +1754,7 @@ html {
 }
 
 .enterprise-strip-item .strip-label {
-    color: #A1A1AA;
+    color: #8b949e;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.75rem;
@@ -1755,24 +1770,24 @@ html {
 }
 
 .enterprise-strip-item .strip-dot.green {
-    background: var(--status-success);
+    background: #3fb950;
 }
 
 .enterprise-strip-item .strip-dot.yellow {
-    background: var(--status-warning);
+    background: #d29922;
 }
 
 .enterprise-strip-item .strip-dot.red {
-    background: var(--status-critical);
+    background: #f85149;
 }
 
 .enterprise-strip-item .strip-dot.gray {
-    background: var(--status-offline);
+    background: #6e7681;
 }
 
 /* ---------- Enterprise Card (Base) ---------- */
 .enterprise-card {
-    background: rgba(22, 22, 22, 0.82);
+    background: rgba(22, 24, 33, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -1785,8 +1800,8 @@ html {
 }
 
 .enterprise-card .card-header {
-    background: transparent;
-    border-bottom: 1px solid var(--ui-border);
+    background: rgba(0, 0, 0, 0.18);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     padding: 10px 16px;
     font-size: 0.78rem;
     font-weight: 600;
@@ -1804,7 +1819,7 @@ html {
     position: relative;
     min-height: 110px;
     padding: 18px 20px;
-    background: rgba(22, 22, 22, 0.82);
+    background: rgba(22, 24, 33, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -1821,7 +1836,7 @@ html {
     font-size: 0.7rem !important;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #A1A1AA !important;
+    color: #8b949e !important;
     font-weight: 600;
     margin-bottom: 4px;
 }
@@ -1829,14 +1844,14 @@ html {
 .enterprise-kpi .stat-value {
     font-size: 1.8rem !important;
     font-weight: 700;
-    font-family: var(--ui-font-display);
+    font-family: 'Rajdhani', sans-serif;
     color: #e6edf3;
     line-height: 1.1;
 }
 
 .enterprise-kpi .metric-sub {
     font-size: 0.72rem !important;
-    color: #A1A1AA !important;
+    color: #8b949e !important;
     opacity: 1 !important;
     margin-top: 6px;
     display: block !important;
@@ -1858,12 +1873,10 @@ html {
 
 /* ---------- Enterprise Panel (Layer 3) ---------- */
 .enterprise-panel {
-    background: var(--ui-surface-2);
-    border: 1px solid var(--ui-border);
+    background: rgba(22, 24, 33, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
-    box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.03),
-        0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     overflow: hidden;
     margin-bottom: 20px;
 }
@@ -1888,7 +1901,7 @@ html {
 
 .enterprise-panel .panel-header .panel-meta {
     font-size: 0.7rem;
-    color: #A1A1AA;
+    color: #8b949e;
 }
 
 .enterprise-panel .panel-body {
@@ -1932,12 +1945,12 @@ html {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: rgba(0, 0, 0, 0.98);
+    background: rgba(15, 17, 24, 0.98);
     padding: 8px 12px;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #A1A1AA;
+    color: #8b949e;
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -2034,7 +2047,7 @@ html {
 
 .enterprise-section-sub {
     font-size: 0.72rem;
-    color: #A1A1AA;
+    color: #8b949e;
 }
 
 /* Chart containers — consistent padding and height */
@@ -2047,7 +2060,7 @@ html {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #A1A1AA;
+    color: #8b949e;
     margin-bottom: 8px;
     font-weight: 600;
 }
@@ -2143,10 +2156,10 @@ html {
 
 /* Specific infinite offenders — zero them out explicitly */
 .dashboard-enterprise .tactical-status::before,
-.dashboard-enterprise .status-indicator.status-online,
-.dashboard-enterprise .status-indicator.status-offline,
-.dashboard-enterprise .status-indicator.status-maintenance,
-.dashboard-enterprise .status-indicator.status-checking,
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .status-checking,
 .dashboard-enterprise .tactical-progress-bar::after,
 .dashboard-enterprise .tactical-scan-effect::after {
     animation: none !important;
@@ -2172,9 +2185,9 @@ html {
 .dashboard-enterprise .tactical-select:focus,
 .dashboard-enterprise .tactical-clock,
 .dashboard-enterprise .tactical-clock:hover,
-.dashboard-enterprise .status-indicator.status-online,
-.dashboard-enterprise .status-indicator.status-offline,
-.dashboard-enterprise .status-indicator.status-maintenance,
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
 .dashboard-enterprise .alerts-container,
 .dashboard-enterprise .breakdown-panel,
 .dashboard-enterprise .breakdown-subcard {
@@ -2231,8 +2244,8 @@ html {
 /* Flatten card backgrounds */
 .dashboard-enterprise .tactical-card,
 .dashboard-enterprise .tactical-stat-card {
-    background: var(--ui-surface-2) !important;
-    border: 1px solid var(--ui-border) !important;
+    background: var(--e-bg-panel) !important;
+    border: 1px solid var(--e-border-panel) !important;
     border-radius: 6px !important;
 }
 
@@ -2250,18 +2263,43 @@ html {
 /* Flatten alert/filter container backgrounds */
 .dashboard-enterprise .alerts-container,
 .dashboard-enterprise .alerts-filters {
-    background: var(--ui-surface-2) !important;
-    border: 1px solid var(--ui-border) !important;
+    background: var(--e-bg-panel) !important;
+    border: 1px solid var(--e-border-panel) !important;
 }
 
 /* Flatten navbar gradient if visible on dashboard pages */
 .dashboard-enterprise .tactical-navbar {
-    background: var(--ui-surface-2) !important;
+    background: var(--e-bg-panel) !important;
     box-shadow: none !important;
-    border-bottom: 1px solid var(--ui-border) !important;
+    border-bottom: 1px solid var(--e-border) !important;
 }
 
-/* ── 5. (NEON TEXT MUTED FIX — resolved at root; block removed) ── */
+/* ── 5. FIX THE INVERTED TEXT MUTED COLOR ────────────────────
+   --tactical-text-muted is neon teal (#00ffc8) in tactical.css.
+   In enterprise mode, muted text must be dark/neutral — never
+   the brightest color in the palette.
+   ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise {
+    --tactical-text-muted: var(--e-text-muted);
+    /* #8a97a6 */
+    --tactical-text-dim: var(--e-text-dim);
+    /* #5e6b78 */
+    --tactical-text-secondary: var(--e-text-secondary);
+    /* #c3cfdb */
+    --tactical-text-primary: var(--e-text-primary);
+    /* #e6edf5 */
+}
+
+/* Override any component that hardcodes the neon muted color */
+.dashboard-enterprise .stat-label,
+.dashboard-enterprise .enterprise-section-sub,
+.dashboard-enterprise .panel-meta,
+.dashboard-enterprise .alerts-subtitle,
+.dashboard-enterprise .kpi-label,
+.dashboard-enterprise .strip-label,
+.dashboard-enterprise .tactical-text-muted {
+    color: var(--e-text-muted) !important;
+}
 
 /* ── 6. NEUTRALISE GREEN ACTIVE TABS ─────────────────────────
    Green active tabs are explicitly prohibited — they create
@@ -2270,11 +2308,11 @@ html {
 .dashboard-enterprise .tactical-tab.active,
 .dashboard-enterprise .tabs button.active,
 .dashboard-enterprise .nav-link.active {
-    color: var(--ui-text-primary) !important;
-    border-color: var(--ui-border-strong) !important;
-    background: rgba(255, 255, 255, 0.16) !important;
+    color: var(--e-text-primary) !important;
+    border-color: var(--e-border-strong) !important;
+    background: rgba(148, 163, 184, 0.16) !important;
     /* Kill the green underline */
-    border-bottom-color: var(--ui-border-strong) !important;
+    border-bottom-color: var(--e-border-strong) !important;
     /* Kill the green background gradient */
     background-image: none !important;
     text-shadow: none !important;
@@ -2282,8 +2320,8 @@ html {
 
 .dashboard-enterprise .tactical-tab:hover,
 .dashboard-enterprise .tabs button:hover {
-    color: var(--ui-text-primary) !important;
-    background: rgba(255, 255, 255, 0.10) !important;
+    color: var(--e-text-primary) !important;
+    background: rgba(148, 163, 184, 0.10) !important;
     text-shadow: none !important;
 }
 
@@ -2312,43 +2350,47 @@ html {
 }
 
 .dashboard-enterprise .alert-danger {
-    background: var(--status-critical-bg) !important;
-    border-color: var(--status-critical-bd) !important;
-    color: #FCA5A5 !important;
-    border-left: 3px solid var(--status-critical) !important;
+    background: var(--s-critical-bg) !important;
+    border-color: var(--s-critical-bd) !important;
+    color: #f5a0a8 !important;
+    border-left: 3px solid var(--s-critical) !important;
 }
 
 .dashboard-enterprise .alert-warning {
-    background: var(--status-warning-bg) !important;
-    border-color: var(--status-warning-bd) !important;
-    color: #FCD34D !important;
-    border-left: 3px solid var(--status-warning) !important;
+    background: var(--s-warning-bg) !important;
+    border-color: var(--s-warning-bd) !important;
+    color: #f2d47a !important;
+    border-left: 3px solid var(--s-warning) !important;
 }
 
 .dashboard-enterprise .alert-success {
-    background: var(--status-success-bg) !important;
-    border-color: var(--status-success-bd) !important;
-    color: #6EE7B7 !important;
-    border-left: 3px solid rgba(16, 185, 129, 0.50) !important;
+    background: var(--s-healthy-bg) !important;
+    border-color: var(--s-healthy-bd) !important;
+    color: #7acfb8 !important;
+    border-left: 3px solid rgba(32, 201, 151, 0.50) !important;
 }
 
 /* ── 9. NORMALISE BUTTON STYLES ──────────────────────────────
-   Remove glow and scale transforms on enterprise surface.
+   Remove glow, shimmer sweep (::before), and scale transforms.
    ──────────────────────────────────────────────────────────── */
+.dashboard-enterprise .tactical-btn::before {
+    display: none !important;
+}
+
 .dashboard-enterprise .tactical-btn-outline,
 .dashboard-enterprise .tactical-btn-outline:hover,
 .dashboard-enterprise .tactical-btn-outline.active {
-    background: rgba(255, 255, 255, 0.06) !important;
-    border-color: var(--ui-border) !important;
-    color: var(--ui-text-secondary) !important;
+    background: rgba(148, 163, 184, 0.06) !important;
+    border-color: var(--e-border) !important;
+    color: var(--e-text-secondary) !important;
     box-shadow: none !important;
 }
 
 .dashboard-enterprise .tactical-btn-outline:hover,
 .dashboard-enterprise .tactical-btn-outline.active {
-    border-color: var(--ui-border-strong) !important;
-    background: rgba(255, 255, 255, 0.14) !important;
-    color: var(--ui-text-primary) !important;
+    border-color: var(--e-border-strong) !important;
+    background: rgba(148, 163, 184, 0.14) !important;
+    color: var(--e-text-primary) !important;
 }
 
 /* ── 10. TABLE OVERRIDES ─────────────────────────────────────
@@ -2356,9 +2398,9 @@ html {
    enforce tabular-nums on all cells.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-table thead th {
-    color: var(--ui-text-secondary) !important;
-    background: rgba(0, 0, 0, 0.96) !important;
-    border-bottom: 1px solid var(--ui-border-strong) !important;
+    color: var(--e-text-secondary) !important;
+    background: rgba(10, 13, 20, 0.96) !important;
+    border-bottom: 1px solid var(--e-border-strong) !important;
     font-size: var(--t-table-header) !important;
     letter-spacing: 0.09em !important;
     box-shadow: none !important;
@@ -2368,8 +2410,8 @@ html {
 .dashboard-enterprise .tactical-table tbody td,
 .dashboard-enterprise .tactical-table tbody th {
     font-variant-numeric: tabular-nums;
-    color: var(--ui-text-secondary) !important;
-    border-bottom: 1px solid var(--ui-border) !important;
+    color: var(--e-text-secondary) !important;
+    border-bottom: 1px solid var(--e-border) !important;
     padding: 0.42rem 0.64rem !important;
 }
 
@@ -2378,25 +2420,25 @@ html {
 }
 
 .dashboard-enterprise .tactical-table tbody tr:nth-child(even) {
-    background: rgba(255,255,255,0.018) !important;
+    background: var(--e-bg-row-alt) !important;
 }
 
 .dashboard-enterprise .tactical-table tbody tr:hover {
-    background: var(--ui-hover) !important;
+    background: var(--e-bg-row-hover) !important;
     box-shadow: none !important;
-    color: var(--ui-text-primary) !important;
+    color: var(--e-text-primary) !important;
 }
 
 /* ── 11. SCROLLBAR REFINEMENT FOR ENTERPRISE ─────────────────
    Use muted neutral, not teal hover.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(148, 163, 184, 0.22) !important;
     border: none !important;
 }
 
 .dashboard-enterprise ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.38) !important;
+    background: rgba(148, 163, 184, 0.38) !important;
 }
 
 .dashboard-enterprise ::-webkit-scrollbar-track {
@@ -2425,11 +2467,11 @@ html {
    Replace animated status indicators with static dots.
    Size and color only — no glow, no shadow, no animation.
    ──────────────────────────────────────────────────────────── */
-.dashboard-enterprise .status-indicator.status-online,
-.dashboard-enterprise .status-indicator.status-offline,
-.dashboard-enterprise .status-indicator.status-maintenance,
-.dashboard-enterprise .status-indicator.status-unknown,
-.dashboard-enterprise .status-indicator.status-checking,
+.dashboard-enterprise .status-online,
+.dashboard-enterprise .status-offline,
+.dashboard-enterprise .status-maintenance,
+.dashboard-enterprise .status-unknown,
+.dashboard-enterprise .status-checking,
 .dashboard-enterprise .status-indicator {
     animation: none !important;
     box-shadow: none !important;
@@ -2438,22 +2480,22 @@ html {
     border-radius: 50% !important;
 }
 
-.dashboard-enterprise .status-indicator.status-online {
-    background: var(--status-success) !important;
+.dashboard-enterprise .status-online {
+    background: var(--s-healthy) !important;
 }
 
-.dashboard-enterprise .status-indicator.status-offline {
-    background: var(--status-offline) !important;
+.dashboard-enterprise .status-offline {
+    background: var(--s-offline) !important;
     opacity: 1 !important;
 }
 
-.dashboard-enterprise .status-indicator.status-maintenance {
-    background: var(--status-warning) !important;
+.dashboard-enterprise .status-maintenance {
+    background: var(--s-warning) !important;
 }
 
-.dashboard-enterprise .status-indicator.status-unknown,
-.dashboard-enterprise .status-indicator.status-checking {
-    background: var(--status-unknown) !important;
+.dashboard-enterprise .status-unknown,
+.dashboard-enterprise .status-checking {
+    background: var(--s-unknown) !important;
 }
 
 /* ── 14. FORM INPUT NORMALISATION ────────────────────────────
@@ -2462,7 +2504,7 @@ html {
 .dashboard-enterprise .tactical-input:focus,
 .dashboard-enterprise .tactical-select:focus {
     box-shadow: none !important;
-    border-color: var(--ui-border-strong) !important;
+    border-color: var(--e-border-strong) !important;
     background: rgba(9, 13, 19, 0.88) !important;
     outline: none !important;
 }
@@ -2472,17 +2514,17 @@ html {
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-modal .modal-content {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55) !important;
-    border-color: var(--ui-border) !important;
-    background: var(--ui-surface-2) !important;
+    border-color: var(--e-border-panel) !important;
+    background: var(--e-bg-panel) !important;
 }
 
 .dashboard-enterprise .tactical-modal .modal-header {
-    background: rgba(0, 0, 0, 0.80) !important;
-    border-bottom: 1px solid var(--ui-border) !important;
+    background: rgba(10, 13, 20, 0.80) !important;
+    border-bottom: 1px solid var(--e-border) !important;
 }
 
 .dashboard-enterprise .tactical-modal .modal-title {
-    color: var(--ui-text-primary) !important;
+    color: var(--e-text-primary) !important;
     text-shadow: none !important;
     font-size: 0.88rem !important;
     letter-spacing: 0.10em;
@@ -2495,7 +2537,7 @@ html {
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-badge {
     border-radius: 3px !important;
-    font-family: var(--ui-font-mono) !important;
+    font-family: var(--t-mono) !important;
     font-size: 0.60rem !important;
     padding: 0.18rem 0.46rem !important;
     letter-spacing: 0.08em !important;
@@ -2503,34 +2545,34 @@ html {
 }
 
 .dashboard-enterprise .tactical-badge-success {
-    background: var(--status-success-bg) !important;
-    border-color: var(--status-success-bd) !important;
-    color: #6EE7B7 !important;
+    background: var(--s-healthy-bg) !important;
+    border-color: var(--s-healthy-bd) !important;
+    color: #7acfb8 !important;
 }
 
 .dashboard-enterprise .tactical-badge-danger {
-    background: var(--status-critical-bg) !important;
-    border-color: var(--status-critical-bd) !important;
-    color: #FCA5A5 !important;
+    background: var(--s-critical-bg) !important;
+    border-color: var(--s-critical-bd) !important;
+    color: #f5a0a8 !important;
 }
 
 .dashboard-enterprise .tactical-badge-warning {
-    background: var(--status-warning-bg) !important;
-    border-color: var(--status-warning-bd) !important;
-    color: #FCD34D !important;
+    background: var(--s-warning-bg) !important;
+    border-color: var(--s-warning-bd) !important;
+    color: #f2d47a !important;
 }
 
 .dashboard-enterprise .tactical-badge-secondary {
-    background: rgba(255, 255, 255, 0.10) !important;
-    border-color: rgba(255, 255, 255, 0.24) !important;
-    color: var(--ui-text-muted) !important;
+    background: rgba(148, 163, 184, 0.10) !important;
+    border-color: rgba(148, 163, 184, 0.24) !important;
+    color: var(--e-text-muted) !important;
 }
 
 /* ── 17. PROGRESS BAR CLEANUP ────────────────────────────────
    Remove shimmer animation. Flatten to simple fill bars.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise .tactical-progress {
-    background: rgba(255, 255, 255, 0.10) !important;
+    background: rgba(148, 163, 184, 0.10) !important;
     border: none !important;
     height: 3px !important;
     border-radius: 2px !important;
@@ -2545,24 +2587,24 @@ html {
 }
 
 .dashboard-enterprise .tactical-progress-bar.success {
-    background: rgba(16, 185, 129, 0.55) !important;
+    background: rgba(32, 201, 151, 0.55) !important;
     /* muted — healthy recedes */
 }
 
 .dashboard-enterprise .tactical-progress-bar.danger {
-    background: var(--status-critical) !important;
+    background: var(--s-critical) !important;
 }
 
 .dashboard-enterprise .tactical-progress-bar.warning {
-    background: var(--status-warning) !important;
+    background: var(--s-warning) !important;
 }
 
 /* ── 18. SELECTION COLOR ─────────────────────────────────────
    Neutral selection, not neon.
    ──────────────────────────────────────────────────────────── */
 .dashboard-enterprise ::selection {
-    background: rgba(255, 255, 255, 0.30) !important;
-    color: var(--ui-text-primary) !important;
+    background: rgba(148, 163, 184, 0.30) !important;
+    color: var(--e-text-primary) !important;
 }
 
 /* ── 19. FOOTER CLEANUP ──────────────────────────────────────
@@ -2573,9 +2615,9 @@ html {
 }
 
 .dashboard-enterprise .tactical-footer {
-    background: var(--ui-surface-2) !important;
-    border-top: 1px solid var(--ui-border) !important;
-    color: var(--ui-text-muted) !important;
+    background: var(--e-bg-panel) !important;
+    border-top: 1px solid var(--e-border) !important;
+    color: var(--e-text-muted) !important;
 }
 
 /* ── 20. PHASE 2: DEEP POLISH REFINEMENTS ────────────────────
@@ -2590,33 +2632,33 @@ html {
     border-radius: 4px;
     font-size: 0.64rem;
     font-weight: 700;
-    font-family: var(--ui-font-sans);
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid var(--ui-border);
-    color: var(--ui-text-secondary);
+    font-family: var(--e-sans-font);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--e-border);
+    color: var(--e-text-secondary);
 }
 
 .dashboard-enterprise .status-chip[data-status="active"] {
-    color: #10B981;
-    border-color: rgba(16, 185, 129, 0.2);
-    background: rgba(16, 185, 129, 0.04);
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.2);
+    background: rgba(74, 222, 128, 0.04);
 }
 
 .dashboard-enterprise .status-chip[data-status="disabled"] {
-    color: #EF4444;
-    border-color: rgba(239, 68, 68, 0.2);
-    background: rgba(239, 68, 68, 0.04);
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.2);
+    background: rgba(248, 113, 113, 0.04);
 }
 
 .dashboard-enterprise .status-chip[data-status="pending"] {
-    color: #F59E0B;
-    border-color: rgba(245, 158, 11, 0.2);
-    background: rgba(245, 158, 11, 0.04);
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.2);
+    background: rgba(251, 191, 36, 0.04);
 }
 
 /* Specific Role Badge Coding */
 .dashboard-enterprise .role-badge-elite {
-    font-family: var(--ui-font-mono);
+    font-family: var(--e-mono-font);
     font-size: 0.62rem;
     padding: 0.1rem 0.5rem;
     border-radius: 2px;
@@ -2625,7 +2667,7 @@ html {
 
 .dashboard-enterprise .role-badge-admin {
     background: rgba(239, 68, 68, 0.1);
-    color: #EF4444;
+    color: #f87171;
     border-color: rgba(239, 68, 68, 0.2);
 }
 
@@ -2636,15 +2678,15 @@ html {
 }
 
 .dashboard-enterprise .role-badge-operator {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(32, 201, 151, 0.1);
     color: #5eead4;
-    border-color: rgba(16, 185, 129, 0.2);
+    border-color: rgba(32, 201, 151, 0.2);
 }
 
 .dashboard-enterprise .role-badge-viewer {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--ui-text-muted);
-    border-color: var(--ui-border);
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--e-text-muted);
+    border-color: var(--e-border);
 }
 
 /* Action Menu (Vertical Ellipsis) */
@@ -2655,14 +2697,14 @@ html {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    color: var(--ui-text-muted);
+    color: var(--e-text-muted);
     cursor: pointer;
-    transition: all 0.1s ease;
+    transition: background-color 0.1s ease, color 0.1s ease, box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .dashboard-enterprise .action-menu-trigger:hover {
-    background: rgba(255, 255, 255, 0.15);
-    color: var(--ui-text-primary);
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--e-text-primary);
 }
 
 /* Table Filter Suite */
@@ -2671,7 +2713,7 @@ html {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     background: rgba(9, 11, 16, 0.4);
-    border-bottom: 1px solid var(--ui-border);
+    border-bottom: 1px solid var(--e-border);
     align-items: center;
 }
 
@@ -2685,7 +2727,7 @@ html {
     left: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--ui-text-muted);
+    color: var(--e-text-muted);
     font-size: 0.75rem;
 }
 
@@ -2697,9 +2739,9 @@ html {
 
 .dashboard-enterprise .filter-select {
     height: 32px;
-    background: var(--ui-surface-2);
-    border: 1px solid var(--ui-border);
-    color: var(--ui-text-secondary);
+    background: var(--e-bg-panel);
+    border: 1px solid var(--e-border);
+    color: var(--e-text-secondary);
     font-size: 0.72rem;
     padding-inline: 0.5rem;
     border-radius: 4px;
@@ -2707,20 +2749,20 @@ html {
 }
 
 .dashboard-enterprise .filter-select:focus {
-    border-color: var(--ui-border-strong);
+    border-color: var(--e-border-strong);
     outline: none;
 }
 
 /* Navigation Links */
 .dashboard-enterprise .entity-link {
-    color: var(--ui-text-primary);
+    color: var(--e-text-primary);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: border-color 0.1s ease;
 }
 
 .dashboard-enterprise .entity-link:hover {
-    border-bottom-color: var(--ui-text-muted);
+    border-bottom-color: var(--e-text-muted);
 }
 
 /* Table Font Reduction */
@@ -2729,822 +2771,3 @@ html {
 }
 
 /* ── END OF ENTERPRISE OVERRIDE BLOCK ──────────────────────── */
-/* -- Dashboard: Network Intelligence / Availability Modal ------- */
-#device-breakdown {
-    display: none;
-    margin-top: 0.65rem;
-}
-
-#device-breakdown.is-active {
-    display: block;
-}
-
-#device-breakdown::before {
-    content: '';
-    display: block;
-    height: 1px;
-    margin-bottom: 0.72rem;
-    background: linear-gradient(90deg,
-            rgba(255, 255, 255, 0.05),
-            rgba(255, 255, 255, 0.5),
-            rgba(255, 255, 255, 0.05));
-}
-
-#device-breakdown .breakdown-panel {
-    background: var(--ui-surface-2);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
-}
-
-/* v5.0: focus pulse removed � state changes are instant */
-.device-kpi-card,
-.server-kpi-card {
-    cursor: pointer;
-}
-
-.device-kpi-card.breakdown-active {
-    border-color: rgba(173, 186, 201, 0.62) !important;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
-    transform: translateY(-1px);
-}
-
-.device-kpi-card.breakdown-active .kpi-view-icon {
-    color: rgba(214, 223, 232, 0.9);
-}
-
-.breakdown-collapse-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.36rem;
-    font-size: 0.72rem;
-    line-height: 1;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-.breakdown-collapse-btn i {
-    font-size: 0.68rem;
-}
-
-#availability-modal .modal-dialog {
-    max-width: min(1320px, calc(100vw - 1rem));
-}
-
-#availability-modal .modal-content {
-    background:
-        radial-gradient(circle at top right, rgba(23, 59, 107, 0.22), transparent 38%),
-        linear-gradient(180deg, rgba(0, 0, 0, 0.98), rgba(0, 0, 0, 0.98));
-    border: 1px solid rgba(96, 118, 154, 0.34);
-    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
-}
-
-#availability-modal .modal-header {
-    padding: 0.82rem 1rem 0.36rem;
-    border-bottom: 1px solid rgba(96, 118, 154, 0.18) !important;
-}
-
-#availability-modal .modal-body {
-    padding: 0.55rem 1rem 1rem;
-}
-
-#availability-modal .breakdown-subcard {
-    overflow: hidden;
-}
-
-#availability-modal .breakdown-subcard .card-header {
-    padding: 0.58rem 0.82rem;
-    background: linear-gradient(90deg, rgba(0, 224, 196, 0.05), transparent 62%);
-    border-bottom: 1px solid rgba(96, 118, 154, 0.18);
-}
-
-#availability-modal .breakdown-subcard .card-body {
-    padding: 0.78rem 0.82rem;
-}
-
-#availability-modal .breakdown-subcard .card-body.p-0 {
-    padding: 0 !important;
-}
-
-#availability-modal .availability-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    margin-bottom: 0.72rem;
-}
-
-#availability-modal .availability-range-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.22rem;
-    border-radius: 999px;
-    border: 1px solid rgba(96, 118, 154, 0.22);
-    background: rgba(12, 12, 12, 0.82);
-}
-
-#availability-modal .availability-range-btn {
-    border: 0;
-    background: transparent;
-    color: #8ea0b6;
-    padding: 0.34rem 0.68rem;
-    border-radius: 999px;
-    font-family: var(--ui-font-mono);
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-    line-height: 1;
-    transition: background-color 120ms ease, color 120ms ease;
-}
-
-#availability-modal .availability-range-btn:hover {
-    color: #eef5ff;
-    background: rgba(96, 118, 154, 0.12);
-}
-
-#availability-modal .availability-range-btn.is-active {
-    color: #eef5ff;
-    background: linear-gradient(180deg, rgba(0, 224, 196, 0.24), rgba(27, 108, 132, 0.18));
-    box-shadow: inset 0 0 0 1px rgba(84, 236, 214, 0.16);
-}
-
-#availability-modal .availability-range-meta {
-    font-size: 0.68rem;
-    color: #90a1b7;
-    letter-spacing: 0.03em;
-}
-
-#availability-modal .availability-summary-strip {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.48rem;
-    margin-bottom: 0.72rem;
-}
-
-#availability-modal .availability-summary-kpi,
-#availability-modal .availability-summary-empty {
-    min-height: 64px;
-    padding: 0.56rem 0.66rem;
-    border-radius: 8px;
-    border: 1px solid rgba(96, 118, 154, 0.22);
-    background: linear-gradient(180deg, rgba(17, 17, 17, 0.9), rgba(11, 11, 11, 0.84));
-}
-
-#availability-modal .availability-summary-empty {
-    display: flex;
-    align-items: center;
-    color: var(--ui-text-muted);
-    font-size: 0.76rem;
-}
-
-#availability-modal .availability-summary-label {
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #6f8198;
-}
-
-#availability-modal .availability-summary-value {
-    margin-top: 0.28rem;
-    font-family: var(--ui-font-mono);
-    font-size: 1.02rem;
-    line-height: 1;
-    color: #eef5ff;
-}
-
-#availability-modal .availability-summary-meta {
-    margin-top: 0.28rem;
-    font-size: 0.68rem;
-    color: #90a1b7;
-    line-height: 1.35;
-}
-
-#availability-modal .availability-heatmap-shell {
-    padding: 0.62rem;
-    border-radius: 10px;
-    border: 1px solid rgba(96, 118, 154, 0.2);
-    background: linear-gradient(180deg, rgba(9, 9, 9, 0.92), rgba(10, 10, 10, 0.68));
-    overflow-x: auto;
-}
-
-#availability-modal .availability-heatmap-axis,
-#availability-modal .availability-heatmap {
-    display: grid;
-    gap: 4px;
-}
-
-#availability-modal .availability-heatmap-axis {
-    margin-bottom: 4px;
-}
-
-#availability-modal .availability-axis-label {
-    min-height: 12px;
-    font-family: var(--ui-font-mono);
-    font-size: 0.56rem;
-    line-height: 1;
-    text-align: center;
-    color: #607286;
-    letter-spacing: 0.05em;
-}
-
-#availability-modal .availability-axis-label.is-major {
-    color: #a8b7ca;
-}
-
-#availability-modal .availability-axis-label.is-minor {
-    opacity: 0.48;
-}
-
-#availability-modal .availability-cell {
-    position: relative;
-    height: 16px;
-    border-radius: 4px;
-    border: 1px solid rgba(118, 136, 166, 0.18);
-    background: rgba(18, 18, 18, 0.75);
-    overflow: hidden;
-    box-shadow: none;
-    transition: border-color 120ms ease, filter 120ms ease;
-}
-
-#availability-modal .availability-cell::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 48%, transparent 100%);
-    opacity: 0.7;
-    pointer-events: none;
-}
-
-#availability-modal .availability-cell:hover {
-    transform: none;
-    filter: brightness(1.06);
-    border-color: rgba(200, 214, 235, 0.42);
-}
-
-#availability-modal .availability-cell.avail-excellent,
-#availability-modal .legend-swatch.avail-excellent {
-    background: linear-gradient(180deg, rgba(24, 212, 176, 0.86), rgba(12, 108, 100, 0.76));
-    border-color: rgba(91, 241, 209, 0.38);
-}
-
-#availability-modal .availability-cell.avail-good,
-#availability-modal .legend-swatch.avail-good {
-    background: linear-gradient(180deg, rgba(74, 140, 255, 0.84), rgba(40, 74, 168, 0.76));
-    border-color: rgba(133, 178, 255, 0.36);
-}
-
-#availability-modal .availability-cell.avail-warning,
-#availability-modal .legend-swatch.avail-warning {
-    background: linear-gradient(180deg, rgba(242, 181, 76, 0.84), rgba(154, 94, 27, 0.76));
-    border-color: rgba(255, 213, 132, 0.38);
-}
-
-#availability-modal .availability-cell.avail-bad,
-#availability-modal .legend-swatch.avail-bad {
-    background: linear-gradient(180deg, rgba(237, 90, 111, 0.86), rgba(136, 39, 57, 0.8));
-    border-color: rgba(255, 154, 168, 0.4);
-}
-
-#availability-modal .availability-cell.avail-unknown,
-#availability-modal .legend-swatch.avail-unknown {
-    background: repeating-linear-gradient(45deg,
-            rgba(108, 122, 144, 0.26),
-            rgba(108, 122, 144, 0.26) 4px,
-            rgba(35, 43, 55, 0.78) 4px,
-            rgba(35, 43, 55, 0.78) 8px);
-    border-color: rgba(126, 141, 164, 0.28);
-}
-
-#availability-modal .availability-cell.avail-unknown::after,
-#availability-modal .legend-swatch.avail-unknown::after {
-    display: none;
-}
-
-#availability-modal .availability-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.44rem;
-}
-
-#availability-modal .availability-legend .legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.3rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid rgba(96, 118, 154, 0.18);
-    background: rgba(14, 14, 14, 0.72);
-    font-size: 0.67rem;
-    line-height: 1;
-    color: #9cafc4;
-}
-
-#availability-modal .availability-legend .legend-swatch {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    position: relative;
-    overflow: hidden;
-}
-
-#availability-modal .availability-table-wrap {
-    max-height: 272px;
-    overflow: auto;
-}
-
-#availability-modal .tactical-table th {
-    padding: 0.56rem 0.72rem;
-    font-size: 0.68rem;
-    letter-spacing: 0.12em;
-    color: #7fd7d5;
-}
-
-#availability-modal .tactical-table td {
-    padding: 0.7rem 0.72rem;
-    font-size: 0.82rem;
-    vertical-align: middle;
-}
-
-#availability-modal .availability-device-name {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #eef5ff;
-}
-
-#availability-modal .availability-device-meta {
-    margin-top: 0.18rem;
-    font-size: 0.63rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #6f8198;
-}
-
-#availability-modal .availability-inline-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 58px;
-    padding: 0.28rem 0.5rem;
-    border-radius: 6px;
-    border: 1px solid rgba(96, 118, 154, 0.2);
-    background: rgba(18, 18, 18, 0.84);
-    font-family: var(--ui-font-mono);
-    font-size: 0.73rem;
-    line-height: 1;
-    color: #d7e5f7;
-}
-
-#availability-modal .availability-inline-pill-ip {
-    justify-content: flex-start;
-    min-width: 0;
-    color: #63e0d2;
-}
-
-#availability-modal .availability-inline-pill-count {
-    color: #cdd8e5;
-}
-
-#availability-modal .availability-inline-pill.tone-excellent {
-    color: #aaf5df;
-    border-color: rgba(24, 212, 176, 0.26);
-    background: rgba(17, 101, 89, 0.3);
-}
-
-#availability-modal .availability-inline-pill.tone-good {
-    color: #bfd8ff;
-    border-color: rgba(74, 140, 255, 0.26);
-    background: rgba(34, 70, 146, 0.26);
-}
-
-#availability-modal .availability-inline-pill.tone-warning {
-    color: #ffe0a6;
-    border-color: rgba(242, 181, 76, 0.28);
-    background: rgba(116, 70, 23, 0.3);
-}
-
-#availability-modal .availability-inline-pill.tone-bad {
-    color: #ffc0cb;
-    border-color: rgba(237, 90, 111, 0.3);
-    background: rgba(110, 32, 46, 0.34);
-}
-
-@media (max-width: 1199px) {
-    #availability-modal .availability-range-meta {
-        width: 100%;
-    }
-}
-
-@media (max-width: 767px) {
-    #availability-modal .modal-header {
-        padding-inline: 0.82rem;
-    }
-
-    #availability-modal .modal-body {
-        padding-inline: 0.82rem;
-    }
-
-    #availability-modal .availability-summary-strip {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    #availability-modal .availability-controls {
-        align-items: flex-start;
-    }
-}
-
-/* Dense layout + enhanced tables for expanded breakdown row */
-#device-breakdown .expanded-wrapper {
-    max-width: 1400px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-#device-breakdown .breakdown-panel {
-    padding: 0.56rem 0.62rem 0.64rem;
-    /* v5.0: no backdrop-filter blur */
-
-}
-
-#device-breakdown .breakdown-grid {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: 0.56rem;
-}
-
-#device-breakdown .breakdown-left,
-#device-breakdown .breakdown-right {
-    gap: 0.56rem;
-}
-
-#device-breakdown .breakdown-subcard .card-header {
-    min-height: 30px;
-    padding: 0.36rem 0.56rem;
-    font-size: 0.66rem;
-    letter-spacing: 0.07em;
-}
-
-#device-breakdown .breakdown-subcard .card-body {
-    padding: 0.44rem 0.56rem;
-}
-
-#device-breakdown .breakdown-subcard .card-body.p-0 {
-    padding: 0 !important;
-}
-
-#device-breakdown .breakdown-section-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.1rem 0.06rem 0.04rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
-    margin-bottom: 0.12rem;
-}
-
-#device-breakdown .breakdown-section-heading h6 {
-    margin: 0;
-    font-size: 0.62rem;
-    letter-spacing: 0.1em;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: #d7e1ec;
-}
-
-#device-breakdown .breakdown-section-heading span {
-    font-size: 0.58rem;
-    color: #98a7b6;
-    white-space: nowrap;
-}
-
-#device-breakdown .enterprise-section-sub {
-    font-size: 0.64rem;
-}
-
-#device-breakdown .tabs {
-    gap: 0.22rem;
-}
-
-#device-breakdown .tabs button {
-    padding: 0.14rem 0.42rem;
-    font-size: 0.56rem;
-    letter-spacing: 0.09em;
-}
-
-#device-breakdown .table-responsive {
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.5);
-    overflow: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
-}
-
-#device-breakdown .table-responsive::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-}
-
-#device-breakdown .table-responsive::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.35);
-    border-radius: 3px;
-}
-
-#device-breakdown .breakdown-left .table-responsive {
-    max-height: 322px;
-}
-
-#device-breakdown .breakdown-right .table-responsive {
-    max-height: 220px;
-}
-
-#device-breakdown .service-impact-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
-    gap: 0.56rem;
-}
-
-#device-breakdown .service-impact-row .table-responsive {
-    max-height: 220px;
-}
-
-#device-breakdown .tactical-table {
-    font-size: 0.74rem;
-}
-
-#device-breakdown .tactical-table thead th {
-    padding: 0.34rem 0.52rem;
-    font-size: 0.58rem;
-    letter-spacing: 0.075em;
-    font-weight: 700;
-    color: #b9c8d8;
-    background: rgba(0, 0, 0, 0.98);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.24);
-}
-
-#device-breakdown .tactical-table tbody tr {
-    background: rgba(255, 255, 255, 0.012);
-    transition: background-color 120ms ease;
-}
-
-#device-breakdown .tactical-table tbody tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.02);
-}
-
-#device-breakdown .tactical-table tbody tr:hover {
-    background: rgba(255, 255, 255, 0.11);
-}
-
-#device-breakdown .tactical-table tbody td {
-    padding: 0.36rem 0.52rem;
-    line-height: 1.22;
-    color: #c6d1dc;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-#device-breakdown .tactical-table tbody td:first-child {
-    font-weight: 600;
-    color: #e2eaf2;
-}
-
-#device-breakdown .tactical-table td,
-#device-breakdown .tactical-table th {
-    font-variant-numeric: tabular-nums;
-}
-
-#device-breakdown #table-inventory th:first-child,
-#device-breakdown #table-inventory td:first-child {
-    width: 34px !important;
-    text-align: center;
-    padding-left: 0.38rem;
-    padding-right: 0.38rem;
-}
-
-#device-breakdown .tactical-input,
-#device-breakdown .tactical-select {
-    min-height: 28px;
-    height: 28px;
-    font-size: 0.7rem;
-    padding: 0.18rem 0.42rem;
-    border-radius: 6px;
-}
-
-@media (max-width: 992px) {
-    #device-breakdown .breakdown-grid {
-        grid-template-columns: 1fr;
-    }
-
-    #device-breakdown .service-impact-row {
-        grid-template-columns: 1fr;
-    }
-
-    #device-breakdown .breakdown-section-heading {
-        flex-wrap: wrap;
-        gap: 0.22rem;
-    }
-
-    #device-breakdown .breakdown-section-heading span {
-        white-space: normal;
-    }
-
-    #device-breakdown .breakdown-left .table-responsive,
-    #device-breakdown .breakdown-right .table-responsive {
-        max-height: none;
-    }
-
-    #device-breakdown .service-impact-row .table-responsive {
-        max-height: none;
-    }
-}
-
-/* ── Dashboard utility classes ─────────────────────────────── */
-.dash-grid-2col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 0.7rem;
-}
-
-.dash-col-span-2 {
-    grid-column: span 2;
-}
-
-/* ── Status Dot Utility ──────────────────────────────────── */
-.status-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.status-dot.success { background: var(--status-success); box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
-.status-dot.warning { background: var(--status-warning); box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
-.status-dot.critical { background: var(--status-critical); box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
-.status-dot.offline  { background: var(--status-offline); }
-.status-dot.teal     { background: var(--ui-accent); box-shadow: 0 0 6px rgba(20, 184, 166, 0.4); }
-.status-dot.pulse    { animation: dot-pulse 2s infinite; }
-@keyframes dot-pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.4; }
-}
-
-/* === ACCESSIBILITY: Reduced Motion — single global block ===
-   Covers all pages since tactical.css is loaded globally via base.html.
-   Do NOT duplicate this in per-page CSS files. */
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        animation: none !important;
-        transition: none !important;
-    }
-}
-
-/* ============================================================
-   LIGHT THEME — Shell & Global Component Overrides
-   All rules scoped to html[data-theme="light"].
-   Dark theme (:root) is untouched.
-   NOTE: .table overrides intentionally have NO !important —
-   dashboard.css scoped rules win on the dashboard page.
-   ============================================================ */
-
-html[data-theme="light"] {
-    /* Override --tactical-* tokens that are declared at :root (dark-biased) */
-    --tactical-shadow:        0 4px 15px rgba(0, 0, 0, 0.08);
-    --tactical-shadow-depth:  0 2px 8px rgba(0, 0, 0, 0.10);
-    --tactical-border:        rgba(0, 0, 0, 0.10);
-    --tactical-accent-glow:   rgba(13, 148, 136, 0.15);
-    --tactical-success-glow:  rgba(5, 150, 105, 0.15);
-    --tactical-critical-glow: rgba(220, 38, 38, 0.15);
-}
-
-/* App frame */
-html[data-theme="light"] .app-header {
-    background: #FFFFFF !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.10) !important;
-}
-html[data-theme="light"] .app-sidebar {
-    background: #FFFFFF !important;
-    border-right: 1px solid rgba(0, 0, 0, 0.10) !important;
-}
-html[data-theme="light"] .app-content {
-    background: #F4F4F5 !important;
-}
-
-/* Sidebar navigation */
-html[data-theme="light"] .sidebar-link {
-    color: #52525B;
-}
-html[data-theme="light"] .sidebar-link:hover {
-    background: #F0F0F1 !important;
-    color: #18181B !important;
-}
-html[data-theme="light"] .sidebar-link.active {
-    background: rgba(13, 148, 136, 0.10) !important;
-    color: #0D9488 !important;
-    border-right: 2px solid #0D9488;
-}
-html[data-theme="light"] .sidebar-section-label {
-    color: #A1A1AA !important;
-}
-
-/* Tables — NO !important (see note above) */
-html[data-theme="light"] .table thead th {
-    background: #FAFAFA;
-    color: #71717A;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.10);
-}
-html[data-theme="light"] .table tbody tr {
-    background: #FFFFFF;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-html[data-theme="light"] .table-striped tbody tr:nth-of-type(odd) {
-    background: #FAFAFA;
-}
-html[data-theme="light"] .table tbody tr:hover,
-html[data-theme="light"] .table-hover tbody tr:hover {
-    background: rgba(13, 148, 136, 0.05);
-    border-left: 2px solid #0D9488;
-}
-
-/* Cards */
-html[data-theme="light"] .card,
-html[data-theme="light"] .tactical-card,
-html[data-theme="light"] .enterprise-card {
-    background: #FFFFFF !important;
-    border: 1px solid rgba(0, 0, 0, 0.10) !important;
-}
-html[data-theme="light"] .card-header,
-html[data-theme="light"] .tactical-card .card-header,
-html[data-theme="light"] .enterprise-card .card-header {
-    background: transparent !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
-    color: #18181B !important;
-}
-
-/* Buttons */
-html[data-theme="light"] .btn-outline-secondary {
-    color: #52525B !important;
-    border-color: rgba(0, 0, 0, 0.14) !important;
-    background: transparent !important;
-}
-html[data-theme="light"] .btn-outline-secondary:hover {
-    background: #F0F0F1 !important;
-    color: #18181B !important;
-}
-html[data-theme="light"] .btn-primary {
-    background: #0D9488 !important;
-    border-color: #0D9488 !important;
-    color: #FFFFFF !important;
-}
-html[data-theme="light"] .btn-primary:hover {
-    background: #0F766E !important;
-    border-color: #0F766E !important;
-}
-
-/* Status badges — tinted backgrounds, semantic text color */
-html[data-theme="light"] .badge.bg-success {
-    background: rgba(5, 150, 105, 0.12) !important;
-    color: #059669 !important;
-}
-html[data-theme="light"] .badge.bg-warning {
-    background: rgba(217, 119, 6, 0.12) !important;
-    color: #D97706 !important;
-}
-html[data-theme="light"] .badge.bg-danger {
-    background: rgba(220, 38, 38, 0.12) !important;
-    color: #DC2626 !important;
-}
-html[data-theme="light"] .badge.bg-secondary {
-    background: rgba(0, 0, 0, 0.08) !important;
-    color: #71717A !important;
-}
-html[data-theme="light"] .badge.bg-info {
-    background: rgba(13, 148, 136, 0.12) !important;
-    color: #0D9488 !important;
-}
-
-/* Form controls */
-html[data-theme="light"] .form-control,
-html[data-theme="light"] .form-select {
-    background: #FFFFFF !important;
-    border: 1px solid rgba(0, 0, 0, 0.14) !important;
-    color: #18181B !important;
-}
-html[data-theme="light"] .form-control:focus,
-html[data-theme="light"] .form-select:focus {
-    border-color: #0D9488 !important;
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.20) !important;
-}
-html[data-theme="light"] .form-control::placeholder,
-html[data-theme="light"] .form-select::placeholder {
-    color: #A1A1AA !important;
-}
-
-/* Code blocks */
-html[data-theme="light"] code {
-    background: rgba(0, 0, 0, 0.05);
-    color: #18181B;
-}
-html[data-theme="light"] pre {
-    background: #FAFAFA;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-}
-

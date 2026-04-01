@@ -106,19 +106,23 @@ class TestNarrateExecutive:
         assert "Critical" in labels
 
     def test_action_required_for_zero_uptime_device(self):
+        """Chronically offline devices trigger a summary warning via chronically_offline key."""
         data = {
             "total_devices": 10,
             "uptime_score": 80,
             "avg_latency": 50,
             "health_distribution": {"Healthy": 8, "Critical": 2},
-            "top_problematic": [
-                {"name": "Dead-Server", "ip": "10.0.0.99", "uptime": 0.0},
-            ],
+            "top_problematic": [],
+            "chronically_offline": {
+                "count": 1,
+                "devices": [{"name": "Dead-Server", "ip": "10.0.0.99"}],
+                "note": "Devices with 0% uptime",
+            },
         }
         result = _service()._narrate_executive(data)
         assert len(result["action_required"]) >= 1
-        assert result["action_required"][0]["severity"] == "critical"
-        assert "Persistently Offline" in result["action_required"][0]["text"]
+        assert result["action_required"][0]["severity"] == "warning"
+        assert "offline" in result["action_required"][0]["text"].lower()
 
     def test_zero_data_returns_no_monitoring_message(self):
         data = {"total_devices": 0}
@@ -447,23 +451,26 @@ class TestNarrateTrackedFleet:
 class TestHostileCase:
 
     def test_100_and_0_uptime_calls_out_outlier(self):
-        """Fleet with 100% and 0% uptime devices → narrative calls out 0% outlier."""
+        """Fleet with 100% and 0% uptime → narrative uses chronically_offline summary."""
         data = {
             "total_devices": 2,
             "uptime_score": 50.0,
             "avg_latency": 30,
             "health_distribution": {"Healthy": 1, "Critical": 1},
             "top_problematic": [
-                {"name": "Dead-Box", "ip": "10.0.0.99", "uptime": 0.0},
                 {"name": "Healthy-Box", "ip": "10.0.0.1", "uptime": 100.0},
             ],
+            "chronically_offline": {
+                "count": 1,
+                "devices": [{"name": "Dead-Box", "ip": "10.0.0.99"}],
+                "note": "Devices with 0% uptime",
+            },
         }
         result = _service()._narrate_executive(data)
-        # action_required should include the 0% device
+        # action_required should include the offline summary
         assert len(result["action_required"]) >= 1
-        assert any("Dead-Box" in ar["device"] or "10.0.0.99" in ar.get("ip", "")
-                    for ar in result["action_required"])
-        # risk_summary should mention persistently offline
+        assert any("offline" in ar["text"].lower() for ar in result["action_required"])
+        # risk_summary should mention offline
         assert result["risk_summary"] is not None
         assert "offline" in result["risk_summary"].lower()
 

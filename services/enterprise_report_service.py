@@ -1051,7 +1051,28 @@ def build_enterprise_uptime_report(
         key = row["sla_tier"]
         sla_dist[key] = sla_dist.get(key, 0) + 1
 
-    worst_five = sorted(rows_with_data, key=lambda r: r["uptime_pct"])[:5]
+    # Two-tier split: degraded (online but struggling) vs chronically offline
+    _degraded_rows = [r for r in rows_with_data if r.get("uptime_pct") is not None and r["uptime_pct"] > 0]
+    _offline_rows = [r for r in rows_with_data if r.get("uptime_pct") is None or r["uptime_pct"] == 0]
+
+    def _deg_score(r):
+        """Inline degradation score matching ReportingServiceBase._degradation_score."""
+        u = r.get("uptime_pct")
+        l = r.get("avg_latency_ms")
+        p = r.get("avg_packet_loss_pct")
+        score = 0.0
+        score += (100.0 - max(0, min(100, float(u or 0)))) * 0.5
+        if l is not None:
+            score += min(float(l) / 500.0, 1.0) * 25.0
+        if p is not None:
+            score += min(float(p) / 20.0, 1.0) * 25.0
+        return score
+
+    _degraded_rows.sort(key=_deg_score, reverse=True)
+    # Worst 5: prefer degraded, backfill from offline only if needed
+    worst_five = _degraded_rows[:5]
+    if len(worst_five) < 5:
+        worst_five += _offline_rows[:5 - len(worst_five)]
     best_three = sorted(rows_with_data, key=lambda r: r["uptime_pct"], reverse=True)[:3]
 
     # PR 17: Asset class segmentation

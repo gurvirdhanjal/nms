@@ -156,6 +156,8 @@ function initDashboard() {
                 'time-range-container',
                 (newValue) => {
                     localStorage.setItem('tactical_dashboard_range', newValue);
+                    // Clear stale range data immediately so UI doesn't show wrong-range data
+                    updateStateBatch({ summary: null, trends: null });
                     refreshAll();
                 },
                 [

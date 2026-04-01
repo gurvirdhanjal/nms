@@ -14,11 +14,19 @@ _ALLOWED_RULE_KEYS = {
     'cpu_warning', 'cpu_critical',
     'memory_warning', 'memory_critical',
     'disk_warning', 'disk_critical',
+    # ICMP threshold keys (Phase 6) — consumed by alert_manager._get_icmp_thresholds()
+    # NOT in _RULES_JSON_MAP; applied independently to ICMP alert evaluation
+    'latency_warning_ms', 'latency_critical_ms',
+    'packet_loss_warning_pct', 'packet_loss_critical_pct',
 }
+
+# Validation ranges per key group
+_PCT_KEYS = {'cpu_warning', 'cpu_critical', 'memory_warning', 'memory_critical', 'disk_warning', 'disk_critical', 'packet_loss_warning_pct', 'packet_loss_critical_pct'}
+_LATENCY_MS_KEYS = {'latency_warning_ms', 'latency_critical_ms'}
 
 _GLOBAL_FALLBACK = {
     'cpu_warning': 80.0, 'cpu_critical': 90.0,
-    'mem_warning': 75.0, 'mem_critical': 95.0,
+    'memory_warning': 75.0, 'memory_critical': 95.0,
     'disk_warning': 90.0, 'disk_critical': 95.0,
 }
 
@@ -36,8 +44,8 @@ def compliance_profiles_page():
         global_defaults = {
             'cpu_warning':  m.get('cpu_usage_pct',    {}).get('warning',  _GLOBAL_FALLBACK['cpu_warning']),
             'cpu_critical': m.get('cpu_usage_pct',    {}).get('critical', _GLOBAL_FALLBACK['cpu_critical']),
-            'mem_warning':  m.get('memory_usage_pct', {}).get('warning',  _GLOBAL_FALLBACK['mem_warning']),
-            'mem_critical': m.get('memory_usage_pct', {}).get('critical', _GLOBAL_FALLBACK['mem_critical']),
+            'memory_warning':  m.get('memory_usage_pct', {}).get('warning',  _GLOBAL_FALLBACK['memory_warning']),
+            'memory_critical': m.get('memory_usage_pct', {}).get('critical', _GLOBAL_FALLBACK['memory_critical']),
             'disk_warning': m.get('disk_usage_pct',   {}).get('warning',  _GLOBAL_FALLBACK['disk_warning']),
             'disk_critical':m.get('disk_usage_pct',   {}).get('critical', _GLOBAL_FALLBACK['disk_critical']),
         }
@@ -177,14 +185,42 @@ def api_delete_profile(profile_id):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_rules(raw):
-    """Return only valid threshold rules with values in [0, 100]."""
+    """Return validated threshold rules from raw input.
+
+    Per-key validation ranges:
+    - CPU/MEM/DISK percentage keys → float [0.0, 100.0]
+    - packet_loss_*_pct            → float [0.1, 99.9]
+    - latency_*_ms                 → int   [1, 60000]
+
+    Keys outside _ALLOWED_RULE_KEYS and null values are silently dropped.
+    `applicable_device_types` is handled separately (stored as list in rules_json).
+    """
     rules = {}
     for key in _ALLOWED_RULE_KEYS:
-        if key in raw and raw[key] is not None:
-            try:
+        if key not in raw or raw[key] is None:
+            continue
+        try:
+            if key in _LATENCY_MS_KEYS:
+                val = int(raw[key])
+                if 1 <= val <= 60000:
+                    rules[key] = val
+            elif key in {'packet_loss_warning_pct', 'packet_loss_critical_pct'}:
+                val = float(raw[key])
+                if 0.1 <= val <= 99.9:
+                    rules[key] = val
+            else:
+                # CPU/MEM/DISK percentage keys
                 val = float(raw[key])
                 if 0.0 <= val <= 100.0:
                     rules[key] = val
-            except (TypeError, ValueError):
-                pass
+        except (TypeError, ValueError):
+            pass
+
+    # applicable_device_types: list of lowercase device type strings
+    adt = raw.get('applicable_device_types')
+    if isinstance(adt, list):
+        cleaned = [str(t).lower().strip() for t in adt if str(t).strip()]
+        if cleaned:
+            rules['applicable_device_types'] = cleaned
+
     return rules

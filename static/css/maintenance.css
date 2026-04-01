@@ -1,0 +1,30 @@
+/* ══════════════════════════════════════════════════════════════
+   MAINTENANCE PAGE — Extracted from templates/maintenance_window.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+.maintenance-page .page-header h1 {
+    font-family: var(--ui-font-sans);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+.maintenance-table td,
+.maintenance-table th {
+    padding: 0.4rem 0.5rem;
+    vertical-align: middle;
+    border-color: var(--ui-border);
+}
+
+.maintenance-page .enterprise-panel {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+}
+
+/* ── Device type icon colors (replaces inline style="color:...") ── */
+.icon-info      { color: var(--ui-info); }
+.icon-accent    { color: var(--ui-accent); }
+.icon-warning   { color: var(--status-warning); }
+.icon-danger    { color: var(--status-critical); }
+.icon-muted     { color: var(--ui-text-muted); }
+.icon-dim       { color: var(--ui-text-dim); }

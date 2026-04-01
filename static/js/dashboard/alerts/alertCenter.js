@@ -1,4 +1,4 @@
-import { openServerModal } from '../modals/serverDetailModal.js';
+import { openServerModal } from '../modals/serverDetailModal.js?v=2.10';
 import { setupTacticalDropdown } from '../utils.js';
 import { patchKeyedTableRows, setTableMessageRow } from '../domPatch.js';
 

@@ -2,11 +2,24 @@
  * API Wrapper for Dashboard
  */
 
+function handleUnauthorized(endpoint) {
+    // Prevent redirect storms when polling/SSE retries are active.
+    if (window.__nmsAuthRedirecting) return;
+    window.__nmsAuthRedirecting = true;
+
+    console.warn(`[Dashboard API] Unauthorized for ${endpoint}. Redirecting to login.`);
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
+}
+
 // Simple fetch wrapper with error handling
 async function fetchAPI(endpoint) {
     try {
         const response = await fetch(endpoint, { credentials: 'same-origin' });
         if (!response.ok) {
+            if (response.status === 401) {
+                handleUnauthorized(endpoint);
+            }
             throw new Error(`API Error: ${response.status} ${response.statusText}`);
         }
         return await response.json();

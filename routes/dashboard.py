@@ -37,12 +37,18 @@ def _dashboard_auth_guard():
 # Distributed Cache (Redis) with local fallback
 # ============================================================
 import json
+import threading
 from extensions import redis_client
 
 _cache = {}
 _cache_ttl = {}
 CACHE_NAMESPACE = 'dashboard'
 CACHE_VERSION = 'v1'
+
+# Per-key threading.Lock used as local fallback when Redis is unavailable.
+# Prevents multiple threads from computing the same cache entry simultaneously.
+_local_stampede_locks: dict = {}
+_local_stampede_registry_lock = threading.Lock()
 
 
 def _versioned_cache_key(key: str) -> str:
@@ -85,26 +91,47 @@ def set_cached(key, value, ttl_seconds=30):
             logging.getLogger(__name__).warning(f"Redis set failed for {key}: {e}")
             pass
 
-    # Local fallback
+    # Local fallback — evict if approaching limit
+    _MAX_CACHE_KEYS = 500
+    if len(_cache) >= _MAX_CACHE_KEYS:
+        now = datetime.utcnow()
+        expired = [k for k, t in list(_cache_ttl.items()) if t < now]
+        to_drop = expired if expired else [next(iter(_cache))]
+        for k in to_drop[:10]:
+            _cache.pop(k, None)
+            _cache_ttl.pop(k, None)
     _cache[cache_key] = value
     _cache_ttl[cache_key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+
+def _get_local_stampede_lock(lock_key: str) -> threading.Lock:
+    """Return (creating if needed) the per-key threading.Lock used when Redis is unavailable."""
+    with _local_stampede_registry_lock:
+        if lock_key not in _local_stampede_locks:
+            _local_stampede_locks[lock_key] = threading.Lock()
+        return _local_stampede_locks[lock_key]
+
 
 def acquire_stampede_lock(lock_key, ttl_seconds=10):
     """
     Acquire a distributed lock to prevent thundering herd when rebuilding cache.
     Returns True if acquired, False if someone else is building it.
+
+    When Redis is available: uses SET NX EX for cross-process coordination.
+    When Redis is down: falls back to a per-key threading.Lock so concurrent
+    threads in the same process do not all stampede the DB simultaneously.
     """
     versioned_lock_key = _versioned_cache_key(f"lock:{lock_key}")
     use_redis = bool(redis_client) and not current_app.config.get('TESTING')
     if use_redis:
         try:
-            # SET NX EX
             acquired = redis_client.set(versioned_lock_key, "1", nx=True, ex=ttl_seconds)
             return bool(acquired)
         except Exception:
-            return True # If Redis is down, degradation permits local compute
+            pass  # Redis down — fall through to local lock
 
-    return True # In-memory single worker environments always acquire lock.
+    # Local in-process lock (non-blocking try-acquire)
+    local_lock = _get_local_stampede_lock(lock_key)
+    return local_lock.acquire(blocking=False)
 
 
 def release_stampede_lock(lock_key):
@@ -116,6 +143,14 @@ def release_stampede_lock(lock_key):
             redis_client.delete(versioned_lock_key)
         except Exception:
             pass
+
+    # Always attempt to release local lock (no-op if not held by this thread)
+    local_lock = _local_stampede_locks.get(lock_key)
+    if local_lock is not None:
+        try:
+            local_lock.release()
+        except RuntimeError:
+            pass  # Not held — safe to ignore
 
 
 def _extract_json_payload(result):
@@ -509,27 +544,26 @@ def get_summary():
         avg_latency = network_health.get('avg_latency_ms') or 0
         avg_packet_loss = network_health.get('avg_packet_loss_pct') or 0
         
-        # Alerts
+        # Alerts — single GROUP BY replaces 3 separate .count() queries.
+        # Covered by idx_dashboard_events_device_sev_res_ts (device_id, severity, resolved, ts).
+        critical_count = 0
+        warning_count = 0
+        info_count = 0
         if scoped_device_ids:
-            critical_count = DashboardEvent.query.filter(
+            sev_rows = db.session.query(
+                DashboardEvent.severity,
+                func.count(DashboardEvent.event_id).label('cnt'),
+            ).filter(
                 DashboardEvent.device_id.in_(scoped_device_ids),
-                DashboardEvent.severity == 'CRITICAL',
                 DashboardEvent.resolved.is_(False),
-            ).count()
-            warning_count = DashboardEvent.query.filter(
-                DashboardEvent.device_id.in_(scoped_device_ids),
-                DashboardEvent.severity == 'WARNING',
-                DashboardEvent.resolved.is_(False),
-            ).count()
-            info_count = DashboardEvent.query.filter(
-                DashboardEvent.device_id.in_(scoped_device_ids),
-                DashboardEvent.severity == 'INFO',
-                DashboardEvent.resolved.is_(False),
-            ).count()
-        else:
-            critical_count = 0
-            warning_count = 0
-            info_count = 0
+            ).group_by(DashboardEvent.severity).all()
+            for sev, cnt in sev_rows:
+                if sev == 'CRITICAL':
+                    critical_count = cnt
+                elif sev == 'WARNING':
+                    warning_count = cnt
+                elif sev == 'INFO':
+                    info_count = cnt
         
         result = {
             'timestamp': datetime.utcnow().isoformat(),

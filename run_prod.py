@@ -11,4 +11,7 @@ if __name__ == "__main__":
     print(f"Access at http://localhost:{port}")
     
     # Serve using Waitress (Production strength WSGI server)
-    serve(app, host='0.0.0.0', port=port, threads=6)
+    # threads=16: SSE /api/events/stream holds one thread per open browser tab.
+    # 16 fits inside the DB pool (pool_size=20 + overflow=10 = 30 max) while
+    # still giving headroom for ~6 SSE tabs + concurrent normal requests.
+    serve(app, host='0.0.0.0', port=port, threads=16)

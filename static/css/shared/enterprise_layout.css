@@ -73,7 +73,7 @@
     padding: 0.375rem 0.625rem; /* 6px 10px roughly */
     border-radius: 0.375rem; /* 6px */
     color: #cbd5e1; /* slate-300 */
-    transition: all 150ms ease-in-out;
+    transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 }
 
 .table-action-btn:hover {

@@ -1,63 +1,11 @@
 // ============================================================================
 // UTILITY: Shared UI compatibility layer
 // ============================================================================
-const MAX_TOASTS = 4;
 const scanningFlags = window.__UI_SURFACE_FLAGS__ || {};
-const sharedToastApi = scanningFlags.sharedToast !== false && window.UI?.Toast?.show ? window.UI.Toast : null;
 const sharedLoadingApi = scanningFlags.sharedLoading !== false && window.UI?.Loading ? window.UI.Loading : null;
 
-function legacyShowToast(message, type = 'info', timeout = 3000) {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.style.position = 'fixed';
-        container.style.top = '20px';
-        container.style.right = '20px';
-        container.style.zIndex = '1060';
-        container.style.maxWidth = '400px';
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.gap = '10px';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type} alert-dismissible fade show`;
-    toast.role = 'alert';
-    toast.style.minWidth = '280px';
-    toast.dataset.toastKey = `${type}|${message}`;
-    toast.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-
-    container.appendChild(toast);
-
-    // Enforce max visible toasts
-    while (container.children.length > MAX_TOASTS) {
-        container.removeChild(container.firstChild);
-    }
-
-    // Auto-dismiss after timeout
-    if (timeout > 0) {
-        toast._dismissTimer = setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => {
-                if (toast.parentNode) toast.remove();
-            }, 150);
-        }, timeout);
-    }
-}
-
 function showToast(message, type = 'info', timeout = 3000) {
-    if (sharedToastApi) {
-        return sharedToastApi.show(String(message || ''), type, {
-            durationMs: timeout,
-            allowHtml: true,
-        });
-    }
-    return legacyShowToast(message, type, timeout);
+    window.UI?.Toast?.show(String(message || ''), type, { durationMs: timeout, allowHtml: true });
 }
 
 function setButtonBusy(button, isBusy, config = {}) {

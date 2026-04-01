@@ -530,7 +530,7 @@ def upsert_device_from_identity(
             device_name=device_name,
             device_ip=ip,
             device_type=device_type or "unknown",
-            macaddress=normalized_mac or (mac if mac else "N/A"),
+            macaddress=normalized_mac,  # NULL when no valid MAC; 'N/A' violates the unique partial index
             hostname=hostname or "Unknown",
             manufacturer=manufacturer or "Unknown",
             subnet_cidr=compute_subnet_cidr(ip),

@@ -6,7 +6,7 @@ import os
 import re
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask import (
     Blueprint,
@@ -92,6 +92,8 @@ def _to_utc_iso(value: datetime) -> str:
 def _normalize_report_timestamps(value):
     if isinstance(value, datetime):
         return _to_utc_iso(value)
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, dict):
         return {key: _normalize_report_timestamps(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -670,6 +672,10 @@ def _run_report(
     started = time.perf_counter()
     payload = generator()
     duration = time.perf_counter() - started
+    # Return the connection to the pool immediately — all DB work is done.
+    # Without this, the connection is held until Flask teardown, which can
+    # exhaust the pool when multiple heavy reports run concurrently.
+    db.session.remove()
 
     row_count = _count_report_rows(report_type, payload)
     if row_count > max_rows:
@@ -1111,6 +1117,13 @@ def _run_report_endpoint(report_type, include_severity=False):
         return _json_error(str(exc), exc.status_code)
     except Exception as exc:
         return _handle_report_exception(report_type, exc)
+    finally:
+        # Ensure the connection is always returned even on error paths
+        # (_run_report already does this on success, but exception paths skip it).
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 @reports_bp.route('/api/reports/executive')
@@ -1258,6 +1271,11 @@ def get_devices_report():
     except Exception as exc:
         logger.exception("[DevicesReport] build failed: %s", exc)
         return _json_error("Failed to build devices report.", 500)
+    finally:
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 _PREVIEW_COLUMNS = {
@@ -1684,14 +1702,30 @@ def enterprise_uptime_report():
         try:
             from services.report_narrative_service import ReportNarrativeService
             svc = ReportNarrativeService()
+            exec_n   = svc.generate_narrative('executive', data)
+            srv_n    = svc.generate_narrative('server-fleet', data)
+            ws_n     = svc.generate_narrative('tracked-fleet', data)
             data['narratives'] = {
-                'executive': svc.generate_narrative('executive', data),
-                'server_fleet': svc.generate_narrative('server-fleet', data),
-                'tracked_fleet': svc.generate_narrative('tracked-fleet', data),
+                'executive':     exec_n,
+                'server_fleet':  srv_n,
+                'tracked_fleet': ws_n,
             }
+            # Cross-report synthesis — fleet-level RAG status
+            try:
+                # Pull alert + security narratives from their individual reports if available
+                alerts_n   = data.get('alerts_narrative')   # populated if pre-fetched
+                security_n = data.get('security_narrative') # populated if pre-fetched
+                data['cross_report'] = svc.synthesize_cross_report(
+                    exec_n, alerts_n, security_n,
+                    report_summary=data.get('summary'),
+                )
+            except Exception as exc:
+                logger.debug("[EnterpriseUptime] cross_report synthesis skipped: %s", exc)
+                data['cross_report'] = None
         except Exception as exc:
             logger.warning("[EnterpriseUptime] narrative failed: %s", exc)
             data['narratives'] = {}
+            data['cross_report'] = None
         try:
             from services.report_intelligence_rules import ReportIntelligenceRules
             data['intelligence_annotations'] = ReportIntelligenceRules().annotate('enterprise', data)
@@ -1702,6 +1736,11 @@ def enterprise_uptime_report():
     except Exception as exc:
         logger.exception("[EnterpriseUptime] JSON build failed: %s", exc)
         return _json_error("Failed to build enterprise uptime report.", 500)
+    finally:
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 @reports_bp.route('/api/reports/enterprise-uptime/pdf', methods=['GET'])
@@ -1735,6 +1774,11 @@ def enterprise_uptime_pdf():
     except Exception as exc:
         logger.exception("[EnterpriseUptime] PDF generation failed: %s", exc)
         return _json_error("Failed to generate enterprise uptime PDF.", 500)
+    finally:
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 @reports_bp.route('/api/reports/export-jobs/<job_id>/download', methods=['GET'])

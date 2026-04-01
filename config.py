@@ -109,11 +109,35 @@ class Config:
         })
     else:
         SQLALCHEMY_ENGINE_OPTIONS.update({
+            # pool_size: persistent connections kept open.
+            # max_overflow: burst connections (closed after use, not recycled).
+            # 20 base + 15 overflow = 35 max. Waitress runs 16 threads;
+            # scheduler adds ~5 background threads → needs ~21 peak connections.
             'pool_size': _env_int('DB_POOL_SIZE', 20, minimum=5),
-            'max_overflow': _env_int('DB_POOL_MAX_OVERFLOW', 20, minimum=0),
-            'pool_timeout': _env_int('DB_POOL_TIMEOUT_SECONDS', 30, minimum=5),
+            'max_overflow': _env_int('DB_POOL_MAX_OVERFLOW', 15, minimum=0),
+            # Fail fast (10s) when pool is exhausted — prevents cascade where
+            # waiting requestors pile up and inflate the apparent load.
+            'pool_timeout': _env_int('DB_POOL_TIMEOUT_SECONDS', 10, minimum=5),
             'pool_recycle': _env_int('DB_POOL_RECYCLE_SECONDS', 1800, minimum=60),
             'pool_use_lifo': os.environ.get('DB_POOL_USE_LIFO', 'true').lower() == 'true',
+            # PostgreSQL-side safety net — server enforces these regardless of
+            # Python code bugs or hung threads:
+            #   lock_timeout: kill any statement waiting >5 s for a row/table lock.
+            #     Prevents lock-pile-up storms when a slow writer holds a tuple lock.
+            #   idle_in_transaction_session_timeout: terminate connections that open
+            #     a transaction and go idle >60 s. Catches Python threads that acquire
+            #     a session and then block on an in-process lock before committing.
+            'connect_args': {
+                'options': (
+                    '-c lock_timeout={lock_ms}'
+                    ' -c idle_in_transaction_session_timeout={idle_ms}'
+                    ' -c statement_timeout={stmt_ms}'
+                ).format(
+                    lock_ms=_env_int('DB_LOCK_TIMEOUT_MS', 5000, minimum=500),
+                    idle_ms=_env_int('DB_IDLE_IN_TX_TIMEOUT_MS', 60000, minimum=5000),
+                    stmt_ms=_env_int('DB_STATEMENT_TIMEOUT_MS', 120000, minimum=5000),
+                )
+            },
         })
 
     # Compression (Flask-Compress)
@@ -230,12 +254,12 @@ class Config:
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     REDIS_MAX_CONNECTIONS = _env_int(
         'REDIS_MAX_CONNECTIONS',
-        6,
+        30,
         minimum=1,
     )
     REDIS_BLOCKING_POOL_TIMEOUT_SECONDS = _env_int(
         'REDIS_BLOCKING_POOL_TIMEOUT_SECONDS',
-        3,
+        10,
         minimum=1,
     )
     REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS = _env_int(
@@ -289,7 +313,7 @@ class Config:
     REPORT_TIMEOUT_ENTERPRISE_MS = int(os.environ.get('REPORT_TIMEOUT_ENTERPRISE_MS', 20000))
     # Infrastructure device types for Server Fleet reports (lowercase, comma-separated in .env)
     INFRASTRUCTURE_DEVICE_TYPES = [
-        t.strip().lower() for t in
+        t.strip().lower().replace(' ', '_') for t in
         os.environ.get('INFRASTRUCTURE_DEVICE_TYPES', 'server,switch,access_point,router,firewall').split(',')
     ]
     # Gemini-powered insight enhancement (Layer 2, optional)

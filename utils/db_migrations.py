@@ -1159,6 +1159,17 @@ def _ensure_performance_indexes():
             return
 
         statements = [
+            # device: topology FK indexes for parent switch / port lookups
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_parent_switch_id
+            ON device (parent_switch_id)
+            WHERE parent_switch_id IS NOT NULL
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_parent_port_id
+            ON device (parent_port_id)
+            WHERE parent_port_id IS NOT NULL
+            """,
             # dashboard_events: covers GROUP BY severity query + alert list queries
             # (device_id IN (...), resolved=false, GROUP BY severity)
             """
@@ -1199,6 +1210,54 @@ def _ensure_performance_indexes():
             CREATE INDEX IF NOT EXISTS idx_device_scan_history_remote_mac_ts
             ON device_scan_history_remote (mac_address, scan_timestamp DESC)
             """,
+            # dashboard_events: covering index for the unresolved alert list
+            # Query: WHERE resolved=false ORDER BY timestamp DESC LIMIT N
+            # The composite (device_id, severity, resolved, ts) exists but puts resolved
+            # in position 3 — not optimal for ORDER BY without device_id / severity filters.
+            # This partial index serves ORDER-BY-only access paths efficiently.
+            """
+            CREATE INDEX IF NOT EXISTS idx_dashboard_events_unresolved_ts
+            ON dashboard_events (timestamp DESC)
+            WHERE resolved = false
+            """,
+            # device_activity_logs / device_resource_logs / device_application_logs:
+            # These tables have NO indexes at all. device_id is the primary FK used in
+            # all lookups; timestamp DESC is always used for ordering.
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_activity_logs_device_ts
+            ON device_activity_logs (device_id, timestamp DESC)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_resource_logs_device_ts
+            ON device_resource_logs (device_id, timestamp DESC)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_application_logs_device_ts
+            ON device_application_logs (device_id, timestamp DESC)
+            """,
+            # device: partial index for is_monitored = true (monitoring status queries
+            # and scheduler device fetches filter on this column constantly)
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_is_monitored
+            ON device (device_id)
+            WHERE is_monitored = true
+            """,
+            # dashboard_events: partial index speeds up the nightly purge_old_alerts DELETE.
+            # Query: WHERE resolved=true AND resolved_at < cutoff
+            # Without this, the DELETE does a full sequential scan on every retention run.
+            """
+            CREATE INDEX IF NOT EXISTS idx_dashboard_events_resolved_at
+            ON dashboard_events (resolved_at)
+            WHERE resolved = true
+            """,
+            # device_scan_history: standalone scan_timestamp index for retention DELETE.
+            # The retention job filters only by timestamp (no device_ip / status prefix).
+            # Composite (ip, ts) and (status, ts) exist but won't be used without a leading
+            # equality predicate on the prefix column.
+            """
+            CREATE INDEX IF NOT EXISTS idx_device_scan_history_ts
+            ON device_scan_history (scan_timestamp)
+            """,
         ]
 
         for stmt in statements:
@@ -1209,6 +1268,337 @@ def _ensure_performance_indexes():
     except Exception as exc:
         db.session.rollback()
         print(f"[DB] Migration warning (performance indexes): {exc}")
+
+
+def _ensure_daily_device_stats_columns():
+    """Add columns to daily_device_stats that may have been added after initial table creation."""
+    try:
+        inspector = inspect(db.engine)
+        if 'daily_device_stats' not in inspector.get_table_names():
+            return
+        existing = {col['name'] for col in inspector.get_columns('daily_device_stats')}
+        statements = [
+            ("avg_latency_ms",    "ALTER TABLE daily_device_stats ADD COLUMN avg_latency_ms FLOAT"),
+            ("max_latency_ms",    "ALTER TABLE daily_device_stats ADD COLUMN max_latency_ms FLOAT"),
+            ("min_latency_ms",    "ALTER TABLE daily_device_stats ADD COLUMN min_latency_ms FLOAT"),
+            ("avg_packet_loss_pct", "ALTER TABLE daily_device_stats ADD COLUMN avg_packet_loss_pct FLOAT DEFAULT 0.0"),
+            ("total_scans",       "ALTER TABLE daily_device_stats ADD COLUMN total_scans INTEGER DEFAULT 0"),
+            ("online_scans",      "ALTER TABLE daily_device_stats ADD COLUMN online_scans INTEGER DEFAULT 0"),
+            ("total_alerts",      "ALTER TABLE daily_device_stats ADD COLUMN total_alerts INTEGER DEFAULT 0"),
+        ]
+        missing = [(name, sql) for name, sql in statements if name not in existing]
+        if missing:
+            with db.engine.connect() as conn:
+                for _, sql in missing:
+                    conn.execute(text(sql))
+                conn.commit()
+            print(f"[DB] daily_device_stats columns added: {[n for n, _ in missing]}")
+    except Exception as exc:
+        print(f"[DB] Migration warning (daily_device_stats columns): {exc}")
+
+
+def _ensure_device_classification_columns():
+    """Add classification_confidence and confidence_score columns to device table if missing."""
+    try:
+        inspector = inspect(db.engine)
+        if 'device' not in inspector.get_table_names():
+            return
+        existing = {col['name'] for col in inspector.get_columns('device')}
+        statements = []
+        if 'classification_confidence' not in existing:
+            statements.append(
+                "ALTER TABLE device ADD COLUMN classification_confidence VARCHAR(20) DEFAULT 'Low'"
+            )
+        if 'confidence_score' not in existing:
+            statements.append(
+                "ALTER TABLE device ADD COLUMN confidence_score INTEGER DEFAULT 0"
+            )
+        if statements:
+            with db.engine.connect() as conn:
+                for stmt in statements:
+                    conn.execute(text(stmt))
+                conn.commit()
+            print(f"[DB] device classification columns added: {len(statements)}")
+    except Exception as exc:
+        print(f"[DB] Migration warning (device classification columns): {exc}")
+
+
+def _ensure_dashboard_event_ack_columns():
+    """Add Phase-1D acknowledgment columns to dashboard_events if they predate the model."""
+    try:
+        inspector = inspect(db.engine)
+        if 'dashboard_events' not in inspector.get_table_names():
+            return
+        existing = {col['name'] for col in inspector.get_columns('dashboard_events')}
+        statements = []
+        if 'is_acknowledged' not in existing:
+            statements.append(
+                "ALTER TABLE dashboard_events ADD COLUMN is_acknowledged BOOLEAN DEFAULT FALSE"
+            )
+        if 'acknowledged_at' not in existing:
+            statements.append(
+                "ALTER TABLE dashboard_events ADD COLUMN acknowledged_at TIMESTAMP"
+            )
+        if 'acknowledged_by' not in existing:
+            statements.append(
+                "ALTER TABLE dashboard_events ADD COLUMN acknowledged_by VARCHAR(100)"
+            )
+        if statements:
+            with db.engine.connect() as conn:
+                for stmt in statements:
+                    conn.execute(text(stmt))
+                conn.commit()
+            print(f"[DB] dashboard_events ack columns added: {len(statements)}")
+    except Exception as exc:
+        print(f"[DB] Migration warning (dashboard_event ack columns): {exc}")
+
+
+def _ensure_daily_device_stats_unique_constraint():
+    """
+    Add UNIQUE(device_id, date) to daily_device_stats so the nightly rollup job
+    cannot insert duplicate rows for the same device+day (e.g., if it crashes and
+    reruns, or if two workers overlap). Uses INSERT ON CONFLICT DO UPDATE going
+    forward; this constraint enforces the invariant at the DB level.
+    PostgreSQL-only; idempotent.
+    """
+    try:
+        backend = db.engine.url.get_backend_name()
+        if backend != 'postgresql':
+            return
+        inspector = inspect(db.engine)
+        if 'daily_device_stats' not in inspector.get_table_names():
+            return
+        # Check if unique constraint already exists
+        existing_uq = {
+            c['name']
+            for c in inspector.get_unique_constraints('daily_device_stats')
+        }
+        if 'uq_daily_device_stats_device_date' in existing_uq:
+            return
+        # Remove any existing duplicates first (keep latest id per device+date)
+        db.session.execute(text("""
+            DELETE FROM daily_device_stats a
+            USING daily_device_stats b
+            WHERE a.id < b.id
+              AND a.device_id = b.device_id
+              AND a.date = b.date
+        """))
+        db.session.execute(text("""
+            ALTER TABLE daily_device_stats
+            ADD CONSTRAINT uq_daily_device_stats_device_date
+            UNIQUE (device_id, date)
+        """))
+        db.session.commit()
+        print("[DB] Added UNIQUE(device_id, date) constraint to daily_device_stats.")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (daily_device_stats unique): {exc}")
+
+
+def _ensure_db_safety_constraints():
+    """Add CHECK constraints, partial UNIQUE indexes, and composite indexes for correctness
+    and query performance. All operations are idempotent (IF NOT EXISTS / pg_constraint checks).
+    Only runs on PostgreSQL — SQLite path is a no-op.
+    """
+    backend = db.engine.url.get_backend_name()
+    if backend != 'postgresql':
+        return
+
+    # ---------------------------------------------------------------------------
+    # CHECK constraints (NOT VALID = enforced on new rows only, no backfill scan)
+    # ---------------------------------------------------------------------------
+    constraints = [
+        # severity on dashboard_events
+        (
+            'dashboard_events',
+            'chk_dashboard_events_severity',
+            "severity IN ('CRITICAL','WARNING','INFO','OK')",
+        ),
+        # device.cos_tier
+        (
+            'device',
+            'chk_device_cos_tier',
+            "cos_tier IN ('Critical','Standard','Low')",
+        ),
+        # poll_tasks.status
+        (
+            'poll_tasks',
+            'chk_poll_task_status',
+            "status IN ('pending','running','done','failed')",
+        ),
+        # user.role
+        (
+            '"user"',
+            'chk_user_role',
+            "role IN ('admin','manager','operator','viewer')",
+        ),
+    ]
+    for table, conname, check_expr in constraints:
+        try:
+            exists = db.session.execute(text(
+                "SELECT 1 FROM pg_constraint WHERE conname = :n"
+            ), {'n': conname}).scalar()
+            if not exists:
+                db.session.execute(text(
+                    f'ALTER TABLE {table} ADD CONSTRAINT {conname} CHECK ({check_expr}) NOT VALID'
+                ))
+                db.session.commit()
+                print(f'[DB] Added CHECK constraint {conname}')
+        except Exception as exc:
+            db.session.rollback()
+            print(f'[DB] Migration warning ({conname}): {exc}')
+
+    # ---------------------------------------------------------------------------
+    # Partial UNIQUE index: device.macaddress (real MACs only)
+    # Normalise sentinel values ('N/A', '', 'unknown') to NULL first so they
+    # don't block the unique index and are consistently queryable as absent.
+    # ---------------------------------------------------------------------------
+    try:
+        db.session.execute(text("""
+            UPDATE device
+            SET macaddress = NULL
+            WHERE macaddress IS NOT NULL
+              AND TRIM(LOWER(macaddress)) IN ('n/a', '', 'unknown', 'none', '00:00:00:00:00:00')
+        """))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (macaddress normalise sentinels): {exc}')
+
+    try:
+        db.session.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_device_macaddress_unique
+            ON device (macaddress)
+            WHERE macaddress IS NOT NULL
+        """))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (idx_device_macaddress_unique): {exc}')
+
+    # ---------------------------------------------------------------------------
+    # Composite indexes for dashboard_events hot paths (alert_manager)
+    # alert_manager._trigger_alert/_resolve_alert filter on (device_id, metric_name, resolved)
+    # thousands of times per hour — this is the single most impactful missing index.
+    # ---------------------------------------------------------------------------
+    hot_indexes = [
+        (
+            'idx_dashboard_events_device_metric_resolved',
+            'dashboard_events (device_id, metric_name, resolved)',
+            None,
+        ),
+        (
+            'idx_dashboard_events_severity_ack_ts',
+            'dashboard_events (severity, is_acknowledged, timestamp DESC)',
+            'resolved = false',
+        ),
+    ]
+    for idx_name, idx_cols, idx_where in hot_indexes:
+        where_clause = f' WHERE {idx_where}' if idx_where else ''
+        try:
+            db.session.execute(text(
+                f'CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_cols}{where_clause}'
+            ))
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f'[DB] Migration warning ({idx_name}): {exc}')
+
+    # ---------------------------------------------------------------------------
+    # Tenant composite indexes on device table
+    # scoped_query() filters by site_id / department_id — composite covers device list queries.
+    # ---------------------------------------------------------------------------
+    tenant_indexes = [
+        (
+            'idx_device_site_id_device_id',
+            'device (site_id, device_id)',
+            'site_id IS NOT NULL',
+        ),
+        (
+            'idx_device_dept_id_device_id',
+            'device (department_id, device_id)',
+            'department_id IS NOT NULL',
+        ),
+    ]
+    for idx_name, idx_cols, idx_where in tenant_indexes:
+        try:
+            db.session.execute(text(
+                f'CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_cols} WHERE {idx_where}'
+            ))
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f'[DB] Migration warning ({idx_name}): {exc}')
+
+    print('[DB] Safety constraints applied.')
+
+
+def _ensure_dashboard_events_tenant_columns():
+    """Add site_id / department_id denorm columns to dashboard_events with covering indexes.
+    These allow scoped alert queries to filter directly on site_id / department_id without
+    a sub-select back to the device table.  Only runs on PostgreSQL; SQLite is a no-op.
+    New rows are populated by alert_manager._trigger_alert().
+    Existing rows are backfilled via a single UPDATE JOIN.
+    """
+    backend = db.engine.url.get_backend_name()
+    if backend != 'postgresql':
+        return
+
+    # Add columns (idempotent via exception swallow)
+    for col_def in (
+        'ALTER TABLE dashboard_events ADD COLUMN IF NOT EXISTS site_id INTEGER',
+        'ALTER TABLE dashboard_events ADD COLUMN IF NOT EXISTS department_id INTEGER',
+    ):
+        try:
+            db.session.execute(text(col_def))
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f'[DB] Migration warning (dashboard_events tenant col): {exc}')
+
+    # Covering indexes for scoped alert queries
+    tenant_event_indexes = [
+        (
+            'idx_dashboard_events_site_resolved_ts',
+            'dashboard_events (site_id, resolved, timestamp DESC)',
+            'site_id IS NOT NULL',
+        ),
+        (
+            'idx_dashboard_events_dept_resolved_ts',
+            'dashboard_events (department_id, resolved, timestamp DESC)',
+            'department_id IS NOT NULL',
+        ),
+    ]
+    for idx_name, idx_cols, idx_where in tenant_event_indexes:
+        try:
+            db.session.execute(text(
+                f'CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_cols} WHERE {idx_where}'
+            ))
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            print(f'[DB] Migration warning ({idx_name}): {exc}')
+
+    # One-time backfill: populate site_id / department_id for existing rows from device table.
+    # Runs only when there are rows with NULL site_id (i.e., not yet backfilled).
+    try:
+        needs_backfill = db.session.execute(text(
+            'SELECT 1 FROM dashboard_events WHERE site_id IS NULL LIMIT 1'
+        )).scalar()
+        if needs_backfill:
+            db.session.execute(text("""
+                UPDATE dashboard_events de
+                SET    site_id       = d.site_id,
+                       department_id = d.department_id
+                FROM   device d
+                WHERE  de.device_id = d.device_id
+                  AND  de.site_id IS NULL
+            """))
+            db.session.commit()
+            print('[DB] dashboard_events tenant columns backfilled from device table.')
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (dashboard_events backfill): {exc}')
 
 
 def ensure_server_health_columns():
@@ -1240,6 +1630,117 @@ def ensure_server_health_columns():
     _ensure_app_category_cache_table()
     _ensure_device_classification_cache_table()
     _ensure_performance_indexes()
+    _ensure_daily_device_stats_columns()
+    _ensure_device_classification_columns()
+    _ensure_dashboard_event_ack_columns()
+    _ensure_daily_device_stats_unique_constraint()
+    _ensure_db_safety_constraints()
+    _ensure_dashboard_events_tenant_columns()
+
+
+def _ensure_app_settings_table():
+    """Create the app_settings table if it does not exist.
+
+    db.create_all() handles table creation for new deployments; this
+    function is a safety net for edge cases and ensures the index exists.
+    """
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            id                  SERIAL PRIMARY KEY,
+            key                 VARCHAR(100) NOT NULL,
+            value               TEXT,
+            category            VARCHAR(50),
+            description         TEXT,
+            is_secret           BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at          TIMESTAMP,
+            updated_by_user_id  INTEGER REFERENCES "user"(id) ON DELETE SET NULL,
+            site_id             INTEGER,
+            CONSTRAINT uq_app_settings_key UNIQUE (key)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_app_settings_category
+            ON app_settings (category)
+        """,
+    ]
+    try:
+        for stmt in statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (app_settings): {exc}")
+
+
+def ensure_app_settings_table():
+    """Public entry point: ensure app_settings table + seed env defaults."""
+    _ensure_app_settings_table()
+
+
+def _ensure_device_icmp_threshold_columns():
+    """Add per-device ICMP threshold columns (Phase 5). Idempotent."""
+    try:
+        inspector = inspect(db.engine)
+        if 'device' not in inspector.get_table_names():
+            return
+        existing = {col['name'] for col in inspector.get_columns('device')}
+        col_defs = [
+            ('icmp_latency_warning_ms',       'INTEGER'),
+            ('icmp_latency_critical_ms',      'INTEGER'),
+            ('icmp_packet_loss_warning_pct',  'DOUBLE PRECISION'),
+            ('icmp_packet_loss_critical_pct', 'DOUBLE PRECISION'),
+        ]
+        added = []
+        for col_name, col_type in col_defs:
+            if col_name not in existing:
+                db.session.execute(text(
+                    f'ALTER TABLE device ADD COLUMN IF NOT EXISTS {col_name} {col_type}'
+                ))
+                added.append(col_name)
+        if added:
+            db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (device ICMP thresholds): {exc}')
+
+
+def ensure_device_icmp_threshold_columns():
+    """Public entry point: add ICMP threshold columns to the device table."""
+    _ensure_device_icmp_threshold_columns()
+
+
+def _ensure_alert_channels_table():
+    """Create alert_channels table if absent (Phase 7). Idempotent."""
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS alert_channels (
+            id                      SERIAL PRIMARY KEY,
+            name                    VARCHAR(100) NOT NULL,
+            channel_type            VARCHAR(20) NOT NULL,
+            config_json             JSON,
+            is_enabled              BOOLEAN NOT NULL DEFAULT TRUE,
+            send_on_critical        BOOLEAN NOT NULL DEFAULT TRUE,
+            send_on_warning         BOOLEAN NOT NULL DEFAULT FALSE,
+            applicable_device_types JSON,
+            created_at              TIMESTAMP,
+            updated_at              TIMESTAMP,
+            CONSTRAINT uq_alert_channels_name UNIQUE (name)
+        )
+        """,
+    ]
+    try:
+        for stmt in statements:
+            db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (alert_channels): {exc}')
+
+
+def ensure_alert_channels_table():
+    """Public entry point: create alert_channels table."""
+    _ensure_alert_channels_table()
 
 
 def ensure_tracking_stabilization_columns():

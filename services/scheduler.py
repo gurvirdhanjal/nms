@@ -32,6 +32,8 @@ JOB_META: dict[str, tuple[str, int]] = {
     "run_tracking_history_retention":  ("tracking_history_retention",   86400),
     "enqueue_config_backup_tasks":     ("backup_device_configs",        86400),
     "maybe_run_auto_discovery":        ("auto_discovery",               60),
+    "purge_old_alerts":                ("alert_retention",              86400),
+    "purge_old_scan_history":          ("scan_history_retention",        86400),
 }
 
 
@@ -89,13 +91,28 @@ class MonitoringScheduler:
         self.app = app
         self.monitor = DeviceMonitor()
         self.is_running = False
+        self._loop = None  # reused event loop — avoids per-cycle asyncio.run() leak
         self.scheduler_thread = None
-    
+        # Dynamic interval tracking — updated each run; read from AppSettings (60s cache).
+        self._monitoring_last_run: float = 0.0
+        self._snmp_last_run: float = 0.0
+
+    def _get_monitoring_interval(self) -> int:
+        """Return current monitoring interval in seconds from DB/env (cached)."""
+        try:
+            from services.settings_service import get_monitoring_interval
+            with self.app.app_context():
+                return get_monitoring_interval()
+        except Exception:
+            pass
+        return max(60, min(3600, self.app.config.get('MONITORING_INTERVAL', 300)))
+
     def start_scheduled_monitoring(self):
         """Start the scheduled monitoring tasks"""
-        # Monitor every 5 minutes
-        schedule.every(5).minutes.do(self.run_monitoring_task)
-        schedule.every(5).minutes.do(self.enqueue_snmp_tasks)
+        # Tick every 1 minute; actual fire rate is controlled by _monitoring_last_run
+        # so that the interval can be changed live via AppSettings without a restart.
+        schedule.every(1).minutes.do(self.run_monitoring_task)
+        schedule.every(1).minutes.do(self.enqueue_snmp_tasks)
         
         # Auto-discovery check every 1 minute (actual scan fires only when interval elapsed)
         schedule.every(1).minutes.do(self.maybe_run_auto_discovery)
@@ -141,11 +158,19 @@ class MonitoringScheduler:
             self.enqueue_config_backup_tasks
         )
 
+        # Nightly alert retention — delete resolved alerts older than 90 days
+        schedule.every().day.at("03:30").do(self.purge_old_alerts)
+
+        # Nightly scan history retention — device_scan_history is the only high-volume
+        # table with NO cleanup job. At 5-min intervals × 239 devices it grows ~70 K rows/day.
+        # Default retention: 30 days (configurable via SCAN_HISTORY_RETENTION_DAYS).
+        schedule.every().day.at("04:00").do(self.purge_old_scan_history)
+
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
         
         self.is_running = True
-        self.scheduler_thread = threading.Thread(target=self.run_scheduler)
+        self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
         self.scheduler_thread.start()
         
@@ -175,30 +200,42 @@ class MonitoringScheduler:
             _time.sleep(5)  # wait for DB pool to settle
             try:
                 with _app_ref.app_context():
-                    if not _backfill_needed():
-                        logger.info("Startup backfill skipped — recent daily_device_stats exist")
-                        return
-                    from services.maintenance_service import MaintenanceService
-                    result = MaintenanceService().backfill_daily_stats(days=90)
-                    logger.info("Startup backfill complete: %s", result)
+                    try:
+                        if not _backfill_needed():
+                            logger.info("Startup backfill skipped — recent daily_device_stats exist")
+                            return
+                        from services.maintenance_service import MaintenanceService
+                        result = MaintenanceService().backfill_daily_stats(days=90)
+                        logger.info("Startup backfill complete: %s", result)
+                    finally:
+                        db.session.remove()
             except Exception:
                 logger.exception("Startup backfill failed (non-fatal)")
 
         t_backfill = threading.Thread(target=run_startup_backfill, daemon=True, name="startup-backfill")
         t_backfill.start()
 
-        print("Scheduled monitoring started (initial scan triggered)...")
+        logger.info("Scheduled monitoring started (initial scan triggered).")
     
     def stop_scheduled_monitoring(self):
         """Stop the scheduled monitoring"""
         self.is_running = False
-        print("Scheduled monitoring stopped.")
+        logger.info("Scheduled monitoring stopped.")
     
     def run_scheduler(self):
-        """Run the scheduler loop"""
+        """Inner scheduler loop — runs pending jobs every second."""
         while self.is_running:
             schedule.run_pending()
             time.sleep(1)
+
+    def _run_scheduler_with_watchdog(self):
+        """Watchdog wrapper: restarts the inner loop after any unhandled exception."""
+        while self.is_running:
+            try:
+                self.run_scheduler()
+            except Exception:
+                logger.exception("[Scheduler] Thread crashed — restarting in 10s")
+                time.sleep(10)
 
     def sync_maintenance_windows(self):
         """Synchronize active maintenance windows with the boolean device.maintenance_mode column."""
@@ -232,13 +269,25 @@ class MonitoringScheduler:
 
     
     def run_monitoring_task(self):
-        """Run monitoring task within application context"""
+        """Run monitoring task within application context.
+
+        Respects the live monitoring interval from AppSettings — changes take
+        effect within 1 minute with no scheduler restart required.
+        """
         with self.app.app_context():
+            now = time.time()
+            interval = self._get_monitoring_interval()
+            if now - self._monitoring_last_run < interval:
+                return  # Not enough time has elapsed — skip this tick.
+            self._monitoring_last_run = now
             try:
-                asyncio.run(self.monitor.monitor_stored_devices())
-                print(f"Scheduled monitoring completed at {datetime.now()}")
+                if self._loop is None or self._loop.is_closed():
+                    self._loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self._loop)
+                self._loop.run_until_complete(self.monitor.monitor_stored_devices())
+                logger.debug("Scheduled monitoring completed at %s", datetime.now())
             except Exception as e:
-                print(f"Error in scheduled monitoring: {e}")
+                logger.exception("Error in scheduled monitoring: %s", e)
             finally:
                 # Ensure session is cleaned up after background task
                 db.session.remove()
@@ -300,10 +349,12 @@ class MonitoringScheduler:
         with self.app.app_context():
             try:
                 report = self.monitor.get_daily_report()
-                print(f"Daily report generated for {report['date']}")
+                logger.info("Daily report generated for %s", report['date'])
                 # Here you can add email sending or other reporting mechanisms
             except Exception as e:
-                print(f"Error generating daily report: {e}")
+                logger.exception("Error generating daily report: %s", e)
+            finally:
+                db.session.remove()
 
     def run_metrics_retention(self):
         """Run server health rollups and retention cleanup."""
@@ -539,6 +590,62 @@ class MonitoringScheduler:
             finally:
                 db.session.remove()
 
+    def purge_old_scan_history(self):
+        """Delete device_scan_history rows older than SCAN_HISTORY_RETENTION_DAYS (default 30).
+
+        At 5-min intervals × 239 devices this table accumulates ~70 K rows/day and
+        ~2 M rows/month with no cleanup. The DELETE is bounded and batched to avoid
+        long-running transactions that could spike lock contention.
+        """
+        with self.app.app_context():
+            try:
+                from models.scan_history import DeviceScanHistory
+                retention_days = int(self.app.config.get('SCAN_HISTORY_RETENTION_DAYS', 30))
+                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                # Batch delete to avoid a single enormous transaction
+                total_deleted = 0
+                while True:
+                    # Use a subquery + LIMIT to bound each DELETE to 10,000 rows
+                    subq = db.session.query(DeviceScanHistory.scan_id).filter(
+                        DeviceScanHistory.scan_timestamp < cutoff
+                    ).limit(10000).subquery()
+                    deleted = DeviceScanHistory.query.filter(
+                        DeviceScanHistory.scan_id.in_(subq)
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
+                    total_deleted += deleted
+                    if deleted < 10000:
+                        break  # No more rows to delete
+                logger.info(
+                    "[SCHEDULER] purge_old_scan_history: deleted %d rows older than %d days",
+                    total_deleted, retention_days,
+                )
+            except Exception:
+                db.session.rollback()
+                logger.exception("[SCHEDULER] purge_old_scan_history failed")
+            finally:
+                db.session.remove()
+
+    def purge_old_alerts(self):
+        """Delete resolved dashboard_events older than 90 days."""
+        with self.app.app_context():
+            try:
+                from models.dashboard import DashboardEvent
+                cutoff = datetime.utcnow() - timedelta(days=90)
+                deleted = DashboardEvent.query.filter(
+                    DashboardEvent.resolved.is_(True),
+                    DashboardEvent.resolved_at < cutoff,
+                ).delete(synchronize_session=False)
+                db.session.commit()
+                _record_run("alert_retention", True)
+                logger.info("[SCHEDULER] purge_old_alerts: deleted %d resolved alerts older than 90d", deleted)
+            except Exception:
+                db.session.rollback()
+                _record_run("alert_retention", False)
+                logger.exception("[SCHEDULER] purge_old_alerts failed")
+            finally:
+                db.session.remove()
+
     def check_snmp_health(self):
         """
         Backward-compatible alias.
@@ -548,15 +655,23 @@ class MonitoringScheduler:
 
     def enqueue_snmp_tasks(self):
         """Enqueue SNMP health poll tasks for all enabled devices.
-        
+
+        Respects the live monitoring interval from AppSettings — same cadence
+        as run_monitoring_task.
+
         RULE: Scheduler performs ZERO network I/O.
         This method only INSERTs PollTask rows with status='pending'.
         Actual SNMP execution happens in workers/snmp_worker.py.
-        
+
         Duplicate protection: skips devices that already have a
         pending or running task for the same task_type.
         """
         with self.app.app_context():
+            now = time.time()
+            interval = self._get_monitoring_interval()
+            if now - self._snmp_last_run < interval:
+                return  # Not enough time has elapsed — skip this tick.
+            self._snmp_last_run = now
             try:
                 from models.device import Device
                 from models.snmp_config import DeviceSnmpConfig
@@ -611,10 +726,10 @@ class MonitoringScheduler:
                     db.session.commit()
 
                 if enqueued > 0 or skipped > 0:
-                    print(f"[SCHEDULER] SNMP tasks: {enqueued} enqueued, {skipped} skipped (already pending)")
+                    logger.info("[SCHEDULER] SNMP tasks: %d enqueued, %d skipped (already pending)", enqueued, skipped)
 
             except Exception as e:
                 db.session.rollback()
-                print(f"[SCHEDULER] Error enqueuing SNMP tasks: {e}")
+                logger.exception("[SCHEDULER] Error enqueuing SNMP tasks: %s", e)
             finally:
                 db.session.remove()

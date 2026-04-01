@@ -522,7 +522,7 @@
             const valueNode = row.querySelector(value);
 
             if (barNode) {
-                barNode.style.width = `${clamped}%`;
+                barNode.style.transform = `scaleX(${clamped / 100})`;
                 barNode.style.background = tone;
             }
             if (valueNode) {

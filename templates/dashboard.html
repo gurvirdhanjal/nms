@@ -228,6 +228,11 @@
         color: #8b949e;
     }
 
+    #server-health-summary .server-kpi-card.server-filter-active {
+        border-color: rgba(148, 163, 184, 0.32);
+        box-shadow: none;
+    }
+
     .section-block {
         padding-inline: 10px;
     }
@@ -323,7 +328,8 @@
         padding: 2rem 0;
     }
 
-    .device-kpi-card:hover {
+    .device-kpi-card:hover,
+    .server-kpi-card:hover {
         border-color: rgba(148, 163, 184, 0.32);
         transform: translateY(-1px);
         transition: transform 130ms ease, border-color 130ms ease;
@@ -2217,6 +2223,11 @@
                 <span class="strip-label">Polling</span>
                 <span id="connection-indicator"></span>
             </div>
+            <div class="enterprise-strip-item" title="Background scheduler health">
+                <span class="strip-label">Scheduler</span>
+                <span id="scheduler-health-dot" class="strip-dot" style="background:var(--s-warning);"></span>
+                <span id="scheduler-health-text" style="font-size:0.7rem;color:var(--t-secondary);">-</span>
+            </div>
             <div class="enterprise-strip-item">
                 <span class="strip-label">Sync</span>
                 <span id="overall-health-subtext">-</span>
@@ -2476,7 +2487,8 @@
         }
 
         /* v5.0: focus pulse removed — state changes are instant */
-        .device-kpi-card {
+        .device-kpi-card,
+        .server-kpi-card {
             cursor: pointer;
         }
 
@@ -3075,7 +3087,7 @@
             }
         }
     </style>
-    <div id="device-breakdown" data-premium-tabs-root="device-breakdown">
+    <div id="device-breakdown">
         <div class="expanded-wrapper">
             <div class="breakdown-panel">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -3102,14 +3114,14 @@
                         <div class="tactical-card breakdown-subcard">
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
-                                <div class="tabs" data-premium-tabs><button class="active"
-                                        data-premium-tab data-target="tab-latency">Latency</button><button
-                                        data-premium-tab data-target="tab-loss">Loss</button><button
-                                        data-premium-tab data-target="tab-inventory-list">Inventory</button><button
-                                        data-premium-tab data-target="tab-discovery">Discovery</button></div>
+                                <div class="tabs"><button class="active"
+                                        data-target="tab-latency">Latency</button><button
+                                        data-target="tab-loss">Loss</button><button
+                                        data-target="tab-inventory-list">Inventory</button><button
+                                        data-target="tab-discovery">Discovery</button></div>
                             </div>
                             <div class="card-body">
-                                <div id="tab-latency" class="tab-content is-active" data-premium-panel>
+                                <div id="tab-latency" class="tab-content is-active">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -3131,7 +3143,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-loss" class="tab-content" data-premium-panel>
+                                <div id="tab-loss" class="tab-content">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -3154,7 +3166,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-inventory-list" class="tab-content" data-premium-panel>
+                                <div id="tab-inventory-list" class="tab-content">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0" id="table-inventory">
                                             <thead>
@@ -3181,7 +3193,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-discovery" class="tab-content" data-premium-panel>
+                                <div id="tab-discovery" class="tab-content">
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-6"><label class="form-label small text-secondary">Seed
                                                 IP</label><input id="seed-ip" class="form-control tactical-input"
@@ -3412,6 +3424,15 @@
             </div>
         </div>
 
+    </div>
+
+    <!-- Usage Alerts (Moved Bottom) -->
+    <div id="fleet-alerts-bar" class="alert alert-danger mb-0 py-2 alert-banner-critical">
+        <div class="d-flex align-items-center gap-3"><i class="fas fa-exclamation-triangle text-danger"></i>
+            <div class="flex-grow-1 small fw-bold" id="fleet-alerts-text">No critical alerts.
+            </div><button class="btn btn-sm btn-outline-danger" id="btn-view-critical">View
+                Details</button>
+        </div>
     </div>
 </div>
 
@@ -3793,5 +3814,47 @@
         sharedRefresh: true
     });
 </script>
-<script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v=2.17"></script>
+<script type="module" src="{{ url_for('static', filename='js/dashboard/dashboard.js') }}?v={{ asset_ver }}"></script>
+<script>
+(function() {
+    var _schedulerTimer = null;
+    function updateSchedulerHealth() {
+        fetch('/api/maintenance/scheduler/status', {credentials: 'same-origin'})
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                var dot = document.getElementById('scheduler-health-dot');
+                var txt = document.getElementById('scheduler-health-text');
+                if (!dot || !txt) return;
+                if (!data) {
+                    dot.style.background = 'var(--s-warning)';
+                    txt.textContent = 'err';
+                    return;
+                }
+                var jobs = data.jobs || {};
+                var names = Object.keys(jobs);
+                var stale = names.filter(function(n) {
+                    return jobs[n].status === 'stale' || jobs[n].status === 'never_run';
+                });
+                if (data.scheduler_running === false) {
+                    dot.style.background = 'var(--s-critical)';
+                    txt.textContent = 'down';
+                } else if (stale.length > 0) {
+                    dot.style.background = 'var(--s-warning)';
+                    txt.textContent = stale.length + ' stale';
+                } else {
+                    dot.style.background = 'var(--s-ok)';
+                    txt.textContent = 'ok';
+                }
+            })
+            .catch(function() {
+                var dot = document.getElementById('scheduler-health-dot');
+                if (dot) dot.style.background = 'var(--s-warning)';
+            });
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSchedulerHealth();
+        _schedulerTimer = setInterval(updateSchedulerHealth, 60000); // refresh every 60s
+    });
+})();
+</script>
 {% endblock %}

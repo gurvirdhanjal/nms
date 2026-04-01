@@ -41,7 +41,7 @@ class InterfacePoller:
                 name="interface-poller",
             )
             self._thread.start()
-            print("Interface Poller Service started.")
+            log.info("Interface Poller Service started.")
 
     def stop_polling(self, timeout=2.0):
         """Stop the background polling thread"""
@@ -56,9 +56,9 @@ class InterfacePoller:
             pass
 
         if thread.is_alive():
-            print("Interface Poller stop requested; thread still exiting.")
+            log.warning("Interface Poller stop requested; thread still exiting.")
         else:
-            print("Interface Poller Service stopped.")
+            log.info("Interface Poller Service stopped.")
             self._thread = None
 
     def _run_loop(self):
@@ -71,7 +71,7 @@ class InterfacePoller:
                     finally:
                         db.session.remove()
             except Exception as e:
-                print(f"Error in interface poller loop: {e}")
+                log.exception("Error in interface poller loop: %s", e)
 
             interval = 10
             if self._app:

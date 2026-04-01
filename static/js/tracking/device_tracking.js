@@ -81,6 +81,21 @@
         }
 
         window.openAddDeviceModal = openAddDeviceModal;
+
+        // KPI cards → click activates matching chip filter
+        document.querySelectorAll('[data-filter-target]').forEach((card) => {
+            card.addEventListener('click', () => {
+                const target = card.dataset.filterTarget;
+                const chipBtn = document.querySelector(`[data-chip-filter="${target}"]`);
+                if (chipBtn) chipBtn.click();
+            });
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    card.click();
+                }
+            });
+        });
     }
 
     function bindStoredDeviceActions() {
@@ -258,9 +273,11 @@
                     applyStoredDeviceSummary(response);
                     lastRefreshAtMs = Date.now();
                     updateRefreshTicker();
+                    _setRefreshSpin(false);
                 },
-                onStateChange: () => {
+                onStateChange: (state) => {
                     updateRefreshTicker();
+                    _setRefreshSpin(state === 'loading');
                 },
                 onError: (error) => {
                     console.debug('Stored status refresh failed:', error?.message || error);
@@ -373,14 +390,14 @@
             kpiBaseline = { total, reachable, offline, activeAgentCheckins };
         }
 
-        updateKpiTrend('trackingKpiTotalTrend', total - Number(kpiBaseline.total || 0), 'vs baseline');
-        updateKpiTrend('trackingKpiReachableTrend', reachable - Number(kpiBaseline.reachable || 0), 'vs baseline');
-        updateKpiTrend('trackingKpiOfflineTrend', offline - Number(kpiBaseline.offline || 0), 'vs baseline');
+        updateKpiTrend('trackingKpiTotalTrend', total - Number(kpiBaseline.total || 0), '');
+        updateKpiTrend('trackingKpiReachableTrend', reachable - Number(kpiBaseline.reachable || 0), '');
+        updateKpiTrend('trackingKpiOfflineTrend', offline - Number(kpiBaseline.offline || 0), '');
         const syncWindow = Number(summaryResponse.agent_sync_window_seconds || 180);
         updateKpiTrend(
             'trackingKpiActive24hTrend',
             activeAgentCheckins - Number(kpiBaseline.activeAgentCheckins || 0),
-            `${activeAgentCheckins} in ${syncWindow}s`
+            `in ${Math.round(syncWindow / 60)}m window`
         );
 
         const offlineCard = document.getElementById('trackingKpiOffline')?.closest('.ops-kpi-card');
@@ -399,16 +416,16 @@
         const detail = suffix ? ` ${suffix}` : '';
         if (delta > 0) {
             trendElement.classList.add('up');
-            trendElement.textContent = `+${delta}${detail}`;
+            trendElement.textContent = `↑ ${delta}${detail}`;
             return;
         }
         if (delta < 0) {
             trendElement.classList.add('down');
-            trendElement.textContent = `${delta}${detail}`;
+            trendElement.textContent = `↓ ${Math.abs(delta)}${detail}`;
             return;
         }
         trendElement.classList.add('stable');
-        trendElement.textContent = `Stable${detail ? ` (${suffix})` : ''}`;
+        trendElement.textContent = suffix ? suffix : 'No change';
     }
 
     function applyStoredStatusToRow(row, device) {
@@ -1112,6 +1129,11 @@
         if (unassignedPill) {
             unassignedPill.classList.toggle('attention', unassignedCount > 0);
         }
+    }
+
+    function _setRefreshSpin(active) {
+        const icon = document.getElementById('trackingRefreshIcon');
+        if (icon) icon.classList.toggle('spinning', active);
     }
 
     function updateRefreshTicker() {

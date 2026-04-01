@@ -22,6 +22,13 @@ def test_reports_page_has_selectors(logged_in_page: Page):
     ).to_be_visible(timeout=10_000)
 
 
+def test_reports_page_has_dense_shell(logged_in_page: Page):
+    logged_in_page.goto(BASE_URL + "/reports")
+    logged_in_page.wait_for_load_state("networkidle")
+    expect(logged_in_page.locator('[data-report-summary-strip="dense"]')).to_be_visible(timeout=10_000)
+    expect(logged_in_page.locator('[data-report-tab-shell="dense"]')).to_be_visible(timeout=10_000)
+
+
 def test_reports_executive_section_visible(logged_in_page: Page):
     logged_in_page.goto(BASE_URL + "/reports")
     logged_in_page.wait_for_load_state("networkidle")

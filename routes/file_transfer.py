@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import requests
@@ -9,6 +10,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import threading
 from middleware.rbac import require_role
+
+logger = logging.getLogger(__name__)
 
 file_transfer_bp = Blueprint('file_transfer_bp', __name__)
 
@@ -35,7 +38,7 @@ def test_client_connection(client_ip, client_port=5002):
         )
         if response.status_code == 200:
             return True
-    except:
+    except Exception:
         pass
     return False
 
@@ -80,7 +83,7 @@ def discover_clients():
                         'port': 5002,
                         'last_seen': datetime.now().isoformat()
                     })
-            except:
+            except Exception:
                 pass
         
         # Threaded scanning
@@ -372,7 +375,8 @@ def list_local_files():
                     'created': os.path.getctime(item_path)
                 }
                 items.append(item_info)
-            except:
+            except Exception:
+                logger.debug("Skipping inaccessible path item in file browser listing")
                 continue
         
         items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))

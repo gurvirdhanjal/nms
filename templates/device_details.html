@@ -5,99 +5,357 @@
 {% block ui_assets %}{% include "components/ui_assets.html" %}{% endblock %}
 
 {% block extra_css %}
-<!-- Only specific overrides that can't use utility classes -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}?v={{ asset_ver }}">
 <style>
-    /* Add any custom overrides here if needed */
+/* ── Device Details Tab System ─────────────────────────────── */
+.dd-tabs-nav {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(51,65,85,0.7);
+  margin-bottom: 1.5rem;
+  scrollbar-width: none;
+}
+.dd-tabs-nav::-webkit-scrollbar { display: none; }
+.dd-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.dd-tab-btn:hover { color: #e2e8f0; }
+.dd-tab-btn.active { color: #22d3ee; border-bottom-color: #22d3ee; }
+.dd-tab-panel { animation: ddFadeIn 0.18s ease; }
+@keyframes ddFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ── Live indicator dot ─────────────────────────────────────── */
+.dd-live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  display: inline-block;
+  animation: ddPulse 1.6s ease-in-out infinite;
+}
+@keyframes ddPulse { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+
+/* ── Count badge on tabs ─────────────────────────────────────  */
+.dd-tab-badge {
+  background: rgba(99,102,241,0.18);
+  color: #a5b4fc;
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* ── Ping KPI cards ─────────────────────────────────────────── */
+.dd-ping-grid {
+  display: grid;
+  grid-template-columns: repeat(6,1fr);
+  gap: 10px;
+  margin-bottom: 1.25rem;
+}
+@media(max-width:1024px){ .dd-ping-grid { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:640px){  .dd-ping-grid { grid-template-columns: repeat(2,1fr); } }
+.dd-kpi {
+  background: rgba(15,23,42,0.7);
+  border: 1px solid rgba(51,65,85,0.55);
+  border-radius: 8px;
+  padding: 14px 14px 12px;
+}
+.dd-kpi-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.dd-kpi-value {
+  font-size: 1.35rem;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: #f1f5f9;
+  line-height: 1;
+}
+.dd-kpi-value.good  { color: #34d399; }
+.dd-kpi-value.ok    { color: #fbbf24; }
+.dd-kpi-value.warn  { color: #fb923c; }
+.dd-kpi-value.bad   { color: #f87171; }
+.dd-kpi-unit { font-size: 0.7rem; color: #64748b; margin-left: 2px; font-weight: 400; }
+.dd-kpi-sub  { font-size: 0.65rem; color: #475569; margin-top: 4px; }
+
+/* ── Ping chart container ───────────────────────────────────── */
+.dd-chart-wrap {
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(51,65,85,0.5);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+.dd-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(51,65,85,0.4);
+}
+.dd-chart-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+.dd-chart-body { position: relative; height: 180px; padding: 12px; }
+
+/* ── Port scan table ────────────────────────────────────────── */
+.dd-port-service {
+  font-size: 0.72rem;
+  background: rgba(30,41,59,0.8);
+  color: #7dd3fc;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+.dd-port-badge-open   { color: #34d399; }
+.dd-port-badge-closed { color: #f87171; }
+
+/* ── Agent metrics ──────────────────────────────────────────── */
+.dd-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+@media(max-width:1024px){ .dd-resource-grid { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:640px){  .dd-resource-grid { grid-template-columns: 1fr; } }
+.dd-res-card {
+  background: rgba(15,23,42,0.65);
+  border: 1px solid rgba(51,65,85,0.5);
+  border-radius: 10px;
+  padding: 16px;
+}
+.dd-res-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dd-res-value {
+  font-size: 1.6rem;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+.dd-res-bar-bg {
+  height: 5px;
+  background: rgba(51,65,85,0.5);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.dd-res-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+.dd-res-bar-fill.good { background: #34d399; }
+.dd-res-bar-fill.ok   { background: #fbbf24; }
+.dd-res-bar-fill.warn { background: #fb923c; }
+.dd-res-bar-fill.bad  { background: #f87171; }
+.dd-res-sub { font-size: 0.65rem; color: #475569; }
+
+/* ── Agent secondary metrics ────────────────────────────────── */
+.dd-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(30,41,59,0.6);
+}
+.dd-stat-row:last-child { border-bottom: none; }
+.dd-stat-label { font-size: 0.72rem; color: #64748b; }
+.dd-stat-val { font-size: 0.8rem; font-family: monospace; color: #e2e8f0; font-weight: 600; }
+
+/* ── Process table ──────────────────────────────────────────── */
+.dd-proc-table { width: 100%; border-collapse: collapse; }
+.dd-proc-table th {
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: #475569; padding: 8px 10px;
+  border-bottom: 1px solid rgba(51,65,85,0.5); text-align: left;
+}
+.dd-proc-table td {
+  font-size: 0.75rem; padding: 7px 10px; color: #cbd5e1;
+  border-bottom: 1px solid rgba(30,41,59,0.5);
+}
+.dd-proc-table tr:last-child td { border-bottom: none; }
+.dd-proc-table tr:hover td { background: rgba(30,41,59,0.4); }
+.dd-proc-name { font-family: monospace; color: #93c5fd; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Refresh indicator ──────────────────────────────────────── */
+.dd-refresh-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.67rem;
+  color: #475569;
+  margin-bottom: 1rem;
+}
+.dd-refresh-spinner {
+  width: 10px; height: 10px;
+  border: 1.5px solid rgba(34,211,238,0.3);
+  border-top-color: #22d3ee;
+  border-radius: 50%;
+  display: none;
+}
+.dd-refresh-spinner.spinning {
+  display: block;
+  animation: ddSpin 0.7s linear infinite;
+}
+@keyframes ddSpin { to { transform: rotate(360deg); } }
+
+/* ── SNMP live indicator ─────────────────────────────────────  */
+.dd-snmp-live {
+  font-size: 0.65rem;
+  color: #22d3ee;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── Empty state ─────────────────────────────────────────────  */
+.dd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  border: 1px dashed rgba(51,65,85,0.7);
+  border-radius: 10px;
+  background: rgba(15,23,42,0.3);
+  text-align: center;
+  color: #475569;
+}
+.dd-empty svg { margin-bottom: 12px; opacity: 0.4; }
+.dd-empty p { font-size: 0.82rem; }
+
+/* ── Existing perf-range-btn kept ───────────────────────────── */
+.perf-range-btn {
+  padding: 4px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.perf-range-btn:hover { color: #e2e8f0; background: rgba(51,65,85,0.4); }
+.perf-range-btn.active { color: #22d3ee; background: rgba(34,211,238,0.1); }
+.perf-shimmer {
+  background: linear-gradient(90deg, rgba(30,41,59,0) 0%, rgba(30,41,59,0.6) 50%, rgba(30,41,59,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
 </style>
 {% endblock %}
 
 {% macro dt(value, fallback='Not available') -%}
-    {% if value is not none and value != '' -%}
-        {{ value }}
-    {%- else -%}
-        <span class="text-slate-500 italic">{{ fallback }}</span>
-    {%- endif %}
+    {% if value is not none and value != '' -%}{{ value }}{%- else -%}<span class="text-slate-500 italic">{{ fallback }}</span>{%- endif %}
 {%- endmacro %}
 
 {% macro metric_box(label, value, suffix='') -%}
-    <div class="bg-slate-900/50 border border-slate-700/50 rounded-lg p-3 flex flex-col items-center justify-center text-center h-full">
-        <div class="text-[0.65rem] font-semibold text-slate-400 uppercase tracking-wider mb-2">{{ label }}</div>
-        <div class="text-lg font-mono text-white">
-            {% if value is not none %}
-                {% if value is number %}
-                    {{ '%.1f'|format(value) }}{{ suffix }}
-                {% else %}
-                    {{ value }}{{ suffix }}
-                {% endif %}
-            {% else %}
-                <span class="text-slate-500">N/A</span>
-            {% endif %}
-        </div>
+<div class="bg-slate-900/50 border border-slate-700/50 rounded-lg p-3 flex flex-col items-center justify-center text-center h-full">
+    <div class="text-[0.65rem] font-semibold text-slate-400 uppercase tracking-wider mb-2">{{ label }}</div>
+    <div class="text-lg font-mono text-white">
+        {% if value is not none %}
+            {% if value is number %}{{ '%.1f'|format(value) }}{{ suffix }}{% else %}{{ value }}{{ suffix }}{% endif %}
+        {% else %}<span class="text-slate-500">N/A</span>{% endif %}
     </div>
+</div>
 {%- endmacro %}
 
 {% macro prop_row(label, value) -%}
-    <div class="py-2.5 grid grid-cols-3 gap-4 border-b border-slate-800/50 last:border-0">
-        <dt class="text-sm font-medium text-slate-400">{{ label }}</dt>
-        <dd class="text-sm text-slate-200 mt-0 col-span-2 font-mono break-all">{{ value }}</dd>
-    </div>
+<div class="py-2.5 grid grid-cols-3 gap-4 border-b border-slate-800/50 last:border-0">
+    <dt class="text-sm font-medium text-slate-400">{{ label }}</dt>
+    <dd class="text-sm text-slate-200 mt-0 col-span-2 font-mono break-all">{{ value }}</dd>
+</div>
 {%- endmacro %}
 
+{% set _dev_type = (device.device_type or '')|lower %}
+{% set _has_agent = latest_agent_log is not none %}
+{% set _is_server = _dev_type == 'server' %}
+{% set _is_workstation = _dev_type in ('workstation', 'desktop', 'laptop', 'pc') %}
+{% set _show_agent_tab = _has_agent %}
+{% set _show_snmp_tab = (snmp_config or latest_snmp_log or interfaces) %}
 
 {% block content %}
 <div class="page-section">
     <div class="page-container">
-        
-        <!-- Header Section -->
+
+        <!-- ── Header ──────────────────────────────────────────── -->
         <div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
             <div>
                 <div class="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">Inventory Profile</div>
                 <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
-                    <i data-lucide="server-cog" class="w-6 h-6 text-slate-400"></i>
+                    <i data-lucide="{{ 'server-cog' if _is_server else ('monitor' if _is_workstation else 'box') }}" class="w-6 h-6 text-slate-400"></i>
                     {{ device.device_name }}
                 </h1>
                 <div class="text-sm text-slate-400 mt-2 flex items-center gap-2">
                     <code class="bg-slate-800 text-blue-300 px-1.5 py-0.5 rounded text-xs">{{ device.device_ip }}</code>
-                    <span class="text-slate-600">|</span> 
-                    <span>{{ (device.device_type or 'unknown')|replace('_', ' ')|title }}</span>
+                    <span class="text-slate-600">|</span>
+                    <span>{{ (_dev_type or 'unknown')|replace('_', ' ')|title }}</span>
+                    {% if _has_agent %}
+                    <span class="text-slate-600">|</span>
+                    <span class="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold"><span class="dd-live-dot"></span>Agent Active</span>
+                    {% endif %}
                 </div>
             </div>
-
             <div class="flex flex-wrap items-center gap-3">
                 <a href="{{ url_for('devices_bp.device_management') }}" class="inline-flex items-center justify-center rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-300 shadow-sm ring-1 ring-inset ring-slate-700 hover:bg-slate-700 transition-colors">
                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Devices
                 </a>
-                {% if (device.device_type or '')|lower == 'server' %}
-                <a href="{{ url_for('devices_bp.server_monitoring_page', device_id=device.device_id) }}" class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
+                {% if _is_server %}
+                <a href="{{ url_for('server_metrics_bp.server_monitoring_page', device_id=device.device_id) }}" class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
                     <i data-lucide="activity" class="w-4 h-4 mr-2"></i> Open Server Monitoring
                 </a>
                 {% endif %}
             </div>
         </div>
 
-        <!-- Status Badges -->
+        <!-- ── Status Badges ──────────────────────────────────── -->
         <div class="flex flex-wrap gap-2 mb-6">
-            {{ ui_badge(availability_summary.label, type=availability_summary.tone|replace('success', 'emerald')|replace('danger', 'red')|replace('warning', 'amber')|replace('muted', 'slate')) }}
-            
-            {% if device.is_monitored %}
-                {{ ui_badge('Monitored', type='emerald') }}
-            {% else %}
-                {{ ui_badge('Not Monitored', type='slate') }}
-            {% endif %}
-            
-            {% if device.maintenance_mode %}
-                {{ ui_badge('Maintenance Enabled', type='amber') }}
-            {% else %}
-                {{ ui_badge('Maintenance Off', type='slate') }}
-            {% endif %}
-            
+            {{ ui_badge(availability_summary.label, type=availability_summary.tone|replace('success','emerald')|replace('danger','red')|replace('warning','amber')|replace('muted','slate')) }}
+            {% if device.is_monitored %}{{ ui_badge('Monitored', type='emerald') }}{% else %}{{ ui_badge('Not Monitored', type='slate') }}{% endif %}
+            {% if device.maintenance_mode %}{{ ui_badge('Maintenance Enabled', type='amber') }}{% else %}{{ ui_badge('Maintenance Off', type='slate') }}{% endif %}
             {{ ui_badge('Mode: ' ~ (device.monitoring_mode or 'ping')|upper, type='slate') }}
             {{ ui_badge('Transport: ' ~ (device.transport_type or 'unknown')|upper, type='slate') }}
         </div>
 
-        <!-- Hero Stats Grid -->
+        <!-- ── Hero Stats Grid ────────────────────────────────── -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <!-- Availability Hero -->
             <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Availability</div>
                 <div>
@@ -105,237 +363,679 @@
                     <div class="text-xl font-bold {{ avail_color }} mb-1">{{ availability_summary.label }}</div>
                     <div class="text-xs text-slate-400 leading-tight mb-2">{{ availability_summary.detail }}</div>
                     <div class="text-[0.65rem] text-slate-500">
-                        {% if latest_scan and latest_scan.scan_timestamp %}
-                            Last check {{ latest_scan.scan_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
-                        {% else %}
-                            No scan timestamp available
-                        {% endif %}
+                        {% if latest_scan and latest_scan.scan_timestamp %}Last check {{ latest_scan.scan_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No scan timestamp{% endif %}
                     </div>
                 </div>
             </div>
-
-            <!-- Telemetry Hero -->
             <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Latest Telemetry</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1">
-                        {% if latest_health_log %}
-                            {{ telemetry_source_label }}
-                        {% else %}
-                            <span class="text-slate-500">No telemetry</span>
-                        {% endif %}
+                        {% if latest_health_log %}{{ telemetry_source_label }}{% else %}<span class="text-slate-500">No telemetry</span>{% endif %}
                     </div>
                     <div class="text-xs text-slate-400 leading-tight mb-2">
-                        {% if latest_health_log and latest_health_log.timestamp %}
-                            Captured {{ latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
-                        {% else %}
-                            No telemetry has been ingested
-                        {% endif %}
+                        {% if latest_health_log and latest_health_log.timestamp %}Captured {{ latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No telemetry ingested{% endif %}
                     </div>
                     <div class="text-[0.65rem] text-slate-500">
-                        {% if latest_health_log and latest_health_log.os_name %}
-                            {{ latest_health_log.os_name }}
-                        {% elif device.agent_os_type %}
-                            {{ device.agent_os_type|upper }}
-                        {% else %}
-                            Source-agnostic profile view
-                        {% endif %}
+                        {% if latest_health_log and latest_health_log.os_name %}{{ latest_health_log.os_name }}
+                        {% elif device.agent_os_type %}{{ device.agent_os_type|upper }}
+                        {% else %}Source-agnostic profile view{% endif %}
                     </div>
                 </div>
             </div>
-
-            <!-- Assignment Hero -->
             <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Assignment</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1 whitespace-nowrap overflow-hidden text-ellipsis" title="{{ device.site.site_name if device.site else 'Unassigned Site' }}">
                         {{ device.site.site_name if device.site else 'Unassigned Site' }}
                     </div>
-                    <div class="text-xs text-slate-400 leading-tight mb-2">
-                        Department: {{ device.department.name if device.department else 'Unassigned' }}
-                    </div>
-                    <div class="text-[0.65rem] text-slate-500 font-mono">
-                        Subnet: {{ device.subnet_cidr or 'Unassigned' }}
-                    </div>
+                    <div class="text-xs text-slate-400 leading-tight mb-2">Department: {{ device.department.name if device.department else 'Unassigned' }}</div>
+                    <div class="text-[0.65rem] text-slate-500 font-mono">Subnet: {{ device.subnet_cidr or 'Unassigned' }}</div>
                 </div>
             </div>
-
-            <!-- Posture Hero -->
             <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Monitoring Posture</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1">{{ (device.monitoring_mode or 'ping')|upper }}</div>
                     <div class="text-xs text-slate-400 leading-tight mb-2">CoS: {{ device.cos_tier or 'Standard' }}</div>
-                    <div class="text-[0.65rem] text-slate-500">
-                        Class: {{ device.classification_confidence or 'Unknown' }}{% if device.confidence_score is not none %} ({{ device.confidence_score }}){% endif %}
-                    </div>
+                    <div class="text-[0.65rem] text-slate-500">Class: {{ device.classification_confidence or 'Unknown' }}{% if device.confidence_score is not none %} ({{ device.confidence_score }}){% endif %}</div>
                 </div>
             </div>
         </div>
 
-        <!-- Main Content -->
-        
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Identity And Assignment -->
-            {% call ui_card(title='<div class="flex items-center"><i data-lucide="badge-info" class="w-4 h-4 mr-2 text-blue-400"></i> Identity And Assignment</div>') %}
-                <dl class="divide-y divide-slate-800/50">
-                    {{ prop_row('Device ID', device.device_id) }}
-                    {{ prop_row('Hostname', dt(device.hostname)) }}
-                    {{ prop_row('MAC', dt(device.macaddress, 'Not detected')) }}
-                    {{ prop_row('Manufacturer', dt(device.manufacturer, 'Unresolved')) }}
-                    {{ prop_row('Location', dt(device.location, 'Not set')) }}
-                    {{ prop_row('Site', dt(device.site.site_name if device.site else none, 'Unassigned')) }}
-                    {{ prop_row('Department', dt(device.department.name if device.department else none, 'Unassigned')) }}
-                    {{ prop_row('Description', dt(device.description)) }}
-                </dl>
-            {% endcall %}
+        <!-- ── Tab Navigation ─────────────────────────────────── -->
+        <div class="dd-tabs-nav" id="ddTabsNav">
+            <button class="dd-tab-btn active" data-tab="overview">
+                <i data-lucide="layout-dashboard" style="width:13px;height:13px"></i>Overview
+            </button>
+            <button class="dd-tab-btn" data-tab="ping">
+                <i data-lucide="radio" style="width:13px;height:13px"></i>Ping &amp; Network
+            </button>
+            <button class="dd-tab-btn" data-tab="ports">
+                <i data-lucide="scan-line" style="width:13px;height:13px"></i>Open Ports
+                {% if open_ports %}<span class="dd-tab-badge">{{ open_ports|length }}</span>{% endif %}
+            </button>
+            {% if _show_agent_tab %}
+            <button class="dd-tab-btn" data-tab="agent">
+                <span class="dd-live-dot"></span>
+                {% if _is_workstation %}Workstation{% else %}Agent{% endif %} Metrics
+            </button>
+            {% endif %}
+            {% if _is_server %}
+            <button class="dd-tab-btn" data-tab="performance">
+                <i data-lucide="trending-up" style="width:13px;height:13px"></i>Performance
+            </button>
+            {% endif %}
+            {% if _show_snmp_tab %}
+            <button class="dd-tab-btn" data-tab="snmp">
+                {% if has_snmp_metrics %}<span class="dd-live-dot" style="background:#60a5fa"></span>{% endif %}
+                SNMP
+            </button>
+            {% endif %}
+            <button class="dd-tab-btn" data-tab="audit">
+                <i data-lucide="scroll-text" style="width:13px;height:13px"></i>Audit
+            </button>
+        </div>
 
-            <!-- Monitoring And Topology -->
-            {% call ui_card(title='<div class="flex items-center"><i data-lucide="settings-2" class="w-4 h-4 mr-2 text-slate-400"></i> Monitoring And Topology</div>') %}
-                <dl class="divide-y divide-slate-800/50">
-                    {{ prop_row('Monitoring Mode', (device.monitoring_mode or 'ping')|upper) }}
-                    {{ prop_row('Transport', (device.transport_type or 'unknown')|upper) }}
-                    {{ prop_row('CoS Tier', dt(device.cos_tier, 'Standard')) }}
-                    {{ prop_row('Classified As', (device.device_type or 'unknown')|replace('_', ' ')|title) }}
-                    {{ prop_row('Confidence', dt(device.classification_confidence) ~ (' (' ~ device.confidence_score ~ ')' if device.confidence_score is not none else '')) }}
-                    {{ prop_row('Parent Switch', dt(device.parent_switch.device_name if device.parent_switch else none, 'None linked')) }}
-                    {{ prop_row('Parent Port', dt(device.parent_port.canonical_name if device.parent_port and device.parent_port.canonical_name else (device.parent_port.name if device.parent_port else none), 'None linked')) }}
-                    {{ prop_row('Discovery Method', dt(device.last_discovery_method)) }}
-                    {{ prop_row('Created', device.created_at.strftime('%Y-%m-%d %H:%M:%S') if device.created_at else 'Unknown') }}
-                    {{ prop_row('Updated', device.updated_at.strftime('%Y-%m-%d %H:%M:%S') if device.updated_at else 'Unknown') }}
-                </dl>
-            {% endcall %}
-
-            <!-- Telemetry Snapshot -->
-            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
-                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex justify-between items-center">
-                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
-                        <i data-lucide="pulse" class="w-4 h-4 mr-2 text-emerald-400"></i> Latest Telemetry Snapshot
-                    </h3>
-                    <span class="text-[0.65rem] text-slate-500 hidden sm:block">Uses newest source available</span>
-                </div>
-                <div class="p-5 flex-1">
-                    {% if latest_health_log %}
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                        {{ metric_box('CPU', latest_health_log.cpu_usage, '%') }}
-                        {{ metric_box('Memory', latest_health_log.memory_usage, '%') }}
-                        {{ metric_box('Disk', latest_health_log.disk_usage, '%') }}
-                        {{ metric_box('Packet Loss', latest_health_log.packet_loss_pct, '%') }}
-                    </div>
+        <!-- ══════════════════════════════════════════════════════
+             TAB: OVERVIEW
+        ══════════════════════════════════════════════════════ -->
+        <div id="panel-overview" class="dd-tab-panel">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="badge-info" class="w-4 h-4 mr-2 text-blue-400"></i> Identity And Assignment</div>') %}
                     <dl class="divide-y divide-slate-800/50">
-                        {{ prop_row('Source', telemetry_source_label) }}
-                        {{ prop_row('Captured At', latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_health_log.timestamp else 'Unknown') }}
-                        {{ prop_row('OS', dt(latest_health_log.os_name)) }}
-                        {{ prop_row('Uptime', dt(latest_health_log.uptime)) }}
-                        {{ prop_row('Latency', '%.1f'|format(latest_health_log.ping_latency_ms) ~ ' ms' if latest_health_log.ping_latency_ms is not none else 'N/A') }}
-                        {{ prop_row('Net In', '%.1f'|format(latest_health_log.network_in_bps) ~ ' bps' if latest_health_log.network_in_bps is not none else 'N/A') }}
-                        {{ prop_row('Net Out', '%.1f'|format(latest_health_log.network_out_bps) ~ ' bps' if latest_health_log.network_out_bps is not none else 'N/A') }}
+                        {{ prop_row('Device ID', device.device_id) }}
+                        {{ prop_row('Hostname', dt(device.hostname)) }}
+                        {{ prop_row('MAC', dt(device.macaddress, 'Not detected')) }}
+                        {{ prop_row('Manufacturer', dt(device.manufacturer, 'Unresolved')) }}
+                        {{ prop_row('Location', dt(device.location, 'Not set')) }}
+                        {{ prop_row('Site', dt(device.site.site_name if device.site else none, 'Unassigned')) }}
+                        {{ prop_row('Department', dt(device.department.name if device.department else none, 'Unassigned')) }}
+                        {{ prop_row('Description', dt(device.description)) }}
+                    </dl>
+                {% endcall %}
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="settings-2" class="w-4 h-4 mr-2 text-slate-400"></i> Monitoring And Topology</div>') %}
+                    <dl class="divide-y divide-slate-800/50">
+                        {{ prop_row('Monitoring Mode', (device.monitoring_mode or 'ping')|upper) }}
+                        {{ prop_row('Transport', (device.transport_type or 'unknown')|upper) }}
+                        {{ prop_row('CoS Tier', dt(device.cos_tier, 'Standard')) }}
+                        {{ prop_row('Classified As', (_dev_type or 'unknown')|replace('_', ' ')|title) }}
+                        {{ prop_row('Confidence', dt(device.classification_confidence) ~ (' (' ~ device.confidence_score ~ ')' if device.confidence_score is not none else '')) }}
+                        {{ prop_row('Parent Switch', dt(device.parent_switch.device_name if device.parent_switch else none, 'None linked')) }}
+                        {{ prop_row('Parent Port', dt(device.parent_port.canonical_name if device.parent_port and device.parent_port.canonical_name else (device.parent_port.name if device.parent_port else none), 'None linked')) }}
+                        {{ prop_row('Discovery Method', dt(device.last_discovery_method)) }}
+                        {{ prop_row('Created', device.created_at.strftime('%Y-%m-%d %H:%M:%S') if device.created_at else 'Unknown') }}
+                        {{ prop_row('Updated', device.updated_at.strftime('%Y-%m-%d %H:%M:%S') if device.updated_at else 'Unknown') }}
+                    </dl>
+                {% endcall %}
+
+                <!-- Telemetry Snapshot -->
+                <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+                    <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex justify-between items-center">
+                        <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                            <i data-lucide="pulse" class="w-4 h-4 mr-2 text-emerald-400"></i> Latest Telemetry Snapshot
+                        </h3>
+                        <span class="text-[0.65rem] text-slate-500 hidden sm:block">Newest source available</span>
+                    </div>
+                    <div class="p-5 flex-1">
+                        {% if latest_health_log %}
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                            {{ metric_box('CPU', latest_health_log.cpu_usage, '%') }}
+                            {{ metric_box('Memory', latest_health_log.memory_usage, '%') }}
+                            {{ metric_box('Disk', latest_health_log.disk_usage, '%') }}
+                            {{ metric_box('Packet Loss', latest_health_log.packet_loss_pct, '%') }}
+                        </div>
+                        <dl class="divide-y divide-slate-800/50">
+                            {{ prop_row('Source', telemetry_source_label) }}
+                            {{ prop_row('Captured At', latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_health_log.timestamp else 'Unknown') }}
+                            {{ prop_row('OS', dt(latest_health_log.os_name)) }}
+                            {{ prop_row('Uptime', dt(latest_health_log.uptime)) }}
+                            {{ prop_row('Latency', '%.1f'|format(latest_health_log.ping_latency_ms) ~ ' ms' if latest_health_log.ping_latency_ms is not none else 'N/A') }}
+                            {{ prop_row('Net In', '%.1f'|format(latest_health_log.network_in_bps) ~ ' bps' if latest_health_log.network_in_bps is not none else 'N/A') }}
+                            {{ prop_row('Net Out', '%.1f'|format(latest_health_log.network_out_bps) ~ ' bps' if latest_health_log.network_out_bps is not none else 'N/A') }}
+                        </dl>
+                        {% else %}
+                        <div class="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-lg bg-slate-800/20 text-center">
+                            <i data-lucide="bar-chart-2" class="w-8 h-8 text-slate-600 mb-3"></i>
+                            <p class="text-sm text-slate-400 max-w-sm">No telemetry collected yet from agent, SNMP, or reachability sources.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Monitoring Sources -->
+                <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+                    <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                            <i data-lucide="database-zap" class="w-4 h-4 mr-2 text-amber-400"></i> Monitoring Data Sources
+                        </h3>
+                    </div>
+                    <div class="p-5 flex-1">
+                        <div class="space-y-3">
+                            {% for source in monitoring_sources %}
+                            <div class="border border-slate-700/60 rounded-md p-3.5 bg-slate-800/30">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-medium text-slate-200">{{ source.name }}</span>
+                                    {% set src_lower = source.status|lower %}
+                                    {% set _bc = 'emerald' if src_lower in ['online','reporting','available'] else ('amber' if src_lower=='maintenance' else ('red' if src_lower in ['offline','not reporting'] else 'slate')) %}
+                                    {{ ui_badge(source.status, type=_bc) }}
+                                </div>
+                                <div class="text-xs text-slate-400 leading-relaxed mb-1">{{ source.detail }}</div>
+                                <div class="text-[0.65rem] text-slate-500 font-mono">
+                                    {% if source.timestamp %}<i class="far fa-clock mr-1"></i>{{ source.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No sample timestamp{% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Identity Mapping -->
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="fingerprint" class="w-4 h-4 mr-2 text-indigo-400"></i> Identity Mapping</div>') %}
+                    {% if active_identity_link %}
+                    <dl class="divide-y divide-slate-800/50 mb-6">
+                        {{ prop_row('Tracked Device', '#' ~ active_identity_link.tracked_device_id) }}
+                        {{ prop_row('Normalized MAC', active_identity_link.normalized_mac) }}
+                        {{ prop_row('Link Source', active_identity_link.link_source) }}
+                        {{ prop_row('Confidence', active_identity_link.confidence) }}
+                        {{ prop_row('Updated', active_identity_link.updated_at.strftime('%Y-%m-%d %H:%M:%S') if active_identity_link.updated_at else 'Unknown') }}
                     </dl>
                     {% else %}
-                    <div class="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-lg bg-slate-800/20 text-center">
-                        <i data-lucide="bar-chart-2" class="w-8 h-8 text-slate-600 mb-3"></i>
-                        <p class="text-sm text-slate-400 max-w-sm">No telemetry has been collected yet from agent, SNMP, or reachability sources.</p>
+                    <div class="p-4 border border-dashed border-slate-700/80 rounded-md mb-6 bg-slate-800/10 text-center">
+                        <p class="text-sm text-slate-500">No active tracked-device identity link attached.</p>
                     </div>
                     {% endif %}
+                    {% if pending_identity_candidates %}
+                    <div class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-widest mb-3">Pending Candidates</div>
+                    <ul class="space-y-2">
+                        {% for cand in pending_identity_candidates %}
+                        <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20">
+                            <div class="text-sm text-slate-200 mb-1">Tracked Device #{{ cand.tracked_device_id }} | Score: {{ cand.candidate_score }}</div>
+                            <div class="text-xs text-slate-400">{{ cand.candidate_source }} · {{ cand.detected_at.strftime('%Y-%m-%d %H:%M:%S') if cand.detected_at else 'Unknown' }}</div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                {% endcall %}
+
+                <!-- Classification Evidence -->
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="scan-search" class="w-4 h-4 mr-2 text-purple-400"></i> Classification Evidence</div>') %}
+                    {% if classification_details %}
+                    <dl class="divide-y divide-slate-800/50 mb-6">
+                        {{ prop_row('Reasoning', dt(classification_details.get('reasoning'))) }}
+                        {{ prop_row('Reported Type', dt(classification_details.get('device_type'))) }}
+                        {{ prop_row('Confidence', dt(classification_details.get('confidence'))) }}
+                        {{ prop_row('Score', dt(classification_details.get('score'))) }}
+                    </dl>
+                    {% set signals = classification_details.get('signals_used') or [] %}
+                    {% if signals %}
+                    <ul class="space-y-2">
+                        {% for sig in signals[:5] %}
+                        <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20 flex flex-col">
+                            <span class="text-sm text-slate-200 mb-1 font-medium">{{ sig.get('reason') or sig.get('source') or 'Signal' }}</span>
+                            <span class="text-xs text-slate-400">{{ sig.get('type') or sig.get('source') or 'evidence' }}{% if sig.get('score') is not none %} | Score: {{ sig.get('score') }}{% endif %}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% else %}
+                    <div class="p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
+                        <p class="text-sm text-slate-500">No classification evidence stored.</p>
+                    </div>
+                    {% endif %}
+                {% endcall %}
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════
+             TAB: PING & NETWORK
+        ══════════════════════════════════════════════════════ -->
+        <div id="panel-ping" class="dd-tab-panel" style="display:none">
+
+            <!-- Live refresh bar -->
+            <div class="dd-refresh-bar">
+                <div class="dd-refresh-spinner" id="pingSpinner"></div>
+                <span id="pingLastUpdated">Loaded from page context</span>
+                <button onclick="refreshPingStats()" class="text-cyan-500 hover:text-cyan-300 transition-colors font-semibold" style="font-size:0.67rem;background:none;border:none;cursor:pointer;padding:0;">↻ Refresh</button>
+            </div>
+
+            <!-- KPI grid -->
+            <div class="dd-ping-grid" id="pingKpiGrid">
+                {% set _avg_class = ping_stats.avg_class if ping_stats.avg_class else '' %}
+                {% set _avg_val = '%.1f'|format(ping_stats.avg_ms) if ping_stats.avg_ms is not none else '—' %}
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Avg Latency</div>
+                    <div class="dd-kpi-value {{ 'good' if ping_stats.avg_ms is not none and ping_stats.avg_ms < 5 else ('ok' if ping_stats.avg_ms is not none and ping_stats.avg_ms < 20 else ('warn' if ping_stats.avg_ms is not none and ping_stats.avg_ms < 50 else ('bad' if ping_stats.avg_ms is not none else ''))) }}" id="pingAvg">
+                        {{ _avg_val }}<span class="dd-kpi-unit">ms</span>
+                    </div>
+                    <div class="dd-kpi-sub">7-day rolling</div>
+                </div>
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Min Latency</div>
+                    <div class="dd-kpi-value good" id="pingMin">
+                        {{ '%.1f'|format(ping_stats.min_ms) if ping_stats.min_ms is not none else '—' }}<span class="dd-kpi-unit">ms</span>
+                    </div>
+                    <div class="dd-kpi-sub">Best recorded</div>
+                </div>
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Max Latency</div>
+                    <div class="dd-kpi-value {{ 'bad' if ping_stats.max_ms is not none and ping_stats.max_ms > 100 else 'ok' }}" id="pingMax">
+                        {{ '%.1f'|format(ping_stats.max_ms) if ping_stats.max_ms is not none else '—' }}<span class="dd-kpi-unit">ms</span>
+                    </div>
+                    <div class="dd-kpi-sub">Peak recorded</div>
+                </div>
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Packet Loss</div>
+                    <div class="dd-kpi-value {{ 'bad' if ping_stats.avg_packet_loss is not none and ping_stats.avg_packet_loss > 5 else ('ok' if ping_stats.avg_packet_loss is not none and ping_stats.avg_packet_loss > 0 else 'good') }}" id="pingPktLoss">
+                        {{ '%.1f'|format(ping_stats.avg_packet_loss) if ping_stats.avg_packet_loss is not none else '0.0' }}<span class="dd-kpi-unit">%</span>
+                    </div>
+                    <div class="dd-kpi-sub">Avg over period</div>
+                </div>
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Online Checks</div>
+                    <div class="dd-kpi-value good" id="pingOnline">{{ ping_stats.online_count }}</div>
+                    <div class="dd-kpi-sub">of {{ ping_stats.total_scans }} scans</div>
+                </div>
+                <div class="dd-kpi">
+                    <div class="dd-kpi-label">Offline Checks</div>
+                    <div class="dd-kpi-value {{ 'bad' if ping_stats.offline_count > 0 else 'good' }}" id="pingOffline">{{ ping_stats.offline_count }}</div>
+                    <div class="dd-kpi-sub">Missed pings</div>
                 </div>
             </div>
 
-            <!-- Monitoring Sources -->
-            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
-                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex justify-between items-center">
-                    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
-                        <i data-lucide="database-zap" class="w-4 h-4 mr-2 text-amber-400"></i> Monitoring Data Sources
-                    </h3>
+            <!-- Sparkline chart -->
+            <div class="dd-chart-wrap">
+                <div class="dd-chart-header">
+                    <span class="dd-chart-title"><i data-lucide="activity" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:5px"></i>Latency Sparkline — Last 50 Samples</span>
+                    <span style="font-size:0.65rem;color:#475569;">7-day window · ICMP round-trip</span>
                 </div>
-                <div class="p-5 flex-1">
-                    <div class="space-y-3">
-                        {% for source in monitoring_sources %}
-                        <div class="border border-slate-700/60 rounded-md p-3.5 bg-slate-800/30">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-medium text-slate-200">{{ source.name }}</span>
-                                {% set src_status_lower = source.status|lower %}
-                                {% set _badge_color = 'emerald' if src_status_lower in ['online', 'reporting', 'available'] else ('amber' if src_status_lower == 'maintenance' else ('red' if src_status_lower in ['offline', 'not reporting'] else 'slate')) %}
-                                {{ ui_badge(source.status, type=_badge_color) }}
-                            </div>
-                            <div class="text-xs text-slate-400 leading-relaxed mb-1">{{ source.detail }}</div>
-                            <div class="text-[0.65rem] text-slate-500 font-mono">
-                                {% if source.timestamp %}
-                                    <i class="far fa-clock mr-1"></i> {{ source.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
-                                {% else %}
-                                    No sample timestamp
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
+                <div class="dd-chart-body">
+                    <canvas id="pingSparklineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent scan history -->
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg overflow-hidden">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-3 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Recent Scan History</span>
+                    <span class="text-[0.65rem] text-slate-500">Last 50 of up to 100 scans · 7 days</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50">
+                        <thead class="bg-slate-800/60">
+                            <tr>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Time</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Latency</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Packet Loss</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pingHistoryBody" class="divide-y divide-slate-700/30">
+                            {% for pt in ping_stats.sparkline | reverse %}
+                            <tr class="hover:bg-slate-800/30 transition-colors">
+                                <td class="px-4 py-2 text-xs font-mono text-slate-400">{{ pt.t }}</td>
+                                <td class="px-4 py-2 text-xs">
+                                    {% if pt.status == 'online' %}
+                                    <span class="text-emerald-400 font-semibold">● Online</span>
+                                    {% else %}
+                                    <span class="text-red-400 font-semibold">● Offline</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2 text-xs font-mono {{ 'text-emerald-400' if pt.v and pt.v < 5 else ('text-amber-400' if pt.v and pt.v < 20 else 'text-slate-300') }}">
+                                    {{ '%.1f ms'|format(pt.v) if pt.v else '—' }}
+                                </td>
+                                <td class="px-4 py-2 text-xs font-mono text-slate-400">—</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500 text-sm">No scan history available</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════
+             TAB: OPEN PORTS
+        ══════════════════════════════════════════════════════ -->
+        <div id="panel-ports" class="dd-tab-panel" style="display:none">
+            {% if open_ports %}
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg overflow-hidden">
+                <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-3 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <i data-lucide="scan-line" class="w-3.5 h-3.5 text-cyan-400"></i>
+                        Discovered Open Ports — {{ device.device_ip }}
+                    </span>
+                    <span class="dd-tab-badge" style="font-size:0.7rem;padding:2px 8px;">{{ open_ports|length }} open</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-700/50">
+                        <thead class="bg-slate-800/60">
+                            <tr>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Port</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Protocol</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Service</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Banner</th>
+                                <th class="px-4 py-2.5 text-left text-[0.62rem] font-semibold text-slate-400 uppercase tracking-wider">Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700/30">
+                            {% for port in open_ports %}
+                            <tr class="hover:bg-slate-800/30 transition-colors">
+                                <td class="px-4 py-2.5 text-sm font-mono font-bold text-cyan-400">{{ port.port_number }}</td>
+                                <td class="px-4 py-2.5 text-xs font-mono text-slate-300">{{ (port.protocol or 'TCP')|upper }}</td>
+                                <td class="px-4 py-2.5">
+                                    {% if port.service_name %}
+                                    <span class="dd-port-service">{{ port.service_name }}</span>
+                                    {% else %}
+                                    <span class="text-slate-600 text-xs italic">unknown</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2.5 text-xs font-semibold dd-port-badge-{{ port.status or 'open' }}">{{ (port.status or 'open')|upper }}</td>
+                                <td class="px-4 py-2.5 text-xs text-slate-400 font-mono max-w-xs truncate" title="{{ port.banner or '' }}">{{ port.banner or '—' }}</td>
+                                <td class="px-4 py-2.5 text-xs text-slate-500 font-mono">{{ port.scan_timestamp.strftime('%Y-%m-%d %H:%M') if port.scan_timestamp else '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <div class="dd-empty">
+                <i data-lucide="scan" style="width:36px;height:36px;display:block;margin:0 auto 12px"></i>
+                <p class="text-slate-400 font-medium mb-1">No port scan data available</p>
+                <p class="text-slate-500 text-xs">Port scans run automatically when a network scan is initiated for this device.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════
+             TAB: AGENT / WORKSTATION METRICS (conditional)
+        ══════════════════════════════════════════════════════ -->
+        {% if _show_agent_tab %}
+        <div id="panel-agent" class="dd-tab-panel" style="display:none">
+            <!-- Live refresh bar -->
+            <div class="dd-refresh-bar">
+                <div class="dd-live-dot"></div>
+                <div class="dd-refresh-spinner" id="agentSpinner"></div>
+                <span id="agentLastUpdated">
+                    {% if latest_agent_log and latest_agent_log.timestamp %}
+                        Agent sample: {{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% else %}No agent data{% endif %}
+                </span>
+                <button onclick="refreshAgentMetrics()" class="text-cyan-500 hover:text-cyan-300 transition-colors font-semibold" style="font-size:0.67rem;background:none;border:none;cursor:pointer;padding:0;">↻ Refresh</button>
+                <span style="color:#1e3a3a;font-size:0.62rem;">auto-refreshes every 15s</span>
+            </div>
+
+            <!-- OS header -->
+            <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg px-5 py-3 mb-4 flex flex-wrap gap-4 items-center">
+                {% if latest_agent_log and latest_agent_log.os_name %}
+                <div class="flex items-center gap-2">
+                    <i data-lucide="{{ 'monitor' if _is_workstation else 'server' }}" class="w-4 h-4 text-blue-400"></i>
+                    <span class="text-sm text-slate-200 font-semibold">{{ latest_agent_log.os_name }}</span>
+                    {% if latest_agent_log.os_version %}<span class="text-xs text-slate-500">{{ latest_agent_log.os_version }}</span>{% endif %}
+                    {% if latest_agent_log.os_arch %}<span class="dd-port-service" style="font-size:0.65rem">{{ latest_agent_log.os_arch }}</span>{% endif %}
+                </div>
+                {% endif %}
+                {% if latest_agent_log and latest_agent_log.uptime %}
+                <div class="text-xs text-slate-400">Uptime: <span class="text-slate-200 font-mono">{{ latest_agent_log.uptime }}</span></div>
+                {% endif %}
+                {% if latest_agent_log and latest_agent_log.process_count %}
+                <div class="text-xs text-slate-400">Processes: <span class="text-slate-200 font-mono" id="agentProcCount">{{ latest_agent_log.process_count }}</span></div>
+                {% endif %}
+            </div>
+
+            <!-- Resource utilization cards -->
+            <div class="dd-resource-grid" id="agentResourceGrid">
+                {# CPU #}
+                {% set cpu = latest_agent_log.cpu_usage if latest_agent_log else none %}
+                <div class="dd-res-card">
+                    <div class="dd-res-label">
+                        <span><i data-lucide="cpu" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:4px"></i>CPU</span>
+                        {% if latest_agent_log and latest_agent_log.load_avg_1min is not none %}
+                        <span style="color:#475569;font-size:0.6rem">Load {{ '%.2f'|format(latest_agent_log.load_avg_1min) }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="dd-res-value {{ 'bad' if cpu is not none and cpu > 90 else ('warn' if cpu is not none and cpu > 70 else ('ok' if cpu is not none and cpu > 50 else 'good')) }}" id="agentCpuVal">
+                        {{ '%.1f'|format(cpu) if cpu is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
+                    </div>
+                    <div class="dd-res-bar-bg">
+                        <div class="dd-res-bar-fill {{ 'bad' if cpu is not none and cpu > 90 else ('warn' if cpu is not none and cpu > 70 else 'good') }}" id="agentCpuBar" style="width:{{ cpu|int if cpu is not none else 0 }}%"></div>
+                    </div>
+                    <div class="dd-res-sub" id="agentCpuSub">
+                        {% if latest_agent_log and latest_agent_log.cpu_iowait_percent is not none %}I/O Wait: {{ '%.1f'|format(latest_agent_log.cpu_iowait_percent) }}%{% endif %}
+                    </div>
+                </div>
+
+                {# Memory #}
+                {% set mem = latest_agent_log.memory_usage if latest_agent_log else none %}
+                <div class="dd-res-card">
+                    <div class="dd-res-label">
+                        <span><i data-lucide="memory-stick" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:4px"></i>Memory</span>
+                        {% if latest_agent_log and latest_agent_log.memory_total_gb is not none %}<span style="color:#475569;font-size:0.6rem">{{ '%.1f'|format(latest_agent_log.memory_total_gb) }} GB total</span>{% endif %}
+                    </div>
+                    <div class="dd-res-value {{ 'bad' if mem is not none and mem > 90 else ('warn' if mem is not none and mem > 75 else 'good') }}" id="agentMemVal">
+                        {{ '%.1f'|format(mem) if mem is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
+                    </div>
+                    <div class="dd-res-bar-bg">
+                        <div class="dd-res-bar-fill {{ 'bad' if mem is not none and mem > 90 else ('warn' if mem is not none and mem > 75 else 'good') }}" id="agentMemBar" style="width:{{ mem|int if mem is not none else 0 }}%"></div>
+                    </div>
+                    <div class="dd-res-sub" id="agentMemSub">
+                        {% if latest_agent_log and latest_agent_log.memory_used_gb is not none %}{{ '%.1f'|format(latest_agent_log.memory_used_gb) }} / {{ '%.1f'|format(latest_agent_log.memory_total_gb or 0) }} GB used{% endif %}
+                    </div>
+                </div>
+
+                {# Disk #}
+                {% set disk = latest_agent_log.disk_usage if latest_agent_log else none %}
+                <div class="dd-res-card">
+                    <div class="dd-res-label">
+                        <span><i data-lucide="hard-drive" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:4px"></i>Disk</span>
+                        {% if latest_agent_log and latest_agent_log.disk_total_gb is not none %}<span style="color:#475569;font-size:0.6rem">{{ '%.0f'|format(latest_agent_log.disk_total_gb) }} GB total</span>{% endif %}
+                    </div>
+                    <div class="dd-res-value {{ 'bad' if disk is not none and disk > 90 else ('warn' if disk is not none and disk > 75 else 'good') }}" id="agentDiskVal">
+                        {{ '%.1f'|format(disk) if disk is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
+                    </div>
+                    <div class="dd-res-bar-bg">
+                        <div class="dd-res-bar-fill {{ 'bad' if disk is not none and disk > 90 else ('warn' if disk is not none and disk > 75 else 'good') }}" id="agentDiskBar" style="width:{{ disk|int if disk is not none else 0 }}%"></div>
+                    </div>
+                    <div class="dd-res-sub" id="agentDiskSub">
+                        {% if latest_agent_log and latest_agent_log.disk_used_gb is not none %}{{ '%.1f'|format(latest_agent_log.disk_used_gb) }} / {{ '%.1f'|format(latest_agent_log.disk_total_gb or 0) }} GB used{% endif %}
+                    </div>
+                </div>
+
+                {# Swap #}
+                {% set swap = latest_agent_log.swap_percent if latest_agent_log else none %}
+                <div class="dd-res-card">
+                    <div class="dd-res-label">
+                        <span><i data-lucide="layers" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:4px"></i>Swap</span>
+                        {% if latest_agent_log and latest_agent_log.swap_total_mb is not none %}<span style="color:#475569;font-size:0.6rem">{{ '%.0f'|format((latest_agent_log.swap_total_mb or 0) / 1024) }} GB total</span>{% endif %}
+                    </div>
+                    <div class="dd-res-value {{ 'bad' if swap is not none and swap > 80 else ('ok' if swap is not none and swap > 30 else 'good') }}" id="agentSwapVal">
+                        {{ '%.1f'|format(swap) if swap is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
+                    </div>
+                    <div class="dd-res-bar-bg">
+                        <div class="dd-res-bar-fill {{ 'bad' if swap is not none and swap > 80 else 'ok' }}" id="agentSwapBar" style="width:{{ swap|int if swap is not none else 0 }}%"></div>
+                    </div>
+                    <div class="dd-res-sub" id="agentSwapSub">
+                        {% if latest_agent_log and latest_agent_log.swap_used_mb is not none %}{{ '%.0f'|format((latest_agent_log.swap_used_mb or 0) / 1024) }} / {{ '%.0f'|format((latest_agent_log.swap_total_mb or 0) / 1024) }} GB used{% endif %}
                     </div>
                 </div>
             </div>
 
-            <!-- Identity Mapping -->
-            {% call ui_card(title='<div class="flex items-center"><i data-lucide="fingerprint" class="w-4 h-4 mr-2 text-indigo-400"></i> Identity Mapping</div>') %}
-                {% if active_identity_link %}
-                <dl class="divide-y divide-slate-800/50 mb-6">
-                    {{ prop_row('Tracked Device', '#' ~ active_identity_link.tracked_device_id) }}
-                    {{ prop_row('Normalized MAC', active_identity_link.normalized_mac) }}
-                    {{ prop_row('Link Source', active_identity_link.link_source) }}
-                    {{ prop_row('Confidence', active_identity_link.confidence) }}
-                    {{ prop_row('Updated', active_identity_link.updated_at.strftime('%Y-%m-%d %H:%M:%S') if active_identity_link.updated_at else 'Unknown') }}
-                </dl>
-                {% else %}
-                <div class="p-4 border border-dashed border-slate-700/80 rounded-md mb-6 bg-slate-800/10 text-center">
-                    <p class="text-sm text-slate-500">No active tracked-device identity link is attached.</p>
+            <!-- Secondary metrics -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+                <!-- Load avg + System -->
+                <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">System Metrics</div>
+                    <div id="agentSystemMetrics">
+                        {% if latest_agent_log %}
+                        {% if latest_agent_log.load_avg_1min is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Load Avg (1m/5m/15m)</span>
+                            <span class="dd-stat-val">{{ '%.2f'|format(latest_agent_log.load_avg_1min) }} / {{ '%.2f'|format(latest_agent_log.load_avg_5min or 0) }} / {{ '%.2f'|format(latest_agent_log.load_avg_15min or 0) }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.context_switches_per_sec is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Context Switches/s</span>
+                            <span class="dd-stat-val">{{ '%.0f'|format(latest_agent_log.context_switches_per_sec) }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.zombie_count is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Zombie Processes</span>
+                            <span class="dd-stat-val {{ 'text-red-400' if latest_agent_log.zombie_count > 0 else '' }}">{{ latest_agent_log.zombie_count }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.open_fds is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Open FDs</span>
+                            <span class="dd-stat-val">{{ latest_agent_log.open_fds }}{% if latest_agent_log.fd_limit %} / {{ latest_agent_log.fd_limit }}{% endif %}</span>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <p class="text-slate-500 text-xs">No data</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Network connections -->
+                <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Network Connections</div>
+                    <div id="agentNetworkMetrics">
+                        {% if latest_agent_log %}
+                        {% if latest_agent_log.network_connections_total is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Total Connections</span>
+                            <span class="dd-stat-val">{{ latest_agent_log.network_connections_total }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.network_connections_established is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Established</span>
+                            <span class="dd-stat-val text-emerald-400">{{ latest_agent_log.network_connections_established }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.network_connections_unique_ips is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Unique Remote IPs</span>
+                            <span class="dd-stat-val">{{ latest_agent_log.network_connections_unique_ips }}</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.tcp_retransmits_delta is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">TCP Retransmits Δ</span>
+                            <span class="dd-stat-val {{ 'text-amber-400' if latest_agent_log.tcp_retransmits_delta > 0 else '' }}">{{ latest_agent_log.tcp_retransmits_delta }}</span>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <p class="text-slate-500 text-xs">No data</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Disk I/O -->
+                <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Disk I/O</div>
+                    <div id="agentDiskIo">
+                        {% if latest_agent_log %}
+                        {% if latest_agent_log.disk_read_bytes is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Read</span>
+                            <span class="dd-stat-val">{{ '%.1f'|format(latest_agent_log.disk_read_bytes / 1048576) }} MB</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.disk_write_bytes is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Write</span>
+                            <span class="dd-stat-val">{{ '%.1f'|format(latest_agent_log.disk_write_bytes / 1048576) }} MB</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.disk_read_latency_ms is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Read Latency</span>
+                            <span class="dd-stat-val">{{ '%.2f'|format(latest_agent_log.disk_read_latency_ms) }} ms</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.disk_write_latency_ms is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Write Latency</span>
+                            <span class="dd-stat-val">{{ '%.2f'|format(latest_agent_log.disk_write_latency_ms) }} ms</span>
+                        </div>
+                        {% endif %}
+                        {% if latest_agent_log.disk_busy_percent is not none %}
+                        <div class="dd-stat-row">
+                            <span class="dd-stat-label">Disk Busy</span>
+                            <span class="dd-stat-val">{{ '%.1f'|format(latest_agent_log.disk_busy_percent) }}%</span>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <p class="text-slate-500 text-xs">No data</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Processes -->
+            {% if latest_agent_log and (latest_agent_log.top_processes_cpu or latest_agent_log.top_processes) %}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <!-- Top by CPU -->
+                {% if latest_agent_log.top_processes_cpu %}
+                <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg overflow-hidden">
+                    <div class="border-b border-slate-700/40 bg-slate-800/30 px-4 py-2.5">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Top Processes — CPU</span>
+                    </div>
+                    <div class="overflow-x-auto" id="agentTopCpuWrap">
+                        <table class="dd-proc-table">
+                            <thead><tr><th>PID</th><th>Name</th><th>CPU %</th><th>Mem %</th></tr></thead>
+                            <tbody>
+                                {% for p in latest_agent_log.top_processes_cpu[:8] %}
+                                <tr>
+                                    <td class="font-mono text-slate-500">{{ p.get('pid', '—') }}</td>
+                                    <td class="dd-proc-name" title="{{ p.get('name', '') }}">{{ p.get('name', '—') }}</td>
+                                    <td class="{{ 'text-red-400' if p.get('cpu_percent', 0) > 50 else ('text-amber-400' if p.get('cpu_percent', 0) > 20 else 'text-slate-300') }} font-mono">{{ '%.1f'|format(p.get('cpu_percent', 0)) }}%</td>
+                                    <td class="font-mono text-slate-400">{{ '%.1f'|format(p.get('memory_percent', 0)) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 {% endif %}
-
-                {% if pending_identity_candidates %}
-                <div class="text-[0.65rem] font-semibold text-slate-500 uppercase tracking-widest mb-3">Pending Candidates</div>
-                <ul class="space-y-2">
-                    {% for candidate in pending_identity_candidates %}
-                    <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20">
-                        <div class="text-sm text-slate-200 mb-1">Tracked Device #{{ candidate.tracked_device_id }} | Score: {{ candidate.candidate_score }}</div>
-                        <div class="text-xs text-slate-400">{{ candidate.candidate_source }} candidate on {{ candidate.detected_at.strftime('%Y-%m-%d %H:%M:%S') if candidate.detected_at else 'Unknown' }}</div>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-            {% endcall %}
-
-            <!-- Classification Evidence -->
-            {% call ui_card(title='<div class="flex items-center"><i data-lucide="scan-search" class="w-4 h-4 mr-2 text-purple-400"></i> Classification Evidence</div>') %}
-                {% if classification_details %}
-                <dl class="divide-y divide-slate-800/50 mb-6">
-                    {{ prop_row('Reasoning', dt(classification_details.get('reasoning'))) }}
-                    {{ prop_row('Reported Type', dt(classification_details.get('device_type'))) }}
-                    {{ prop_row('Confidence', dt(classification_details.get('confidence'))) }}
-                    {{ prop_row('Score', dt(classification_details.get('score'))) }}
-                </dl>
-
-                {% set signals = classification_details.get('signals_used') or [] %}
-                {% if signals %}
-                <ul class="space-y-2">
-                    {% for signal in signals[:5] %}
-                    <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20 flex flex-col">
-                        <span class="text-sm text-slate-200 mb-1 font-medium">{{ signal.get('reason') or signal.get('source') or 'Signal' }}</span>
-                        <span class="text-xs text-slate-400">
-                            {{ signal.get('type') or signal.get('source') or 'evidence' }}
-                            {% if signal.get('score') is not none %} | Score: {{ signal.get('score') }}{% endif %}
-                        </span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-                {% else %}
-                <div class="p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
-                    <p class="text-sm text-slate-500">No classification evidence stored for this device.</p>
+                <!-- Top by Memory -->
+                {% if latest_agent_log.top_processes %}
+                <div class="bg-slate-900/60 border border-slate-700/50 rounded-lg overflow-hidden">
+                    <div class="border-b border-slate-700/40 bg-slate-800/30 px-4 py-2.5">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Top Processes — Memory</span>
+                    </div>
+                    <div class="overflow-x-auto" id="agentTopMemWrap">
+                        <table class="dd-proc-table">
+                            <thead><tr><th>PID</th><th>Name</th><th>Mem %</th><th>CPU %</th></tr></thead>
+                            <tbody>
+                                {% for p in latest_agent_log.top_processes[:8] %}
+                                <tr>
+                                    <td class="font-mono text-slate-500">{{ p.get('pid', '—') }}</td>
+                                    <td class="dd-proc-name" title="{{ p.get('name', '') }}">{{ p.get('name', '—') }}</td>
+                                    <td class="{{ 'text-red-400' if p.get('memory_percent', 0) > 30 else 'text-slate-300' }} font-mono">{{ '%.1f'|format(p.get('memory_percent', 0)) }}%</td>
+                                    <td class="font-mono text-slate-400">{{ '%.1f'|format(p.get('cpu_percent', 0)) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 {% endif %}
-            {% endcall %}
+            </div>
+            {% endif %}
         </div>
+        {% endif %}
 
-        <!-- Server Telemetry Preview (if applicable) -->
-        {% if (device.device_type or '')|lower == 'server' and enable_server_fullpage_telemetry %}
-        <div class="mb-6">
-            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden">
+        <!-- ══════════════════════════════════════════════════════
+             TAB: PERFORMANCE (server only)
+        ══════════════════════════════════════════════════════ -->
+        {% if _is_server %}
+        <div id="panel-performance" class="dd-tab-panel" style="display:none">
+            {% if enable_server_fullpage_telemetry %}
+            <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden mb-6">
                 <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center">
                     <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
                         <i data-lucide="activity" class="w-4 h-4 mr-2 text-emerald-400"></i> Server Telemetry Preview
@@ -350,22 +1050,107 @@
                     {% include 'partials/server_metrics_panel.html' %}
                 </div>
             </div>
+            {% endif %}
+
+            <div id="perfSection" data-device-id="{{ device.device_id }}">
+                <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden">
+                    <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                        <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
+                            <i data-lucide="trending-up" class="w-4 h-4 mr-2 text-blue-400"></i> Performance Charts
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <div class="inline-flex rounded-md overflow-hidden border border-slate-700" id="perfRangeSelector">
+                                <button class="perf-range-btn active" data-range="1h">1H</button>
+                                <button class="perf-range-btn" data-range="6h">6H</button>
+                                <button class="perf-range-btn" data-range="24h">24H</button>
+                                <button class="perf-range-btn" data-range="7d">7D</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-5">
+                        <div id="perfError" class="hidden mb-4 px-4 py-3 rounded-md bg-red-900/40 border border-red-700/50 text-red-300 text-sm">Failed to load performance metrics.</div>
+                        <div id="perfEmpty" class="hidden text-center py-10 text-slate-500 text-sm">No performance data for this range.</div>
+                        <div id="perfChartsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div class="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">CPU Usage</span>
+                                    <div class="flex items-center gap-3 text-xs text-slate-500">Now: <strong class="text-slate-300" id="perfCpuCurrent">—</strong> Peak: <strong class="text-slate-300" id="perfCpuPeak">—</strong> Avg: <strong class="text-slate-300" id="perfCpuAvg">—</strong></div>
+                                </div>
+                                <div class="relative" style="height:160px;padding:12px">
+                                    <div class="perf-shimmer absolute inset-0" id="perfCpuShimmer"></div>
+                                    <canvas id="perfCpuChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Memory Usage</span>
+                                    <div class="flex items-center gap-3 text-xs text-slate-500">Now: <strong class="text-slate-300" id="perfMemCurrent">—</strong> Peak: <strong class="text-slate-300" id="perfMemPeak">—</strong> Avg: <strong class="text-slate-300" id="perfMemAvg">—</strong></div>
+                                </div>
+                                <div class="relative" style="height:160px;padding:12px">
+                                    <div class="perf-shimmer absolute inset-0" id="perfMemShimmer"></div>
+                                    <canvas id="perfMemChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Disk Usage</span>
+                                    <div class="flex items-center gap-3 text-xs text-slate-500">Now: <strong class="text-slate-300" id="perfDiskCurrent">—</strong> Peak: <strong class="text-slate-300" id="perfDiskPeak">—</strong> Avg: <strong class="text-slate-300" id="perfDiskAvg">—</strong></div>
+                                </div>
+                                <div class="relative" style="height:160px;padding:12px">
+                                    <div class="perf-shimmer absolute inset-0" id="perfDiskShimmer"></div>
+                                    <canvas id="perfDiskChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Network I/O</span>
+                                    <div class="flex items-center gap-3 text-xs text-slate-500">In: <strong class="text-slate-300" id="perfNetIn">—</strong> Out: <strong class="text-slate-300" id="perfNetOut">—</strong></div>
+                                </div>
+                                <div class="relative" style="height:160px;padding:12px">
+                                    <div class="perf-shimmer absolute inset-0" id="perfNetShimmer"></div>
+                                    <canvas id="perfNetChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         {% endif %}
 
-        <!-- Supplementary SNMP Data (if applicable) -->
-        {% if snmp_config or latest_snmp_log or interfaces %}
-        <div class="mb-6">
+        <!-- ══════════════════════════════════════════════════════
+             TAB: SNMP (conditional)
+        ══════════════════════════════════════════════════════ -->
+        {% if _show_snmp_tab %}
+        <div id="panel-snmp" class="dd-tab-panel" style="display:none">
+            <div class="dd-refresh-bar">
+                {% if snmp_enabled %}<div class="dd-live-dot" style="background:#60a5fa"></div>{% endif %}
+                <div class="dd-refresh-spinner" id="snmpSpinner"></div>
+                <span id="snmpLastUpdated">
+                    {% if latest_snmp_log and latest_snmp_log.timestamp %}SNMP: {{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% elif snmp_config and snmp_config.last_successful_poll %}Last poll: {{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% else %}No SNMP data{% endif %}
+                </span>
+                {% if snmp_enabled %}
+                <button onclick="refreshSnmpMetrics()" class="text-blue-400 hover:text-blue-300 transition-colors font-semibold" style="font-size:0.67rem;background:none;border:none;cursor:pointer;padding:0;">↻ Refresh</button>
+                <span style="color:#1e3a3a;font-size:0.62rem;">auto-refreshes every 30s</span>
+                {% endif %}
+            </div>
+
             <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden">
                 <div class="border-b border-slate-700/60 bg-slate-800/40 px-5 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center">
                     <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-300 flex items-center">
                         <i data-lucide="network" class="w-4 h-4 mr-2 text-blue-400"></i> Supplementary SNMP Data
                     </h3>
-                    <span class="text-[0.65rem] text-slate-500 mt-1 sm:mt-0">Shown only when SNMP exists</span>
+                    <span class="text-[0.65rem] text-slate-500 mt-1 sm:mt-0">
+                        {% if has_snmp_metrics %}
+                        <span class="dd-snmp-live"><span class="dd-live-dot" style="background:#60a5fa"></span>Receiving data</span>
+                        {% else %}Configured but no recent sample{% endif %}
+                    </span>
                 </div>
                 <div class="p-5">
                     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                        <div class="lg:col-span-4">
+                        <div class="lg:col-span-4" id="snmpConfigPanel">
                             <dl class="divide-y divide-slate-800/50">
                                 {{ prop_row('SNMP Enabled', 'Yes' if snmp_enabled else 'No') }}
                                 {{ prop_row('Version', dt('v' ~ snmp_config.snmp_version if snmp_config and snmp_config.snmp_version else none, 'Not configured')) }}
@@ -375,6 +1160,12 @@
                                 {{ prop_row('Last Metric', latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_snmp_log and latest_snmp_log.timestamp else 'None recorded') }}
                                 {{ prop_row('Interfaces', interfaces|length|string) }}
                             </dl>
+                            {% if latest_snmp_log %}
+                            <div class="mt-4 grid grid-cols-2 gap-3">
+                                {{ metric_box('CPU', latest_snmp_log.cpu_usage, '%') }}
+                                {{ metric_box('Memory', latest_snmp_log.memory_usage, '%') }}
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="lg:col-span-8">
                             {% if interfaces %}
@@ -390,7 +1181,7 @@
                                             <th class="px-3 py-2.5 text-left text-[0.65rem] font-semibold text-slate-400 tracking-wider">Last Poll</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-slate-700/50">
+                                    <tbody class="divide-y divide-slate-700/50" id="snmpIfaceBody">
                                         {% for iface in interfaces[:12] %}
                                         <tr class="hover:bg-slate-700/20 transition-colors">
                                             <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-300">{{ iface.if_index }}</td>
@@ -402,16 +1193,14 @@
                                         </tr>
                                         {% endfor %}
                                         {% if interfaces|length > 12 %}
-                                        <tr>
-                                            <td colspan="6" class="px-3 py-2 text-center text-xs text-slate-500 italic">Showing first 12 of {{ interfaces|length }} interfaces</td>
-                                        </tr>
+                                        <tr><td colspan="6" class="px-3 py-2 text-center text-xs text-slate-500 italic">Showing first 12 of {{ interfaces|length }}</td></tr>
                                         {% endif %}
                                     </tbody>
                                 </table>
                             </div>
                             {% else %}
-                            <div class="h-full flex flex-col justify-center p-6 border border-dashed border-slate-700/80 rounded-md bg-slate-800/10 text-center">
-                                <p class="text-sm text-slate-500">No SNMP-derived interface inventory cached.</p>
+                            <div class="dd-empty" style="height:100%">
+                                <p>No SNMP-derived interface inventory cached.</p>
                             </div>
                             {% endif %}
                         </div>
@@ -421,8 +1210,59 @@
         </div>
         {% endif %}
 
-        <!-- Recent Audit -->
-        <div class="mb-6">
+        <!-- ══════════════════════════════════════════════════════
+             TAB: AUDIT
+        ══════════════════════════════════════════════════════ -->
+        <div id="panel-audit" class="dd-tab-panel" style="display:none">
+            {% if can_edit_server_thresholds %}
+            {% call ui_card(title='<div class="flex items-center"><i data-lucide="bell-ring" class="w-4 h-4 mr-2 text-amber-400"></i> Alert &amp; Monitoring Configuration</div>') %}
+            <div id="alert-config-card" data-device-id="{{ device.device_id }}">
+                <div class="mb-5">
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Compliance Profile</label>
+                    <div class="flex gap-3 items-center">
+                        <select id="ac-profile-select" class="settings-input flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded-md px-3 py-1.5 text-sm">
+                            <option value="">— None (global defaults) —</option>
+                            {% for p in compliance_profiles %}<option value="{{ p.id }}" {% if device.compliance_profile_id == p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+                        </select>
+                        <button onclick="saveComplianceProfile()" class="settings-btn settings-btn--secondary text-sm px-3 py-1.5">Save</button>
+                    </div>
+                    <div id="ac-profile-result" class="settings-result mt-2 hidden"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">ICMP Threshold Overrides</label>
+                    <p class="text-xs text-slate-500 mb-4">Leave blank to inherit from compliance profile or global defaults.</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="settings-label">Latency Warning (ms)</label>
+                            <input type="number" id="ac-lat-warn" class="settings-input w-full" placeholder="e.g. 150" min="1" max="60000" value="{{ device.icmp_latency_warning_ms if device.icmp_latency_warning_ms is not none else '' }}">
+                            <div class="settings-hint mt-1" id="ac-lat-warn-eff"></div>
+                        </div>
+                        <div>
+                            <label class="settings-label">Latency Critical (ms)</label>
+                            <input type="number" id="ac-lat-crit" class="settings-input w-full" placeholder="e.g. 300" min="1" max="60000" value="{{ device.icmp_latency_critical_ms if device.icmp_latency_critical_ms is not none else '' }}">
+                            <div class="settings-hint mt-1" id="ac-lat-crit-eff"></div>
+                        </div>
+                        <div>
+                            <label class="settings-label">Packet Loss Warning (%)</label>
+                            <input type="number" id="ac-loss-warn" class="settings-input w-full" placeholder="e.g. 5" min="0.1" max="99.9" step="0.1" value="{{ device.icmp_packet_loss_warning_pct if device.icmp_packet_loss_warning_pct is not none else '' }}">
+                            <div class="settings-hint mt-1" id="ac-loss-warn-eff"></div>
+                        </div>
+                        <div>
+                            <label class="settings-label">Packet Loss Critical (%)</label>
+                            <input type="number" id="ac-loss-crit" class="settings-input w-full" placeholder="e.g. 15" min="0.1" max="99.9" step="0.1" value="{{ device.icmp_packet_loss_critical_pct if device.icmp_packet_loss_critical_pct is not none else '' }}">
+                            <div class="settings-hint mt-1" id="ac-loss-crit-eff"></div>
+                        </div>
+                    </div>
+                    <div class="settings-actions mt-4">
+                        <button onclick="saveIcmpThresholds()" class="settings-btn settings-btn--primary">Save Thresholds</button>
+                        <button onclick="clearIcmpThresholds()" class="settings-btn settings-btn--ghost">Clear Overrides</button>
+                    </div>
+                    <div id="ac-icmp-result" class="settings-result mt-3 hidden"></div>
+                </div>
+            </div>
+            {% endcall %}
+            {% endif %}
+
             {% call ui_card(title='<div class="flex items-center"><i data-lucide="history" class="w-4 h-4 mr-2 text-slate-400"></i> Recent Device Audit</div>') %}
                 {% if recent_audit_entries %}
                 <ul class="space-y-3">
@@ -430,12 +1270,10 @@
                     <li class="border border-slate-700/50 rounded-md p-3.5 bg-slate-800/20">
                         <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between mb-1 gap-1">
                             <span class="text-sm text-white font-medium">{{ entry.action|upper }}</span>
-                            <span class="text-xs text-slate-500 font-mono"><i class="far fa-user mr-1"></i> {{ entry.username }}</span>
+                            <span class="text-xs text-slate-500 font-mono"><i class="far fa-user mr-1"></i>{{ entry.username }}</span>
                         </div>
                         <div class="text-sm text-slate-300 leading-relaxed">{{ entry.description or 'No description provided' }}</div>
-                        <div class="text-[0.65rem] text-slate-500 mt-2">
-                            <i class="far fa-clock mr-1"></i> {{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else 'Unknown time' }}
-                        </div>
+                        <div class="text-[0.65rem] text-slate-500 mt-2"><i class="far fa-clock mr-1"></i>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else 'Unknown' }}</div>
                     </li>
                     {% endfor %}
                 </ul>
@@ -453,41 +1291,352 @@
 
 {% block extra_js %}
 <script>
-    if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        window.lucide.createIcons();
-    }
+if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+}
 </script>
-{% if (device.device_type or '')|lower == 'server' and enable_server_fullpage_telemetry %}
-<script type="module">
-    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v=2.13";
+<script>
+(function () {
+    'use strict';
+    var DEVICE_ID = {{ device.device_id }};
+    var perfInited = false;
+    var serverMetricsInited = false;
+    var pingChartInited = false;
+    var agentRefreshTimer = null;
+    var snmpRefreshTimer = null;
+    var pingChart = null;
 
-    const pageRoot = document.getElementById('server-page-surface');
-    const deviceId = Number(pageRoot?.dataset.deviceId || 0);
+    // ── Ping sparkline data (server-rendered) ──────────────────
+    var pingSparklineData = {{ ping_stats.sparkline | tojson }};
 
-    if (pageRoot && deviceId > 0) {
-        const view = createServerMetricsView({
-            root: pageRoot,
-            prefix: 'server-page'
-        });
+    // ── Tab switching ──────────────────────────────────────────
+    function switchTab(tabId) {
+        document.querySelectorAll('.dd-tab-panel').forEach(function (p) { p.style.display = 'none'; });
+        document.querySelectorAll('.dd-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+        var panel = document.getElementById('panel-' + tabId);
+        var btn   = document.querySelector('[data-tab="' + tabId + '"]');
+        if (panel) { panel.style.display = ''; panel.style.animation = 'none'; void panel.offsetWidth; panel.style.animation = ''; }
+        if (btn)   btn.classList.add('active');
 
-        let currentRange = '24h';
-
-        async function loadMetrics() {
-            try {
-                await view.load(deviceId, currentRange, { preferCache: true });
-                view.prefetch?.(deviceId, currentRange);
-            } catch (error) {
-                console.error('Failed to load server telemetry preview:', error);
-            }
+        // lazy-init charts on first show
+        if (tabId === 'ping' && !pingChartInited) { pingChartInited = true; initPingChart(pingSparklineData); }
+        if (tabId === 'performance' && !perfInited) {
+            perfInited = true;
+            var sec = document.getElementById('perfSection');
+            if (sec && typeof initDevicePerformance === 'function') initDevicePerformance(DEVICE_ID);
         }
+        if (tabId === 'performance' && !serverMetricsInited) {
+            serverMetricsInited = true;
+            // server metrics view lazy-init handled via separate module import below
+        }
+        if (tabId === 'agent') {
+            if (!agentRefreshTimer) agentRefreshTimer = setInterval(refreshAgentMetrics, 15000);
+        }
+        if (tabId === 'snmp') {
+            if (!snmpRefreshTimer) snmpRefreshTimer = setInterval(refreshSnmpMetrics, 30000);
+        }
+        // update URL hash silently
+        history.replaceState(null, '', '#' + tabId);
+    }
 
+    // wire tab buttons
+    document.querySelectorAll('.dd-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { switchTab(this.dataset.tab); });
+    });
+
+    // restore tab from hash
+    var hash = (location.hash || '#overview').replace('#', '');
+    var validTabs = ['overview','ping','ports','agent','performance','snmp','audit'];
+    switchTab(validTabs.includes(hash) ? hash : 'overview');
+
+    // ── Ping sparkline chart ───────────────────────────────────
+    function initPingChart(data) {
+        var ctx = document.getElementById('pingSparklineChart');
+        if (!ctx || !window.Chart) return;
+        if (pingChart) { pingChart.destroy(); pingChart = null; }
+        var labels = data.map(function (d) { return d.t; });
+        var values = data.map(function (d) { return d.v || null; });
+        var colors = data.map(function (d) { return d.status === 'online' ? 'rgba(52,211,153,0.9)' : 'rgba(248,113,113,0.9)'; });
+        pingChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Latency (ms)',
+                    data: values,
+                    borderColor: '#22d3ee',
+                    backgroundColor: 'rgba(34,211,238,0.07)',
+                    borderWidth: 1.5,
+                    pointRadius: 3,
+                    pointBackgroundColor: colors,
+                    pointBorderColor: 'transparent',
+                    tension: 0.35,
+                    fill: true,
+                    spanGaps: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.95)',
+                        borderColor: 'rgba(51,65,85,0.7)',
+                        borderWidth: 1,
+                        titleColor: '#94a3b8',
+                        bodyColor: '#e2e8f0',
+                        callbacks: {
+                            label: function (ctx) {
+                                var v = ctx.raw;
+                                return v != null ? v.toFixed(1) + ' ms' : 'Offline';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: 'rgba(51,65,85,0.3)' } },
+                    y: {
+                        ticks: { color: '#475569', font: { size: 10 }, callback: function (v) { return v + 'ms'; } },
+                        grid: { color: 'rgba(51,65,85,0.3)' },
+                        beginAtZero: true,
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Utility: fetch live snapshot ───────────────────────────
+    function fetchSnapshot(onDone) {
+        return fetch('/api/devices/' + DEVICE_ID + '/live-snapshot')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { onDone(null, d); })
+            .catch(function (e) { onDone(e, null); });
+    }
+
+    function fmtVal(v, dec, suffix) {
+        if (v == null) return '—';
+        return parseFloat(v).toFixed(dec != null ? dec : 1) + (suffix || '');
+    }
+
+    function colorClass(v, g, o, w) {
+        if (v == null) return '';
+        if (v < g) return 'good';
+        if (v < o) return 'ok';
+        if (v < w) return 'warn';
+        return 'bad';
+    }
+
+    // ── Refresh ping stats ─────────────────────────────────────
+    window.refreshPingStats = function () {
+        var spinner = document.getElementById('pingSpinner');
+        var lastUpd = document.getElementById('pingLastUpdated');
+        if (spinner) spinner.classList.add('spinning');
+        fetchSnapshot(function (err, data) {
+            if (spinner) spinner.classList.remove('spinning');
+            if (err || !data) return;
+            var ps = data.ping_stats || {};
+            var now = new Date(data.updated_at || Date.now());
+            if (lastUpd) lastUpd.textContent = 'Updated ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) + ' IST';
+            // update KPI values
+            function setKpi(id, val, dec, suffix, thresholds) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                var raw = (val !== undefined && val !== null) ? val : null;
+                el.className = 'dd-kpi-value' + (thresholds ? ' ' + colorClass(raw, thresholds[0], thresholds[1], thresholds[2]) : '');
+                el.innerHTML = (raw != null ? parseFloat(raw).toFixed(dec != null ? dec : 1) : '—') + '<span class="dd-kpi-unit">' + (suffix || '') + '</span>';
+            }
+            setKpi('pingAvg',  ps.avg_ms,          1, 'ms', [5, 20, 50]);
+            setKpi('pingMin',  ps.min_ms,          1, 'ms', null);
+            setKpi('pingMax',  ps.max_ms,          1, 'ms', [20, 60, 100]);
+            setKpi('pingPktLoss', ps.avg_packet_loss, 1, '%', [0.1, 2, 5]);
+            var onEl  = document.getElementById('pingOnline');
+            var offEl = document.getElementById('pingOffline');
+            if (onEl)  onEl.textContent  = ps.online_count  != null ? ps.online_count  : '—';
+            if (offEl) offEl.textContent = ps.offline_count != null ? ps.offline_count : '—';
+            // update chart
+            if (pingChart && ps.sparkline && ps.sparkline.length) {
+                var labels = ps.sparkline.map(function (d) { return d.t; });
+                var values = ps.sparkline.map(function (d) { return d.v || null; });
+                var colors = ps.sparkline.map(function (d) { return d.status === 'online' ? 'rgba(52,211,153,0.9)' : 'rgba(248,113,113,0.9)'; });
+                pingChart.data.labels = labels;
+                pingChart.data.datasets[0].data = values;
+                pingChart.data.datasets[0].pointBackgroundColor = colors;
+                pingChart.update('active');
+                pingSparklineData = ps.sparkline;
+            }
+        });
+    };
+
+    // ── Refresh agent metrics ──────────────────────────────────
+    window.refreshAgentMetrics = function () {
+        var spinner = document.getElementById('agentSpinner');
+        var lastUpd = document.getElementById('agentLastUpdated');
+        if (spinner) spinner.classList.add('spinning');
+        fetchSnapshot(function (err, data) {
+            if (spinner) spinner.classList.remove('spinning');
+            if (err || !data || !data.agent_metrics) return;
+            var m = data.agent_metrics;
+            var ts = m.timestamp ? new Date(m.timestamp) : new Date(data.updated_at || Date.now());
+            if (lastUpd) lastUpd.textContent = 'Agent sample: ' + ts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+
+            function setBar(barId, valId, subId, val, thr) {
+                var bar = document.getElementById(barId);
+                var valEl = document.getElementById(valId);
+                if (!bar || !valEl) return;
+                var pct = val != null ? Math.min(100, Math.max(0, Math.round(val))) : 0;
+                bar.style.width = pct + '%';
+                var cls = thr ? colorClass(val, thr[0], thr[1], thr[2]) : 'good';
+                bar.className = 'dd-res-bar-fill ' + cls;
+                valEl.className = 'dd-res-value ' + cls;
+                valEl.innerHTML = (val != null ? parseFloat(val).toFixed(1) : '—') + '<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>';
+            }
+
+            setBar('agentCpuBar',  'agentCpuVal',  'agentCpuSub',  m.cpu_usage,    [50, 70, 90]);
+            setBar('agentMemBar',  'agentMemVal',  'agentMemSub',  m.memory_usage, [50, 75, 90]);
+            setBar('agentDiskBar', 'agentDiskVal', 'agentDiskSub', m.disk_usage,   [50, 75, 90]);
+            setBar('agentSwapBar', 'agentSwapVal', 'agentSwapSub', m.swap_percent, [30, 60, 80]);
+
+            var pcEl = document.getElementById('agentProcCount');
+            if (pcEl && m.process_count != null) pcEl.textContent = m.process_count;
+        });
+    };
+
+    // ── Refresh SNMP ───────────────────────────────────────────
+    window.refreshSnmpMetrics = function () {
+        var spinner = document.getElementById('snmpSpinner');
+        var lastUpd = document.getElementById('snmpLastUpdated');
+        if (spinner) spinner.classList.add('spinning');
+        fetchSnapshot(function (err, data) {
+            if (spinner) spinner.classList.remove('spinning');
+            if (err || !data) return;
+            var sm = data.snmp_metrics;
+            if (sm && sm.timestamp) {
+                var ts = new Date(sm.timestamp);
+                if (lastUpd) lastUpd.textContent = 'SNMP: ' + ts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+            }
+            var now = new Date(data.updated_at || Date.now());
+            if (lastUpd && !sm) lastUpd.textContent = 'Refreshed ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) + ' IST';
+        });
+    };
+
+    // stop timers on unload
+    window.addEventListener('beforeunload', function () {
+        if (agentRefreshTimer) clearInterval(agentRefreshTimer);
+        if (snmpRefreshTimer)  clearInterval(snmpRefreshTimer);
+    }, { once: true });
+}());
+</script>
+
+{% if can_edit_server_thresholds %}
+<script>
+(function () {
+    var deviceId = document.getElementById('alert-config-card')?.dataset.deviceId;
+    if (!deviceId) return;
+    function showResult(elId, ok, msg) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        el.className = 'settings-result mt-2 ' + (ok ? 'settings-result--ok' : 'settings-result--error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        setTimeout(function () { el.classList.add('hidden'); }, 4000);
+    }
+    function loadEffective() {
+        fetch('/api/devices/' + deviceId + '/icmp-thresholds').then(function (r) { return r.json(); }).then(function (d) {
+            var src = d.source || {};
+            var badge = function (key) { return src[key] === 'device_override' ? ' [override]' : src[key] === 'compliance_profile' ? ' [profile]' : ' [default]'; };
+            var set = function (id, val, key) { var el = document.getElementById(id); if (el) el.textContent = 'Effective: ' + val + badge(key); };
+            set('ac-lat-warn-eff',  d.latency_warning_ms + 'ms',     'latency_warning_ms');
+            set('ac-lat-crit-eff',  d.latency_critical_ms + 'ms',    'latency_critical_ms');
+            set('ac-loss-warn-eff', d.packet_loss_warning_pct + '%', 'packet_loss_warning_pct');
+            set('ac-loss-crit-eff', d.packet_loss_critical_pct + '%','packet_loss_critical_pct');
+        }).catch(function () {});
+    }
+    window.saveIcmpThresholds = function () {
+        var parse = function (id) { var v = (document.getElementById(id) || {}).value; return (!v || v.trim() === '') ? null : Number(v); };
+        var body = { icmp_latency_warning_ms: parse('ac-lat-warn'), icmp_latency_critical_ms: parse('ac-lat-crit'), icmp_packet_loss_warning_pct: parse('ac-loss-warn'), icmp_packet_loss_critical_pct: parse('ac-loss-crit') };
+        fetch('/api/devices/' + deviceId + '/icmp-thresholds', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.status === 'ok') { showResult('ac-icmp-result', true, 'Thresholds saved.'); loadEffective(); } else showResult('ac-icmp-result', false, d.error || 'Save failed.'); })
+            .catch(function () { showResult('ac-icmp-result', false, 'Network error.'); });
+    };
+    window.clearIcmpThresholds = function () {
+        var body = { icmp_latency_warning_ms: null, icmp_latency_critical_ms: null, icmp_packet_loss_warning_pct: null, icmp_packet_loss_critical_pct: null };
+        fetch('/api/devices/' + deviceId + '/icmp-thresholds', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.status === 'ok') {
+                    ['ac-lat-warn','ac-lat-crit','ac-loss-warn','ac-loss-crit'].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ''; });
+                    showResult('ac-icmp-result', true, 'Overrides cleared.'); loadEffective();
+                } else showResult('ac-icmp-result', false, d.error || 'Clear failed.');
+            }).catch(function () { showResult('ac-icmp-result', false, 'Network error.'); });
+    };
+    window.saveComplianceProfile = function () {
+        var sel = document.getElementById('ac-profile-select');
+        var profileId = sel && sel.value ? Number(sel.value) : null;
+        fetch('/api/devices/' + deviceId + '/compliance-profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ compliance_profile_id: profileId }) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.status === 'ok') { showResult('ac-profile-result', true, 'Profile saved.'); loadEffective(); } else showResult('ac-profile-result', false, d.error || 'Save failed.'); })
+            .catch(function () { showResult('ac-profile-result', false, 'Network error.'); });
+    };
+    loadEffective();
+}());
+</script>
+{% endif %}
+
+{% if _is_server and enable_server_fullpage_telemetry %}
+<script type="module">
+    import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v={{ asset_ver }}";
+    var perfTabBtn = document.querySelector('[data-tab="performance"]');
+    var initiated = false;
+    function lazyInit() {
+        if (initiated) return;
+        initiated = true;
+        var pageRoot = document.getElementById('server-page-surface');
+        var deviceId = Number(pageRoot?.dataset.deviceId || 0);
+        if (!pageRoot || !deviceId) return;
+        var view = createServerMetricsView({ root: pageRoot, prefix: 'server-page' });
+        var loadMetrics = function () {
+            view.load(deviceId, '24h', { preferCache: true }).then(function () {
+                view.prefetch?.(deviceId, '24h');
+            }).catch(function (e) { console.error('Server telemetry load error:', e); });
+        };
         loadMetrics();
-        const refreshInterval = window.setInterval(loadMetrics, 30000);
-        window.addEventListener('beforeunload', () => {
-            window.clearInterval(refreshInterval);
-            view.destroy();
-        }, { once: true });
+        var refreshInterval = setInterval(loadMetrics, 30000);
+        window.addEventListener('beforeunload', function () { clearInterval(refreshInterval); view.destroy(); }, { once: true });
+    }
+    if (perfTabBtn) {
+        perfTabBtn.addEventListener('click', lazyInit);
+        // init immediately if performance tab is the active hash
+        if ((location.hash || '#overview').replace('#','') === 'performance') lazyInit();
     }
 </script>
 {% endif %}
+
+{% if _is_server %}
+<script src="{{ url_for('static', filename='js/ui/devicePerformance.js') }}?v={{ asset_ver }}"></script>
+{% endif %}
+
+<script>
+// IST timestamp conversion
+(function () {
+    var container = document.querySelector('.page-container');
+    if (!container) return;
+    var re = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:Z)?)\b/g;
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    var node;
+    while ((node = walker.nextNode())) { if (re.test(node.nodeValue)) nodes.push(node); re.lastIndex = 0; }
+    nodes.forEach(function (textNode) {
+        textNode.nodeValue = textNode.nodeValue.replace(re, function (match) {
+            var iso = match.replace(' ','T');
+            if (!iso.endsWith('Z')) iso += 'Z';
+            var d = new Date(iso);
+            if (isNaN(d)) return match;
+            return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        });
+    });
+}());
+</script>
 {% endblock %}

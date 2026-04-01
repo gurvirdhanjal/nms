@@ -1,0 +1,54 @@
+/* ══════════════════════════════════════════════════════════════
+   MONITORING PAGE — Extracted from templates/monitoring.html — Phase 3
+   ══════════════════════════════════════════════════════════════ */
+
+/* Statistics Cards */
+.stats-card {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stats-card:hover {
+    border-color: var(--ui-border-accent);
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px rgba(0, 212, 170, 0.15);
+}
+
+.stats-card h3 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    font-family: var(--ui-font-display);
+}
+
+.stats-card.primary h3 {
+    color: var(--ui-accent-strong);
+}
+
+.stats-card.success h3 {
+    color: var(--status-success);
+}
+
+.stats-card.danger h3 {
+    color: var(--status-critical);
+}
+
+.stats-card.info h3 {
+    color: var(--ui-accent);
+}
+
+.stats-card p {
+    font-size: 0.875rem;
+    color: var(--ui-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0;
+}
+
+#refreshBtn.ui-btn-busy {
+    min-width: 108px;
+}

@@ -31,8 +31,8 @@ class Device(db.Model):
     # ssh_profile_id = db.Column(db.Integer, db.ForeignKey('ssh_profiles.profile_id'), nullable=True)
     
     # Phase 3: Infrastructure Mapping & Topology
-    parent_switch_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='SET NULL'), nullable=True)
-    parent_port_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id', ondelete='SET NULL'), nullable=True)
+    parent_switch_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='SET NULL'), nullable=True, index=True)
+    parent_port_id = db.Column(db.Integer, db.ForeignKey('device_interfaces.interface_id', ondelete='SET NULL'), nullable=True, index=True)
     last_discovery_method = db.Column(db.String(50), nullable=True) # LLDP, CDP, SSH-CAM, etc.
     
     # Intelligence & Classification
@@ -57,7 +57,13 @@ class Device(db.Model):
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True, index=True)
 
     # Compliance Profile (Phase 3) — optional per-device threshold overrides
-    compliance_profile_id = db.Column(db.Integer, db.ForeignKey('compliance_profiles.id', ondelete='SET NULL'), nullable=True)
+    compliance_profile_id = db.Column(db.Integer, db.ForeignKey('compliance_profiles.id', ondelete='SET NULL'), nullable=True, index=True)
+
+    # Per-device ICMP threshold overrides (Phase 5) — null means "inherit from profile or global default"
+    icmp_latency_warning_ms      = db.Column(db.Integer, nullable=True)
+    icmp_latency_critical_ms     = db.Column(db.Integer, nullable=True)
+    icmp_packet_loss_warning_pct = db.Column(db.Float,   nullable=True)
+    icmp_packet_loss_critical_pct = db.Column(db.Float,  nullable=True)
 
     # Monitoring Configuration
     monitoring_mode = db.Column(db.String(20), default='ping') # ping, snmp, agent, wmi

@@ -11,6 +11,8 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.8",
     "jsdom": "^26.0.0",
+    "stylelint": "^17.6.0",
+    "stylelint-config-standard": "^40.0.0",
     "vitest": "^2.1.8"
   }
 }

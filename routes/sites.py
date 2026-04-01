@@ -31,11 +31,12 @@ def sites_list_page():
     """Render the sites management page."""
     from middleware.rbac import scoped_query
 
-    sites = scoped_query(Site).order_by(Site.site_name).all()
+    site_rows = Site.get_all_with_device_counts(base_query=scoped_query(Site))
+    sites = [row[0] for row in site_rows]
     return render_template(
         'sites/list.html',
         sites=sites,
-        sites_payload=[site.to_dict() for site in sites],
+        sites_payload=[row[0].to_dict(device_count=row[1]) for row in site_rows],
     )
 
 
@@ -169,12 +170,31 @@ def site_dashboard(site_id):
 @sites_bp.route('/api/sites', methods=['GET'])
 @require_login
 def list_sites():
-    """List all sites with device counts."""
+    """List all sites with device counts.
+
+    Supports optional pagination via ?page=<n>&per_page=<n> (default: all).
+    """
     from middleware.rbac import scoped_query
-    sites = scoped_query(Site).order_by(Site.site_name).all()
+    site_rows = Site.get_all_with_device_counts(base_query=scoped_query(Site))
+
+    page = request.args.get('page', type=int)
+    if page is not None:
+        per_page = min(request.args.get('per_page', 50, type=int), 200)
+        total = len(site_rows)
+        start = (page - 1) * per_page
+        site_rows = site_rows[start: start + per_page]
+        data = [row[0].to_dict(device_count=row[1]) for row in site_rows]
+        return jsonify({
+            'status': 'ok',
+            'data': data,
+            'total': total,
+            'page': page,
+            'pages': max(1, (total + per_page - 1) // per_page),
+        })
+
     return jsonify({
         'status': 'ok',
-        'data': [s.to_dict() for s in sites]
+        'data': [row[0].to_dict(device_count=row[1]) for row in site_rows]
     })
 
 
@@ -245,6 +265,8 @@ def update_site(site_id):
     if not data:
         return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
+    before_snapshot = site.to_dict()
+
     if 'site_name' in data:
         site_name = _clean_text(data.get('site_name'))
         if not site_name:
@@ -277,6 +299,18 @@ def update_site(site_id):
             setattr(site, field, value)
 
     db.session.commit()
+
+    from middleware.rbac import create_audit_log
+    from utils.audit_helpers import capture_model_diff
+    create_audit_log(
+        action='update',
+        entity_type='site',
+        entity_id=site.id,
+        entity_name=site.site_name,
+        description=f'Updated site "{site.site_name}"',
+        changes=capture_model_diff(before_snapshot, site) or None,
+    )
+
     return jsonify({'status': 'ok', 'data': site.to_dict()})
 
 

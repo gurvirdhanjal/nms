@@ -78,11 +78,11 @@
                         </div>
 
                         <!-- Brutalist Stat Grid -->
-                        <div class="row g-4 pt-4" style="border-top: 1px solid var(--mo-border);">
+                        <div class="row g-4 pt-4" style="border-top: 1px solid var(--ui-border);">
                             <div class="col-md-2">
                                 <div class="kpi-stat-wrap" data-kpi-key="ip" title="Click to copy IP address" data-bs-toggle="tooltip" data-bs-placement="bottom">
                                     <div class="text-uppercase fw-bold mb-1"
-                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">IP Address
+                                        style="font-size: 10px; color: var(--ui-text-muted); letter-spacing: 0.1em;">IP Address
                                     </div>
                                     <div id="metaIp" class="font-monospace fs-4 text-white lh-1">{{ display_ip or 'N/A' }}
                                     </div>
@@ -91,17 +91,17 @@
                             <div class="col-md-2">
                                 <div class="kpi-stat-wrap" data-kpi-key="latency" title="Click for latency history" data-bs-toggle="tooltip" data-bs-placement="bottom">
                                     <div class="text-uppercase fw-bold mb-1"
-                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Latency
+                                        style="font-size: 10px; color: var(--ui-text-muted); letter-spacing: 0.1em;">Latency
                                     </div>
-                                    <div class="font-monospace fs-4 lh-1" style="color: var(--mo-teal);"><span
+                                    <div class="font-monospace fs-4 lh-1" style="color: var(--ui-accent);"><span
                                             id="metaLatency">--</span> <span class="fs-6"
-                                            style="color: var(--mo-muted);">ms</span></div>
+                                            style="color: var(--ui-text-muted);">ms</span></div>
                                 </div>
                             </div>
                             <div class="col-md-2">
                                 <div class="kpi-stat-wrap" id="uptimeKpiWrap" data-kpi-key="uptime" title="Click for uptime breakdown">
                                     <div class="text-uppercase fw-bold mb-1"
-                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Uptime
+                                        style="font-size: 10px; color: var(--ui-text-muted); letter-spacing: 0.1em;">Uptime
                                         (Today)</div>
                                     <div class="font-monospace fs-4 text-white lh-1"><span id="metaTotalUptime">N/A</span>
                                     </div>
@@ -110,7 +110,7 @@
                             <div class="col-md-2">
                                 <div class="kpi-stat-wrap" data-kpi-key="agent" title="Click for agent details" data-bs-toggle="tooltip" data-bs-placement="bottom">
                                     <div class="text-uppercase fw-bold mb-1"
-                                        style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Agent Status
+                                        style="font-size: 10px; color: var(--ui-text-muted); letter-spacing: 0.1em;">Agent Status
                                     </div>
                                     <div id="metaAgentState" class="font-monospace fs-4 text-white lh-1">Never Seen</div>
                                 </div>
@@ -121,16 +121,16 @@
                                 <div class="kpi-stat-wrap" data-kpi-key="security" title="Click for security breakdown" data-bs-toggle="tooltip" data-bs-placement="bottom">
                                     <div class="d-flex justify-content-between align-items-end mb-2">
                                         <div class="text-uppercase fw-bold"
-                                            style="font-size: 10px; color: var(--mo-muted); letter-spacing: 0.1em;">Security
+                                            style="font-size: 10px; color: var(--ui-text-muted); letter-spacing: 0.1em;">Security
                                             Posture</div>
-                                        <div class="font-monospace fs-4 lh-1" style="color: var(--mo-amber);"><span
+                                        <div class="font-monospace fs-4 lh-1" style="color: var(--status-warning);"><span
                                                 id="metaSecurityScore">--</span><span class="fs-6"
-                                                style="color: var(--mo-muted);">/100</span></div>
+                                                style="color: var(--ui-text-muted);">/100</span></div>
                                     </div>
                                     <div
-                                        style="height: 6px; width: 100%; background: var(--mo-bg-void); border-radius: 3px; overflow: hidden;">
+                                        style="height: 6px; width: 100%; background: var(--ui-bg); border-radius: 3px; overflow: hidden;">
                                         <div id="metaSecurityGauge"
-                                            style="height: 100%; background: var(--mo-amber); width: 0%; transition: width 0.5s ease; position: relative;">
+                                            style="height: 100%; background: var(--status-warning); width: 0%; transition: width 0.5s ease; position: relative;">
                                             <div
                                                 style="position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2));">
                                             </div>
@@ -475,7 +475,7 @@
                             <select id="filesDriveSelect" class="form-select form-select-sm files-drive-select">
                                 <option value="">Loading drives...</option>
                             </select>
-                            <button id="filesRefreshBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm">
+                            <button id="filesRefreshBtn" type="button" class="mo-btn mo-btn-ghost mo-btn-sm" aria-label="Refresh files">
                                 <i class="fas fa-rotate"></i>
                             </button>
                         </div>
@@ -843,7 +843,7 @@
 
     <div id="deviceConsoleToastRoot" class="device-toast-root" aria-live="polite" aria-atomic="true"></div>
 
-    <div class="modal fade" id="isolateConfirmModal" tabindex="-1" aria-labelledby="isolateConfirmModalLabel"
+    <div class="modal fade" id="isolateConfirmModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="isolateConfirmModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content tactical-modal">
@@ -863,7 +863,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+    <div class="modal fade" id="messageModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content tactical-modal">
                 <div class="modal-header">
@@ -884,7 +884,7 @@
         </div>
     </div>
 
-    <div class="modal fade remote-view-modal" id="remoteViewModal" tabindex="-1" aria-labelledby="remoteViewModalLabel"
+    <div class="modal fade remote-view-modal" id="remoteViewModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="remoteViewModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content tactical-modal">
@@ -913,7 +913,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="policyAddSiteModal" tabindex="-1" aria-labelledby="policyAddSiteModalLabel"
+    <div class="modal fade" id="policyAddSiteModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="policyAddSiteModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content tactical-modal">
@@ -944,7 +944,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="policyRemoveSiteModal" tabindex="-1" aria-labelledby="policyRemoveSiteModalLabel"
+    <div class="modal fade" id="policyRemoveSiteModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="policyRemoveSiteModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content tactical-modal">
@@ -965,7 +965,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="policyLogsModal" tabindex="-1" aria-labelledby="policyLogsModalLabel"
+    <div class="modal fade" id="policyLogsModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="policyLogsModalLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content tactical-modal">
@@ -1008,7 +1008,7 @@
     </div>
 
     <!-- KPI Breakdown Modal (uptime, latency, security, etc.) -->
-    <div class="modal fade" id="kpiBreakdownModal" tabindex="-1" aria-labelledby="kpiBreakdownModalLabel" aria-hidden="true">
+    <div class="modal fade" id="kpiBreakdownModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="kpiBreakdownModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content tactical-modal">
                 <div class="modal-header">
@@ -1028,7 +1028,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tracking/device_live.css') }}?v={{ asset_ver }}">
 {% endblock %}
 
 {% block extra_js %}
@@ -1054,14 +1054,14 @@
         initialDailyUptime: {{ (initial_daily_uptime or {}) | tojson }}
     };
 </script>
-<script src="{{ url_for('static', filename='js/tracking/console/stateMachine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/risk.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/telemetryState.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/cacheStore.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/mutationLocks.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/eventFeedStore.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/ackFallbackStore.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/console/apiNormalizer.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tracking/device_console_ui_adapter.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/stateMachine.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/risk.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/telemetryState.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/cacheStore.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/mutationLocks.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/eventFeedStore.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/ackFallbackStore.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/console/apiNormalizer.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_console_ui_adapter.js') }}?v={{ asset_ver }}"></script>
+<script src="{{ url_for('static', filename='js/tracking/device_live.js') }}?v={{ asset_ver }}"></script>
 {% endblock %}

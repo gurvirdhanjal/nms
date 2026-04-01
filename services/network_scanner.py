@@ -871,14 +871,14 @@ class NetworkScanner:
                     except Exception as b_err:
 
 
-                        print(f"Broadcast error: {b_err}")
+                        logger.warning("Broadcast error: %s", b_err)
 
 
 
                 except Exception as c_err:
 
 
-                    print(f"Classification error for {ip}: {c_err}")
+                    logger.warning("Classification error for %s: %s", ip, c_err)
 
 
                     pass
@@ -929,11 +929,11 @@ class NetworkScanner:
                     devices.append(r)
 
             scan_duration = (datetime.now() - start_time).total_seconds()
-            print(f"Scan completed in {scan_duration:.2f}s. Found {len(devices)} devices.")
+            logger.info("Scan completed in %.2fs. Found %d devices.", scan_duration, len(devices))
             return devices
 
         except Exception as e:
-            print(f"Error scanning network: {e}")
+            logger.exception("Error scanning network: %s", e)
             return []
 
     # ---------------------------
@@ -973,7 +973,7 @@ class NetworkScanner:
                     {"total_hosts": total_hosts, "scanned_hosts": 0, "progress": 0, "total_found": 0}
                 )
 
-            print(f"Starting incremental scan of {total_hosts} IP addresses...")
+            logger.info("Starting incremental scan of %d IP addresses...", total_hosts)
 
             sem = asyncio.Semaphore(self.workers)
 
@@ -990,7 +990,7 @@ class NetworkScanner:
 
             for i in range(0, total_hosts, batch_size):
                 if self._scan_stopped(scan_id, active_scans, active_scans_lock):
-                    print("Scan stopped by user")
+                    logger.info("Scan stopped by user")
                     break
 
                 batch = hosts[i:i + batch_size]
@@ -1022,11 +1022,11 @@ class NetworkScanner:
                 # tiny yield so UI polling feels smooth without slowing scan materially
                 await asyncio.sleep(0)
 
-            print(f"Incremental scan completed. Found {len(online_devices)} online devices.")
+            logger.info("Incremental scan completed. Found %d online devices.", len(online_devices))
             return online_devices
 
         except Exception as e:
-            print(f"Error in incremental scan: {e}")
+            logger.exception("Error in incremental scan: %s", e)
             return []
 
     async def process_batch_results(
@@ -1076,11 +1076,11 @@ class NetworkScanner:
                 self._safe_extend_new_devices(scan_id, active_scans, active_scans_lock, batch_online_devices)
                 # ALSO Append to main "devices" list for persistence/resume
                 self._safe_extend_all_devices(scan_id, active_scans, active_scans_lock, batch_online_devices)
-                print(f"Batch: +{len(batch_online_devices)} online (Total online: {len(online_devices)})")
+                logger.debug("Batch: +%d online (Total online: %d)", len(batch_online_devices), len(online_devices))
 
         # Console progress
         progress = (scanned_hosts / total_hosts) * 100 if total_hosts > 0 else 0.0
-        print(f"Progress: {scanned_hosts}/{total_hosts} ({progress:.1f}%) - Online: {len(online_devices)}")
+        logger.debug("Progress: %d/%d (%.1f%%) - Online: %d", scanned_hosts, total_hosts, progress, len(online_devices))
 
     # ---------------------------
     # Internal safe helpers

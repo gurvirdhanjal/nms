@@ -369,12 +369,20 @@ def ingest_tracking_sample(
     cur_app = current_activity.get("current_application") if current_activity else None
     if cur_app:
         try:
+            from sqlalchemy import text as _text
+            db.session.execute(_text("SAVEPOINT _cur_app_col"))
             db.session.query(DeviceActivityLog).filter(
                 DeviceActivityLog.sample_id == sample.id,
                 DeviceActivityLog.activity_type == "status_update",
             ).update({"current_application": cur_app}, synchronize_session=False)
+            db.session.execute(_text("RELEASE SAVEPOINT _cur_app_col"))
         except Exception:
-            pass  # column may not exist yet (migration pending)
+            # column may not exist yet (migration pending) — roll back only this sub-statement
+            try:
+                from sqlalchemy import text as _text
+                db.session.execute(_text("ROLLBACK TO SAVEPOINT _cur_app_col"))
+            except Exception:
+                pass
 
     today_stats = payload.get("today_stats") if isinstance(payload.get("today_stats"), dict) else {}
 
@@ -1413,12 +1421,20 @@ def run_tracking_retention(
 
     # Purge typed-text policy alerts older than raw_cutoff (same 30-day window)
     try:
+        from sqlalchemy import text as _text
+        db.session.execute(_text("SAVEPOINT _purge_typed_text"))
         from models.typed_text_policy_alert import TypedTextPolicyAlert
         deleted["typed_text_policy_alerts"] = TypedTextPolicyAlert.query.filter(
             TypedTextPolicyAlert.detected_at < raw_cutoff
         ).delete(synchronize_session=False)
+        db.session.execute(_text("RELEASE SAVEPOINT _purge_typed_text"))
     except Exception:
-        pass  # table may not exist yet on older installs
+        # table may not exist yet on older installs — roll back only this sub-statement
+        try:
+            from sqlalchemy import text as _text
+            db.session.execute(_text("ROLLBACK TO SAVEPOINT _purge_typed_text"))
+        except Exception:
+            pass
 
     db.session.commit()
 
