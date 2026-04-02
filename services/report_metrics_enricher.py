@@ -49,4 +49,59 @@ class ReportMetricsEnricher:
 
     def _enrich_row(self, row: dict) -> dict:
         """Return a new dict: shallow copy of row + 9 enriched fields."""
-        raise NotImplementedError  # implemented in Task 3
+        enriched = dict(row)   # shallow copy — never mutates input
+
+        expected = self.expected_scans
+
+        # ── actual_scans (derived from monitoring_coverage_pct) ──────────────
+        cov_pct = row.get("monitoring_coverage_pct")
+        if cov_pct is not None and expected:
+            actual_scans: Optional[int] = round(cov_pct / 100.0 * expected)
+        else:
+            actual_scans = None
+
+        # ── timeout_pct ───────────────────────────────────────────────────────
+        tc = row.get("timeout_count")
+        if tc is not None and expected and expected > 0:
+            timeout_pct: Optional[float] = round(float(tc) / expected * 100.0, 2)
+        else:
+            timeout_pct = None
+
+        # ── data_confidence ───────────────────────────────────────────────────
+        if expected is None or expected == 0 or cov_pct is None:
+            data_confidence = "NO_DATA"
+        elif cov_pct >= 90.0:
+            data_confidence = "HIGH"
+        elif cov_pct >= 70.0:
+            data_confidence = "MEDIUM"
+        else:
+            data_confidence = "LOW"
+
+        # ── downtime_pct ──────────────────────────────────────────────────────
+        up = row.get("uptime_pct")
+        downtime_pct: Optional[float] = round(100.0 - up, 2) if up is not None else None
+
+        # ── uptime_hours ──────────────────────────────────────────────────────
+        uptime_hours: Optional[float] = (
+            round((up / 100.0) * self.period_hours, 1) if up is not None else None
+        )
+
+        # ── agent_status ──────────────────────────────────────────────────────
+        fleet = row.get("fleet", "")
+        if fleet == "workstation":
+            agent_status = "Installed" if up is not None else "Offline"
+        else:
+            agent_status = "Installed" if row.get("avg_cpu") is not None else "N/A"
+
+        enriched.update({
+            "actual_scans":        actual_scans,
+            "expected_scans":      expected,
+            "timeout_pct":         timeout_pct,
+            "data_confidence":     data_confidence,
+            "downtime_pct":        downtime_pct,
+            "uptime_hours":        uptime_hours,
+            "ping_interval_label": self.ping_interval_label,
+            "agent_status":        agent_status,
+            "min_latency_ms":      row.get("min_latency_ms"),
+        })
+        return enriched

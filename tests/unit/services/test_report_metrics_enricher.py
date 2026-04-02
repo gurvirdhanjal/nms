@@ -54,3 +54,120 @@ def test_tz_aware_dates_normalised():
     aware_start = aware_end - timedelta(days=1)
     e = _make_enricher(interval_s=300, start=aware_start, end=aware_end)
     assert e.expected_scans == 288   # 24h / 300s
+
+
+# ── Per-row computed fields ──────────────────────────────────────────────────
+
+def _server_row(**overrides):
+    base = {
+        "fleet": "server",
+        "device_name": "srv-01",
+        "device_ip": "192.168.1.1",
+        "device_type": "Server",
+        "uptime_pct": 98.5,
+        "downtime_hours": 5.4,
+        "sla_tier": "Bronze",
+        "avg_latency_ms": 24.3,
+        "max_latency_ms": 210.0,
+        "min_latency_ms": 8.1,
+        "avg_packet_loss_pct": 0.5,
+        "timeout_count": 12,
+        "monitoring_coverage_pct": 95.0,
+        "avg_cpu": 45.0,
+        "anomaly_reason": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_downtime_pct_computed():
+    e = _make_enricher()
+    row = e.enrich([_server_row(uptime_pct=98.5)])[0]
+    assert row["downtime_pct"] == pytest.approx(1.5, abs=0.01)
+
+
+def test_downtime_pct_none_uptime_safe():
+    e = _make_enricher()
+    row = e.enrich([_server_row(uptime_pct=None)])[0]
+    assert row["downtime_pct"] is None
+
+
+def test_uptime_hours_computed():
+    """30d period, 98.5% uptime -> 98.5% of 720h = 709.2h."""
+    e = _make_enricher()  # 30-day window
+    row = e.enrich([_server_row(uptime_pct=98.5)])[0]
+    assert row["uptime_hours"] == pytest.approx(709.2, abs=0.5)
+
+
+def test_uptime_hours_none_safe():
+    e = _make_enricher()
+    row = e.enrich([_server_row(uptime_pct=None)])[0]
+    assert row["uptime_hours"] is None
+
+
+def test_actual_scans_derived_from_coverage_pct():
+    """actual_scans = round(coverage_pct / 100 * expected_scans)."""
+    e = _make_enricher(interval_s=300)   # expected = 8640
+    row = e.enrich([_server_row(monitoring_coverage_pct=95.0)])[0]
+    assert row["actual_scans"] == round(95.0 / 100.0 * 8640)
+
+
+def test_actual_scans_none_when_no_coverage():
+    e = _make_enricher()
+    row = e.enrich([_server_row(monitoring_coverage_pct=None)])[0]
+    assert row["actual_scans"] is None
+
+
+def test_timeout_pct_formula():
+    """timeout_pct = timeout_count / expected_scans * 100."""
+    e = _make_enricher(interval_s=300)   # expected = 8640
+    row = e.enrich([_server_row(timeout_count=864)])[0]
+    assert row["timeout_pct"] == pytest.approx(10.0, abs=0.01)
+
+
+def test_timeout_pct_zero_expected_returns_none():
+    e = _make_enricher(interval_s=0)
+    row = e.enrich([_server_row(timeout_count=5)])[0]
+    assert row["timeout_pct"] is None
+
+
+def test_timeout_pct_none_count_returns_none():
+    e = _make_enricher()
+    row = e.enrich([_server_row(timeout_count=None)])[0]
+    assert row["timeout_pct"] is None
+
+
+def test_data_confidence_high():
+    e = _make_enricher(interval_s=300)   # expected = 8640
+    row = e.enrich([_server_row(monitoring_coverage_pct=95.0)])[0]
+    assert row["data_confidence"] == "HIGH"
+
+
+def test_data_confidence_medium():
+    e = _make_enricher(interval_s=300)
+    row = e.enrich([_server_row(monitoring_coverage_pct=75.0)])[0]
+    assert row["data_confidence"] == "MEDIUM"
+
+
+def test_data_confidence_low():
+    e = _make_enricher(interval_s=300)
+    row = e.enrich([_server_row(monitoring_coverage_pct=50.0)])[0]
+    assert row["data_confidence"] == "LOW"
+
+
+def test_data_confidence_no_data_none_coverage():
+    e = _make_enricher(interval_s=300)
+    row = e.enrich([_server_row(monitoring_coverage_pct=None)])[0]
+    assert row["data_confidence"] == "NO_DATA"
+
+
+def test_data_confidence_no_data_zero_interval():
+    e = _make_enricher(interval_s=0)
+    row = e.enrich([_server_row(monitoring_coverage_pct=80.0)])[0]
+    assert row["data_confidence"] == "NO_DATA"
+
+
+def test_ping_interval_label_on_row():
+    e = _make_enricher(interval_s=300)
+    row = e.enrich([_server_row()])[0]
+    assert row["ping_interval_label"] == "5 min"
