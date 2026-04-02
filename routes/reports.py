@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from flask import (
     Blueprint,
     current_app,
+    g as _g,
     has_request_context,
     jsonify,
     render_template,
@@ -38,6 +39,25 @@ from services.report_meta import build_report_meta
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
 logger = logging.getLogger(__name__)
+
+
+@reports_bp.before_request
+def _record_report_start():
+    _g._report_start = time.monotonic()
+
+
+@reports_bp.after_request
+def _log_slow_report_response(response):
+    start = getattr(_g, '_report_start', None)
+    if start is not None:
+        elapsed = time.monotonic() - start
+        if elapsed > 0.5:
+            logger.warning(
+                "[Reports] Slow response: %s %.2fs",
+                request.endpoint,
+                elapsed,
+            )
+    return response
 
 
 @reports_bp.before_request
