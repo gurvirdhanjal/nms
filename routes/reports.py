@@ -35,6 +35,8 @@ from services.report_export_job_service import (
     update_export_job as _job_update,
 )
 from services.report_meta import build_report_meta
+from services.report_metrics_enricher import ReportMetricsEnricher
+from services.settings_service import get_monitoring_interval
 
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
@@ -941,6 +943,25 @@ def _build_device_stats(device_ip: str, hours: int):
         }
     stats['agent_data'] = agent_data
 
+    # Per-scan ICMP series — needed for Inspector PDF timeline / availability bar
+    from models.scan_history import DeviceScanHistory as _DSH
+    try:
+        scan_records = (
+            _DSH.query
+            .filter(_DSH.device_ip == device_ip, _DSH.scan_timestamp >= cutoff)
+            .order_by(_DSH.scan_timestamp.asc())
+            .limit(500)
+            .all()
+        )
+        stats['scan_series'] = [
+            {'ts': r.scan_timestamp.isoformat(), 'status': r.status,
+             'ping_ms': r.ping_time_ms, 'pkt_loss': r.packet_loss}
+            for r in scan_records
+        ]
+    except Exception:
+        logger.warning("[DeviceStats] scan_series fetch failed for %s", device_ip)
+        stats['scan_series'] = []
+
     # Website policy violations (tracked device only)
     stats['website_violations'] = []
     try:
@@ -1781,6 +1802,13 @@ def enterprise_uptime_pdf():
         from services.enterprise_report_service import build_enterprise_uptime_report
         from services.enterprise_pdf_service import generate_enterprise_pdf
         data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet, device_ids=device_ids)
+        # Enrich canonical rows with 9 new fields for 3-table PDF layout
+        _interval = get_monitoring_interval()
+        _enricher = ReportMetricsEnricher(_interval, start_date, end_date)
+        if data.get("server_rows"):
+            data["server_rows"] = _enricher.enrich(data["server_rows"])
+        if data.get("tracked_rows"):
+            data["tracked_rows"] = _enricher.enrich(data["tracked_rows"])
         buf = generate_enterprise_pdf(data, fleet=fleet or "all")
         timestamp = _utcnow().strftime('%Y%m%d_%H%M')
         label = fleet or "enterprise"
