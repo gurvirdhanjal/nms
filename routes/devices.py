@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 from sqlalchemy import inspect, or_, func
+from sqlalchemy.orm import selectinload
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
 logger = logging.getLogger(__name__)
@@ -792,7 +793,9 @@ def save_device():
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
             from models.device import Device
-            devices = Device.query.all()
+            devices = Device.query.options(
+                selectinload(Device.snmp_config),
+            ).all()
             return render_template(
                 'devices.html',
                 devices=devices,
@@ -805,7 +808,9 @@ def save_device():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
         from models.device import Device
-        devices = Device.query.all()
+        devices = Device.query.options(
+            selectinload(Device.snmp_config),
+        ).all()
         return render_template(
             'devices.html',
             devices=devices,
@@ -1759,7 +1764,9 @@ def reclassify_all():
 
     classifier = DeviceClassifier()
     _enrich_svc = DeviceEnrichmentService()
-    devices = Device.query.all()
+    devices = Device.query.options(
+        selectinload(Device.snmp_config),
+    ).all()
     updated_count = 0
     updated_devices = []
     force = request.args.get('force', 'false').lower() == 'true'
@@ -1802,9 +1809,9 @@ def reclassify_all():
 
             mac_address = device.macaddress if device.macaddress and device.macaddress.strip().lower() not in ('n/a', 'na', 'unknown', '') else None
             hostname = device.hostname or ""
-            if not hostname or hostname.strip().lower() in ("unknown", "n/a", "na"):
+            if not hostname or hostname.strip().lower() in ("unknown", "n/a", "na") or hostname.startswith("Device-"):
                 name_fallback = device.device_name or ""
-                if name_fallback and name_fallback.strip().lower() not in ("unknown", "n/a", "na"):
+                if name_fallback and name_fallback.strip().lower() not in ("unknown", "n/a", "na") and not name_fallback.startswith("Device-"):
                     hostname = name_fallback
                 else:
                     hostname = "Unknown"
@@ -1887,7 +1894,8 @@ def reclassify_all():
             device.classification_details = json.dumps(result.to_dict())
             device.manufacturer = manufacturer
             device.macaddress = mac_address
-            device.hostname = hostname
+            if hostname and hostname != "Unknown" and not hostname.startswith("Device-"):
+                device.hostname = hostname
 
             updated_count += 1
             updated_devices.append({
@@ -2195,7 +2203,7 @@ def get_icmp_thresholds(device_id):
     from services.alert_manager import AlertManager
 
     device = Device.query.get_or_404(device_id)
-    effective = AlertManager._get_icmp_thresholds(device)
+    effective = AlertManager.get_icmp_thresholds(device)
 
     # Determine source for each field
     def _source(device_attr, profile_key, effective_val, default_val):
