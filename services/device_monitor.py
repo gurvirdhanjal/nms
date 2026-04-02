@@ -116,7 +116,9 @@ class DeviceMonitor:
         from models.scan_history import DeviceScanHistory
         from metrics.normalizer import MetricNormalizer
         from services.alert_manager import AlertManager
-        
+
+        _cycle_start = datetime.utcnow()
+
         # Get active device data (IDs and IPs) — copy to plain tuples so we can
         # release the DB connection before the long async ping phase.
         devices_query = db.session.query(Device.device_id, Device.device_ip, Device.device_name, Device.maintenance_mode).all()
@@ -313,8 +315,14 @@ class DeviceMonitor:
             except Exception as e:
                 logger.error("[DeviceMonitor] Bulk SSE broadcast error: %s", e)
 
+        _cycle_elapsed = (datetime.utcnow() - _cycle_start).total_seconds()
+        logger.info(
+            "[DeviceMonitor] Scan cycle completed in %.2fs for %d devices",
+            _cycle_elapsed,
+            len(active_devices),
+        )
         return scan_results
-    
+
     def get_device_statistics(self, device_ip, hours=24, start_time=None, end_time=None):
         """Get statistics for a device over specified hours OR time range"""
         from models.scan_history import DeviceScanHistory
