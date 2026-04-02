@@ -8,6 +8,23 @@ import statistics
 
 logger = logging.getLogger(__name__)
 
+
+def _build_latency_spike_payload(device_id, device_ip, device_name, latency_ms, icmp_thresholds):
+    severity = (
+        'critical'
+        if latency_ms >= icmp_thresholds['latency_critical_ms']
+        else 'warning'
+    )
+    return {
+        'device_id': device_id,
+        'ip': device_ip,
+        'name': device_name,
+        'latency_ms': round(latency_ms, 2),
+        'threshold_ms': icmp_thresholds['latency_warning_ms'],
+        'severity': severity,
+    }
+
+
 class DeviceMonitor:
     def __init__(self):
         self.scanner = NetworkScanner()
@@ -178,6 +195,21 @@ class DeviceMonitor:
             is_online = (status == 'Online')
             try:
                 AlertManager.process_scan_result(live_device, is_online, latency, packet_loss, commit=False)
+                # Fire immediate latency_spike SSE event on first breach (UI flash signal).
+                # AlertManager handles persistent 3-strike alerts separately.
+                if is_online and latency is not None:
+                    try:
+                        icmp = AlertManager._get_icmp_thresholds(live_device)
+                        if latency >= icmp['latency_warning_ms']:
+                            from services.sse_broadcaster import broadcast_event
+                            broadcast_event('latency_spike', _build_latency_spike_payload(
+                                device_id, device_ip, device_name, latency, icmp
+                            ))
+                    except Exception as _sse_err:
+                        logger.warning(
+                            "[DeviceMonitor] latency_spike broadcast error for %s: %s",
+                            device_ip, _sse_err
+                        )
             except (StaleDataError, ObjectDeletedError) as e:
                 logger.warning("[DeviceMonitor] Device became stale during alert processing for %s: %s", device_ip, e)
                 db.session.rollback()

@@ -59,21 +59,39 @@ class AlertReportMixin:
             daily_trend.setdefault(str(row.day), {})
             daily_trend[str(row.day)][row.severity] = int(row.count or 0)
 
+        # Guard: exclude records where ack/resolve timestamp precedes event timestamp
+        # (clock skew or data corruption would produce negative values otherwise).
+        # CASE WHEN is portable across PostgreSQL and SQLite (used by tests).
         tta = (
             base_query.with_entities(
                 func.avg(
-                    func.extract("epoch", DashboardEvent.acknowledged_at)
-                    - func.extract("epoch", DashboardEvent.timestamp)
+                    case(
+                        (
+                            DashboardEvent.acknowledged_at >= DashboardEvent.timestamp,
+                            func.extract("epoch", DashboardEvent.acknowledged_at)
+                            - func.extract("epoch", DashboardEvent.timestamp),
+                        ),
+                        else_=None,
+                    )
                 ).label("avg_tta")
             )
-            .filter(DashboardEvent.is_acknowledged.is_(True))
+            .filter(
+                DashboardEvent.is_acknowledged.is_(True),
+                DashboardEvent.acknowledged_at.isnot(None),
+            )
             .first()
         )
         ttr = (
             base_query.with_entities(
                 func.avg(
-                    func.extract("epoch", DashboardEvent.resolved_at)
-                    - func.extract("epoch", DashboardEvent.timestamp)
+                    case(
+                        (
+                            DashboardEvent.resolved_at >= DashboardEvent.timestamp,
+                            func.extract("epoch", DashboardEvent.resolved_at)
+                            - func.extract("epoch", DashboardEvent.timestamp),
+                        ),
+                        else_=None,
+                    )
                 ).label("avg_ttr")
             )
             .filter(DashboardEvent.resolved.is_(True), DashboardEvent.resolved_at.isnot(None))

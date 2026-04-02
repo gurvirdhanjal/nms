@@ -914,6 +914,69 @@ def _build_executive_summary(report: dict, styles) -> list:
     # ── Narrative KPI strip (executive_banner.kpis — previously silently dropped) ────────────────────
     elems.extend(_render_narrative_kpis(exec_narrative))
 
+    # ── SLA breach mini-table (8D) — only when breached devices present ─────────────────
+    _worst_five = summary.get("worst_devices", [])
+    _breached_rows = [
+        r for r in _worst_five
+        if r.get("sla_tier") not in ("Gold", "Silver", "Bronze", None)
+        and r.get("uptime_pct") is not None
+    ]
+    if _breached_rows:
+        elems.append(Spacer(1, 8))
+        elems.append(_table_label("SLA Compliance — Devices Below Threshold", styles))
+        _sla_mini_hdr = ["Device", "SLA Target", "Actual Uptime", "Downtime (min)", "Met?"]
+        _sla_mini_data: List[List[str]] = [_sla_mini_hdr]
+        _tier_thresholds = {
+            "Gold": SLA_GOLD, "Silver": SLA_SILVER,
+            "Bronze": SLA_BRONZE, "Warning": SLA_WARNING, "Critical": 0.0,
+        }
+        for r in _breached_rows[:8]:
+            tier = r.get("sla_tier", "Unknown")
+            target_pct = _tier_thresholds.get(tier, 95.0)
+            actual = r.get("uptime_pct")
+            dh = r.get("downtime_hours") or 0.0
+            breach_min = f"{dh * 60:.0f}"
+            met = "Yes" if tier in ("Gold", "Silver", "Bronze") else "No"
+            _sla_mini_data.append([
+                (r.get("device_name") or "—")[:30],
+                f"≥ {target_pct}%",
+                _fmt_uptime(actual),
+                breach_min,
+                met,
+            ])
+        _sla_mini_tbl = Table(
+            _sla_mini_data,
+            colWidths=["32%", "16%", "16%", "18%", "10%"],
+        )
+        _sla_mini_ts = TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, 0), 7),
+            ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
+            ("TOPPADDING",    (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",      (0, 1), (-1, -1), 7),
+            ("TOPPADDING",    (0, 1), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, hex_color(BG_ALT)]),
+            ("GRID",  (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
+            ("BOX",   (0, 0), (-1, -1), 1.5, hex_color("#DC2626")),
+            ("VALIGN",(0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ])
+        for ri, r in enumerate(_breached_rows[:8], start=1):
+            tier = r.get("sla_tier", "Unknown")
+            met_bg = "#D1FAE5" if tier in ("Gold", "Silver", "Bronze") else "#FEE2E2"
+            met_fg = "#065F46" if tier in ("Gold", "Silver", "Bronze") else "#991B1B"
+            _sla_mini_ts.add("BACKGROUND", (4, ri), (4, ri), hex_color(met_bg))
+            _sla_mini_ts.add("TEXTCOLOR",  (4, ri), (4, ri), hex_color(met_fg))
+            _sla_mini_ts.add("FONTNAME",   (4, ri), (4, ri), "Helvetica-Bold")
+        _sla_mini_tbl.setStyle(_sla_mini_ts)
+        elems.append(_sla_mini_tbl)
+        elems.append(SP_CAPTION)
+
     # ════════════════════════════════════════════════════════════════════════
     # TABLE 1 of 2 — Fleet Health Scorecard
     # Section A: capacity KPI big-numbers.
@@ -1080,18 +1143,29 @@ def _build_executive_summary(report: dict, styles) -> list:
         attn_header = [
             "#", "●",
             "Device Name", "IP Address", "Type / Role",
-            "Uptime %", "Downtime", "SLA Tier",
+            "Uptime %", "Downtime", "MTTR (min)", "MTBF (hrs)", "SLA Met", "SLA Tier",
         ]
         attn_data: List[List[str]] = [attn_header]
+
+        def _fmt_mttr(val) -> str:
+            if val is None:
+                return "—"
+            return f"{round(float(val), 0):.0f}"
+
+        def _fmt_mtbf(val) -> str:
+            if val is None:
+                return "—"
+            return f"{round(float(val), 1):.1f}"
 
         for rank, r in enumerate(worst, start=1):
             tier = r.get("sla_tier", "Unknown")
             if tier in ("Gold", "Silver"):
-                indicator = "✓"    # checkmark
+                indicator = "✓"
             elif tier in ("Bronze", "Warning"):
-                indicator = "▲"    # triangle warning
+                indicator = "▲"
             else:
-                indicator = "✕"    # X critical
+                indicator = "✕"
+            sla_met = "Yes" if tier in ("Gold", "Silver", "Bronze") else "No"
 
             attn_data.append([
                 str(rank),
@@ -1101,27 +1175,30 @@ def _build_executive_summary(report: dict, styles) -> list:
                 (r.get("device_type") or r.get("employee_name") or "—")[:18],
                 _fmt_uptime(r.get("uptime_pct")),
                 _fmt_hours(r.get("downtime_hours")),
+                _fmt_mttr(r.get("mttr_min")),
+                _fmt_mtbf(r.get("mtbf_hours")),
+                sla_met,
                 tier,
             ])
 
         attn_table = Table(
             attn_data,
-            colWidths=["5%", "5%", "24%", "13%", "14%", "12%", "13%", "14%"],
+            colWidths=["4%", "4%", "20%", "11%", "11%", "9%", "9%", "8%", "8%", "7%", "9%"],
         )
         attn_ts = TableStyle([
             # Header
             ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
             ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
             ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE",      (0, 0), (-1, 0), 8),
+            ("FONTSIZE",      (0, 0), (-1, 0), 7),
             ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
-            ("TOPPADDING",    (0, 0), (-1, 0), 7),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+            ("TOPPADDING",    (0, 0), (-1, 0), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
             # Body
             ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
-            ("FONTSIZE",      (0, 1), (-1, -1), 8),
-            ("TOPPADDING",    (0, 1), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+            ("FONTSIZE",      (0, 1), (-1, -1), 7),
+            ("TOPPADDING",    (0, 1), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
             ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, hex_color(BG_ALT)]),
             # Grid + outer border
             ("GRID",  (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
@@ -1133,26 +1210,37 @@ def _build_executive_summary(report: dict, styles) -> list:
             ("FONTNAME",  (0, 1), (0, -1), "Helvetica-Bold"),
             # Indicator col: centred, larger glyph
             ("ALIGN",    (1, 0), (1, -1), "CENTER"),
-            ("FONTSIZE", (1, 1), (1, -1), 10),
+            ("FONTSIZE", (1, 1), (1, -1), 9),
             ("FONTNAME", (1, 1), (1, -1), "Helvetica-Bold"),
             # Uptime col: right-aligned, bold
             ("ALIGN",    (5, 0), (5, -1), "RIGHT"),
             ("FONTNAME", (5, 1), (5, -1), "Helvetica-Bold"),
             # Downtime col: right-aligned
             ("ALIGN",    (6, 0), (6, -1), "RIGHT"),
+            # MTTR / MTBF: right-aligned
+            ("ALIGN",    (7, 0), (7, -1), "RIGHT"),
+            ("ALIGN",    (8, 0), (8, -1), "RIGHT"),
+            # SLA Met col: centred
+            ("ALIGN",    (9, 0), (9, -1), "CENTER"),
+            ("FONTNAME", (9, 1), (9, -1), "Helvetica-Bold"),
             # SLA tier col: centred
-            ("ALIGN",    (7, 0), (7, -1), "CENTER"),
+            ("ALIGN",    (10, 0), (10, -1), "CENTER"),
         ])
 
         for row_idx, r in enumerate(worst, start=1):
             tier = r.get("sla_tier", "Unknown")
             text_c, bg_c = _sla_badge_style(tier)
-            # SLA tier cell: coloured badge
-            attn_ts.add("BACKGROUND", (7, row_idx), (7, row_idx), hex_color(bg_c))
-            attn_ts.add("TEXTCOLOR",  (7, row_idx), (7, row_idx), hex_color(text_c))
-            attn_ts.add("FONTNAME",   (7, row_idx), (7, row_idx), "Helvetica-Bold")
+            # SLA tier cell (col 10): coloured badge
+            attn_ts.add("BACKGROUND", (10, row_idx), (10, row_idx), hex_color(bg_c))
+            attn_ts.add("TEXTCOLOR",  (10, row_idx), (10, row_idx), hex_color(text_c))
+            attn_ts.add("FONTNAME",   (10, row_idx), (10, row_idx), "Helvetica-Bold")
             # Uptime cell: same colour as SLA tier
             attn_ts.add("TEXTCOLOR",  (5, row_idx), (5, row_idx), hex_color(text_c))
+            # SLA Met cell (col 9): green Yes / red No
+            sla_met_bg = "#D1FAE5" if tier in ("Gold", "Silver", "Bronze") else "#FEE2E2"
+            sla_met_fg = "#065F46" if tier in ("Gold", "Silver", "Bronze") else "#991B1B"
+            attn_ts.add("BACKGROUND", (9, row_idx), (9, row_idx), hex_color(sla_met_bg))
+            attn_ts.add("TEXTCOLOR",  (9, row_idx), (9, row_idx), hex_color(sla_met_fg))
             # Indicator glyph colour
             if tier in ("Gold", "Silver"):
                 ind_c = "#16A34A"
@@ -1173,6 +1261,16 @@ def _build_executive_summary(report: dict, styles) -> list:
             elems.append(normal_paragraph(
                 f"Showing top 10 of {_total_worst} devices requiring attention.",
                 styles, size=6.5, color=TEXT_LIGHT,
+            ))
+        # Fleet downtime summary line (8A)
+        _total_with_outages = sum(1 for r in worst if (r.get("downtime_hours") or 0) > 0)
+        _total_downtime_h = sum(float(r.get("downtime_hours") or 0) for r in worst)
+        if _total_with_outages > 0:
+            elems.append(SP_CAPTION)
+            elems.append(normal_paragraph(
+                f"{_total_with_outages} device{'s' if _total_with_outages > 1 else ''} had outages this period; "
+                f"total fleet downtime (top 10): {_total_downtime_h:.1f} hrs.",
+                styles, size=6.5, color=TEXT_MID,
             ))
 
     # ── Chronically offline footnote ─────────────────────────────────────────────
@@ -1251,6 +1349,128 @@ def _build_executive_summary(report: dict, styles) -> list:
     return elems
 
 
+# ── Per-device server card (KeepTogether block) ───────────────────────────────
+
+def _build_server_device_card(row: dict, styles) -> List[Any]:
+    """Two-or-three-row KeepTogether block per server/network device.
+
+    Row 0 — identity (navy header): name | IP | type | status | SLA tier
+    Row 1 — ICMP metrics: uptime %/hrs | downtime %/hrs | latency | pkt loss | timeout
+    Row 2 — agent telemetry if available, else a full-width "not available" note.
+    """
+    col_widths = ["28%", "15%", "14%", "13%", "30%"]
+
+    # Row 0: device identity
+    sla_tier = row.get("sla_tier", "Unknown")
+    sla_tc, sla_bg = _sla_badge_style(sla_tier)
+    status_str = (row.get("availability_status") or "unknown").capitalize()
+    status_tc, status_bg = _status_style(status_str.lower())
+
+    id_row = [
+        truncate_name(row.get("device_name") or "—", 26),
+        row.get("device_ip") or "—",
+        (row.get("device_type") or "—")[:12],
+        status_str,
+        sla_tier,
+    ]
+
+    # Row 1: ICMP availability metrics — all four availability figures
+    up = row.get("uptime_pct")
+    dn_pct = row.get("downtime_pct")
+    uptime_str = (
+        f"{_fmt_uptime(up)} / {_fmt_hours(row.get('uptime_hours'))}"
+        if up is not None else "—"
+    )
+    downtime_str = (
+        f"{_fmt_uptime(dn_pct)} / {_fmt_hours(row.get('downtime_hours'))}"
+        if dn_pct is not None else "—"
+    )
+    timeout_cnt = row.get("timeout_count") or 0
+    metrics_row = [
+        f"Up: {uptime_str}",
+        f"Down: {downtime_str}",
+        _fmt_num(row.get("avg_latency_ms"), " ms"),
+        _fmt_num(row.get("avg_packet_loss_pct"), "%"),
+        f"Timeout: {timeout_cnt}",
+    ]
+
+    # Row 2: agent telemetry or explicit absence note
+    avg_cpu = row.get("avg_cpu")
+    has_agent = avg_cpu is not None
+    if has_agent:
+        agent_row = [
+            f"CPU: {_fmt_num(avg_cpu, '%')} / {_fmt_num(row.get('max_cpu'), '%')} pk",
+            f"Mem: {_fmt_num(row.get('avg_mem'), '%')}",
+            f"Disk: {_fmt_num(row.get('avg_disk'), '%')}",
+            f"In: {_fmt_bps(row.get('avg_net_in_bps'))}",
+            f"Out: {_fmt_bps(row.get('avg_net_out_bps'))}",
+        ]
+    else:
+        gap_reason = (row.get("_data_gaps") or {}).get("telemetry", "no_agent_data")
+        gap_label = {
+            "device_type_unsupported_for_agent": "N/A — network device",
+            "no_agent_data": "not available",
+        }.get(gap_reason, "not available")
+        agent_row = [f"Agent: {gap_label}", "", "", "", ""]
+
+    tbl = Table([id_row, metrics_row, agent_row], colWidths=col_widths)
+    ts = TableStyle([
+        # Row 0 — identity header (navy)
+        ("BACKGROUND",    (0, 0), (-1, 0), hex_color(NAVY)),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 8),
+        ("TOPPADDING",    (0, 0), (-1, 0), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+        # Row 1 — ICMP metrics
+        ("BACKGROUND",    (0, 1), (-1, 1), colors.white),
+        ("FONTNAME",      (0, 1), (-1, 1), "Helvetica"),
+        ("FONTSIZE",      (0, 1), (-1, 1), 7.5),
+        ("TOPPADDING",    (0, 1), (-1, 1), 4),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+        # Row 2 — agent (light blue if data, muted grey if absent)
+        ("BACKGROUND",    (0, 2), (-1, 2),
+         hex_color("#EFF6FF") if has_agent else hex_color("#F9FAFB")),
+        ("FONTNAME",      (0, 2), (-1, 2), "Helvetica"),
+        ("FONTSIZE",      (0, 2), (-1, 2), 7.5),
+        ("TOPPADDING",    (0, 2), (-1, 2), 4),
+        ("BOTTOMPADDING", (0, 2), (-1, 2), 4),
+        # Grid + alignment
+        ("GRID",          (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ])
+
+    # Per-cell colours in identity row
+    ts.add("BACKGROUND", (3, 0), (3, 0), hex_color(status_bg))
+    ts.add("TEXTCOLOR",  (3, 0), (3, 0), hex_color(status_tc))
+    ts.add("BACKGROUND", (4, 0), (4, 0), hex_color(sla_bg))
+    ts.add("TEXTCOLOR",  (4, 0), (4, 0), hex_color(sla_tc))
+    ts.add("FONTNAME",   (4, 0), (4, 0), "Helvetica-Bold")
+
+    # Highlight non-zero timeouts in metrics row
+    if timeout_cnt > 0:
+        ts.add("TEXTCOLOR", (4, 1), (4, 1), hex_color("#EA580C"))
+        ts.add("FONTNAME",  (4, 1), (4, 1), "Helvetica-Bold")
+
+    if not has_agent:
+        # Span the absence note across all five columns
+        ts.add("SPAN",      (0, 2), (-1, 2))
+        ts.add("FONTNAME",  (0, 2), (-1, 2), "Helvetica-Oblique")
+        ts.add("TEXTCOLOR", (0, 2), (-1, 2), hex_color(TEXT_LIGHT))
+    else:
+        # Heat-colour high CPU / memory readings
+        if avg_cpu is not None and avg_cpu > 80:
+            ts.add("TEXTCOLOR", (0, 2), (0, 2), hex_color("#DC2626"))
+            ts.add("FONTNAME",  (0, 2), (0, 2), "Helvetica-Bold")
+        avg_mem = row.get("avg_mem")
+        if avg_mem is not None and avg_mem > 80:
+            ts.add("TEXTCOLOR", (1, 2), (1, 2), hex_color("#DC2626"))
+            ts.add("FONTNAME",  (1, 2), (1, 2), "Helvetica-Bold")
+
+    tbl.setStyle(ts)
+    return [KeepTogether([tbl, Spacer(1, 5)])]
+
+
 # ── Server fleet section ──────────────────────────────────────────────────────
 
 def _build_server_fleet(report: dict, styles) -> list:
@@ -1312,56 +1532,11 @@ def _build_server_fleet(report: dict, styles) -> list:
         total_rows=len(rows),
     ))
 
-    # 9-column spec — build_fleet_table enforces MAX_COLS_LANDSCAPE budget
-    def _sla_color(r):
-        return _sla_badge_style(r.get("sla_tier", "Unknown"))
-
-    def _latency_color(r):
-        lat = r.get("avg_latency_ms")
-        if lat is None:
-            return None
-        if lat > 200:
-            return ("#DC2626", None)
-        if lat > 100:
-            return ("#D97706", None)
-        return None
-
-    def _pktloss_color(r):
-        pkt = r.get("avg_packet_loss_pct")
-        if pkt is None:
-            return None
-        if pkt > 15:
-            return ("#DC2626", None)
-        if pkt > 5:
-            return ("#D97706", None)
-        return None
-
-    server_col_specs = [
-        {"header": "Device Name", "width": "20%",
-         "fmt": lambda r: (r.get("device_name") or "—")[:24]},
-        {"header": "IP Address",  "width": "13%", "key": "device_ip"},
-        {"header": "Type",        "width": "10%",
-         "fmt": lambda r: (r.get("device_type") or "—")[:12]},
-        {"header": "Uptime %",    "width": "10%",
-         "fmt": lambda r: _fmt_uptime(r.get("uptime_pct")),
-         "color_fn": _sla_color, "align": "RIGHT"},
-        {"header": "Downtime",    "width": "10%",
-         "fmt": lambda r: _fmt_hours(r.get("downtime_hours")), "align": "RIGHT"},
-        {"header": "Timeout",     "width": "7%",
-         "fmt": lambda r: str(r.get("timeout_count", 0)) if r.get("timeout_count") else "—",
-         "color_fn": lambda r: ("#EA580C", None) if r.get("timeout_count", 0) > 0 else None,
-         "align": "CENTER"},
-        {"header": "Latency",     "width": "10%",
-         "fmt": lambda r: _fmt_num(r.get("avg_latency_ms"), " ms"),
-         "color_fn": _latency_color, "align": "RIGHT"},
-        {"header": "Pkt Loss",    "width": "9%",
-         "fmt": lambda r: _fmt_num(r.get("avg_packet_loss_pct"), "%"),
-         "color_fn": _pktloss_color, "align": "RIGHT"},
-        {"header": "SLA Tier",    "width": "11%",
-         "fmt": lambda r: r.get("sla_tier", "Unknown"),
-         "color_fn": _sla_color, "align": "CENTER"},
-    ]
-    elems.extend(build_fleet_table(rows, server_col_specs))
+    # Per-device KeepTogether cards: identity row + ICMP metrics row + agent row
+    # Each card is atomic — guaranteed not to split across a page break.
+    elems.append(SP_BLOCK)
+    for r in rows:
+        elems.extend(_build_server_device_card(r, styles))
     return elems
 
 
@@ -1427,7 +1602,7 @@ def _build_tracked_fleet(report: dict, styles) -> list:
         total_rows=len(rows),
     ))
 
-    # 9-column spec — MTTR, MTBF, Incidents removed (available in Device Inspector)
+    # 9-column availability table — Uptime and Downtime show %/hrs combined
     def _sla_col(r):
         return _sla_badge_style(r.get("sla_tier", "Unknown"))
 
@@ -1435,31 +1610,75 @@ def _build_tracked_fleet(report: dict, styles) -> list:
         return _status_style((r.get("availability_status") or "unknown").lower())
 
     ws_col_specs = [
-        {"header": "Device Name",  "width": "19%",
-         "fmt": lambda r: (r.get("device_name") or "—")[:28]},
-        {"header": "Employee",     "width": "12%",
-         "fmt": lambda r: (r.get("employee_name") or "—")[:16]},
-        {"header": "Department",   "width": "11%",
-         "fmt": lambda r: (r.get("department") or "—")[:14]},
-        {"header": "IP Address",   "width": "10%", "key": "device_ip"},
-        {"header": "Status",       "width": "9%",
+        {"header": "Device Name",  "width": "18%",
+         "fmt": lambda r: (r.get("device_name") or "—")[:26]},
+        {"header": "Employee",     "width": "11%",
+         "fmt": lambda r: (r.get("employee_name") or "—")[:14]},
+        {"header": "Department",   "width": "10%",
+         "fmt": lambda r: (r.get("department") or "—")[:13]},
+        {"header": "IP Address",   "width": "9%", "key": "device_ip"},
+        {"header": "Status",       "width": "8%",
          "fmt": lambda r: (r.get("availability_status") or "unknown").capitalize(),
          "color_fn": _status_col, "align": "CENTER"},
-        {"header": "Uptime %",     "width": "10%",
-         "fmt": lambda r: _fmt_uptime(r.get("uptime_pct")),
+        {"header": "Uptime",       "width": "14%",
+         "fmt": lambda r: (
+             f"{_fmt_uptime(r.get('uptime_pct'))} / {_fmt_hours(r.get('uptime_hours'))}"
+             if r.get("uptime_pct") is not None else "—"
+         ),
          "color_fn": _sla_col, "align": "RIGHT"},
-        {"header": "Downtime",     "width": "8%",
-         "fmt": lambda r: _fmt_hours(r.get("downtime_hours")), "align": "RIGHT"},
-        {"header": "Last Seen",    "width": "12%",
+        {"header": "Downtime",     "width": "11%",
+         "fmt": lambda r: (
+             f"{_fmt_uptime(r.get('downtime_pct'))} / {_fmt_hours(r.get('downtime_hours'))}"
+             if r.get("downtime_pct") is not None else "—"
+         ),
+         "align": "RIGHT"},
+        {"header": "Last Seen",    "width": "11%",
          "fmt": lambda r: _fmt_ts_short(r.get("last_seen"))},
-        {"header": "SLA Tier",     "width": "9%",
+        {"header": "SLA Tier",     "width": "8%",
          "fmt": lambda r: r.get("sla_tier", "Unknown"),
          "color_fn": _sla_col, "align": "CENTER"},
     ]
-    elems.extend(build_fleet_table(
-        rows, ws_col_specs,
-        caption="\u2020 MTTR, MTBF, and Incident counts available per device in the Device Inspector report.",
-    ))
+    elems.extend(build_fleet_table(rows, ws_col_specs))
+
+    # Workstation behavioral metrics — second table, shown when agent data exists
+    beh_rows = [
+        r for r in rows
+        if r.get("productivity_score") is not None
+        or r.get("avg_active_hours_day") is not None
+    ]
+    if beh_rows:
+        elems.append(SP_BLOCK)
+        elems.append(section_heading("Workstation Behavioral Metrics", styles))
+        elems.append(SP_AFTER_TITLE)
+        beh_col_specs = [
+            {"header": "Device Name",    "width": "18%",
+             "fmt": lambda r: (r.get("device_name") or "—")[:22]},
+            {"header": "Employee",       "width": "11%",
+             "fmt": lambda r: (r.get("employee_name") or "—")[:14]},
+            {"header": "Prod. Score",    "width": "10%",
+             "fmt": lambda r: _fmt_num(r.get("productivity_score"), "%"),
+             "align": "RIGHT"},
+            {"header": "Focus Score",    "width": "10%",
+             "fmt": lambda r: _fmt_num(r.get("focus_score"), "%"),
+             "align": "RIGHT"},
+            {"header": "Active Hrs/Day", "width": "11%",
+             "fmt": lambda r: _fmt_num(r.get("avg_active_hours_day"), " h"),
+             "align": "RIGHT"},
+            {"header": "Policy Viol.",   "width": "10%",
+             "fmt": lambda r: str(r.get("policy_violations") or 0),
+             "color_fn": lambda r: ("#DC2626", None) if (r.get("policy_violations") or 0) > 0 else None,
+             "align": "CENTER"},
+            {"header": "MTTR (min)",     "width": "10%",
+             "fmt": lambda r: _fmt_num(r.get("mttr_min")),
+             "align": "RIGHT"},
+            {"header": "MTBF (hrs)",     "width": "10%",
+             "fmt": lambda r: _fmt_num(r.get("mtbf_hours")),
+             "align": "RIGHT"},
+            {"header": "Top App",        "width": "10%",
+             "fmt": lambda r: (r.get("top_app") or "—")[:12]},
+        ]
+        elems.extend(build_fleet_table(beh_rows, beh_col_specs))
+
     return elems
 
 
@@ -1681,6 +1900,24 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
     story = []
     story += _build_cover(report, styles, fleet=fleet)
     story += _build_executive_summary(report, styles)
+
+    # Data quality advisory — shown when any device rows have incomplete data
+    _dq = (report.get("summary") or {}).get("data_quality") or {}
+    _gap_count = _dq.get("devices_with_gaps", 0)
+    if _gap_count > 0:
+        _gap_reasons = _dq.get("gap_reasons") or {}
+        _reason_parts = [
+            f"{v} — {k.replace('_', ' ')}"
+            for k, v in sorted(_gap_reasons.items(), key=lambda x: -x[1])[:3]
+        ]
+        _reason_str = ("; ".join(_reason_parts) + ".") if _reason_parts else ""
+        story.append(normal_paragraph(
+            f"Data Quality: {_gap_count} device(s) have incomplete data in this period."
+            + (f"  Breakdown: {_reason_str}" if _reason_str else ""),
+            styles, color="#D97706",
+        ))
+        story.append(SP_BLOCK)
+
     if fleet in ("all", "server") and ctx.should_render_server_fleet():
         story += _build_server_fleet(report, styles)
     if fleet in ("all", "workstation") and ctx.should_render_tracked_fleet():
@@ -1940,11 +2177,12 @@ def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
     ]
 
     # ── Data from report ───────────────────────────────────────────────────────
-    peaks_and_breaches = report_data.get("peaks_and_breaches") or {}
-    data_note    = report_data.get("data_note")
-    granularity  = report_data.get("granularity", "hourly")
-    total_samples = report_data.get("total_samples", 0)
-    narrative    = report_data.get("narrative")
+    peaks_and_breaches  = report_data.get("peaks_and_breaches") or {}
+    fleet_correlation   = report_data.get("fleet_correlation") or {}
+    data_note           = report_data.get("data_note")
+    granularity         = report_data.get("granularity", "hourly")
+    total_samples       = report_data.get("total_samples", 0)
+    narrative           = report_data.get("narrative")
 
     # KPI strip values
     device_count    = len(peaks_and_breaches)
@@ -2005,6 +2243,35 @@ def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
             "Runway estimates and breach analysis may not be representative.",
             styles, color="#D97706",
         ))
+        story.append(SP_BLOCK)
+
+    # ── Fleet Incident Correlation ────────────────────────────────────────────
+    _fc_total = fleet_correlation.get("total_incidents", 0)
+    if _fc_total > 0:
+        story.append(section_heading("Fleet Incident Correlation", styles))
+        story.append(SP_AFTER_TITLE)
+        cpu_n   = fleet_correlation.get("cpu_spike_count", 0)
+        mem_n   = fleet_correlation.get("mem_spike_count", 0)
+        cpu_pct = round(cpu_n / _fc_total * 100) if _fc_total else 0
+        mem_pct = round(mem_n / _fc_total * 100) if _fc_total else 0
+        corr_headers = ["Metric", "Incidents with Spike", "Out of Total", "Coincidence %"]
+        corr_data: List[Any] = [corr_headers]
+        corr_data.append(["CPU > 80%",    str(cpu_n), str(_fc_total), f"{cpu_pct}%"])
+        corr_data.append(["Memory > 85%", str(mem_n), str(_fc_total), f"{mem_pct}%"])
+        corr_tbl = Table(corr_data, colWidths=["30%", "22%", "22%", "26%"])
+        corr_ts = base_table_style()
+        if cpu_pct > 50:
+            corr_ts.add("TEXTCOLOR", (3, 1), (3, 1), hex_color("#DC2626"))
+            corr_ts.add("FONTNAME",  (3, 1), (3, 1), "Helvetica-Bold")
+        if mem_pct > 50:
+            corr_ts.add("TEXTCOLOR", (3, 2), (3, 2), hex_color("#DC2626"))
+            corr_ts.add("FONTNAME",  (3, 2), (3, 2), "Helvetica-Bold")
+        corr_tbl.setStyle(corr_ts)
+        story.append(corr_tbl)
+        insight = fleet_correlation.get("insight")
+        if insight:
+            story.append(SP_CAPTION)
+            story.append(normal_paragraph(insight, styles, size=8, color=TEXT_MID))
         story.append(SP_BLOCK)
 
     # ── Capacity Runway table ──────────────────────────────────────────────────
@@ -2217,19 +2484,25 @@ def generate_device_inspector_pdf(
         "Warning" if uptime >= SLA_WARNING else "Critical"
     )
     tc, tbg = _sla_badge_style(tier)
+    uptime_h = round(uptime / 100.0 * period_hours, 2)
     avail_data = [
-        [_h("Total Scans"), _h("Online"), _h("Offline"), _h("No Response"), _h("Uptime %"), _h("Downtime (hrs)")],
+        [
+            _h("Total Scans"), _h("Online"), _h("Offline"), _h("No Response"),
+            _h("Uptime %"), _h("Uptime (hrs)"), _h("Downtime %"), _h("Downtime (hrs)"),
+        ],
         [
             _cell(scan_display),
             _cell(stats.get('online_count', 0)),
             _cell(stats.get('offline_count', 0)),
             _cell(stats.get('no_response_count', 0)),
             _cell(_fmt_uptime(uptime)),
+            _cell(f"{uptime_h:.2f} hrs"),
+            _cell(f"{(100.0 - uptime):.2f}%"),
             _cell(f"{downtime_h:.2f} hrs"),
         ],
     ]
-    # 6 equal columns totalling _CONTENT_W
-    _col6 = [_CONTENT_W / 6] * 6
+    # 8 equal columns totalling _CONTENT_W
+    _col6 = [_CONTENT_W / 8] * 8
     ts_avail = base_table_style()
     ts_avail.add('VALIGN',     (0, 0), (-1, 0), 'TOP')
     ts_avail.add('BACKGROUND', (4, 1), (4, 1), hex_color(tbg))
@@ -2297,6 +2570,29 @@ def generate_device_inspector_pdf(
                            textColor=hex_color(NAVY))))
         story.append(Table(ag_data, colWidths=_ag_widths, hAlign='LEFT',
                            style=ts_ag, repeatRows=1))
+        story.append(Spacer(1, 0.5*cm))
+    else:
+        # Explicit message when agent data is absent — never silently omit the section
+        gap_reason = (stats.get("_data_gaps") or {}).get("telemetry", "no_agent_data")
+        _gap_msgs = {
+            "device_type_unsupported_for_agent": (
+                "Agent telemetry: not applicable for this device type."
+            ),
+            "no_agent_data": (
+                "Agent telemetry: not available — "
+                "the server agent may not be installed or has not reported recently."
+            ),
+        }
+        gap_msg = _gap_msgs.get(gap_reason, "Agent telemetry: not available.")
+        story.append(Paragraph('<b>Agent Telemetry</b>',
+            ParagraphStyle('sec', parent=styles['Normal'], fontName='Helvetica-Bold',
+                           fontSize=11, spaceBefore=8, spaceAfter=4,
+                           textColor=hex_color(NAVY))))
+        story.append(Paragraph(
+            f'<i><font color="{TEXT_LIGHT}">{gap_msg}</font></i>',
+            ParagraphStyle('agent_na', parent=styles['Normal'],
+                           fontName='Helvetica-Oblique', fontSize=8, spaceBefore=2),
+        ))
         story.append(Spacer(1, 0.5*cm))
 
     # ── SLA tier summary row ───────────────────────────────────────────────────

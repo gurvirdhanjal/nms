@@ -847,6 +847,8 @@ def build_enterprise_uptime_report(
                     "uptime_pct": up,
                     "downtime_hours": downtime_hours(up, period_hours,
                                                      observed_hours=dev_cov.get("observed_hours")),
+                    "uptime_hours": _safe_round((up / 100.0) * period_hours) if up is not None else None,
+                    "downtime_pct": _safe_round(100.0 - up, 2) if up is not None else None,
                     "sla_tier": tier,
                     # ServerHealthLog / rollup metrics
                     "avg_cpu": metrics.get("avg_cpu"),
@@ -953,6 +955,8 @@ def build_enterprise_uptime_report(
                     "uptime_pct": up,
                     "downtime_hours": downtime_hours(up, period_hours,
                                                      observed_hours=_obs_h),
+                    "uptime_hours": _safe_round((up / 100.0) * period_hours) if up is not None else None,
+                    "downtime_pct": _safe_round(100.0 - up, 2) if up is not None else None,
                     "sla_tier": tier,
                     "incident_count": len(merged_incidents),
                     "raw_incident_count": len(raw_incidents),
