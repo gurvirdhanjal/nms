@@ -1596,11 +1596,31 @@ def _build_server_fleet(report: dict, styles) -> list:
         total_rows=len(rows),
     ))
 
-    # Per-device KeepTogether cards: identity row + ICMP metrics row + agent row
-    # Each card is atomic — guaranteed not to split across a page break.
-    elems.append(SP_BLOCK)
-    for r in rows:
-        elems.extend(_build_server_device_card(r, styles))
+    styles_ref = getSampleStyleSheet()
+
+    # ── TABLE 1 of 3 — Availability & SLA Ledger ─────────────────────────────
+    elems.append(_table_label("TABLE 1 of 3 — Availability & SLA Ledger", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_AVAILABILITY,
+        caption="Uptime and downtime for the reporting period. SLA tier based on uptime %."
+    ))
+
+    # ── TABLE 2 of 3 — Ping, Latency & Packet Health ─────────────────────────
+    elems.append(SP_TABLE_GAP)
+    elems.append(_table_label("TABLE 2 of 3 — Ping, Latency & Packet Health", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_PING,
+        caption="ICMP health metrics. Timeout % = timeouts / expected pings x 100."
+    ))
+
+    # ── TABLE 3 of 3 — Telemetry & Diagnostic Context ────────────────────────
+    elems.append(SP_TABLE_GAP)
+    elems.append(_table_label("TABLE 3 of 3 — Telemetry & Diagnostic Context", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_TELEMETRY,
+        caption="LOW CONFIDENCE = actual scans < 70% of expected. Violations = anomaly_reason."
+    ))
+
     return elems
 
 
