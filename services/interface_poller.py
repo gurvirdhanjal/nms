@@ -33,8 +33,10 @@ def _build_interface_threshold_payload(
         direction = 'both'
     elif rx_breach:
         direction = 'rx'
-    else:
+    elif tx_breach:
         direction = 'tx'
+    else:
+        direction = None
     return {
         'device_id': device_id,
         'interface_name': iface_name,
