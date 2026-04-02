@@ -716,7 +716,8 @@ def _build_exception_strip(
 
 def _build_cover(report: dict, styles, fleet: str = "all") -> list:
     period = report.get("period", {})
-    gen_at = _fmt_ts(report.get("generated_at") or datetime.utcnow())
+    ist_time = datetime.now(_IST)
+    gen_at = _fmt_ts(report.get("generated_at") or ist_time)
 
     def _start_str():
         return _fmt_ts(period.get("start"))
@@ -753,9 +754,9 @@ def _build_cover(report: dict, styles, fleet: str = "all") -> list:
         HRFlowable(width="100%", thickness=1, color=hex_color(TEAL), spaceAfter=16),
         Paragraph(f"Report Period:  {_start_str()}  →  {_end_str()}", _reg.cover_meta),
         Paragraph(f"Days Covered:   {period.get('days', '—')}", _reg.cover_meta),
-        Paragraph(f"Generated:      {gen_at} UTC", _reg.cover_meta),
+        Paragraph(f"Generated:      {gen_at}", _reg.cover_meta),
         Spacer(1, 0.4 * inch),
-        Paragraph("CONFIDENTIAL — Internal Use Only", _reg.cover_confidential),
+        Paragraph("Internal Use Only", _reg.cover_confidential),
         PageBreak(),
     ]
 
@@ -1756,32 +1757,34 @@ def _build_tracked_fleet(report: dict, styles) -> list:
 # ── Page-number footer callback ───────────────────────────────────────────────
 
 class PageFooter:
-    def __init__(self, report_title: str, gen_at: str, insight_source: str = "rule_based"):
+    def __init__(self, report_title: str, gen_at: str, insight_source: str = "rule_based",
+                 bar_y_offset: int = 2):
         self.title = report_title
         self.gen_at = gen_at
         self.insight_source = insight_source
+        self.bar_y_offset = bar_y_offset
 
     def __call__(self, canvas, doc):
         canvas.saveState()
         w, h = doc.pagesize
         # ── Inner-page header (pages 2+) ────────────────────────────────────
         if doc.page >= 2:
-            top_y = h - doc.topMargin + 2
+            top_y = h - doc.topMargin + self.bar_y_offset
             canvas.setFillColor(hex_color(NAVY))
             canvas.rect(doc.leftMargin, top_y, doc.width, 16, fill=1, stroke=0)
             canvas.setFillColor(colors.white)
             canvas.setFont("Helvetica", 6.5)
-            canvas.drawString(doc.leftMargin + 6, top_y + 5, "CONFIDENTIAL")
+            canvas.drawString(doc.leftMargin + 6, top_y + 5, "")
             canvas.drawRightString(doc.leftMargin + doc.width - 6, top_y + 5, self.title)
         # ── Page footer ─────────────────────────────────────────────────────
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(hex_color(TEXT_LIGHT))
         # Classification marking · title
         canvas.drawString(doc.leftMargin, doc.bottomMargin - 10,
-                          f"CONFIDENTIAL \u00b7 Internal Use Only \u00b7 {self.title}")
+                          f"Internal Use Only \u00b7 {self.title}")
         canvas.drawRightString(
             w - doc.rightMargin, doc.bottomMargin - 10,
-            f"Generated {self.gen_at} UTC \u00b7 Rule-Based Insights Engine \u00b7 Page {doc.page}",
+            f"Generated {self.gen_at} \u00b7 Rule-Based Insights Engine \u00b7 Page {doc.page}",
         )
         canvas.restoreState()
 
@@ -1925,7 +1928,8 @@ def generate_enterprise_pdf(report: dict, fleet: str = "all") -> io.BytesIO:
     logger.info("[EnterprisePDF] Generating PDF: fleet=%s, devices=%d",
                 fleet, report.get("summary", {}).get("total_devices", 0))
     period = report.get("period", {})
-    gen_at = _fmt_ts(report.get("generated_at") or datetime.utcnow())
+    ist_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+    gen_at = _fmt_ts(report.get("generated_at") or ist_time)
     start_str = _fmt_ts(period.get("start"))
     end_str = _fmt_ts(period.get("end"))
 
@@ -2012,7 +2016,8 @@ def generate_alert_report_pdf(report_data: dict) -> io.BytesIO:
       Confidence footnotes
     """
     period = report_data.get("period", {})
-    gen_at = _fmt_ts(report_data.get("generated_at") or datetime.utcnow())
+    ist_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+    gen_at = _fmt_ts(report_data.get("generated_at") or ist_time)
     start_str = _fmt_ts(period.get("start"))
     end_str   = _fmt_ts(period.get("end"))
     report_title = f"Alert History Report  |  {start_str} — {end_str}"
@@ -2045,7 +2050,7 @@ def generate_alert_report_pdf(report_data: dict) -> io.BytesIO:
         Paragraph(f"Period:  {start_str} — {end_str}", _reg.cover_meta),
         Paragraph(f"Generated:  {gen_at}", _reg.cover_meta),
         Spacer(1, 0.15 * inch),
-        Paragraph("CONFIDENTIAL — INTERNAL USE ONLY", _reg.cover_confidential),
+        Paragraph("INTERNAL USE ONLY", _reg.cover_confidential),
         PageBreak(),
     ]
 
@@ -2212,7 +2217,8 @@ def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
       Breach Summary table → Per-device avg/max table → Confidence footnote
     """
     period = report_data.get("period", {})
-    gen_at = _fmt_ts(report_data.get("generated_at") or datetime.utcnow())
+    ist_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+    gen_at = _fmt_ts(report_data.get("generated_at") or ist_time)
     start_str = _fmt_ts(period.get("start"))
     end_str   = _fmt_ts(period.get("end"))
     report_title = f"Device Health Report  |  {start_str} — {end_str}"
@@ -2677,17 +2683,21 @@ def generate_device_inspector_pdf(
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=_L_MARGIN, rightMargin=_R_MARGIN,
-        topMargin=2.0*cm, bottomMargin=1.8*cm,
+        topMargin=2.5*cm, bottomMargin=1.8*cm,
     )
     styles = getSampleStyleSheet()
-    gen_at = datetime.utcnow().strftime("%d-%m-%Y %H:%M UTC")
-    footer = PageFooter(f"Device Inspector — {device_ip}", gen_at)
+    ist_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+    gen_at = ist_time.strftime("%d-%m-%Y %H:%M IST")
+    # bar_y_offset=44: positions inner header bar ~10pt from page top (same as
+    # enterprise fleet), giving ~45pt gap between bar and story content instead
+    # of the default 2pt which caused visual overlap with the large topMargin.
+    footer = PageFooter(f"Device Inspector — {device_ip}", gen_at, bar_y_offset=44)
     story = []
 
     # ── Header ────────────────────────────────────────────────────────────────
     story.append(Paragraph(
         f'<font color="{TEAL}"><b>{device_name}</b></font>',
-        ParagraphStyle('h1', parent=styles['Normal'], fontSize=20, spaceAfter=4,
+        ParagraphStyle('h1', parent=styles['Normal'], fontSize=20, spaceAfter=10,
                        fontName='Helvetica-Bold'),
     ))
     story.append(Paragraph(

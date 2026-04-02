@@ -666,6 +666,7 @@ def _bulk_inventory_network_stats(
             DailyDeviceStats.device_id,
             func.avg(DailyDeviceStats.avg_latency_ms).label("avg_lat"),
             func.max(DailyDeviceStats.max_latency_ms).label("max_lat"),
+            func.min(DailyDeviceStats.min_latency_ms).label("min_lat"),
             func.avg(DailyDeviceStats.avg_packet_loss_pct).label("avg_pkt"),
         )
         .filter(
@@ -680,6 +681,7 @@ def _bulk_inventory_network_stats(
         row.device_id: {
             "avg_latency_ms":      _safe_round(row.avg_lat) if row.avg_lat is not None else None,
             "max_latency_ms":      _safe_round(row.max_lat) if row.max_lat is not None else None,
+            "min_latency_ms":      _safe_round(row.min_lat) if row.min_lat is not None else None,
             "avg_packet_loss_pct": _safe_round(row.avg_pkt) if row.avg_pkt is not None else None,
         }
         for row in rows
@@ -810,6 +812,7 @@ def get_server_metrics_bulk(
                 "sla_tier":            sla_tier(up),
                 "avg_latency_ms":      net.get("avg_latency_ms"),
                 "max_latency_ms":      net.get("max_latency_ms"),
+                "min_latency_ms":      net.get("min_latency_ms"),
                 "avg_packet_loss_pct": net.get("avg_packet_loss_pct"),
                 "timeout_count":       bulk_timeouts.get(dev.device_id, 0),
                 "incident_count":      None,

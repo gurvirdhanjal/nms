@@ -1,5 +1,6 @@
 """Route-level tests for /api/device_statistics/pdf (RBAC + error paths)."""
 import io
+from datetime import datetime
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -10,11 +11,13 @@ def client(app):
 
 
 def _login(client):
-    """Log in as a user with reports.export permission."""
+    """Log in as an admin with reports.export permission."""
     with client.session_transaction() as sess:
         sess['user_id'] = 1
+        sess['logged_in'] = True
         sess['role'] = 'admin'
-        sess['permissions'] = ['reports.export']
+        sess['username'] = 'test-admin'
+        sess['last_activity'] = datetime.utcnow().isoformat()
 
 
 def test_pdf_route_400_missing_ip(client):

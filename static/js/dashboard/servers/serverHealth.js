@@ -3,6 +3,7 @@ import { timeAgo } from '../utils.js';
 import { patchKeyedTableRows } from '../domPatch.js';
 
 let currentFilter = 'all';
+let activeRange = '24h';
 const chartRegistry = new Map();
 
 const STATE_TO_BADGE = {
@@ -269,17 +270,44 @@ function renderActiveIssues(issues = []) {
     });
 }
 
-function formatTrendLabel(label) {
+function formatTrendLabel(label, rangeHours = 24) {
     if (!label) return '';
-    const parsed = new Date(label);
-    if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleTimeString('en-IN', {
+    // Backend emits bare UTC timestamps (no Z). Append Z so the browser
+    // treats them as UTC before converting to IST, not as local time.
+    const normalized = /z$|[+-]\d{2}:\d{2}$/i.test(String(label)) ? String(label) : `${label}Z`;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return String(label).slice(11, 16) || String(label);
+    if (rangeHours > 168) {
+        // Daily labels: show "Apr 1"
+        return parsed.toLocaleDateString('en-IN', {
             timeZone: 'Asia/Kolkata',
-            hour: '2-digit',
-            minute: '2-digit',
+            month: 'short',
+            day: 'numeric',
         });
     }
-    return String(label).slice(11, 16) || String(label);
+    if (rangeHours > 24) {
+        // Multi-day: show "Apr 1 14:00"
+        return parsed.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+    }
+    return parsed.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function makeGradient(ctx, canvas, hexColor) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 160);
+    gradient.addColorStop(0, hexColor + '55');
+    gradient.addColorStop(1, hexColor + '00');
+    return gradient;
 }
 
 function buildTrendPlugin(metric) {
@@ -332,51 +360,70 @@ function renderTrendChart(metric, trend, metaId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === 'undefined') return;
 
-    const labels = Array.isArray(trend?.labels) ? trend.labels.map(formatTrendLabel) : [];
+    const rangeHours = toNumber(trend?.range_hours, 24);
+    const labels = Array.isArray(trend?.labels) ? trend.labels.map((l) => formatTrendLabel(l, rangeHours)) : [];
     const values = Array.isArray(trend?.values) ? trend.values : [];
+    const peakValues = Array.isArray(trend?.peak) ? trend.peak : [];
     const markers = Array.isArray(trend?.markers) ? trend.markers : [];
-    const metaText = trend?.delta === null || trend?.delta === undefined
-        ? 'Awaiting enough history for a 24h comparison'
-        : `${trend.delta >= 0 ? '+' : ''}${Number(trend.delta).toFixed(1)}% vs previous 24h`;
 
+    const metaText = trend?.delta === null || trend?.delta === undefined
+        ? 'Awaiting enough history for comparison'
+        : `${trend.delta >= 0 ? '+' : ''}${Number(trend.delta).toFixed(1)}% vs previous period`;
     safeText(metaId, metaText);
 
-    const datasetColor = metric === 'cpu'
-        ? '#74c0fc'
-        : metric === 'memory'
-            ? '#ffd166'
-            : '#a7f3d0';
+    const colorMap = { cpu: '#74c0fc', memory: '#ffd166', disk: '#a7f3d0' };
+    const datasetColor = colorMap[metric] || '#74c0fc';
 
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                type: 'line',
-                label: metric,
-                data: values,
-                borderColor: datasetColor,
-                backgroundColor: datasetColor,
-                pointRadius: 0,
-                borderWidth: 2,
-                tension: 0.3,
-                fill: false,
-            },
-            {
-                type: 'scatter',
-                label: `${metric}-markers`,
-                data: markers.map((marker) => ({
-                    x: labels[marker.index] ?? labels[labels.length - 1] ?? '',
-                    y: marker.value,
-                })),
-                pointRadius: 4,
-                pointHoverRadius: 4,
-                pointBackgroundColor: markers.map((marker) => marker.state === 'critical' ? '#dc3545' : '#ffc107'),
-                pointBorderColor: '#0f1720',
-                pointBorderWidth: 1.5,
-                showLine: false,
-            },
-        ],
-    };
+    const ctx = canvas.getContext('2d');
+    const gradient = makeGradient(ctx, canvas, datasetColor);
+
+    const datasets = [
+        {
+            type: 'line',
+            label: `${metric} avg`,
+            data: values,
+            borderColor: datasetColor,
+            backgroundColor: gradient,
+            pointRadius: 0,
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true,
+            order: 2,
+        },
+    ];
+
+    // Peak (fleet max per bucket) as dashed secondary line
+    if (peakValues.some((v) => v !== null && v !== 0)) {
+        datasets.push({
+            type: 'line',
+            label: `${metric} peak`,
+            data: peakValues,
+            borderColor: datasetColor + '88',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [4, 3],
+            pointRadius: 0,
+            tension: 0.3,
+            fill: false,
+            order: 3,
+        });
+    }
+
+    // Threshold breach markers
+    if (markers.length) {
+        datasets.push({
+            type: 'scatter',
+            label: `${metric}-markers`,
+            data: markers.map((m) => ({ x: labels[m.index] ?? '', y: m.value })),
+            pointRadius: 4,
+            pointHoverRadius: 5,
+            pointBackgroundColor: markers.map((m) => m.state === 'critical' ? '#dc3545' : '#ffc107'),
+            pointBorderColor: '#0f1720',
+            pointBorderWidth: 1.5,
+            showLine: false,
+            order: 1,
+        });
+    }
 
     const existing = chartRegistry.get(canvasId);
     if (existing) {
@@ -386,22 +433,20 @@ function renderTrendChart(metric, trend, metaId) {
 
     const chart = new Chart(canvas, {
         type: 'line',
-        data: chartData,
+        data: { labels, datasets },
         plugins: [buildTrendPlugin(metric)],
         options: {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
+            interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label(context) {
-                            return `${context.parsed.y?.toFixed?.(1) ?? context.parsed.y}%`;
+                            if (context.dataset.label?.endsWith('-markers')) return null;
+                            return `${context.dataset.label}: ${context.parsed.y?.toFixed?.(1) ?? context.parsed.y}%`;
                         },
                     },
                 },
@@ -413,26 +458,17 @@ function renderTrendChart(metric, trend, metaId) {
             },
             scales: {
                 x: {
-                    ticks: {
-                        color: '#8a97a6',
-                        maxTicksLimit: 6,
-                    },
-                    grid: {
-                        color: 'rgba(148, 163, 184, 0.08)',
-                    },
+                    ticks: { color: '#8a97a6', maxTicksLimit: 6 },
+                    grid: { color: 'rgba(148, 163, 184, 0.08)' },
                 },
                 y: {
                     min: 0,
                     max: 100,
                     ticks: {
                         color: '#8a97a6',
-                        callback(value) {
-                            return `${value}%`;
-                        },
+                        callback(value) { return `${value}%`; },
                     },
-                    grid: {
-                        color: 'rgba(148, 163, 184, 0.08)',
-                    },
+                    grid: { color: 'rgba(148, 163, 184, 0.08)' },
                 },
             },
         },
@@ -441,14 +477,182 @@ function renderTrendChart(metric, trend, metaId) {
     chartRegistry.set(canvasId, chart);
 }
 
-function renderTrendSection(trends = {}, p95 = {}) {
-    safeText('val-fleet-p95-cpu', `P95: ${formatPercent(p95.cpu)}`);
-    safeText('val-fleet-p95-mem', `P95: ${formatPercent(p95.memory)}`);
-    safeText('val-fleet-p95-disk', `P95: ${formatPercent(p95.disk)}`);
+function renderNetworkTrendChart(networkIn, networkOut) {
+    const canvasId = 'chart-fleet-trend-network';
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return;
 
-    renderTrendChart('cpu', trends.cpu || {}, 'fleet-trend-cpu-meta');
-    renderTrendChart('memory', trends.memory || {}, 'fleet-trend-memory-meta');
-    renderTrendChart('disk', trends.disk || {}, 'fleet-trend-disk-meta');
+    const rangeHours = toNumber(networkIn?.range_hours, 24);
+    const labels = Array.isArray(networkIn?.labels) ? networkIn.labels.map((l) => formatTrendLabel(l, rangeHours)) : [];
+    const inValues = Array.isArray(networkIn?.values) ? networkIn.values : [];
+    const outValues = Array.isArray(networkOut?.values) ? networkOut.values : [];
+
+    // Auto-scale: find peak value and pick unit
+    const allValues = [...inValues, ...outValues].filter(Boolean);
+    const peak = allValues.length ? Math.max(...allValues) : 0;
+    let divisor = 1;
+    let unit = 'bps';
+    if (peak >= 1e9) { divisor = 1e9; unit = 'Gbps'; }
+    else if (peak >= 1e6) { divisor = 1e6; unit = 'Mbps'; }
+    else if (peak >= 1e3) { divisor = 1e3; unit = 'Kbps'; }
+
+    const scaleValues = (arr) => arr.map((v) => v !== null ? +(v / divisor).toFixed(2) : null);
+
+    const ctx = canvas.getContext('2d');
+    const gradIn = makeGradient(ctx, canvas, '#74c0fc');
+    const gradOut = makeGradient(ctx, canvas, '#f38ba8');
+
+    const existing = chartRegistry.get(canvasId);
+    if (existing) { existing.destroy(); chartRegistry.delete(canvasId); }
+
+    const chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: `In (${unit})`,
+                    data: scaleValues(inValues),
+                    borderColor: '#74c0fc',
+                    backgroundColor: gradIn,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: true,
+                },
+                {
+                    label: `Out (${unit})`,
+                    data: scaleValues(outValues),
+                    borderColor: '#f38ba8',
+                    backgroundColor: gradOut,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: true,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label(context) {
+                            return `${context.dataset.label}: ${context.parsed.y?.toFixed?.(2)}`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: { ticks: { color: '#8a97a6', maxTicksLimit: 6 }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                y: {
+                    min: 0,
+                    ticks: {
+                        color: '#8a97a6',
+                        callback(value) { return `${value} ${unit}`; },
+                    },
+                    grid: { color: 'rgba(148,163,184,0.08)' },
+                },
+            },
+        },
+    });
+    chartRegistry.set(canvasId, chart);
+}
+
+function renderLatencyTrendChart(latencyData) {
+    const canvasId = 'chart-fleet-trend-latency';
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    const rangeHours = toNumber(latencyData?.range_hours, 24);
+    const labels = Array.isArray(latencyData?.labels) ? latencyData.labels.map((l) => formatTrendLabel(l, rangeHours)) : [];
+    const values = Array.isArray(latencyData?.values) ? latencyData.values : [];
+
+    const avgLatency = values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1) : null;
+    safeText('val-fleet-latency-avg', avgLatency !== null ? `Avg: ${avgLatency} ms` : 'No data');
+
+    const ctx = canvas.getContext('2d');
+    const gradient = makeGradient(ctx, canvas, '#a9dc76');
+
+    const existing = chartRegistry.get(canvasId);
+    if (existing) { existing.destroy(); chartRegistry.delete(canvasId); }
+
+    if (!values.length) {
+        safeText('fleet-trend-latency-meta', 'No ICMP data available');
+        return;
+    }
+
+    const chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Latency (ms)',
+                data: values,
+                borderColor: '#a9dc76',
+                backgroundColor: gradient,
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: true,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label(context) { return `Latency: ${context.parsed.y?.toFixed?.(1)} ms`; },
+                    },
+                },
+            },
+            scales: {
+                x: { ticks: { color: '#8a97a6', maxTicksLimit: 6 }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                y: {
+                    min: 0,
+                    ticks: {
+                        color: '#8a97a6',
+                        callback(value) { return `${value} ms`; },
+                    },
+                    grid: { color: 'rgba(148,163,184,0.08)' },
+                },
+            },
+        },
+    });
+    chartRegistry.set(canvasId, chart);
+}
+
+function renderTrendSection(trends = {}, p95 = {}) {
+    // Pass range_hours down to each trend so labels format correctly
+    const rangeHours = toNumber(trends.range_hours, 24);
+    const withRange = (series) => series ? { ...series, range_hours: rangeHours } : {};
+
+    // Update "Peak" labels from per-bucket peak arrays (last non-null value as proxy)
+    const lastPeak = (series) => {
+        const peakArr = Array.isArray(series?.peak) ? series.peak : [];
+        const vals = peakArr.filter((v) => v !== null && v !== undefined);
+        return vals.length ? vals[vals.length - 1] : null;
+    };
+    safeText('val-fleet-p95-cpu', `Peak: ${formatPercent(lastPeak(trends.cpu))}`);
+    safeText('val-fleet-p95-mem', `Peak: ${formatPercent(lastPeak(trends.memory))}`);
+    safeText('val-fleet-p95-disk', `Peak: ${formatPercent(lastPeak(trends.disk))}`);
+
+    // Update range label in panel header
+    safeText('val-trends-range-label', trends.range_label || '24h');
+
+    renderTrendChart('cpu', withRange(trends.cpu || {}), 'fleet-trend-cpu-meta');
+    renderTrendChart('memory', withRange(trends.memory || {}), 'fleet-trend-memory-meta');
+    renderTrendChart('disk', withRange(trends.disk || {}), 'fleet-trend-disk-meta');
+    renderNetworkTrendChart(withRange(trends.network_in || {}), withRange(trends.network_out || {}));
+    renderLatencyTrendChart(withRange(trends.latency || {}));
 }
 
 function updateFilterButtonLabels(filters = {}) {
@@ -517,6 +721,7 @@ export function renderFleetOverview(data) {
     renderImpactSummary(data.impact_summary || {});
     renderActiveIssues(data.active_issues || []);
     renderTrendSection(data.trends || {}, data.p95 || {});
+    renderKpiWorstServer(data.servers || []);
     updateFilterButtonLabels(data.filters || {});
 }
 
@@ -621,6 +826,38 @@ export function renderEnhancedServerTable(payload) {
 
 export function initServerHealthTable() {
     return;
+}
+
+function renderKpiWorstServer(servers = []) {
+    // For each metric, find the worst server by that metric and show in the KPI card
+    const metricMap = [
+        { metric: 'cpu_usage', elId: 'val-fleet-cpu-worst' },
+        { metric: 'memory_usage', elId: 'val-fleet-memory-worst' },
+        { metric: 'disk_usage', elId: 'val-fleet-disk-worst' },
+    ];
+    for (const { metric, elId } of metricMap) {
+        const online = servers.filter((s) => s.health !== 'Offline' && s[metric] !== null && s[metric] !== undefined);
+        if (!online.length) { safeText(elId, ''); continue; }
+        const worst = online.reduce((a, b) => (toNumber(a[metric], 0) >= toNumber(b[metric], 0) ? a : b));
+        const name = worst.hostname || worst.device_name || worst.ip || '?';
+        const val = formatPercent(worst[metric]);
+        safeText(elId, `↑ ${escapeHtml(name.length > 14 ? name.slice(0, 12) + '…' : name)}: ${val}`);
+    }
+}
+
+export function bindRangePills(onRangeChange) {
+    document.querySelectorAll('.fleet-range-pill[data-range]').forEach((pill) => {
+        pill.addEventListener('click', () => {
+            const range = pill.getAttribute('data-range') || '24h';
+            activeRange = range;
+            document.querySelectorAll('.fleet-range-pill').forEach((p) => p.classList.toggle('active', p === pill));
+            if (typeof onRangeChange === 'function') onRangeChange(range);
+        });
+    });
+}
+
+export function getActiveRange() {
+    return activeRange;
 }
 
 export function setServerHealthFilter(filter) {

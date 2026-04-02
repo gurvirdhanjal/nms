@@ -178,6 +178,12 @@ def get_monitoring_status():
             except OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
                     logger.debug("DB locked, retrying (%d/%d)...", attempt + 1, max_retries)
+                    # An OperationalError aborts the transaction. Roll back before retrying
+                    # so the session is clean for the next add_all() call.
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
                     time.sleep(0.1 * (attempt + 1))
                     continue
                 raise e

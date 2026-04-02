@@ -1014,6 +1014,8 @@ def get_device_statistics_pdf():
     if stats is None:
         return jsonify({'error': 'No scan data available for this period'}), 404
 
+    stats['device_type'] = device.device_type or '—'
+
     from services.enterprise_pdf_service import generate_device_inspector_pdf
     try:
         buf = generate_device_inspector_pdf(

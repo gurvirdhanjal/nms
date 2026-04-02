@@ -22,6 +22,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="small text-secondary d-none d-md-inline">
+                        <span class="srv-live-dot" title="Live data"></span>
                         <span id="server-last-check">-</span>
                     </span>
                     <a href="{{ url_for('monitoring_bp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
@@ -76,6 +77,7 @@
                 <div class="srv-kpi-state" id="val-fleet-cpu-state">Healthy</div>
                 <div class="srv-kpi-meta" id="val-fleet-cpu-delta">—</div>
                 <div class="srv-kpi-meta" id="val-fleet-cpu-impact">0 impacted</div>
+                <div class="srv-kpi-worst" id="val-fleet-cpu-worst"></div>
             </div>
             <div class="srv-kpi" id="fleet-card-memory">
                 <div class="srv-kpi-label">Memory</div>
@@ -83,6 +85,7 @@
                 <div class="srv-kpi-state" id="val-fleet-memory-state">Healthy</div>
                 <div class="srv-kpi-meta" id="val-fleet-memory-delta">—</div>
                 <div class="srv-kpi-meta" id="val-fleet-memory-impact">0 impacted</div>
+                <div class="srv-kpi-worst" id="val-fleet-memory-worst"></div>
             </div>
             <div class="srv-kpi" id="fleet-card-disk">
                 <div class="srv-kpi-label">Disk</div>
@@ -90,6 +93,7 @@
                 <div class="srv-kpi-state" id="val-fleet-disk-state">Healthy</div>
                 <div class="srv-kpi-meta" id="val-fleet-disk-delta">—</div>
                 <div class="srv-kpi-meta" id="val-fleet-disk-impact">0 impacted</div>
+                <div class="srv-kpi-worst" id="val-fleet-disk-worst"></div>
             </div>
         </div>
 
@@ -127,15 +131,24 @@
             <!-- Trend charts -->
             <div class="srv-trends">
                 <div class="srv-panel-hd">
-                    <span class="srv-panel-title">Metric Trends — 24h</span>
-                    <span class="srv-panel-meta">Uptime: <span id="val-fleet-uptime">-</span></span>
+                    <span class="srv-panel-title">Metric Trends — <span id="val-trends-range-label">24h</span></span>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="srv-panel-meta">Uptime: <span id="val-fleet-uptime">-</span></span>
+                        <div class="fleet-range-pills" id="fleet-range-pills" role="group" aria-label="Time range">
+                            <button class="fleet-range-pill" data-range="1h">1H</button>
+                            <button class="fleet-range-pill" data-range="6h">6H</button>
+                            <button class="fleet-range-pill active" data-range="24h">24H</button>
+                            <button class="fleet-range-pill" data-range="7d">7D</button>
+                            <button class="fleet-range-pill" data-range="30d">30D</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="srv-trends-body">
-                    <div class="srv-trends-row">
+                    <div class="srv-trends-grid">
                         <div class="fleet-trend-card">
                             <div class="fleet-trend-head">
                                 <span>CPU</span>
-                                <span id="val-fleet-p95-cpu">P95: -</span>
+                                <span id="val-fleet-p95-cpu" class="fleet-trend-peak-label">Peak: -</span>
                             </div>
                             <div class="fleet-trend-meta" id="fleet-trend-cpu-meta">No data</div>
                             <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-cpu"></canvas></div>
@@ -143,7 +156,7 @@
                         <div class="fleet-trend-card">
                             <div class="fleet-trend-head">
                                 <span>Memory</span>
-                                <span id="val-fleet-p95-mem">P95: -</span>
+                                <span id="val-fleet-p95-mem" class="fleet-trend-peak-label">Peak: -</span>
                             </div>
                             <div class="fleet-trend-meta" id="fleet-trend-memory-meta">No data</div>
                             <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-memory"></canvas></div>
@@ -151,10 +164,26 @@
                         <div class="fleet-trend-card">
                             <div class="fleet-trend-head">
                                 <span>Disk</span>
-                                <span id="val-fleet-p95-disk">P95: -</span>
+                                <span id="val-fleet-p95-disk" class="fleet-trend-peak-label">Peak: -</span>
                             </div>
                             <div class="fleet-trend-meta" id="fleet-trend-disk-meta">No data</div>
                             <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-disk"></canvas></div>
+                        </div>
+                        <div class="fleet-trend-card">
+                            <div class="fleet-trend-head">
+                                <span>Network I/O</span>
+                                <span id="val-fleet-net-legend" class="fleet-trend-peak-label">In / Out</span>
+                            </div>
+                            <div class="fleet-trend-meta" id="fleet-trend-network-meta">Fleet avg throughput</div>
+                            <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-network"></canvas></div>
+                        </div>
+                        <div class="fleet-trend-card fleet-trend-card--wide">
+                            <div class="fleet-trend-head">
+                                <span>Latency</span>
+                                <span id="val-fleet-latency-avg" class="fleet-trend-peak-label">Avg: -</span>
+                            </div>
+                            <div class="fleet-trend-meta" id="fleet-trend-latency-meta">Fleet avg ICMP round-trip</div>
+                            <div class="fleet-trend-canvas"><canvas id="chart-fleet-trend-latency"></canvas></div>
                         </div>
                     </div>
                 </div>

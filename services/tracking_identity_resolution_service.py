@@ -369,9 +369,12 @@ def _lock_active_links(
 def _lock_inventory_device(device_id: int | None) -> Device | None:
     if device_id is None:
         return None
+    # NOWAIT: fail immediately instead of blocking up to lock_timeout (5 s).
+    # The caller (api_tracking_sync) catches LockNotAvailable and returns 503
+    # so the agent retries — much better than silently hanging for 5 s then 500-ing.
     return (
         Device.query.filter(Device.device_id == int(device_id))
-        .with_for_update()
+        .with_for_update(nowait=True)
         .first()
     )
 

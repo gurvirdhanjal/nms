@@ -1147,6 +1147,34 @@ def _ensure_device_classification_cache_table():
         print(f"[DB] Migration warning (device_classification_cache): {exc}")
 
 
+def _ensure_device_name_locked_column():
+    """Add name_locked column to device table (idempotent).
+
+    name_locked = True means a human has intentionally named this device.
+    Discovery and upsert_device_from_identity skip device_name / hostname
+    updates when this flag is set, preserving operator labels across IP
+    changes, re-scans, and cross-subnet rediscoveries.
+    """
+    try:
+        backend = db.engine.url.get_backend_name()
+        if backend == 'postgresql':
+            db.session.execute(db.text(
+                "ALTER TABLE device ADD COLUMN IF NOT EXISTS name_locked BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+        else:
+            # SQLite: check via PRAGMA
+            cols = {row[1] for row in db.session.execute(db.text("PRAGMA table_info(device)"))}
+            if 'name_locked' not in cols:
+                db.session.execute(db.text(
+                    "ALTER TABLE device ADD COLUMN name_locked BOOLEAN NOT NULL DEFAULT 0"
+                ))
+        db.session.commit()
+        print("[DB] device.name_locked column verified.")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (device.name_locked): {exc}")
+
+
 def _ensure_performance_indexes():
     """
     Composite and partial indexes for high-frequency query paths.
@@ -1636,6 +1664,7 @@ def ensure_server_health_columns():
     _ensure_daily_device_stats_unique_constraint()
     _ensure_db_safety_constraints()
     _ensure_dashboard_events_tenant_columns()
+    _ensure_device_name_locked_column()
 
 
 def _ensure_app_settings_table():

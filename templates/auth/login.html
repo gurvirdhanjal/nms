@@ -130,9 +130,31 @@
 
     /* ── Card entrance animation ────────────────────────────────── */
     @keyframes cardReveal {
-        0%   { opacity: 0; transform: translateY(8px) scale(0.990); filter: blur(3px); }
+        0%   { opacity: 0; transform: translateY(12px) scale(0.985); filter: blur(4px); }
         100% { opacity: 1; transform: translateY(0)   scale(1);     filter: blur(0); }
     }
+
+    /* Staggered form elements */
+    @keyframes fadeSlideUp {
+        0%   { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+        100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+
+    /* NOC Icon entry */
+    @keyframes iconPulse {
+        0%   { transform: scale(0.8) translateY(10px); opacity: 0; }
+        60%  { transform: scale(1.05) translateY(-2px); opacity: 1; }
+        100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    /* Staggered entrance hooks */
+    .stagger-1 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both; }
+    .stagger-2 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.20s both; }
+    .stagger-3 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both; }
+    .stagger-4 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
+    .stagger-5 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both; }
+    .stagger-6 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.40s both; }
+    .stagger-7 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both; }
 
     /* ── Login card — elevated glass ────────────────────────────── */
     .auth-card.enterprise-card {
@@ -176,6 +198,7 @@
         margin: 0 auto 10px;
         color: #00d4aa;
         box-shadow: 0 0 18px rgba(0,212,170,0.18), 0 0 0 4px rgba(0,212,170,0.05);
+        animation: iconPulse 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
     }
     .auth-noc-icon [data-lucide] {
         width: 20px; height: 20px;
@@ -541,10 +564,10 @@
                 <div class="auth-noc-icon">
                     <i data-lucide="shield-check"></i>
                 </div>
-                <div class="auth-title">Network Operations Center</div>
-                <div class="auth-subtitle">Authorized Access Only</div>
+                <div class="auth-title stagger-1">Network Operations Center</div>
+                <div class="auth-subtitle stagger-2">Authorized Access Only</div>
                 {% if ldap_enabled %}
-                <div style="margin-top:10px;">
+                <div style="margin-top:10px;" class="stagger-3">
                     <span class="auth-ldap-inline">
                         <i data-lucide="building-2"></i>
                         Corporate Directory
@@ -556,44 +579,48 @@
             <div class="card-body px-4 pb-4 pt-2">
 
                 {% if error %}
-                <div class="alert alert-danger small">
+                <div class="alert alert-danger small stagger-3">
                     <i class="fas fa-exclamation-triangle me-2" style="opacity:0.65"></i>{{ error }}
                 </div>
                 {% endif %}
 
                 {% if message %}
-                <div class="alert alert-info small">
+                <div class="alert alert-info small stagger-3">
                     <i class="fas fa-info-circle me-2" style="opacity:0.65"></i>{{ message }}
                 </div>
                 {% endif %}
 
                 <form method="POST" action="{{ url_for('auth_bp.login') }}">
 
-                    <div class="mb-3">
+                    <div class="mb-3 stagger-3">
                         <label for="username" class="form-label">Username</label>
                         <input type="text" class="form-control tactical-input"
                             id="username" name="username" required autocomplete="username">
                     </div>
 
-                    <div class="mb-5">
+                    <div class="mb-5 stagger-4">
                         <label for="password" class="form-label">Password</label>
                         <input type="password" class="form-control tactical-input"
                             id="password" name="password" required autocomplete="current-password">
                     </div>
 
-                    <button type="submit" class="btn-login">
-                        Sign In
-                    </button>
+                    <div class="stagger-5">
+                        <button type="submit" class="btn-login">
+                            Sign In
+                        </button>
+                    </div>
 
                 </form>
 
-                <a href="{{ url_for('auth_bp.forgot_password') }}" class="auth-forgot">
-                    Forgot Password?
-                </a>
+                <div class="stagger-6" style="text-align: center;">
+                    <a href="{{ url_for('auth_bp.forgot_password') }}" class="auth-forgot d-inline-flex">
+                        Forgot Password?
+                    </a>
+                </div>
 
                 {% if allow_registration %}
-                <hr class="enterprise-divider">
-                <div class="auth-register-text">
+                <hr class="enterprise-divider stagger-7">
+                <div class="auth-register-text stagger-7">
                     No account?
                     <a href="{{ url_for('auth_bp.register') }}">Register as admin</a>
                 </div>

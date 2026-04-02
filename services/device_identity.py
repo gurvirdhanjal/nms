@@ -554,6 +554,19 @@ def upsert_device_from_identity(
     duplicates = candidates[1:]
     updated = bool(duplicates)
 
+    # Determine match quality for the primary candidate.
+    # An IP-only match means neither MAC nor hostname identified this device —
+    # the IP could belong to a completely different device after a DHCP lease
+    # change or a device move. Treat these matches as tentative: update the IP
+    # and subnet, but do NOT overwrite stable identity fields (name, hostname,
+    # manufacturer) that were set by a higher-confidence prior match.
+    primary_flags = candidate_match_flags.get(primary.device_id, set())
+    is_ip_only_match = primary_flags == {"ip"} and not any(
+        "mac" in candidate_match_flags.get(c.device_id, set()) or
+        "hostname" in candidate_match_flags.get(c.device_id, set())
+        for c in candidates
+    )
+
     if duplicates:
         logger.info(
             "[Identity] Merging %s duplicate(s) into device_id=%s (%s)",
@@ -593,38 +606,69 @@ def upsert_device_from_identity(
 
     normalized_mac = _normalize_mac(mac) if mac and not _is_invalid_mac(mac) else None
     if normalized_mac and (_is_invalid_mac(primary.macaddress) or primary.macaddress != normalized_mac):
-        primary.macaddress = normalized_mac
-        updated = True
+        # Guard: if another device already owns this MAC (e.g. the device roamed to a new IP
+        # and was matched by IP rather than MAC), skip the assignment instead of hitting
+        # UniqueViolation on idx_device_macaddress_unique.
+        mac_owner = Device.query.filter(
+            Device.macaddress == normalized_mac,
+            Device.device_id != primary.device_id,
+        ).first()
+        if mac_owner is not None:
+            logger.warning(
+                "[Identity] MAC %s already owned by device_id=%s; skipping MAC assignment to device_id=%s",
+                normalized_mac, mac_owner.device_id, primary.device_id,
+            )
+        else:
+            primary.macaddress = normalized_mac
+            updated = True
 
     if ip and primary.device_ip != ip:
         previous_ip = primary.device_ip
         primary.device_ip = ip
         primary.subnet_cidr = compute_subnet_cidr(ip)
         updated = True
-        logger.info(
-            "[Identity] Device %s IP changed: %s -> %s",
-            primary.device_id,
-            previous_ip,
-            ip,
-        )
+        if getattr(primary, 'name_locked', False):
+            # Named devices moving IP is operationally significant — log at WARNING
+            # so it appears in the dashboard log stream, not just debug output.
+            logger.warning(
+                "[Identity] Named device '%s' (id=%s) IP changed: %s -> %s  "
+                "[name_locked — label preserved, IP tracking updated]",
+                primary.device_name, primary.device_id, previous_ip, ip,
+            )
+        else:
+            logger.info(
+                "[Identity] Device %s IP changed: %s -> %s",
+                primary.device_id, previous_ip, ip,
+            )
         _propagate_ip_change(primary.device_id, previous_ip, ip)
         if (
-            primary.device_name
+            not getattr(primary, 'name_locked', False)
+            and primary.device_name
             and previous_ip
             and primary.device_name.startswith("Device-")
             and previous_ip in primary.device_name
         ):
             primary.device_name = f"Device-{ip}"
 
-    if hostname and _is_invalid_text(primary.hostname):
+    # name_locked: operator has intentionally named this device — never overwrite.
+    # is_ip_only_match: low-confidence IP-only match — skip identity field updates
+    # to avoid clobbering data set by a higher-confidence prior discovery.
+    name_is_protected = getattr(primary, 'name_locked', False) or is_ip_only_match
+
+    if hostname and _is_invalid_text(primary.hostname) and not name_is_protected:
         primary.hostname = hostname
         updated = True
+    elif is_ip_only_match and hostname and not _is_invalid_text(primary.hostname):
+        logger.debug(
+            "[Identity] IP-only match device_id=%s: skipping hostname update (%s -> %s)",
+            primary.device_id, primary.hostname, hostname,
+        )
 
-    if manufacturer and _is_invalid_text(primary.manufacturer):
+    if manufacturer and _is_invalid_text(primary.manufacturer) and not is_ip_only_match:
         primary.manufacturer = manufacturer
         updated = True
 
-    if device_type and _is_invalid_text(primary.device_type):
+    if device_type and _is_invalid_text(primary.device_type) and not is_ip_only_match:
         conf = (primary.classification_confidence or "").strip().lower()
         if conf != "manual":
             primary.device_type = device_type

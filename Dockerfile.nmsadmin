@@ -1,0 +1,50 @@
+FROM python:3.10-slim
+
+LABEL maintainer="NMS Admin Panel"
+LABEL description="Network Monitoring System — Admin Panel (Flask + Waitress)"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    curl \
+    iputils-ping \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies first (layer cache)
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source
+COPY app.py config.py extensions.py web_main.py /app/
+COPY routes/       /app/routes/
+COPY services/     /app/services/
+COPY models/       /app/models/
+COPY middleware/   /app/middleware/
+COPY workers/      /app/workers/
+COPY utils/        /app/utils/
+COPY metrics/      /app/metrics/
+COPY events/       /app/events/
+COPY client_modules/ /app/client_modules/
+COPY file_transfer/  /app/file_transfer/
+COPY thresholds/     /app/thresholds/
+COPY templates/    /app/templates/
+COPY static/       /app/static/
+
+# Create directories for runtime data
+RUN mkdir -p /app/client_uploads /app/events /app/instance
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+CMD ["python", "web_main.py"]

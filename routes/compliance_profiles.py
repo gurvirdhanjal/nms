@@ -14,7 +14,7 @@ _ALLOWED_RULE_KEYS = {
     'cpu_warning', 'cpu_critical',
     'memory_warning', 'memory_critical',
     'disk_warning', 'disk_critical',
-    # ICMP threshold keys (Phase 6) — consumed by alert_manager._get_icmp_thresholds()
+    # ICMP threshold keys (Phase 6) — consumed by alert_manager.get_icmp_thresholds()
     # NOT in _RULES_JSON_MAP; applied independently to ICMP alert evaluation
     'latency_warning_ms', 'latency_critical_ms',
     'packet_loss_warning_pct', 'packet_loss_critical_pct',

@@ -334,9 +334,18 @@ class DiscoveryService:
             from extensions import db
             from services.device_identity import upsert_device_from_identity
             from services.device_classifier import DeviceClassifier
+            from models.discovery_config import get_config
+            from models.subnet import Subnet
+
+            cfg = get_config()
+            approval_mode = (cfg.auto_add_policy or 'auto') == 'approval'
+            monitor_new = bool(cfg.auto_monitor_new)
 
             count_added = 0
             count_updated = 0
+
+            from models.device import Device as _Device
+            from services.device_identity import find_device_by_mac, find_device_by_hostname
 
             for device_data in devices:
                 try:
@@ -350,15 +359,39 @@ class DiscoveryService:
                     classification_confidence = (device_data.get('classification_confidence') or '').strip()
                     classification_details = device_data.get('classification_details')
 
-                    device, action, _prev_ip = upsert_device_from_identity(
-                        ip=ip,
-                        mac=device_data.get('mac'),
-                        hostname=device_data.get('hostname') or 'Unknown',
-                        manufacturer=device_data.get('manufacturer') or 'Unknown',
-                        device_type=device_type or 'unknown',
-                        is_monitored=True,
-                        is_active=True
-                    )
+                    # no_autoflush: a previous iteration may have left a device object dirty
+                    # in the session (modified classification_confidence / confidence_score).
+                    # Without this guard, the lookup queries below trigger SQLAlchemy's
+                    # autoflush, which tries to UPDATE that device row — racing with the SNMP
+                    # worker's row lock and causing a LockNotAvailable error that aborts the
+                    # whole batch. Dirty state is flushed cleanly at db.session.commit() below.
+                    with db.session.no_autoflush:
+                        # Resolve site_id from subnet mapping for new devices
+                        best_subnet = Subnet.get_best_match(ip)
+                        site_id = best_subnet.site_id if best_subnet else None
+
+                        # In approval mode, skip creating new devices (only update existing)
+                        mac = device_data.get('mac')
+                        hostname = device_data.get('hostname') or ''
+                        is_existing = bool(
+                            (mac and find_device_by_mac(mac))
+                            or find_device_by_hostname(hostname)
+                            or _Device.query.filter_by(device_ip=ip).first()
+                        )
+                        if approval_mode and not is_existing:
+                            logger.debug("[Discovery] Approval mode: skipping new device %s", ip)
+                            continue
+
+                        device, action, _prev_ip = upsert_device_from_identity(
+                            ip=ip,
+                            mac=mac,
+                            hostname=hostname or 'Unknown',
+                            manufacturer=device_data.get('manufacturer') or 'Unknown',
+                            device_type=device_type or 'unknown',
+                            is_monitored=monitor_new,
+                            is_active=True,
+                            site_id=site_id,
+                        )
 
                     if device and (classification_confidence or confidence_score is not None or classification_details):
                         if (device.classification_confidence or '').strip().lower() != 'manual':

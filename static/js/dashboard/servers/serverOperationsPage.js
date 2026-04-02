@@ -1,5 +1,7 @@
 import { initServerModal } from '../modals/serverDetailModal.js';
 import {
+    bindRangePills,
+    getActiveRange,
     renderEnhancedServerTable,
     renderFleetOverview,
     renderServerHealthSummary,
@@ -72,7 +74,8 @@ async function fetchFleetSnapshot({ showBusy = false } = {}) {
     if (showBusy) setRefreshBusy(true);
 
     try {
-        const response = await fetch('/api/server/fleet-metrics', {
+        const range = getActiveRange();
+        const response = await fetch(`/api/server/fleet-metrics?range=${encodeURIComponent(range)}`, {
             headers: { Accept: 'application/json' },
         });
         const payload = await response.json();
@@ -117,6 +120,7 @@ export function initServerOperationsPage() {
     setServerHealthFilter('all');
     bindFilterButtons();
     bindRefreshButton();
+    bindRangePills(() => fetchFleetSnapshot({ showBusy: true }));
     renderSnapshot(currentSnapshot);
     fetchFleetSnapshot();
 

@@ -126,6 +126,13 @@ def get_effective_policy(tracked_device_id: int, allow_rebuild: bool = True) -> 
         try:
             return rebuild_effective_policy_cache(int(tracked_device_id))
         except Exception as exc:
+            # rebuild_effective_policy_cache calls db.session.flush() which may fail
+            # (lock timeout, constraint violation). That poisons the session — roll back
+            # before propagating so the caller's next DB operation works cleanly.
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             raise EffectivePolicyUnavailable('effective_policy_unavailable') from exc
 
     cached_payload = _build_payload_from_cache(cache_row, tracked_device)
@@ -140,6 +147,14 @@ def get_effective_policy(tracked_device_id: int, allow_rebuild: bool = True) -> 
         try:
             return rebuild_effective_policy_cache(int(tracked_device_id))
         except Exception:
+            # rebuild_effective_policy_cache flushes the cache row. If that flush fails
+            # (e.g. lock_timeout from a concurrent writer), the session is in
+            # PendingRollbackError state. Rollback here before enqueue_policy_rebuild
+            # touches the DB — otherwise its query will raise immediately.
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             enqueue_policy_rebuild(int(tracked_device_id))
             db.session.commit()
             cached_payload['policy_cache_state'] = 'stale_fallback'

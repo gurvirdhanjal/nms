@@ -50,6 +50,12 @@ class Device(db.Model):
     location = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
 
+    # Identity protection — set True when a human explicitly names this device.
+    # Discovery and upsert_device_from_identity will not overwrite device_name or
+    # hostname when this flag is set, preserving operator-assigned labels across
+    # IP changes, re-scans, and cross-subnet rediscoveries.
+    name_locked = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
+
     # Multi-Site Support (Phase 1)
     site_id = db.Column(db.Integer, db.ForeignKey('sites.id', ondelete='SET NULL'), nullable=True, index=True)
 

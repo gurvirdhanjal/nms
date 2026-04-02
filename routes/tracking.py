@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response, stream_with_context
+from flask import Blueprint, render_template, jsonify, make_response, request, session, redirect, url_for, Response, stream_with_context
 from middleware.rbac import require_login, require_permission, require_role, create_audit_log
 from extensions import db
 from models.tracked_device import (
@@ -36,6 +36,7 @@ from models.typed_text_policy_alert import TypedTextPolicyAlert
 from models.user import User
 from models.scan_history import DeviceScanHistory
 from services.operational_error_handling import summarize_exception
+from sqlalchemy.exc import OperationalError as SAOperationalError
 from datetime import datetime, timedelta, timezone
 import requests
 import json
@@ -5072,6 +5073,26 @@ def api_tracking_sync():
         if str(e) == 'AGENT_KEY_DEVICE_MISMATCH':
             return _json_error('AGENT_KEY_DEVICE_MISMATCH', 'Agent key is not bound to this device.', 403)
         return _json_error('SYNC_PERMISSION_DENIED', 'Sync request was denied.', 403)
+    except SAOperationalError as e:
+        db.session.rollback()
+        # _lock_inventory_device uses FOR UPDATE NOWAIT. LockNotAvailable means a concurrent
+        # writer (SNMP worker, device monitor) holds the device row. Signal the agent to retry
+        # after a short back-off rather than logging a hard 500 failure.
+        orig = getattr(e, 'orig', None)
+        orig_type = type(orig).__name__ if orig is not None else ''
+        if orig_type == 'LockNotAvailable':
+            response = make_response(jsonify({
+                'success': False,
+                'error_code': 'SYNC_LOCK_CONTENTION',
+                'error': 'Device row temporarily locked by another process. Retry in 2 seconds.',
+            }), 503)
+            response.headers['Retry-After'] = '2'
+            return response
+        return _json_exception(
+            'TRACKING_SYNC_FAILED',
+            'Failed to process tracking sync payload.',
+            e,
+        )
     except Exception as e:
         db.session.rollback()
         return _json_exception(

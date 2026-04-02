@@ -247,16 +247,87 @@
         border-radius: 6px;
     }
     .srv-trends-body { padding: 0.65rem; }
+
+    /* Legacy row selector kept for backward compat */
     .srv-trends-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+
+    /* New 2×2 + 1 full-width grid for 5 charts */
+    .srv-trends-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+    }
+    .fleet-trend-card--wide {
+        grid-column: 1 / -1;
+    }
+
     .fleet-trend-card {
         background: rgba(8,11,18,0.92);
         border: 1px solid var(--ui-border);
         border-radius: 4px;
         padding: 0.65rem 0.75rem;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+        transition: box-shadow 130ms ease;
+    }
+    .fleet-trend-card:hover {
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 212, 170, 0.05);
     }
     .fleet-trend-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ui-text-muted); }
+    .fleet-trend-peak-label { font-family: var(--ui-font-mono); font-size: 0.62rem; color: var(--ui-text-dim); }
     .fleet-trend-meta { font-size: 0.65rem; color: var(--ui-text-dim); margin-top: 0.18rem; margin-bottom: 0.4rem; }
-    .fleet-trend-canvas { position: relative; height: 110px; }
+    .fleet-trend-canvas { position: relative; height: 130px; }
+
+    /* ── Range pills ── */
+    .fleet-range-pills {
+        display: inline-flex;
+        gap: 2px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--ui-border);
+        border-radius: 4px;
+        padding: 2px;
+    }
+    .fleet-range-pill {
+        font-family: var(--ui-font-mono);
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 0.18rem 0.48rem;
+        border-radius: 3px;
+        border: none;
+        background: transparent;
+        color: var(--ui-text-muted);
+        cursor: pointer;
+        transition: background 110ms ease, color 110ms ease;
+    }
+    .fleet-range-pill:hover { background: rgba(255,255,255,0.07); color: var(--ui-text-secondary); }
+    .fleet-range-pill.active { background: var(--ui-accent-soft); color: var(--ui-accent); }
+
+    /* ── KPI worst-server sub-line ── */
+    .srv-kpi-worst {
+        font-size: 0.6rem;
+        color: var(--ui-text-dim);
+        margin-top: 0.18rem;
+        font-family: var(--ui-font-mono);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ── Live pulse dot ── */
+    .srv-live-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--status-success);
+        margin-right: 5px;
+        vertical-align: middle;
+        animation: srv-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes srv-pulse {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(32, 201, 151, 0.5); }
+        50% { opacity: 0.7; box-shadow: 0 0 0 5px rgba(32, 201, 151, 0); }
+    }
 
     /* ── Full fleet table ── */
     .srv-table-card {
@@ -277,9 +348,12 @@
         .srv-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .srv-mid { grid-template-columns: 1fr; }
         .srv-trends-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .srv-trends-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 767.98px) {
-        .srv-kpi-grid, .srv-trends-row { grid-template-columns: 1fr; }
+        .srv-kpi-grid, .srv-trends-row, .srv-trends-grid { grid-template-columns: 1fr; }
+        .fleet-trend-card--wide { grid-column: auto; }
+        .fleet-range-pills { flex-wrap: wrap; }
     }
 
 /* ── Server Details Modal (partials/server_details_modal.html) — Phase 3 ── */

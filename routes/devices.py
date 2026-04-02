@@ -1893,7 +1893,24 @@ def reclassify_all():
             device.classification_confidence = result.confidence.value
             device.classification_details = json.dumps(result.to_dict())
             device.manufacturer = manufacturer
-            device.macaddress = mac_address
+            # MAC guard: ARP may return a MAC already owned by a different device record
+            # (common when a device roams to a new IP — its old record still holds the MAC).
+            # Writing it unconditionally causes a UniqueViolation on idx_device_macaddress_unique.
+            if mac_address and mac_address != device.macaddress:
+                with db.session.no_autoflush:
+                    mac_conflict = Device.query.filter(
+                        Device.macaddress == mac_address,
+                        Device.device_id != device.device_id,
+                    ).first()
+                if mac_conflict is not None:
+                    logger.warning(
+                        "[Reclassify] MAC %s already owned by device_id=%s; skipping MAC update for device_id=%s (%s)",
+                        mac_address, mac_conflict.device_id, device.device_id, device.device_ip,
+                    )
+                else:
+                    device.macaddress = mac_address
+            elif not mac_address:
+                device.macaddress = mac_address
             if hostname and hostname != "Unknown" and not hostname.startswith("Device-"):
                 device.hostname = hostname
 
@@ -1905,8 +1922,11 @@ def reclassify_all():
                 "confidence_score": device.confidence_score
             })
 
-            # Commit every 20 devices to prevent connection timeout on large fleets
-            if updated_count % 20 == 0:
+            # Commit every 5 devices. Each device scan includes ping + ARP + port scan +
+            # optional Gemini API call — batches of 20 can easily run 60+ seconds of
+            # network I/O, hitting idle_in_transaction_session_timeout and dropping the
+            # PostgreSQL connection mid-batch.
+            if updated_count % 5 == 0:
                 try:
                     db.session.commit()
                 except Exception as _ce:
@@ -1948,7 +1968,18 @@ def update_device(device_id):
         device.parent_switch_id = data['parent_switch_id']
     if 'parent_port_id' in data:
         device.parent_port_id = data['parent_port_id']
-        
+    # When an operator explicitly sets a device_name, lock it so discovery
+    # and upsert_device_from_identity never overwrite the human-assigned label.
+    if 'device_name' in data and data['device_name']:
+        device.device_name = data['device_name'].strip()
+        device.name_locked = True
+    if 'hostname' in data and data['hostname']:
+        device.hostname = data['hostname'].strip()
+        device.name_locked = True
+    # Explicit unlock — operator wants discovery to manage the name again.
+    if 'name_locked' in data:
+        device.name_locked = bool(data['name_locked'])
+
     db.session.commit()
     return jsonify({"success": True, "device": device.to_dict()})
 

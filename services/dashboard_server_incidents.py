@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 
@@ -9,6 +9,7 @@ from extensions import db
 from models.dashboard import DashboardEvent
 from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
+from models.server_health_rollups import ServerHealthDailyRollup, ServerHealthHourlyRollup
 from services.server_thresholds import (
     PRIMARY_HEALTH_METRICS,
     alert_metric_name,
@@ -160,14 +161,17 @@ def _query_latest_scan_map(device_ips: list[str]) -> dict[str, DeviceScanHistory
 
 
 def _hour_label(hour_value) -> str:
-    """Normalize a date_trunc/strftime value to 'YYYY-MM-DDTHH:00:00' for consistent comparison.
+    """Normalize a date_trunc/strftime/date value to 'YYYY-MM-DDTHH:00:00' for consistent comparison.
 
     PostgreSQL date_trunc returns a datetime object whose str() is space-separated
     ('2026-03-23 12:00:00'), while the comparison target uses the T-separator format.
     SQLite strftime already returns the T-format string.
+    Daily rollup bucket_day is a date object — formatted as 'YYYY-MM-DDT00:00:00'.
     """
     if isinstance(hour_value, datetime):
         return hour_value.strftime("%Y-%m-%dT%H:00:00")
+    if isinstance(hour_value, date):
+        return hour_value.strftime("%Y-%m-%dT00:00:00")
     if hour_value is not None:
         return str(hour_value)[:19].replace(" ", "T")
     return ""
@@ -181,6 +185,7 @@ def _build_hour_bucket():
 
 
 def _query_metric_trends(device_ids: list[int], start_time: datetime):
+    """Raw hourly aggregation from ServerHealthLog (agent source). Used for ≤24h range."""
     if not device_ids:
         return []
     hour_bucket = _build_hour_bucket()
@@ -190,6 +195,11 @@ def _query_metric_trends(device_ids: list[int], start_time: datetime):
             func.avg(ServerHealthLog.cpu_usage).label("avg_cpu"),
             func.avg(ServerHealthLog.memory_usage).label("avg_memory"),
             func.avg(ServerHealthLog.disk_usage).label("avg_disk"),
+            func.max(ServerHealthLog.cpu_usage).label("max_cpu"),
+            func.max(ServerHealthLog.memory_usage).label("max_memory"),
+            func.max(ServerHealthLog.disk_usage).label("max_disk"),
+            func.avg(ServerHealthLog.network_in_bps).label("avg_net_in"),
+            func.avg(ServerHealthLog.network_out_bps).label("avg_net_out"),
         )
         .filter(
             ServerHealthLog.source == "agent",
@@ -198,6 +208,121 @@ def _query_metric_trends(device_ids: list[int], start_time: datetime):
         )
         .group_by(hour_bucket)
         .order_by(hour_bucket)
+        .all()
+    )
+
+
+def _query_latency_trend_raw(device_ids: list[int], start_time: datetime):
+    """Raw hourly ICMP latency aggregation. Used for ≤24h range."""
+    if not device_ids:
+        return []
+    hour_bucket = _build_hour_bucket()
+    return (
+        db.session.query(
+            hour_bucket,
+            func.avg(ServerHealthLog.ping_latency_ms).label("avg_latency"),
+        )
+        .filter(
+            ServerHealthLog.source == "icmp",
+            ServerHealthLog.timestamp >= start_time,
+            ServerHealthLog.device_id.in_(device_ids),
+        )
+        .group_by(hour_bucket)
+        .order_by(hour_bucket)
+        .all()
+    )
+
+
+def _query_metric_trends_hourly(device_ids: list[int], start_time: datetime):
+    """Hourly rollup aggregation. Used for 25h–168h (7d) range."""
+    if not device_ids:
+        return []
+    return (
+        db.session.query(
+            ServerHealthHourlyRollup.bucket_hour,
+            func.avg(ServerHealthHourlyRollup.avg_cpu_usage).label("avg_cpu"),
+            func.avg(ServerHealthHourlyRollup.avg_memory_usage).label("avg_memory"),
+            func.avg(ServerHealthHourlyRollup.avg_disk_usage).label("avg_disk"),
+            func.avg(ServerHealthHourlyRollup.max_cpu_usage).label("max_cpu"),
+            func.avg(ServerHealthHourlyRollup.max_memory_usage).label("max_memory"),
+            func.avg(ServerHealthHourlyRollup.max_disk_usage).label("max_disk"),
+            func.avg(ServerHealthHourlyRollup.avg_network_in_bps).label("avg_net_in"),
+            func.avg(ServerHealthHourlyRollup.avg_network_out_bps).label("avg_net_out"),
+        )
+        .filter(
+            ServerHealthHourlyRollup.source == "agent",
+            ServerHealthHourlyRollup.bucket_hour >= start_time,
+            ServerHealthHourlyRollup.device_id.in_(device_ids),
+        )
+        .group_by(ServerHealthHourlyRollup.bucket_hour)
+        .order_by(ServerHealthHourlyRollup.bucket_hour)
+        .all()
+    )
+
+
+def _query_latency_trend_hourly(device_ids: list[int], start_time: datetime):
+    """Hourly ICMP latency rollup. Used for 25h–168h (7d) range."""
+    if not device_ids:
+        return []
+    return (
+        db.session.query(
+            ServerHealthHourlyRollup.bucket_hour,
+            func.avg(ServerHealthHourlyRollup.avg_ping_latency_ms).label("avg_latency"),
+        )
+        .filter(
+            ServerHealthHourlyRollup.source == "icmp",
+            ServerHealthHourlyRollup.bucket_hour >= start_time,
+            ServerHealthHourlyRollup.device_id.in_(device_ids),
+        )
+        .group_by(ServerHealthHourlyRollup.bucket_hour)
+        .order_by(ServerHealthHourlyRollup.bucket_hour)
+        .all()
+    )
+
+
+def _query_metric_trends_daily(device_ids: list[int], start_time: datetime):
+    """Daily rollup aggregation. Used for >168h (30d) range."""
+    if not device_ids:
+        return []
+    return (
+        db.session.query(
+            ServerHealthDailyRollup.bucket_day,
+            func.avg(ServerHealthDailyRollup.avg_cpu_usage).label("avg_cpu"),
+            func.avg(ServerHealthDailyRollup.avg_memory_usage).label("avg_memory"),
+            func.avg(ServerHealthDailyRollup.avg_disk_usage).label("avg_disk"),
+            func.avg(ServerHealthDailyRollup.max_cpu_usage).label("max_cpu"),
+            func.avg(ServerHealthDailyRollup.max_memory_usage).label("max_memory"),
+            func.avg(ServerHealthDailyRollup.max_disk_usage).label("max_disk"),
+            func.avg(ServerHealthDailyRollup.avg_network_in_bps).label("avg_net_in"),
+            func.avg(ServerHealthDailyRollup.avg_network_out_bps).label("avg_net_out"),
+        )
+        .filter(
+            ServerHealthDailyRollup.source == "agent",
+            ServerHealthDailyRollup.bucket_day >= start_time.date(),
+            ServerHealthDailyRollup.device_id.in_(device_ids),
+        )
+        .group_by(ServerHealthDailyRollup.bucket_day)
+        .order_by(ServerHealthDailyRollup.bucket_day)
+        .all()
+    )
+
+
+def _query_latency_trend_daily(device_ids: list[int], start_time: datetime):
+    """Daily ICMP latency rollup. Used for >168h (30d) range."""
+    if not device_ids:
+        return []
+    return (
+        db.session.query(
+            ServerHealthDailyRollup.bucket_day,
+            func.avg(ServerHealthDailyRollup.avg_ping_latency_ms).label("avg_latency"),
+        )
+        .filter(
+            ServerHealthDailyRollup.source == "icmp",
+            ServerHealthDailyRollup.bucket_day >= start_time.date(),
+            ServerHealthDailyRollup.device_id.in_(device_ids),
+        )
+        .group_by(ServerHealthDailyRollup.bucket_day)
+        .order_by(ServerHealthDailyRollup.bucket_day)
         .all()
     )
 
@@ -244,24 +369,37 @@ def _compute_window_uptime_pct(
     return round((len(unique_hours) / expected) * 100.0, 1)
 
 
+_METRIC_AVG_ATTR = {
+    "cpu_usage_pct": "avg_cpu",
+    "memory_usage_pct": "avg_memory",
+    "disk_usage_pct": "avg_disk",
+}
+_METRIC_MAX_ATTR = {
+    "cpu_usage_pct": "max_cpu",
+    "memory_usage_pct": "max_memory",
+    "disk_usage_pct": "max_disk",
+}
+
+
 def _build_series_payload(metric_key: str, rows, current_window_start: datetime):
     threshold_profile = get_merged_thresholds().get("metrics", {}).get(metric_key, {})
-    attr = {
-        "cpu_usage_pct": "avg_cpu",
-        "memory_usage_pct": "avg_memory",
-        "disk_usage_pct": "avg_disk",
-    }[metric_key]
+    attr = _METRIC_AVG_ATTR[metric_key]
+    max_attr = _METRIC_MAX_ATTR[metric_key]
     labels = []
     values = []
+    peak_values = []
     previous_values = []
 
+    window_start_str = current_window_start.strftime("%Y-%m-%dT%H:00:00")
     for row in rows:
         hour_value = row[0]
         label = _hour_label(hour_value)
         numeric_value = _safe_float(getattr(row, attr, None))
-        if label >= current_window_start.strftime("%Y-%m-%dT%H:00:00"):
+        peak_value = _safe_float(getattr(row, max_attr, None))
+        if label >= window_start_str:
             labels.append(label)
             values.append(round(numeric_value or 0.0, 2))
+            peak_values.append(round(peak_value, 2) if peak_value is not None else None)
         elif numeric_value is not None:
             previous_values.append(numeric_value)
 
@@ -286,6 +424,7 @@ def _build_series_payload(metric_key: str, rows, current_window_start: datetime)
     return {
         "labels": labels,
         "values": values,
+        "peak": peak_values,
         "warning": warning,
         "critical": critical,
         "bands": build_chart_threshold_bands(metric_key),
@@ -294,6 +433,32 @@ def _build_series_payload(metric_key: str, rows, current_window_start: datetime)
         "previous_avg": previous_avg,
         "delta": delta,
     }
+
+
+def _build_network_series(rows, current_window_start: datetime, attr: str) -> dict:
+    """Build a simple time-series payload for network in/out bps."""
+    labels = []
+    values = []
+    window_start_str = current_window_start.strftime("%Y-%m-%dT%H:00:00")
+    for row in rows:
+        label = _hour_label(row[0])
+        if label >= window_start_str:
+            labels.append(label)
+            raw = _safe_float(getattr(row, attr, None))
+            values.append(round(raw, 2) if raw is not None else 0.0)
+    return {"labels": labels, "values": values}
+
+
+def _build_latency_series(rows) -> dict:
+    """Build a simple time-series payload for ICMP latency (ms)."""
+    labels = []
+    values = []
+    for row in rows:
+        label = _hour_label(row[0])
+        raw = _safe_float(getattr(row, "avg_latency", None))
+        labels.append(label)
+        values.append(round(raw, 2) if raw is not None else 0.0)
+    return {"labels": labels, "values": values}
 
 
 def _build_issue_from_evaluation(device, log, evaluation, matching_event: DashboardEvent | None):
@@ -411,7 +576,7 @@ def _build_synthetic_alert(issue: dict, row: dict) -> dict:
     }
 
 
-def build_server_incident_snapshot(scoped_servers) -> dict:
+def build_server_incident_snapshot(scoped_servers, range_hours: int = 24) -> dict:
     thresholds = get_merged_thresholds()
     now = _utcnow_naive()
     server_ids = [int(device.device_id) for device in scoped_servers if getattr(device, "device_id", None) is not None]
@@ -526,13 +691,37 @@ def build_server_incident_snapshot(scoped_servers) -> dict:
     active_issues.sort(key=_issue_sort_key, reverse=True)
     dominant_issue = active_issues[0] if active_issues else None
 
+    # Uptime always computed over last 24h regardless of chart range
     start_48h = now - timedelta(hours=48)
     current_24h_start = now - timedelta(hours=24)
-    trend_rows = _query_metric_trends(server_ids, start_48h)
+
+    # Trend range routing
+    range_label_map = {1: "1h", 6: "6h", 24: "24h", 168: "7d", 720: "30d"}
+    range_label = range_label_map.get(range_hours, f"{range_hours}h")
+
+    if range_hours <= 24:
+        trend_start = now - timedelta(hours=48)
+        trend_window_start = current_24h_start
+        trend_rows = _query_metric_trends(server_ids, trend_start)
+        latency_rows = _query_latency_trend_raw(server_ids, current_24h_start)
+    elif range_hours <= 168:
+        trend_start = now - timedelta(hours=range_hours)
+        trend_window_start = trend_start
+        trend_rows = _query_metric_trends_hourly(server_ids, trend_start)
+        latency_rows = _query_latency_trend_hourly(server_ids, trend_start)
+    else:
+        trend_start = now - timedelta(hours=range_hours)
+        trend_window_start = trend_start
+        trend_rows = _query_metric_trends_daily(server_ids, trend_start)
+        latency_rows = _query_latency_trend_daily(server_ids, trend_start)
+
     trend_payload = {
-        "cpu": _build_series_payload("cpu_usage_pct", trend_rows, current_24h_start),
-        "memory": _build_series_payload("memory_usage_pct", trend_rows, current_24h_start),
-        "disk": _build_series_payload("disk_usage_pct", trend_rows, current_24h_start),
+        "cpu": _build_series_payload("cpu_usage_pct", trend_rows, trend_window_start),
+        "memory": _build_series_payload("memory_usage_pct", trend_rows, trend_window_start),
+        "disk": _build_series_payload("disk_usage_pct", trend_rows, trend_window_start),
+        "network_in": _build_network_series(trend_rows, trend_window_start, "avg_net_in"),
+        "network_out": _build_network_series(trend_rows, trend_window_start, "avg_net_out"),
+        "latency": _build_latency_series(latency_rows),
     }
 
     hourly_pairs = _query_hourly_coverage(server_ids, start_48h)
@@ -623,9 +812,14 @@ def build_server_incident_snapshot(scoped_servers) -> dict:
         "metric_cards": metric_cards,
         "trends": {
             "labels": trend_payload["cpu"]["labels"],
+            "range_hours": range_hours,
+            "range_label": range_label,
             "cpu": trend_payload["cpu"],
             "memory": trend_payload["memory"],
             "disk": trend_payload["disk"],
+            "network_in": trend_payload["network_in"],
+            "network_out": trend_payload["network_out"],
+            "latency": trend_payload["latency"],
         },
         "uptime": {
             "current_24h_pct": uptime_current,

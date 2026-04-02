@@ -701,9 +701,15 @@ def server_monitoring_page(device_id):
     )
 
 
+_RANGE_HOURS_MAP = {"1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720}
+
+
 @server_metrics_bp.route("/api/server/fleet-metrics")
 def get_fleet_metrics():
     try:
+        range_param = request.args.get("range", "24h")
+        range_hours = _RANGE_HOURS_MAP.get(range_param, 24)
+
         scoped_servers, scoped_server_ids = _scoped_server_devices()
         if not scoped_servers:
             return jsonify(
@@ -725,13 +731,13 @@ def get_fleet_metrics():
                     },
                     "filters": {"all": 0, "problem": 0, "healthy": 0, "critical": 0, "warning": 0},
                     "metric_cards": {},
-                    "trends": {"labels": [], "cpu": {}, "memory": {}, "disk": {}},
+                    "trends": {"labels": [], "range_hours": range_hours, "range_label": range_param, "cpu": {}, "memory": {}, "disk": {}, "network_in": {}, "network_out": {}, "latency": {}},
                     "uptime": {"current_24h_pct": 0.0, "previous_24h_pct": 0.0, "delta_pct": 0.0},
                     "synthetic_alerts": [],
                     "thresholds": {},
                 }
             )
-        return jsonify(build_server_incident_snapshot(scoped_servers))
+        return jsonify(build_server_incident_snapshot(scoped_servers, range_hours=range_hours))
     except Exception as exc:
         current_app.logger.exception("[fleet_metrics] Failed to build fleet snapshot")
         return jsonify({"error": str(exc)}), 500
@@ -948,11 +954,13 @@ def _serve_server_telemetry(device_id):
 
 
 @server_metrics_bp.route("/api/server/<int:device_id>/metrics")
+@require_login
 def get_server_metrics(device_id):
     return _serve_server_telemetry(device_id)
 
 
 @server_metrics_bp.route("/api/devices/<int:device_id>/telemetry")
+@require_login
 def get_device_server_telemetry(device_id):
     return _serve_server_telemetry(device_id)
 
