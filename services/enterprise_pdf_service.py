@@ -2717,9 +2717,15 @@ def generate_device_inspector_pdf(
     downtime_h = stats.get('downtime_hours')
     if downtime_h is None:
         downtime_h = round((100.0 - uptime) / 100.0 * period_hours, 2)
-    total_scans    = stats.get('total_scans', 0)
-    expected_scans = int(period_hours * 12)   # 5-min interval = 12/hr
-    coverage_pct   = round(total_scans / expected_scans * 100, 1) if expected_scans else 0
+    total_scans     = stats.get('total_scans', 0)
+    from services.settings_service import get_monitoring_interval as _get_interval
+    _interval_s     = _get_interval()
+    _interval_per_h = 3600.0 / _interval_s if _interval_s > 0 else 12.0
+    expected_scans  = int(period_hours * _interval_per_h)
+    _interval_label = f"{_interval_s // 60} min" if _interval_s > 0 else "5 min"
+    coverage_pct    = round(total_scans / expected_scans * 100, 1) if expected_scans else 0
+    timeout_count   = stats.get('no_response_count', 0) or 0
+    timeout_pct     = round(timeout_count / expected_scans * 100, 2) if expected_scans > 0 else 0.0
 
     # ── Data Confidence Banner ────────────────────────────────────────────────
     _conf_level = _confidence_label(coverage_pct)
@@ -2745,7 +2751,6 @@ def generate_device_inspector_pdf(
     ))
     story.append(Spacer(1, 0.25 * cm))
 
-    scan_display   = f"{total_scans:,} ({coverage_pct}% of {expected_scans:,} expected)"
     tier = (
         "Gold"    if uptime >= SLA_GOLD    else
         "Silver"  if uptime >= SLA_SILVER  else
@@ -2756,32 +2761,32 @@ def generate_device_inspector_pdf(
     uptime_h = round(uptime / 100.0 * period_hours, 2)
     avail_data = [
         [
-            _h("Total Scans"), _h("Online"), _h("Offline"), _h("No Response"),
-            _h("Uptime %"), _h("Uptime (hrs)"), _h("Downtime %"), _h("Downtime (hrs)"),
+            _h("Device Role"), _h("SLA Tier"), _h("Uptime %"), _h("Uptime (Hrs)"),
+            _h("Downtime %"), _h("Downtime (Hrs)"), _h("Actual Scans"), _h("Expected Scans"),
         ],
         [
-            _cell(scan_display),
-            _cell(stats.get('online_count', 0)),
-            _cell(stats.get('offline_count', 0)),
-            _cell(stats.get('no_response_count', 0)),
+            _cell(stats.get('device_type', '—')),
+            _cell(tier),
             _cell(_fmt_uptime(uptime)),
-            _cell(f"{uptime_h:.2f} hrs"),
+            _cell(f"{uptime_h:.1f} h"),
             _cell(f"{(100.0 - uptime):.2f}%"),
-            _cell(f"{downtime_h:.2f} hrs"),
+            _cell(f"{downtime_h:.2f} h"),
+            _cell(f"{total_scans:,}"),
+            _cell(f"{expected_scans:,}"),
         ],
     ]
     # 8 equal columns totalling _CONTENT_W
-    _col6 = [_CONTENT_W / 8] * 8
+    _col8 = [_CONTENT_W / 8] * 8
     ts_avail = base_table_style()
     ts_avail.add('VALIGN',     (0, 0), (-1, 0), 'TOP')
-    ts_avail.add('BACKGROUND', (4, 1), (4, 1), hex_color(tbg))
-    ts_avail.add('TEXTCOLOR',  (4, 1), (4, 1), hex_color(tc))
-    ts_avail.add('FONTNAME',   (4, 1), (4, 1), 'Helvetica-Bold')
-    story.append(Paragraph('<b>Availability</b>',
+    ts_avail.add('BACKGROUND', (1, 1), (1, 1), hex_color(tbg))
+    ts_avail.add('TEXTCOLOR',  (1, 1), (1, 1), hex_color(tc))
+    ts_avail.add('FONTNAME',   (1, 1), (1, 1), 'Helvetica-Bold')
+    story.append(Paragraph('<b>Availability &amp; SLA Ledger</b>',
         ParagraphStyle('sec', parent=styles['Normal'], fontName='Helvetica-Bold',
                        fontSize=11, spaceBefore=10, spaceAfter=5,
                        textColor=hex_color(NAVY))))
-    story.append(Table(avail_data, colWidths=_col6, hAlign='LEFT',
+    story.append(Table(avail_data, colWidths=_col8, hAlign='LEFT',
                        style=ts_avail, repeatRows=1))
     story.append(Spacer(1, 0.3 * cm))
 
@@ -2802,23 +2807,25 @@ def generate_device_inspector_pdf(
 
     # ── Latency & Packet Loss ──────────────────────────────────────────────────
     if stats.get('avg_latency') is not None:
-        # 5 columns, equal widths
-        _col5 = [_CONTENT_W / 5] * 5
+        # 6 columns, equal widths
+        _col6 = [_CONTENT_W / 6] * 6
         lat_data = [
-            [_h("Avg Latency"), _h("Min Latency"), _h("Max Latency"), _h("Std Dev"), _h("Avg Pkt Loss")],
+            [_h("Ping Interval"), _h("Avg Latency"), _h("Min Latency"),
+             _h("Max Latency"), _h("Avg Pkt Loss"), _h("Timeout %")],
             [
+                _cell(_interval_label),
                 _cell(_fmt_num(stats.get('avg_latency'),     ' ms')),
                 _cell(_fmt_num(stats.get('min_latency'),     ' ms')),
                 _cell(_fmt_num(stats.get('max_latency'),     ' ms')),
-                _cell(_fmt_num(stats.get('latency_std_dev'), ' ms')),
                 _cell(_fmt_num(stats.get('avg_packet_loss'), '%')),
+                _cell(f"{timeout_pct:.2f}%" if expected_scans > 0 else "—"),
             ],
         ]
-        story.append(Paragraph('<b>Latency &amp; Packet Loss</b>',
+        story.append(Paragraph('<b>Ping, Latency &amp; Packet Health</b>',
             ParagraphStyle('sec', parent=styles['Normal'], fontName='Helvetica-Bold',
                            fontSize=11, spaceBefore=8, spaceAfter=5,
                            textColor=hex_color(NAVY))))
-        story.append(Table(lat_data, colWidths=_col5, hAlign='LEFT',
+        story.append(Table(lat_data, colWidths=_col6, hAlign='LEFT',
                            style=base_table_style(), repeatRows=1))
         story.append(Spacer(1, 0.5*cm))
 
@@ -2848,7 +2855,7 @@ def generate_device_inspector_pdf(
         ]
         ts_ag = base_table_style()
         ts_ag.add('VALIGN', (0, 0), (-1, 0), 'TOP')
-        story.append(Paragraph('<b>Agent Telemetry (Latest Sample)</b>',
+        story.append(Paragraph('<b>Telemetry &amp; Diagnostic Context</b>',
             ParagraphStyle('sec', parent=styles['Normal'], fontName='Helvetica-Bold',
                            fontSize=11, spaceBefore=8, spaceAfter=5,
                            textColor=hex_color(NAVY))))
