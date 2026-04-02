@@ -19,11 +19,40 @@ def _counter32_delta(prev: int, curr: int) -> int:
     return delta
 
 
+def _build_interface_threshold_payload(
+    device_id: int,
+    iface_name: str,
+    if_index: int,
+    rx_util: float | None,
+    tx_util: float | None,
+    threshold_pct: float,
+) -> dict:
+    rx_breach = rx_util is not None and rx_util >= threshold_pct
+    tx_breach = tx_util is not None and tx_util >= threshold_pct
+    if rx_breach and tx_breach:
+        direction = 'both'
+    elif rx_breach:
+        direction = 'rx'
+    else:
+        direction = 'tx'
+    return {
+        'device_id': device_id,
+        'interface_name': iface_name,
+        'if_index': if_index,
+        'rx_util_pct': rx_util,
+        'tx_util_pct': tx_util,
+        'threshold_pct': threshold_pct,
+        'direction': direction,
+    }
+
+
 class InterfacePoller:
     """
     Service to poll interface statistics from devices and store history.
     Simulation disabled: only real backend data should be stored.
     """
+
+    INTERFACE_UTIL_THRESHOLD_PCT: int = 80
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -254,6 +283,38 @@ class InterfacePoller:
                         )
                         db.session.add(history)
                         rows_written += 1
+
+                        # Broadcast interface_threshold SSE event when utilisation breaches threshold.
+                        # SNMP polling is currently paused — this fires when a managed switch is enabled.
+                        _threshold = (
+                            self._app.config.get(
+                                'INTERFACE_UTIL_THRESHOLD_PCT',
+                                self.INTERFACE_UTIL_THRESHOLD_PCT,
+                            )
+                            if self._app else self.INTERFACE_UTIL_THRESHOLD_PCT
+                        )
+                        rx_breach = rx_util is not None and rx_util >= _threshold
+                        tx_breach = tx_util is not None and tx_util >= _threshold
+                        if rx_breach or tx_breach:
+                            try:
+                                from services.sse_broadcaster import broadcast_event
+                                broadcast_event(
+                                    'interface_threshold',
+                                    _build_interface_threshold_payload(
+                                        device_id,
+                                        iface.name or f'if{if_index}',
+                                        if_index,
+                                        rx_util,
+                                        tx_util,
+                                        _threshold,
+                                    ),
+                                )
+                            except Exception as _sse_err:
+                                log.warning(
+                                    "[InterfacePoller] interface_threshold broadcast error "
+                                    "device=%s if=%s: %s",
+                                    device_id, if_index, _sse_err,
+                                )
 
                 # Update snapshot for next poll cycle
                 if curr_in is not None:
