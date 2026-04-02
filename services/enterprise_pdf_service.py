@@ -1686,43 +1686,30 @@ def _build_tracked_fleet(report: dict, styles) -> list:
         total_rows=len(rows),
     ))
 
-    # 9-column availability table — Uptime and Downtime show %/hrs combined
-    def _sla_col(r):
-        return _sla_badge_style(r.get("sla_tier", "Unknown"))
+    styles_ref = getSampleStyleSheet()
 
-    def _status_col(r):
-        return _status_style((r.get("availability_status") or "unknown").lower())
+    # ── TABLE 1 of 3 — Availability & SLA Ledger ─────────────────────────────
+    elems.append(_table_label("TABLE 1 of 3 — Availability & SLA Ledger", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_AVAILABILITY,
+        caption="Uptime and downtime for the reporting period. SLA tier based on uptime %."
+    ))
 
-    ws_col_specs = [
-        {"header": "Device Name",  "width": "18%",
-         "fmt": lambda r: (r.get("device_name") or "—")[:26]},
-        {"header": "Employee",     "width": "11%",
-         "fmt": lambda r: (r.get("employee_name") or "—")[:14]},
-        {"header": "Department",   "width": "10%",
-         "fmt": lambda r: (r.get("department") or "—")[:13]},
-        {"header": "IP Address",   "width": "9%", "key": "device_ip"},
-        {"header": "Status",       "width": "8%",
-         "fmt": lambda r: (r.get("availability_status") or "unknown").capitalize(),
-         "color_fn": _status_col, "align": "CENTER"},
-        {"header": "Uptime",       "width": "14%",
-         "fmt": lambda r: (
-             f"{_fmt_uptime(r.get('uptime_pct'))} / {_fmt_hours(r.get('uptime_hours'))}"
-             if r.get("uptime_pct") is not None else "—"
-         ),
-         "color_fn": _sla_col, "align": "RIGHT"},
-        {"header": "Downtime",     "width": "11%",
-         "fmt": lambda r: (
-             f"{_fmt_uptime(r.get('downtime_pct'))} / {_fmt_hours(r.get('downtime_hours'))}"
-             if r.get("downtime_pct") is not None else "—"
-         ),
-         "align": "RIGHT"},
-        {"header": "Last Seen",    "width": "11%",
-         "fmt": lambda r: _fmt_ts_short(r.get("last_seen"))},
-        {"header": "SLA Tier",     "width": "8%",
-         "fmt": lambda r: r.get("sla_tier", "Unknown"),
-         "color_fn": _sla_col, "align": "CENTER"},
-    ]
-    elems.extend(build_fleet_table(rows, ws_col_specs))
+    # ── TABLE 2 of 3 — Ping, Latency & Packet Health ─────────────────────────
+    elems.append(SP_TABLE_GAP)
+    elems.append(_table_label("TABLE 2 of 3 — Ping, Latency & Packet Health", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_PING,
+        caption="Workstation devices use event-based availability — ICMP columns show — by design."
+    ))
+
+    # ── TABLE 3 of 3 — Telemetry & Diagnostic Context ────────────────────────
+    elems.append(SP_TABLE_GAP)
+    elems.append(_table_label("TABLE 3 of 3 — Telemetry & Diagnostic Context", styles_ref))
+    elems.extend(build_fleet_table(
+        rows, _COLS_TELEMETRY,
+        caption="LOW CONFIDENCE = actual scans < 70% of expected. Violations = anomaly_reason."
+    ))
 
     # Workstation behavioral metrics — second table, shown when agent data exists
     beh_rows = [
