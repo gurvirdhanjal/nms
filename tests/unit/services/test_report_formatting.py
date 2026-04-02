@@ -300,3 +300,42 @@ class TestBuildReportFooter:
         footer = _mod().build_report_footer("HIGH", "agent telemetry")
         assert "HIGH" in footer["data_confidence"]
         assert "agent telemetry" in footer["data_confidence"]
+
+
+def test_raw_scan_uptime_rows_min_latency_key_present(app):
+    """min_latency_ms must be a key in every row returned by _raw_scan_uptime_rows."""
+    import pytest
+    from unittest.mock import patch
+    from services.reporting.base import ReportingServiceBase
+    from datetime import datetime, timedelta
+    _ADMIN_SCOPE = {
+        'role': 'admin', 'scope_type': 'global', 'scope_key': 'global',
+        'scope_label': 'Global', 'site_id': None, 'department_id': None,
+    }
+    with app.app_context():
+        from extensions import db
+        from models.device import Device
+        from models.scan_history import DeviceScanHistory
+        end = datetime.utcnow()
+        start = end - timedelta(days=1)
+        with patch('services.reporting.base.build_scope_context', return_value=_ADMIN_SCOPE):
+            svc = ReportingServiceBase()
+        dev = Device(device_name="test-min-lat", device_ip="10.0.0.99", device_type="server")
+        db.session.add(dev)
+        db.session.flush()
+        scan = DeviceScanHistory(
+            device_ip="10.0.0.99", device_name="test-min-lat",
+            status="online", ping_time_ms=12.5, packet_loss=0.0,
+            scan_timestamp=start + timedelta(minutes=5),
+        )
+        db.session.add(scan)
+        db.session.flush()
+        with patch('services.reporting.base.scoped_query', side_effect=lambda m: m.query):
+            rows = svc._raw_scan_uptime_rows(
+                device_ids=[dev.device_id], start_date=start, end_date=end
+            )
+        assert len(rows) == 1
+        row = rows[0]
+        assert hasattr(row, "min_latency_ms") or "min_latency_ms" in dict(row._mapping)
+        assert row.min_latency_ms == pytest.approx(12.5, abs=0.1)
+        db.session.rollback()

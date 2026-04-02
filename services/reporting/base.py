@@ -231,6 +231,12 @@ class ReportingServiceBase:
                         else_=literal_column("NULL"),
                     )
                 ).label("avg_latency"),
+                func.min(
+                    case(
+                        (combined.c.ping_time_ms.between(0, 60000), combined.c.ping_time_ms),
+                        else_=literal_column("NULL"),
+                    )
+                ).label("min_latency_ms"),
                 func.avg(
                     case(
                         (combined.c.packet_loss.between(0, 100), combined.c.packet_loss),
