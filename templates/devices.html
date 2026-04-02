@@ -1872,6 +1872,10 @@
                                         <label class="form-label" for="snmpModalPort">Port</label>
                                         <input type="number" class="form-control bg-dark text-light border-secondary" id="snmpModalPort" min="1" max="65535" value="161">
                                     </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="snmpModalPollInterval">Poll Interval (s)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="snmpModalPollInterval" min="60" max="3600" value="300">
+                                    </div>
                                     <div class="col-12" id="snmpModalV2Fields">
                                         <label class="form-label" for="snmpModalCommunity">Community String</label>
                                         <input type="text" class="form-control bg-dark text-light border-secondary" id="snmpModalCommunity" value="public">
@@ -3285,6 +3289,7 @@
             if (enabledToggle) enabledToggle.checked = false;
             document.getElementById('snmpModalVersion').value = 'v2c';
             document.getElementById('snmpModalPort').value = '161';
+            document.getElementById('snmpModalPollInterval').value = '300';
             document.getElementById('snmpModalCommunity').value = 'public';
             document.getElementById('snmpModalUsername').value = '';
             document.getElementById('snmpModalAuthProto').value = '';
@@ -3346,36 +3351,47 @@
             modal.show();
 
             try {
-                const response = await fetch(`/api/devices/${deviceId}`);
-                const payload = await response.json();
-                const device = (payload.success && payload.device) ? payload.device : null;
-                if (!response.ok || !device) {
-                    throw new Error(payload.error || 'Failed to load SNMP configuration');
+                // Fetch device basics and SNMP config in parallel
+                const [devResp, cfgResp] = await Promise.all([
+                    fetch(`/api/devices/${deviceId}`),
+                    fetch(`/api/snmp/config/${deviceId}`)
+                ]);
+                const devPayload = await devResp.json();
+                const cfgPayload = await cfgResp.json();
+
+                const device = (devPayload.success && devPayload.device) ? devPayload.device : null;
+                if (!devResp.ok || !device) {
+                    throw new Error(devPayload.error || 'Failed to load device');
                 }
 
+                // Header info from device
                 document.getElementById('snmpModalDeviceName').textContent = device.device_name || `Device ${deviceId}`;
                 document.getElementById('snmpModalDeviceIp').textContent = device.device_ip || '-';
                 document.getElementById('snmpModalDeviceMode').textContent = (device.monitoring_mode || 'ping').toUpperCase();
                 document.getElementById('snmpModalCurrentModeValue').textContent = (device.monitoring_mode || 'ping').toUpperCase();
-                document.getElementById('snmpModalLastPollValue').textContent = formatSnmpLastPoll(device.snmp_last_poll);
-                document.getElementById('snmpModalEnabled').checked = Boolean(device.snmp_enabled);
 
-                const config = device.snmp_config || {};
-                const configVersion = String(config.snmp_version || '').trim().toLowerCase().replace(/^v/, '');
-                document.getElementById('snmpModalVersion').value = configVersion === '3' ? 'v3' : 'v2c';
-                document.getElementById('snmpModalPort').value = config.snmp_port || '161';
-                document.getElementById('snmpModalCommunity').value = config.community_string || device.snmp_community || 'public';
-                document.getElementById('snmpModalUsername').value = config.security_name || '';
-                document.getElementById('snmpModalAuthProto').value = config.auth_protocol || '';
-                document.getElementById('snmpModalAuthPassword').value = config.auth_password || '';
-                document.getElementById('snmpModalPrivProto').value = config.priv_protocol || '';
-                document.getElementById('snmpModalPrivPassword').value = config.priv_password || '';
+                // SNMP config from dedicated endpoint (DB-backed).
+                // Returns {config: {...}} when configured, {defaults: {...}} when not yet set.
+                const cfg = cfgPayload.config || cfgPayload.defaults || {};
+                document.getElementById('snmpModalEnabled').checked = Boolean(cfg.is_enabled);
+                document.getElementById('snmpModalLastPollValue').textContent = formatSnmpLastPoll(cfg.last_successful_poll);
+
+                const cfgVersion = String(cfg.snmp_version || '').trim().toLowerCase().replace(/^v/, '');
+                document.getElementById('snmpModalVersion').value = cfgVersion === '3' ? 'v3' : 'v2c';
+                document.getElementById('snmpModalPort').value = cfg.snmp_port || '161';
+                document.getElementById('snmpModalPollInterval').value = cfg.poll_interval_seconds || '300';
+                document.getElementById('snmpModalCommunity').value = cfg.community_string || 'public';
+                document.getElementById('snmpModalUsername').value = cfg.security_name || '';
+                document.getElementById('snmpModalAuthProto').value = cfg.auth_protocol || '';
+                document.getElementById('snmpModalAuthPassword').value = cfg.auth_password || '';
+                document.getElementById('snmpModalPrivProto').value = cfg.priv_protocol || '';
+                document.getElementById('snmpModalPrivPassword').value = cfg.priv_password || '';
 
                 const lastError = document.getElementById('snmpModalLastError');
-                if (device.snmp_last_error) {
-                    lastError.textContent = `Last poll error: ${device.snmp_last_error}`;
+                if (cfg.last_poll_error) {
+                    lastError.textContent = `Last poll error: ${cfg.last_poll_error}`;
                     lastError.classList.remove('devices-hidden');
-                } else if (lastError) {
+                } else {
                     lastError.textContent = '';
                     lastError.classList.add('devices-hidden');
                 }
@@ -3397,21 +3413,24 @@
 
             setSnmpModalBusy(true, 'Saving...');
 
+            const isEnabled = Boolean(document.getElementById('snmpModalEnabled')?.checked);
             const payload = {
-                enabled: Boolean(document.getElementById('snmpModalEnabled')?.checked),
+                device_id: currentSnmpDeviceId,
+                is_enabled: isEnabled,
                 snmp_version: document.getElementById('snmpModalVersion')?.value || 'v2c',
-                snmp_port: document.getElementById('snmpModalPort')?.value || '161',
-                snmp_community: document.getElementById('snmpModalCommunity')?.value || '',
-                snmp_username: document.getElementById('snmpModalUsername')?.value || '',
-                snmp_auth_proto: document.getElementById('snmpModalAuthProto')?.value || '',
-                snmp_auth_password: document.getElementById('snmpModalAuthPassword')?.value || '',
-                snmp_priv_proto: document.getElementById('snmpModalPrivProto')?.value || '',
-                snmp_priv_password: document.getElementById('snmpModalPrivPassword')?.value || ''
+                snmp_port: parseInt(document.getElementById('snmpModalPort')?.value || '161', 10),
+                poll_interval_seconds: parseInt(document.getElementById('snmpModalPollInterval')?.value || '300', 10),
+                community_string: document.getElementById('snmpModalCommunity')?.value || 'public',
+                security_name: document.getElementById('snmpModalUsername')?.value || '',
+                auth_protocol: document.getElementById('snmpModalAuthProto')?.value || '',
+                auth_password: document.getElementById('snmpModalAuthPassword')?.value || '',
+                priv_protocol: document.getElementById('snmpModalPrivProto')?.value || '',
+                priv_password: document.getElementById('snmpModalPrivPassword')?.value || ''
             };
 
             try {
-                const response = await fetch(`/api/devices/${currentSnmpDeviceId}/snmp`, {
-                    method: 'PATCH',
+                const response = await fetch(`/api/snmp/config`, {
+                    method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
@@ -3424,7 +3443,7 @@
                 }
 
                 getSnmpModal()?.hide();
-                showDevicesNotification(payload.enabled ? 'SNMP monitoring enabled.' : 'SNMP monitoring disabled.', 'success');
+                showDevicesNotification(isEnabled ? 'SNMP monitoring enabled.' : 'SNMP monitoring disabled.', 'success');
                 fetchDevices(currentPage);
             } catch (error) {
                 console.error(error);
