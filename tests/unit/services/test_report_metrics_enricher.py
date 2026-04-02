@@ -171,3 +171,45 @@ def test_ping_interval_label_on_row():
     e = _make_enricher(interval_s=300)
     row = e.enrich([_server_row()])[0]
     assert row["ping_interval_label"] == "5 min"
+
+
+# ── enrich() contract ────────────────────────────────────────────────────────
+
+def test_enrich_does_not_mutate_input_rows():
+    """enrich() must return new dicts; originals must be unchanged."""
+    e = _make_enricher()
+    original = _server_row()
+    original_keys = set(original.keys())
+    _ = e.enrich([original])
+    assert set(original.keys()) == original_keys   # no new keys on input
+
+
+def test_enrich_empty_list_returns_empty():
+    e = _make_enricher()
+    assert e.enrich([]) == []
+
+
+def test_enrich_server_row_agent_status_na_when_no_cpu():
+    e = _make_enricher()
+    row = e.enrich([_server_row(avg_cpu=None)])[0]
+    assert row["agent_status"] == "N/A"
+
+
+def test_enrich_server_row_agent_status_installed_when_cpu_present():
+    e = _make_enricher()
+    row = e.enrich([_server_row(avg_cpu=55.0)])[0]
+    assert row["agent_status"] == "Installed"
+
+
+def test_enrich_workstation_row_agent_installed():
+    e = _make_enricher()
+    ws_row = _server_row(fleet="workstation", uptime_pct=92.0, avg_cpu=None)
+    row = e.enrich([ws_row])[0]
+    assert row["agent_status"] == "Installed"
+
+
+def test_enrich_workstation_row_agent_offline_when_no_uptime():
+    e = _make_enricher()
+    ws_row = _server_row(fleet="workstation", uptime_pct=None, avg_cpu=None)
+    row = e.enrich([ws_row])[0]
+    assert row["agent_status"] == "Offline"
