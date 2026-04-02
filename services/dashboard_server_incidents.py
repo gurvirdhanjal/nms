@@ -245,7 +245,9 @@ def _query_metric_trends_hourly(device_ids: list[int], start_time: datetime):
             func.avg(ServerHealthHourlyRollup.avg_disk_usage).label("avg_disk"),
             func.avg(ServerHealthHourlyRollup.max_cpu_usage).label("max_cpu"),
             func.avg(ServerHealthHourlyRollup.max_memory_usage).label("max_memory"),
-            func.avg(ServerHealthHourlyRollup.max_disk_usage).label("max_disk"),
+            # max_disk_usage was never added to the hourly rollup model — use avg as proxy.
+            # Peak spikes won't surface here; raw-log path (≤24h) provides true max.
+            func.avg(ServerHealthHourlyRollup.avg_disk_usage).label("max_disk"),
             func.avg(ServerHealthHourlyRollup.avg_network_in_bps).label("avg_net_in"),
             func.avg(ServerHealthHourlyRollup.avg_network_out_bps).label("avg_net_out"),
         )
@@ -292,7 +294,8 @@ def _query_metric_trends_daily(device_ids: list[int], start_time: datetime):
             func.avg(ServerHealthDailyRollup.avg_disk_usage).label("avg_disk"),
             func.avg(ServerHealthDailyRollup.max_cpu_usage).label("max_cpu"),
             func.avg(ServerHealthDailyRollup.max_memory_usage).label("max_memory"),
-            func.avg(ServerHealthDailyRollup.max_disk_usage).label("max_disk"),
+            # max_disk_usage was never added to the daily rollup model — use avg as proxy.
+            func.avg(ServerHealthDailyRollup.avg_disk_usage).label("max_disk"),
             func.avg(ServerHealthDailyRollup.avg_network_in_bps).label("avg_net_in"),
             func.avg(ServerHealthDailyRollup.avg_network_out_bps).label("avg_net_out"),
         )
