@@ -440,45 +440,29 @@
         }
 
         .tactical-clock {
-            font-family: 'Rajdhani', sans-serif;
-            background: linear-gradient(145deg, rgba(0, 212, 170, 0.08) 0%, rgba(0, 212, 170, 0.02) 100%);
-            backdrop-filter: blur(8px);
-            padding: 0.45rem 1rem;
-            border: 1px solid rgba(0, 212, 170, 0.2);
-            border-radius: 8px;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            min-width: 140px; /* Wider for seconds */
-            line-height: 1.05;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 0 15px rgba(0, 212, 170, 0.05);
-            transition: all 0.3s ease;
-        }
-        
-        .tactical-clock:hover {
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(0, 212, 170, 0.1);
-            border-color: rgba(0, 212, 170, 0.4);
+            gap: 12px;
+            padding: 0 16px;
+            line-height: 1;
+            font-family: var(--ui-font-mono);
+            user-select: none;
+            border-right: 1px solid var(--ui-border);
         }
 
         .tactical-clock #clock-date {
-            font-size: 0.68rem;
-            letter-spacing: 0.12em;
-            color: var(--ui-accent-strong);
-            font-weight: 600;
+            font-size: 0.75rem;
+            color: var(--ui-text-muted);
+            font-weight: 500;
             text-transform: uppercase;
-            line-height: 1;
-            text-shadow: 0 0 8px rgba(0, 212, 170, 0.4);
+            letter-spacing: 0.05em;
         }
 
         .tactical-clock #clock-time {
-            font-size: 1.25rem;
-            color: #ffffff;
-            font-family: 'Orbitron', monospace;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            margin-top: 2px;
-            line-height: 1;
-            text-shadow: 0 0 12px rgba(255, 255, 255, 0.3), 0 0 20px rgba(0, 212, 170, 0.2);
+            font-size: 0.95rem;
+            color: var(--ui-text);
+            font-weight: 600;
+            letter-spacing: 0.05em;
         }
 
         .theme-toggle-btn {
@@ -1917,9 +1901,16 @@
                     <i class="fas fa-moon" id="theme-toggle-icon"></i>
                 </button>
                 <div class="tactical-clock">
-                    <div id="clock-date">--</div>
-                    <div id="clock-time">--:--:--</div>
+                    <div id="clock-date"></div>
+                    <div id="clock-time"></div>
                 </div>
+                <script>
+                    (function(){
+                        var d = new Date();
+                        document.getElementById('clock-date').textContent = d.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
+                        document.getElementById('clock-time').textContent = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
+                    })();
+                </script>
                 {% if session.logged_in %}
                 <div class="dropdown">
                     <button class="header-user-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
