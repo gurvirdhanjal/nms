@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def _to_naive_utc(dt: datetime) -> datetime:
-    """Normalise a datetime to naive UTC. Prevents TypeError on aware/naive subtraction."""
+    """Normalise a datetime to naive UTC. Prevents TypeError on aware/naive subtraction.
+
+    Raises ValueError on None input — callers must supply valid datetimes.
+    """
+    if dt is None:
+        raise ValueError("_to_naive_utc: datetime must not be None")
     if dt.tzinfo is not None:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
@@ -33,12 +38,16 @@ class ReportMetricsEnricher:
         end   = _to_naive_utc(end_date)
         period_s = (end - start).total_seconds()
 
-        self.period_hours: float   = period_s / 3600.0
+        self.period_hours: float   = max(0.0, period_s / 3600.0)
         self.interval_seconds: int = int(interval_seconds) if interval_seconds else 0
 
-        if self.interval_seconds > 0:
+        if self.interval_seconds > 0 and period_s > 0:
             self.expected_scans: Optional[int]  = int(period_s / self.interval_seconds)
             self.ping_interval_label: str       = f"{self.interval_seconds // 60} min"
+        elif self.interval_seconds > 0:
+            # interval set but period is zero or negative — degrade gracefully
+            self.expected_scans      = None
+            self.ping_interval_label = f"{self.interval_seconds // 60} min"
         else:
             self.expected_scans      = None
             self.ping_interval_label = "—"
