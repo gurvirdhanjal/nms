@@ -272,6 +272,70 @@ def _kpi_color(val: float, high: float = 90.0, med: float = 70.0) -> str:
     return "#DC2626"
 
 
+# ── 3-table layout helpers ────────────────────────────────────────────────────
+
+def _fmt_min_max(row: dict) -> str:
+    """Format 'Min / Max' latency cell. Returns '8 / 210' or '— / —'."""
+    mn = row.get("min_latency_ms")
+    mx = row.get("max_latency_ms")
+    mn_s = f"{mn:.0f}" if mn is not None else "—"
+    mx_s = f"{mx:.0f}" if mx is not None else "—"
+    return f"{mn_s} / {mx_s}"
+
+
+def _agent_color(row: dict):
+    """Return (text_hex, bg_hex) for Agent Status badge cell."""
+    status = (row.get("agent_status") or "").upper()
+    if status == "INSTALLED":
+        return ("#166534", "#DCFCE7")   # green
+    if status == "OFFLINE":
+        return ("#991B1B", "#FEE2E2")   # red
+    return ("#374151", "#F3F4F6")        # grey for N/A / unknown
+
+
+def _confidence_color_fn(row: dict):
+    """Return (text_hex, bg_hex) using existing _CONFIDENCE_COLORS/_CONFIDENCE_BG dicts."""
+    level = (row.get("data_confidence") or "NO_DATA").upper()
+    text  = _CONFIDENCE_COLORS.get(level, _CONFIDENCE_COLORS["NO_DATA"])
+    bg    = _CONFIDENCE_BG.get(level, _CONFIDENCE_BG["NO_DATA"])
+    return (text, bg)
+
+
+# ── Fleet table column specs (3-table layout) ─────────────────────────────────
+# All width lists must sum to 100% to fill ReportLab landscape content width.
+
+_COLS_AVAILABILITY = [
+    {"header": "Device Name",    "width": "26%", "key": "device_name",    "max_chars": 26, "align": "LEFT"},
+    {"header": "IP Address",     "width": "11%", "key": "device_ip",      "align": "LEFT"},
+    {"header": "Device Role",    "width": "9%",  "key": "device_type",    "align": "CENTER"},
+    {"header": "SLA Tier",       "width": "9%",  "key": "sla_tier",       "align": "CENTER",
+     "color_fn": lambda r: _sla_badge_style(r.get("sla_tier", "Unknown"))},
+    {"header": "Uptime %",       "width": "9%",  "fmt": lambda r: _fmt_uptime(r.get("uptime_pct")),    "align": "RIGHT"},
+    {"header": "Uptime (Hrs)",   "width": "9%",  "fmt": lambda r: _fmt_hours(r.get("uptime_hours")),   "align": "RIGHT"},
+    {"header": "Downtime %",     "width": "9%",  "fmt": lambda r: _fmt_uptime(r.get("downtime_pct")),  "align": "RIGHT"},
+    {"header": "Downtime (Hrs)", "width": "18%", "fmt": lambda r: _fmt_hours(r.get("downtime_hours")), "align": "RIGHT"},
+]  # 26+11+9+9+9+9+9+18 = 100%
+
+_COLS_PING = [
+    {"header": "Device Name",       "width": "22%", "key": "device_name",         "max_chars": 26, "align": "LEFT"},
+    {"header": "Ping Interval",     "width": "10%", "key": "ping_interval_label",  "align": "CENTER"},
+    {"header": "Avg Latency (ms)",  "width": "14%", "fmt": lambda r: _fmt_num(r.get("avg_latency_ms"), ""), "align": "RIGHT"},
+    {"header": "Min / Max (ms)",    "width": "16%", "fmt": _fmt_min_max,            "align": "RIGHT"},
+    {"header": "Packet Loss %",     "width": "12%", "fmt": lambda r: _fmt_num(r.get("avg_packet_loss_pct"), "%"), "align": "RIGHT"},
+    {"header": "Total Timeouts",    "width": "12%", "fmt": lambda r: str(r.get("timeout_count") or "—"),       "align": "RIGHT"},
+    {"header": "Timeout %",         "width": "14%", "fmt": lambda r: _fmt_num(r.get("timeout_pct"), "%"),       "align": "RIGHT"},
+]  # 22+10+14+16+12+12+14 = 100%
+
+_COLS_TELEMETRY = [
+    {"header": "Device Name",      "width": "22%", "key": "device_name",     "max_chars": 26, "align": "LEFT"},
+    {"header": "Agent Status",     "width": "12%", "key": "agent_status",    "align": "CENTER", "color_fn": _agent_color},
+    {"header": "Expected Scans",   "width": "13%", "fmt": lambda r: str(r.get("expected_scans") or "—"), "align": "RIGHT"},
+    {"header": "Actual Scans",     "width": "13%", "fmt": lambda r: str(r.get("actual_scans")   or "—"), "align": "RIGHT"},
+    {"header": "Data Confidence",  "width": "14%", "key": "data_confidence", "align": "CENTER", "color_fn": _confidence_color_fn},
+    {"header": "Top Violations",   "width": "26%", "key": "anomaly_reason",  "max_chars": 32,   "align": "LEFT"},
+]  # 22+12+13+13+14+26 = 100%
+
+
 def kpi_strip(items: list) -> Table:
     """Build a dark-background KPI card strip.
 
@@ -2416,6 +2480,176 @@ def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
     return buf
 
 
+# ── Inspector PDF private helpers ────────────────────────────────────────────
+
+def _confidence_label(coverage_pct: float) -> str:
+    """HIGH / MEDIUM / LOW based on scan coverage %."""
+    if coverage_pct >= 80:
+        return "HIGH"
+    if coverage_pct >= 40:
+        return "MEDIUM"
+    return "LOW"
+
+
+def _build_availability_bar(scan_series: List[dict], content_w: float, n_bins: int = 60) -> list:
+    """Single-row colored availability bar.  Green=online, red=offline, amber=no_response."""
+    if not scan_series:
+        return []
+    _BAR = {'online': '#16A34A', 'offline': '#DC2626', 'no_response': '#D97706'}
+
+    bin_lists: List[List[str]] = [[] for _ in range(n_bins)]
+    total = len(scan_series)
+    for i, s in enumerate(scan_series):
+        idx = min(int(i * n_bins / total), n_bins - 1)
+        bin_lists[idx].append(s.get('status', 'unknown'))
+
+    def _dominant(sl: List[str]) -> str:
+        if not sl:
+            return 'unknown'
+        if 'offline' in sl:
+            return 'offline'
+        if 'no_response' in sl:
+            return 'no_response'
+        return 'online'
+
+    cell_w = content_w / n_bins
+    data = [['' for _ in range(n_bins)]]
+    ts = TableStyle([
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ])
+    for j, sl in enumerate(bin_lists):
+        d = _dominant(sl)
+        ts.add('BACKGROUND', (j, 0), (j, 0), hex_color(_BAR.get(d, '#CBD5E0')))
+    tbl = Table(data, colWidths=[cell_w] * n_bins, rowHeights=[14])
+    tbl.setStyle(ts)
+    return [tbl]
+
+
+def _extract_incidents(scan_series: List[dict]) -> List[dict]:
+    """Detect offline/no_response runs and return incident records."""
+    incidents: List[dict] = []
+    start: Optional[str] = None
+    inc_type: Optional[str] = None
+    for s in scan_series:
+        status = s.get('status', 'unknown')
+        is_down = status in ('offline', 'no_response')
+        if is_down and start is None:
+            start = s['ts']
+            inc_type = status
+        elif not is_down and start is not None:
+            incidents.append({'start': start, 'end': s['ts'], 'type': inc_type})
+            start = None
+            inc_type = None
+    if start is not None:
+        incidents.append({'start': start, 'end': None, 'type': inc_type})
+    return incidents
+
+
+def _fmt_duration(start_iso: str, end_iso: Optional[str]) -> str:
+    """Format an incident duration as '2h 35m' or '45m'."""
+    from datetime import datetime as _dt
+    try:
+        s = _dt.fromisoformat(start_iso)
+        e = _dt.fromisoformat(end_iso) if end_iso else _dt.utcnow()
+        mins = max(0, int((e - s).total_seconds() / 60))
+        if mins < 60:
+            return f"{mins}m"
+        return f"{mins // 60}h {mins % 60}m"
+    except Exception:
+        return "—"
+
+
+def _build_downtime_timeline(incidents: List[dict], styles, content_w: float) -> list:
+    """Incident table: Start | End | Duration | Type.  Returns story elements."""
+    if not incidents:
+        return []
+
+    _cs = ParagraphStyle('tlC', fontName='Helvetica', fontSize=7.5, leading=10, wordWrap='CJK')
+    _hd = ParagraphStyle('tlH', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                         wordWrap='CJK', textColor=colors.white)
+
+    rows = [[
+        Paragraph("Start (IST)", _hd), Paragraph("End (IST)", _hd),
+        Paragraph("Duration", _hd), Paragraph("Type", _hd),
+    ]]
+    for inc in incidents[:20]:
+        end_label = _fmt_ts_short(inc['end']) if inc['end'] else "Ongoing"
+        rows.append([
+            Paragraph(_fmt_ts_short(inc['start']), _cs),
+            Paragraph(end_label, _cs),
+            Paragraph(_fmt_duration(inc['start'], inc['end']), _cs),
+            Paragraph(inc['type'].replace('_', ' ').title(), _cs),
+        ])
+
+    widths = [content_w * 0.30, content_w * 0.30, content_w * 0.20, content_w * 0.20]
+    ts_tl = base_table_style()
+    for i, inc in enumerate(incidents[:20], start=1):
+        bg = '#FEE2E2' if inc['type'] == 'offline' else '#FEF9C3'
+        ts_tl.add('BACKGROUND', (0, i), (-1, i), hex_color(bg))
+        ts_tl.add('TEXTCOLOR',  (0, i), (-1, i), hex_color(
+            '#991B1B' if inc['type'] == 'offline' else '#92400E'))
+
+    return [
+        Paragraph('<b>Downtime Timeline</b>',
+            ParagraphStyle('dts', parent=styles['Normal'], fontName='Helvetica-Bold',
+                           fontSize=11, spaceBefore=10, spaceAfter=5,
+                           textColor=hex_color(NAVY))),
+        Table(rows, colWidths=widths, hAlign='LEFT', style=ts_tl, repeatRows=1),
+        Spacer(1, 0.4 * cm),
+    ]
+
+
+def _build_notable_events(scan_series: List[dict], styles, content_w: float) -> list:
+    """Table of status transitions + high-latency / high-loss events."""
+    events: List[dict] = []
+    prev: Optional[str] = None
+    for s in scan_series:
+        status = s.get('status', 'unknown')
+        ping = s.get('ping_ms')
+        loss = s.get('pkt_loss')
+        notable = (
+            (prev is not None and status != prev)
+            or (ping is not None and ping > 100)
+            or (loss is not None and loss > 10)
+        )
+        if notable:
+            events.append(s)
+        prev = status
+
+    events = events[:15]
+    if not events:
+        return []
+
+    _cs = ParagraphStyle('evC', fontName='Helvetica', fontSize=7.5, leading=10, wordWrap='CJK')
+    _hd = ParagraphStyle('evH', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                         wordWrap='CJK', textColor=colors.white)
+
+    rows = [[
+        Paragraph("Time (IST)", _hd), Paragraph("Status", _hd),
+        Paragraph("Latency", _hd), Paragraph("Pkt Loss", _hd),
+    ]]
+    for ev in events:
+        rows.append([
+            Paragraph(_fmt_ts_short(ev['ts']), _cs),
+            Paragraph((ev.get('status') or 'unknown').replace('_', ' ').title(), _cs),
+            Paragraph(_fmt_num(ev.get('ping_ms'), ' ms'), _cs),
+            Paragraph(_fmt_num(ev.get('pkt_loss'), '%'), _cs),
+        ])
+
+    widths = [content_w * 0.35, content_w * 0.22, content_w * 0.22, content_w * 0.21]
+    return [
+        Paragraph('<b>Notable Events</b>',
+            ParagraphStyle('nevs', parent=styles['Normal'], fontName='Helvetica-Bold',
+                           fontSize=11, spaceBefore=10, spaceAfter=5,
+                           textColor=hex_color(NAVY))),
+        Table(rows, colWidths=widths, hAlign='LEFT', style=base_table_style(), repeatRows=1),
+        Spacer(1, 0.4 * cm),
+    ]
+
+
 def generate_device_inspector_pdf(
     stats: dict,
     device_name: str,
@@ -2429,6 +2663,9 @@ def generate_device_inspector_pdf(
     _L_MARGIN = 1.5 * cm
     _R_MARGIN = 1.5 * cm
     _CONTENT_W = 21 * cm - _L_MARGIN - _R_MARGIN   # 18 cm
+
+    # Per-scan series for timeline / bar — may be empty
+    scan_series: List[dict] = stats.get('scan_series') or []
 
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -2476,6 +2713,31 @@ def generate_device_inspector_pdf(
     total_scans    = stats.get('total_scans', 0)
     expected_scans = int(period_hours * 12)   # 5-min interval = 12/hr
     coverage_pct   = round(total_scans / expected_scans * 100, 1) if expected_scans else 0
+
+    # ── Data Confidence Banner ────────────────────────────────────────────────
+    _conf_level = _confidence_label(coverage_pct)
+    _conf_txt_clr = _CONFIDENCE_COLORS.get(_conf_level, _CONFIDENCE_COLORS["NO_DATA"])
+    _conf_bg_clr  = _CONFIDENCE_BG.get(_conf_level, _CONFIDENCE_BG["NO_DATA"])
+    _cpar = ParagraphStyle('_cpar', fontName='Helvetica', fontSize=8.5, leading=12)
+    _ctxt = (
+        f'<font color="{_conf_txt_clr}"><b>Data Confidence: {_conf_level}</b></font>'
+        f' &nbsp;·&nbsp; {total_scans:,} of {expected_scans:,} expected scans'
+        f' ({coverage_pct}%)'
+    )
+    story.append(Table(
+        [[Paragraph(_ctxt, _cpar)]],
+        colWidths=[_CONTENT_W], hAlign='LEFT',
+        style=TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, -1), hex_color(_conf_bg_clr)),
+            ('TOPPADDING',    (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+            ('BOX',           (0, 0), (-1, -1), 0.5, hex_color(BORDER)),
+        ]),
+    ))
+    story.append(Spacer(1, 0.25 * cm))
+
     scan_display   = f"{total_scans:,} ({coverage_pct}% of {expected_scans:,} expected)"
     tier = (
         "Gold"    if uptime >= SLA_GOLD    else
@@ -2514,7 +2776,22 @@ def generate_device_inspector_pdf(
                        textColor=hex_color(NAVY))))
     story.append(Table(avail_data, colWidths=_col6, hAlign='LEFT',
                        style=ts_avail, repeatRows=1))
-    story.append(Spacer(1, 0.5*cm))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # ── Availability Bar ──────────────────────────────────────────────────────
+    if scan_series:
+        story.append(Paragraph(
+            f'<font color="{TEXT_LIGHT}" size="7"><i>'
+            f'Availability over period — '
+            f'<font color="#16A34A">■</font> Online  '
+            f'<font color="#DC2626">■</font> Offline  '
+            f'<font color="#D97706">■</font> No Response'
+            f'</i></font>',
+            ParagraphStyle('bar_leg', parent=styles['Normal'], fontSize=7,
+                           spaceBefore=0, spaceAfter=3),
+        ))
+        story.extend(_build_availability_bar(scan_series, _CONTENT_W))
+    story.append(Spacer(1, 0.5 * cm))
 
     # ── Latency & Packet Loss ──────────────────────────────────────────────────
     if stats.get('avg_latency') is not None:
@@ -2595,6 +2872,91 @@ def generate_device_inspector_pdf(
         ))
         story.append(Spacer(1, 0.5*cm))
 
+    # ── Health Diagnosis (rule-based narrative) ───────────────────────────────
+    try:
+        from services.report_narrative_service import ReportNarrativeService as _NarrSvc
+        _narr = _NarrSvc()._narrate_device_inspector({
+            "device_name": device_name,
+            "device_ip": device_ip,
+            "device_type": stats.get("device_type", "unknown"),
+            "uptime_pct": uptime,
+            "avg_latency_ms": stats.get("avg_latency"),
+            "avg_packet_loss_pct": stats.get("avg_packet_loss"),
+        })
+        # Optional Gemini prose enhancement
+        import os as _os
+        if _os.environ.get("GEMINI_API_KEY"):
+            try:
+                from services.gemini_pdf_narrative import enhance_pdf_narratives as _enh
+                _enhanced = _enh({"device_inspector": _narr}, stats)
+                _narr = _enhanced.get("device_inspector", _narr)
+            except Exception as _ge:
+                logger.warning("[InspectorPDF] Gemini enhancement skipped: %s", _ge)
+
+        _findings = _narr.get("top_findings") or []
+        _interp   = _narr.get("interpretation") or ""
+        _actions  = _narr.get("action_items") or []
+
+        _SEV_TXT = {"critical": "#991B1B", "warning": "#92400E", "ok": "#166534"}
+        _SEV_BG  = {"critical": "#FEE2E2", "warning": "#FEF3C7", "ok": "#DCFCE7"}
+        _fn_par  = ParagraphStyle('_fn', fontName='Helvetica', fontSize=8.5, leading=12)
+
+        story.append(Paragraph('<b>Health Diagnosis</b>',
+            ParagraphStyle('hd_sec', parent=styles['Normal'], fontName='Helvetica-Bold',
+                           fontSize=11, spaceBefore=10, spaceAfter=5,
+                           textColor=hex_color(NAVY))))
+        for _f in _findings:
+            _sev = _f.get("severity", "ok")
+            _msg = _f.get("message", "")
+            _tc  = _SEV_TXT.get(_sev, "#374151")
+            _bg  = _SEV_BG.get(_sev, "#F3F4F6")
+            story.append(Table(
+                [[Paragraph(
+                    f'<font color="{_tc}"><b>{_sev.upper()}</b></font>'
+                    f' &nbsp;—&nbsp; {_msg}', _fn_par,
+                )]],
+                colWidths=[_CONTENT_W], hAlign='LEFT',
+                style=TableStyle([
+                    ('BACKGROUND',    (0, 0), (-1, -1), hex_color(_bg)),
+                    ('TOPPADDING',    (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('LEFTPADDING',   (0, 0), (-1, -1), 8),
+                    ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
+                    ('BOX',           (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
+                ]),
+            ))
+            story.append(Spacer(1, 2))
+        if _interp:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f'<i>{_interp}</i>',
+                ParagraphStyle('_interp', parent=styles['Normal'],
+                               fontName='Helvetica-Oblique', fontSize=8.5, leading=13,
+                               spaceBefore=4, textColor=hex_color(TEXT_MID)),
+            ))
+        if _actions and _actions != ["No immediate action required"]:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph('<b>Recommended Actions</b>',
+                ParagraphStyle('_act_h', parent=styles['Normal'], fontName='Helvetica-Bold',
+                               fontSize=9, spaceBefore=4, spaceAfter=3,
+                               textColor=hex_color(NAVY_MID))))
+            for _act in _actions:
+                story.append(Paragraph(
+                    f'• {_act}',
+                    ParagraphStyle('_act', parent=styles['Normal'],
+                                   fontName='Helvetica', fontSize=8.5, leading=13,
+                                   leftIndent=10),
+                ))
+        story.append(Spacer(1, 0.4 * cm))
+    except Exception as _narr_err:
+        logger.warning("[InspectorPDF] Health diagnosis skipped: %s", _narr_err)
+
+    # ── Downtime Timeline ─────────────────────────────────────────────────────
+    if scan_series:
+        _incidents = _extract_incidents(scan_series)
+        story.extend(_build_downtime_timeline(_incidents, styles, _CONTENT_W))
+        story.extend(_build_notable_events(scan_series, styles, _CONTENT_W))
+
     # ── SLA tier summary row ───────────────────────────────────────────────────
     tier_ts = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), hex_color(tbg)),
@@ -2615,9 +2977,10 @@ def generate_device_inspector_pdf(
     # ── Footer note ────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER), spaceBefore=4))
     story.append(Paragraph(
-        f'<i><font color="{TEXT_LIGHT}">Read-only report. '
-        f'Data sourced from ICMP scan history (5-min interval) and agent telemetry. '
-        f'All times in IST (Asia/Kolkata).</font></i>',
+        f'<i><font color="{TEXT_LIGHT}">'
+        f'ICMP scan interval: 5 min &nbsp;·&nbsp; Agent telemetry requires on-device agent'
+        f' &nbsp;·&nbsp; All times in IST (Asia/Kolkata)'
+        f'</font></i>',
         ParagraphStyle('note', parent=styles['Normal'], fontSize=7, spaceBefore=6),
     ))
 
