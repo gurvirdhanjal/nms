@@ -415,8 +415,49 @@ def get_interface_utilization(interface_id):
         from services.interface_poller import interface_poller
         
         result = interface_poller.get_interface_utilization(interface_id, minutes)
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# POST /api/snmp/<device_id>/toggle-enabled
+# ============================================================
+@snmp_bp.route('/<int:device_id>/toggle-enabled', methods=['POST'])
+@require_role('admin')
+def toggle_snmp_enabled(device_id):
+    """
+    Toggle SNMP polling on/off for a device.
+    Creates a DeviceSnmpConfig with is_enabled=True if none exists.
+    Requires admin role.
+    """
+    from models.device import Device
+    from models.snmp_config import DeviceSnmpConfig
+
+    device = Device.query.get(device_id)
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+
+    try:
+        cfg = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
+        if cfg is None:
+            cfg = DeviceSnmpConfig(
+                device_id=device_id,
+                community_string='public',
+                snmp_version='2c',
+                snmp_port=161,
+                poll_interval_seconds=300,
+                is_enabled=True,
+            )
+            db.session.add(cfg)
+        else:
+            cfg.is_enabled = not cfg.is_enabled
+
+        db.session.commit()
+        return jsonify({'success': True, 'is_enabled': cfg.is_enabled})
+
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
