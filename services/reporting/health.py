@@ -20,6 +20,11 @@ class HealthReportMixin:
         end_date = end_date or _utcnow_naive()
         start_date = start_date or (end_date - timedelta(hours=24))
         span = end_date - start_date
+        # ── TimescaleDB query routing ─────────────────────────────────────────
+        # ≤ 24h  → raw server_health_logs      (fine-grained, recent data)
+        # ≤ 30d  → server_health_hourly_cagg   (pre-aggregated, fast)
+        # > 30d  → server_health_daily_cagg    (pre-aggregated, essential for long ranges)
+        # Each tier falls back to the next if it returns empty results.
         if span <= timedelta(hours=24):
             time_series, summary = self._health_from_raw(device_ids, start_date, end_date)
             granularity = "raw"
