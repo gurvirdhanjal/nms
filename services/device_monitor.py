@@ -9,18 +9,29 @@ import statistics
 logger = logging.getLogger(__name__)
 
 
-def _build_latency_spike_payload(device_id, device_ip, device_name, latency_ms, icmp_thresholds):
+def _build_latency_spike_payload(
+    device_id: int,
+    device_ip: str,
+    device_name: str,
+    latency_ms: float,
+    icmp_thresholds: dict,
+) -> dict:
     severity = (
         'critical'
         if latency_ms >= icmp_thresholds['latency_critical_ms']
         else 'warning'
+    )
+    threshold_ms = (
+        icmp_thresholds['latency_critical_ms']
+        if severity == 'critical'
+        else icmp_thresholds['latency_warning_ms']
     )
     return {
         'device_id': device_id,
         'ip': device_ip,
         'name': device_name,
         'latency_ms': round(latency_ms, 2),
-        'threshold_ms': icmp_thresholds['latency_warning_ms'],
+        'threshold_ms': threshold_ms,
         'severity': severity,
     }
 
@@ -199,7 +210,7 @@ class DeviceMonitor:
                 # AlertManager handles persistent 3-strike alerts separately.
                 if is_online and latency is not None:
                     try:
-                        icmp = AlertManager._get_icmp_thresholds(live_device)
+                        icmp = AlertManager.get_icmp_thresholds(live_device)
                         if latency >= icmp['latency_warning_ms']:
                             from services.sse_broadcaster import broadcast_event
                             broadcast_event('latency_spike', _build_latency_spike_payload(

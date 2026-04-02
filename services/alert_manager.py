@@ -112,7 +112,7 @@ class AlertManager:
                 cls._resolve_alert(device, metric="status", commit=commit)
 
             if is_online:
-                icmp = cls._get_icmp_thresholds(device)
+                icmp = cls.get_icmp_thresholds(device)
                 if latency_ms is not None and latency_ms >= icmp['latency_warning_ms']:
                     device.latency_strikes = (getattr(device, "latency_strikes", None) or 0) + 1
                     cls._latency_recovery.pop((device.device_id, "latency"), None)
@@ -159,7 +159,7 @@ class AlertManager:
                 cls._handle_icmp_recovery(device, "packet_loss", commit=commit)
 
     @classmethod
-    def _get_icmp_thresholds(cls, device) -> dict:
+    def get_icmp_thresholds(cls, device) -> dict:
         """Return effective ICMP thresholds for a device.
 
         Priority chain (highest → lowest):
@@ -330,14 +330,15 @@ class AlertManager:
             try:
                 db.session.commit()
             except Exception as exc:
-                logger.error(
-                    "[AlertManager] check_server_health commit failed device=%s: %s",
-                    getattr(device, 'device_id', '?'), exc,
-                )
                 try:
                     db.session.rollback()
                 except Exception:
                     pass
+                device_id = device.__dict__.get('device_id', '?')
+                logger.error(
+                    "[AlertManager] check_server_health commit failed device=%s: %s",
+                    device_id, exc,
+                )
 
     @classmethod
     def _trigger_alert(cls, device, event_type, severity, metric, message, value, commit=True, send_email=False):
@@ -352,12 +353,19 @@ class AlertManager:
         # SQLAlchemy scoped session; the DB handles concurrency via MVCC.
         # All writes are wrapped so a DB error (lock_timeout, constraint, stale row)
         # never propagates up and contaminates the caller's session.
+        #
+        # no_autoflush: the caller (process_scan_result) may have modified device fields
+        # (e.g. latency_strikes) making the ORM object dirty. Without this guard,
+        # SQLAlchemy's autoflush fires before the DashboardEvent query, tries to UPDATE
+        # the device row, and races with the SNMP worker's SELECT FOR UPDATE lock —
+        # causing a lock_timeout that poisons the entire session.
         try:
-            existing = DashboardEvent.query.filter_by(
-                device_id=device.device_id,
-                metric_name=metric,
-                resolved=False,
-            ).first()
+            with db.session.no_autoflush:
+                existing = DashboardEvent.query.filter_by(
+                    device_id=device.device_id,
+                    metric_name=metric,
+                    resolved=False,
+                ).first()
 
             if existing:
                 existing.value = value
@@ -385,14 +393,20 @@ class AlertManager:
                 if commit:
                     db.session.commit()
         except Exception as exc:
-            logger.error(
-                "[AlertManager] _trigger_alert write failed device=%s metric=%s: %s",
-                getattr(device, 'device_id', '?'), metric, exc,
-            )
+            # Rollback before any ORM attribute access — the session may be in
+            # PendingRollbackError state, and accessing device attributes triggers
+            # lazy loading which raises a second exception before rollback can run.
             try:
                 db.session.rollback()
             except Exception:
                 pass
+            # Use __dict__ to read already-loaded identity fields without touching
+            # the (potentially poisoned) SQLAlchemy lazy-load machinery.
+            device_id = device.__dict__.get('device_id', '?')
+            logger.error(
+                "[AlertManager] _trigger_alert write failed device=%s metric=%s: %s",
+                device_id, metric, exc,
+            )
             return  # Skip notification — no event was persisted
 
         if send_email and severity in ("CRITICAL", "WARNING"):
@@ -408,11 +422,12 @@ class AlertManager:
         # SQLAlchemy scoped session; the DB handles concurrency via MVCC.
         # Wrapped so a DB error never propagates up and contaminates the caller's session.
         try:
-            existing = DashboardEvent.query.filter_by(
-                device_id=device.device_id,
-                metric_name=metric,
-                resolved=False,
-            ).first()
+            with db.session.no_autoflush:
+                existing = DashboardEvent.query.filter_by(
+                    device_id=device.device_id,
+                    metric_name=metric,
+                    resolved=False,
+                ).first()
 
             if existing:
                 existing.resolved = True
@@ -425,22 +440,24 @@ class AlertManager:
                     with cls._lock:
                         cls._offline_cooldown[device.device_id] = time.time() + cls.OFFLINE_COOLDOWN_S
         except Exception as exc:
-            logger.error(
-                "[AlertManager] _resolve_alert write failed device=%s metric=%s: %s",
-                getattr(device, 'device_id', '?'), metric, exc,
-            )
             try:
                 db.session.rollback()
             except Exception:
                 pass
+            device_id = device.__dict__.get('device_id', '?')
+            logger.error(
+                "[AlertManager] _resolve_alert write failed device=%s metric=%s: %s",
+                device_id, metric, exc,
+            )
 
     @classmethod
     def _has_active_alert(cls, device, metric):
-        return DashboardEvent.query.filter_by(
-            device_id=device.device_id,
-            metric_name=metric,
-            resolved=False,
-        ).first() is not None
+        with db.session.no_autoflush:
+            return DashboardEvent.query.filter_by(
+                device_id=device.device_id,
+                metric_name=metric,
+                resolved=False,
+            ).first() is not None
 
     @classmethod
     def _handle_recovery(cls, device, metric, commit=True):
