@@ -239,16 +239,30 @@ class DeviceMonitor:
                 except Exception as e:
                     logger.warning("[DeviceMonitor] Batch accumulation error: %s", e)
 
-            db.session.add(scan_record)
-
+            # Savepoint per device — a single bad row cannot roll back the whole batch.
             try:
-                db.session.commit()
+                sp = db.session.begin_nested()
+                db.session.add(scan_record)
+                sp.commit()
             except (StaleDataError, ObjectDeletedError) as e:
-                logger.warning("[DeviceMonitor] Device disappeared during commit for %s: %s", device_ip, e)
-                db.session.rollback()
+                logger.warning(
+                    "[DeviceMonitor] Device disappeared during savepoint for %s: %s",
+                    device_ip, e,
+                )
+                try:
+                    sp.rollback()
+                except Exception:
+                    pass
+                continue
             except Exception as e:
-                logger.error("[DeviceMonitor] Failed to commit scan record for %s: %s", device_ip, e)
-                db.session.rollback()
+                logger.error(
+                    "[DeviceMonitor] Savepoint failed for %s: %s", device_ip, e
+                )
+                try:
+                    sp.rollback()
+                except Exception:
+                    pass
+                continue
 
             scan_results.append({
                 'device_name': device_name,
@@ -256,11 +270,40 @@ class DeviceMonitor:
                 'status': status,
                 'latency': latency,
                 'packet_loss': packet_loss,
-                'timestamp': datetime.utcnow()
+                'jitter': jitter,
+                'timestamp': datetime.utcnow(),
             })
-        
-        # Final commit removed as we commit per device
-        # db.session.commit()
+
+        # ── Single batch commit for the entire scan cycle ─────────────────────
+        try:
+            db.session.commit()
+        except Exception as _batch_err:
+            logger.error(
+                "[DeviceMonitor] Batch commit failed (%d results); retrying per record: %s",
+                len(scan_results), _batch_err,
+            )
+            db.session.rollback()
+            # Fallback: recommit scan records individually.
+            # Alert mutations (latency_strikes etc.) are in-memory and reconcile next cycle.
+            for sr in scan_results:
+                try:
+                    fallback_record = DeviceScanHistory(
+                        device_ip=sr['device_ip'],
+                        device_name=sr['device_name'],
+                        ping_time_ms=sr['latency'],
+                        status=sr['status'],
+                        scan_type='scheduled',
+                        packet_loss=sr['packet_loss'],
+                        jitter=sr.get('jitter'),
+                    )
+                    db.session.add(fallback_record)
+                    db.session.commit()
+                except Exception as _fb_err:
+                    logger.error(
+                        "[DeviceMonitor] Fallback commit failed for %s: %s",
+                        sr['device_ip'], _fb_err,
+                    )
+                    db.session.rollback()
 
         # Fire one single broadcast for all troubled devices
         if sse_update_batch:
