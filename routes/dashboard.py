@@ -3,6 +3,7 @@ Dashboard API endpoints for Network Monitoring System.
 Provides aggregated health, trends, and problem detection.
 """
 import logging
+import os
 from flask import Blueprint, current_app, jsonify, request, session
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, desc, case, or_
@@ -285,6 +286,40 @@ def _coerce_utc_naive(ts):
     return ts
 
 
+def _iso_utc_naive(ts):
+    normalized = _coerce_utc_naive(ts)
+    return normalized.isoformat() if normalized else None
+
+
+def _max_timestamp(*timestamps):
+    normalized = [candidate for candidate in (_coerce_utc_naive(ts) for ts in timestamps) if candidate is not None]
+    return max(normalized) if normalized else None
+
+
+def _payload_source_freshness(payload):
+    if isinstance(payload, dict):
+        direct_freshness = _coerce_utc_naive(payload.get('source_data_freshness_at'))
+        if direct_freshness is not None:
+            return direct_freshness
+
+        candidates = []
+        for key in ('timestamp', 'generated_at', 'generated_at_utc'):
+            candidate = _coerce_utc_naive(payload.get(key))
+            if candidate is not None:
+                candidates.append(candidate)
+        for value in payload.values():
+            nested = _payload_source_freshness(value)
+            if nested is not None:
+                candidates.append(nested)
+        return max(candidates) if candidates else None
+
+    if isinstance(payload, list):
+        candidates = [candidate for candidate in (_payload_source_freshness(item) for item in payload) if candidate is not None]
+        return max(candidates) if candidates else None
+
+    return None
+
+
 def _availability_hour_bucket_expr(scan_model):
     backend = db.engine.url.get_backend_name()
     if backend == 'sqlite':
@@ -309,9 +344,18 @@ def _snapshot_meta():
     }
 
 
-def _scoped_devices():
+def _scoped_devices(include_objects=False):
     from models.device import Device
-    devices = scoped_query(Device).all()
+    query = scoped_query(Device)
+    if not include_objects:
+        device_ids = [
+            row[0]
+            for row in query.with_entities(Device.device_id).all()
+            if row and row[0] is not None
+        ]
+        return [], device_ids
+
+    devices = query.all()
     return devices, [d.device_id for d in devices if getattr(d, 'device_id', None) is not None]
 
 
@@ -435,8 +479,15 @@ def get_subnet_details():
         top_types = sorted(type_counts.items(), key=lambda item: item[1], reverse=True)[:5]
         top_vendors = sorted(vendor_counts.items(), key=lambda item: item[1], reverse=True)[:5]
 
+        snapshot_generated_at = datetime.utcnow().isoformat()
+        source_data_freshness_at = _max_timestamp(
+            *(getattr(scan, 'scan_timestamp', None) for scan in latest_scan_map.values())
+        )
+
         return jsonify({
-            'generated_at': _iso_utc(datetime.utcnow()),
+            'generated_at': snapshot_generated_at,
+            'snapshot_generated_at': snapshot_generated_at,
+            'source_data_freshness_at': _iso_utc_naive(source_data_freshness_at),
             'subnet': normalized_subnet,
             'summary': {
                 'total': len(rows),
@@ -478,7 +529,7 @@ def get_summary():
         from models.scan_history import DeviceScanHistory
         from models.dashboard import DashboardEvent
 
-        scoped_devices, scoped_device_ids = _scoped_devices()
+        scoped_devices, scoped_device_ids = _scoped_devices(include_objects=True)
         scoped_device_ips = {d.device_ip for d in scoped_devices if getattr(d, 'device_ip', None)}
 
         # 1. Device Counts
@@ -565,8 +616,16 @@ def get_summary():
                 elif sev == 'INFO':
                     info_count = cnt
         
+        snapshot_generated_at = datetime.utcnow().isoformat()
+        source_data_freshness_at = _max_timestamp(
+            availability_snapshot.get('generated_at'),
+            *(getattr(scan, 'scan_timestamp', None) for scan in (availability_snapshot.get('latest_scan_map') or {}).values())
+        )
+
         result = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': snapshot_generated_at,
+            'snapshot_generated_at': snapshot_generated_at,
+            'source_data_freshness_at': _iso_utc_naive(source_data_freshness_at),
             'counts': {
                 'total_inventory': inventory_count,
                 'monitored': monitored_count,
@@ -653,12 +712,24 @@ def get_full_snapshot():
     )
     lock_acquired = False
 
+    def _snapshot_response(snapshot_record):
+        payload = snapshot_record.payload
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+
+        MAX_SNAPSHOT_AGE = int(os.environ.get("MAX_SNAPSHOT_AGE_SECONDS", 90))
+        age = (datetime.utcnow() - snapshot_record.updated_at).total_seconds()
+        if age > MAX_SNAPSHOT_AGE:
+            payload["stale"] = True
+            payload["stale_since_seconds"] = int(age)
+
+        return jsonify(payload)
+
     if not worker_compute and not fresh_top_problems:
         # Phase 3: Ultra-fast O(1) Native Database Fetch
         snapshot = DashboardSnapshot.query.filter_by(cache_key=snapshot_cache_key).first()
         if snapshot:
-            from flask import Response
-            return Response(snapshot.payload, mimetype='application/json')
+            return _snapshot_response(snapshot)
 
         # If no snapshot exists yet, acquire distributed lock so only one worker rebuilds.
         lock_acquired = acquire_stampede_lock(snapshot_lock_key, ttl_seconds=20)
@@ -668,8 +739,7 @@ def get_full_snapshot():
                 time.sleep(0.1)
                 snapshot = DashboardSnapshot.query.filter_by(cache_key=snapshot_cache_key).first()
                 if snapshot:
-                    from flask import Response
-                    return Response(snapshot.payload, mimetype='application/json')
+                    return _snapshot_response(snapshot)
 
             # Fallback: avoid surfacing 503 to end users while another worker warms cache.
             # We compute this request inline and return a normal payload.
@@ -695,8 +765,11 @@ def get_full_snapshot():
             'alerts': get_all_alerts
         }
 
+        snapshot_generated_at = datetime.utcnow().isoformat()
         payload = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': snapshot_generated_at,
+            'snapshot_generated_at': snapshot_generated_at,
+            'source_data_freshness_at': None,
             'summary': None,
             'fleetMetrics': None,
             'topProblems': None,
@@ -747,6 +820,10 @@ def get_full_snapshot():
         if errors:
             payload['errors'] = errors
 
+        payload['source_data_freshness_at'] = _iso_utc_naive(
+            _max_timestamp(*(_payload_source_freshness(payload.get(key)) for key in sections.keys()))
+        )
+
         if worker_compute:
             # Background worker mode: Just return the pure python dict to be serialized and stored.
             return jsonify(payload)
@@ -785,7 +862,7 @@ def get_top_problems():
         from models.scan_history import DeviceScanHistory
         from models.dashboard import DashboardEvent
 
-        scoped_devices, scoped_device_ids = _scoped_devices()
+        scoped_devices, scoped_device_ids = _scoped_devices(include_objects=True)
         device_by_ip = {d.device_ip: d for d in scoped_devices if getattr(d, 'device_ip', None)}
         scoped_ips = set(device_by_ip.keys())
 
@@ -1107,7 +1184,7 @@ def get_trends():
     
     try:
         from models.scan_history import DeviceScanHistory
-        scoped_devices, _ = _scoped_devices()
+        scoped_devices, _ = _scoped_devices(include_objects=True)
         scoped_ips = {device.device_ip for device in scoped_devices if getattr(device, 'device_ip', None)}
 
         # Determine cutoff
@@ -1236,7 +1313,7 @@ def get_availability_details():
     try:
         from models.scan_history import DeviceScanHistory
 
-        scoped_devices, _ = _scoped_devices()
+        scoped_devices, _ = _scoped_devices(include_objects=True)
         scoped_ips = {device.device_ip for device in scoped_devices if getattr(device, 'device_ip', None)}
         device_by_ip = {
             device.device_ip: device
@@ -1369,9 +1446,25 @@ def get_availability_details():
             key=lambda d: (d['uptime_pct'], -d['observed_intervals'], -d['down_intervals'])
         )[:5]
 
+        snapshot_generated_at = datetime.utcnow().isoformat()
+        source_data_freshness_at = None
+        if scoped_ips:
+            source_data_freshness_at = db.session.query(
+                func.max(DeviceScanHistory.scan_timestamp)
+            ).filter(
+                DeviceScanHistory.scan_timestamp >= cutoff,
+                DeviceScanHistory.device_ip.in_(scoped_ips),
+            ).scalar()
+
+        bucket_minutes = bucket_hours * 60
+
         result = {
-            'generated_at': now.replace(tzinfo=timezone.utc).isoformat(),
+            'generated_at': snapshot_generated_at,
+            'snapshot_generated_at': snapshot_generated_at,
+            'source_data_freshness_at': _iso_utc_naive(source_data_freshness_at),
             'range': range_config['key'],
+            'bucket_count': bucket_count,
+            'bucket_minutes': bucket_minutes,
             'heatmap': heatmap,
             'downtime_contributors': downtime_contributors,
             'worst_availability': worst_availability,
@@ -1380,6 +1473,7 @@ def get_availability_details():
                 'range_label': range_config['label'],
                 'bucket_count': bucket_count,
                 'bucket_hours': bucket_hours,
+                'bucket_minutes': bucket_minutes,
                 'bucket_label': f'{bucket_hours}h intervals',
                 'interval_online_threshold_pct': AVAILABILITY_ONLINE_INTERVAL_THRESHOLD_PCT,
             },
@@ -1408,6 +1502,8 @@ def get_inventory_stats():
     try:
         from models.device import Device
         from models.snmp_config import DeviceSnmpConfig
+        from models.scan_history import DeviceScanHistory
+        from models.dashboard import DashboardEvent
         from sqlalchemy import func
         from middleware.rbac import scoped_query
         
@@ -1454,20 +1550,93 @@ def get_inventory_stats():
         from models.server_health import ServerHealthLog
         
         latest_health_logs = query_latest_server_health_logs(source='agent')
-        
+
         health_map = {log.device_id: log for log in latest_health_logs}
-        
+
+        scan_pairs_by_ip = {}
+        if scoped_device_ips := [d.device_ip for d in scoped_devices if getattr(d, 'device_ip', None)]:
+            ordered_scans = (
+                DeviceScanHistory.query
+                .filter(DeviceScanHistory.device_ip.in_(scoped_device_ips))
+                .order_by(DeviceScanHistory.device_ip.asc(), DeviceScanHistory.scan_timestamp.desc(), DeviceScanHistory.scan_id.desc())
+                .all()
+            )
+            for scan in ordered_scans:
+                bucket = scan_pairs_by_ip.setdefault(scan.device_ip, [])
+                if len(bucket) < 2:
+                    bucket.append(scan)
+
+        alert_counts = {}
+        if scoped_device_ids:
+            alert_rows = db.session.query(
+                DashboardEvent.device_id,
+                func.count(DashboardEvent.event_id).label('count')
+            ).filter(
+                DashboardEvent.device_id.in_(scoped_device_ids),
+                DashboardEvent.resolved.is_(False),
+            ).group_by(DashboardEvent.device_id).all()
+            alert_counts = {row.device_id: int(row.count or 0) for row in alert_rows}
+
         device_list = []
         for d in devices:
             d_dict = d.to_dict()
+            latest_scan_pair = scan_pairs_by_ip.get(d.device_ip or '', [])
+            latest_scan = latest_scan_pair[0] if latest_scan_pair else None
+            previous_scan = latest_scan_pair[1] if len(latest_scan_pair) > 1 else None
+            latest_health = health_map.get(d.device_id)
 
             # Default to unknown/standard
             d_dict['server_health'] = 'Unknown'
+            d_dict['active_alert_count'] = int(alert_counts.get(d.device_id, 0))
+            d_dict['last_seen'] = None
+            d_dict['availability_status'] = 'No Data'
+            d_dict['status_label'] = 'No Data'
+            d_dict['primary_metric_label'] = 'Latency'
+            d_dict['primary_metric_value'] = None
+            d_dict['primary_metric_unit'] = 'ms'
+            d_dict['primary_metric_trend'] = None
 
             if is_server_device(d.device_type):
-                log = health_map.get(d.device_id)
-                d_dict['server_health'] = compute_server_health(log)
-            
+                d_dict['server_health'] = compute_server_health(latest_health)
+
+            if bool(getattr(d, 'maintenance_mode', False)):
+                d_dict['availability_status'] = 'Maintenance'
+                d_dict['status_label'] = 'Maintenance'
+            elif latest_scan:
+                latest_scan_status = str(latest_scan.status or '').strip().lower()
+                if latest_scan_status == 'online':
+                    d_dict['availability_status'] = 'Healthy'
+                    d_dict['status_label'] = 'Healthy'
+                elif latest_scan_status:
+                    d_dict['availability_status'] = 'Critical'
+                    d_dict['status_label'] = 'Critical'
+
+            if latest_health and latest_health.timestamp:
+                d_dict['last_seen'] = latest_health.timestamp.isoformat()
+            elif latest_scan and latest_scan.scan_timestamp:
+                d_dict['last_seen'] = latest_scan.scan_timestamp.isoformat()
+
+            if latest_health and is_server_device(d.device_type):
+                cpu_now = latest_health.cpu_usage
+                d_dict['primary_metric_label'] = 'CPU'
+                d_dict['primary_metric_value'] = round(float(cpu_now), 1) if cpu_now is not None else None
+                d_dict['primary_metric_unit'] = '%'
+                previous_health = None
+                for candidate in latest_health_logs:
+                    if candidate.device_id == d.device_id and candidate.timestamp != latest_health.timestamp:
+                        previous_health = candidate
+                        break
+                if previous_health and previous_health.cpu_usage is not None and cpu_now is not None:
+                    delta = round(float(cpu_now) - float(previous_health.cpu_usage), 1)
+                    d_dict['primary_metric_trend'] = delta
+            elif latest_scan:
+                latency_now = latest_scan.ping_time_ms
+                d_dict['primary_metric_label'] = 'Ping'
+                d_dict['primary_metric_value'] = round(float(latency_now), 1) if latency_now is not None else None
+                d_dict['primary_metric_unit'] = 'ms'
+                if previous_scan and previous_scan.ping_time_ms is not None and latency_now is not None:
+                    d_dict['primary_metric_trend'] = round(float(latency_now) - float(previous_scan.ping_time_ms), 1)
+
             device_list.append(d_dict)
         
         return jsonify({

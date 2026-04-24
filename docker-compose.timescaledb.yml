@@ -55,9 +55,43 @@ services:
       - random_page_cost=1.1
       - -c
       - effective_io_concurrency=200
+      # High-write tuning for 15s monitoring intervals (~1.15M rows/day per 200 devices)
+      - -c
+      - checkpoint_completion_target=0.9   # spread checkpoint I/O over 90% of interval
+      - -c
+      - wal_buffers=64MB                   # larger WAL buffer reduces fsync stalls
+      - -c
+      - min_wal_size=1GB                   # avoid WAL file recycling churn
+      - -c
+      - max_wal_size=4GB                   # allow larger WAL before forced checkpoint
+      - -c
+      - autovacuum_vacuum_scale_factor=0.05  # vacuum sooner on large tables (5% vs 20%)
+      - -c
+      - autovacuum_analyze_scale_factor=0.02 # analyze sooner for planner accuracy
+      - -c
+      - autovacuum_max_workers=4           # more workers for concurrent table maintenance
+      - -c
+      - default_statistics_target=100      # better query plans for time-series queries
+
+  redis:
+    image: redis:7-alpine
+    container_name: monitoring_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_HOST_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - monitoring_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   timescaledb_data:
+    driver: local
+  monitoring_redis_data:
     driver: local
 
 networks:

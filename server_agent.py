@@ -18,8 +18,9 @@ from logging.handlers import RotatingFileHandler
 # CONFIGURATION (defaults — overridden by config.json)
 # ==========================
 
-NMS_SERVER_URL = "http://127.0.0.1:5000/api/agent/metrics"
+NMS_SERVER_URL = "http://172.16.1.117:5001/api/agent/metrics"
 AGENT_TOKEN = os.environ.get("TRACKING_API_KEY", "")
+BOOTSTRAP_TOKEN = os.environ.get("TRACKING_API_KEY", "")
 INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT = 5
 TOP_PROCESSES_LIMIT = 5
@@ -37,7 +38,7 @@ _ENDPOINT_DIAG_COOLDOWN_SECONDS = 300
 
 def load_config():
     """Load configuration from config.json if it exists, overriding defaults."""
-    global NMS_SERVER_URL, AGENT_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
+    global NMS_SERVER_URL, AGENT_TOKEN, BOOTSTRAP_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
     global TOP_PROCESSES_LIMIT, BUFFER_MAX_RECORDS
     global _CONFIG_PATH, _CONFIG_SOURCE, _CONFIG_LOAD_ERROR
 
@@ -58,6 +59,7 @@ def load_config():
             cfg = json.load(f)
         NMS_SERVER_URL = cfg.get('nms_server_url', NMS_SERVER_URL)
         AGENT_TOKEN = cfg.get('agent_token', AGENT_TOKEN)
+        BOOTSTRAP_TOKEN = cfg.get('bootstrap_token', BOOTSTRAP_TOKEN)
         INTERVAL_SECONDS = cfg.get('interval_seconds', INTERVAL_SECONDS)
         REQUEST_TIMEOUT = cfg.get('request_timeout', REQUEST_TIMEOUT)
         TOP_PROCESSES_LIMIT = cfg.get('top_processes_limit', TOP_PROCESSES_LIMIT)
@@ -113,7 +115,11 @@ def _persist_agent_token_to_config(new_token):
     config_data["nms_server_url"] = config_data.get("nms_server_url", NMS_SERVER_URL)
     config_data["interval_seconds"] = config_data.get("interval_seconds", INTERVAL_SECONDS)
     config_data["request_timeout"] = config_data.get("request_timeout", REQUEST_TIMEOUT)
-    config_data["agent_token"] = new_token
+    config_data["bootstrap_token"] = config_data.get("bootstrap_token", BOOTSTRAP_TOKEN)
+    if new_token:
+        config_data["agent_token"] = new_token
+    else:
+        config_data.pop("agent_token", None)
 
     try:
         _ensure_parent_dir(config_path)
@@ -161,6 +167,22 @@ def _handle_server_token_update(response):
             old_fingerprint,
             _token_fingerprint(updated_token),
         )
+
+
+def _get_request_auth_token():
+    token = (AGENT_TOKEN or "").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if token:
+        return token, "agent_token"
+
+    bootstrap_token = (BOOTSTRAP_TOKEN or "").strip()
+    if bootstrap_token.lower().startswith("bearer "):
+        bootstrap_token = bootstrap_token[7:].strip()
+    if bootstrap_token:
+        return bootstrap_token, "bootstrap_token"
+
+    return "", "none"
 
 
 def _parse_server_url(url):
@@ -1035,14 +1057,18 @@ def get_system_alerts():
 # PAYLOAD BUILDER
 # ==========================
 
+LAST_AGENT_LATENCY_MS = None
+
 def collect_metrics():
     """Collect all system metrics"""
     device_uuid = get_or_create_device_uuid()
     process_samples = _collect_process_samples()
     top_processes_by_memory = get_top_processes(samples=process_samples)
     top_processes_by_cpu = get_top_processes_by_cpu(samples=process_samples)
-    return {
+    global LAST_AGENT_LATENCY_MS
+    payload = {
         "agent_type": "core",
+        "agent_latency_ms": LAST_AGENT_LATENCY_MS,
         "device_uuid": device_uuid,
         "device_id": device_uuid,
         "hostname": get_hostname(),
@@ -1065,6 +1091,7 @@ def collect_metrics():
         "top_processes_cpu": top_processes_by_cpu,
         "alerts": get_system_alerts()
     }
+    return payload
 
 # ==========================
 # SENDER
@@ -1072,10 +1099,8 @@ def collect_metrics():
 
 def send_metrics(payload):
     """Send metrics to NMS server"""
-    token = (AGENT_TOKEN or "").strip()
-    # Accept config values that were copied as "Bearer <token>".
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
+    global LAST_AGENT_LATENCY_MS
+    token, auth_source = _get_request_auth_token()
 
     headers = {
         "Content-Type": "application/json"
@@ -1086,12 +1111,16 @@ def send_metrics(payload):
         # Keep Bearer for backward compatibility with older receivers.
         headers["Authorization"] = f"Bearer {token}"
 
+    start_t = time.time()
     response = requests.post(
         NMS_SERVER_URL,
         headers=headers,
         json=payload,
         timeout=REQUEST_TIMEOUT
     )
+    LAST_AGENT_LATENCY_MS = (time.time() - start_t) * 1000.0
+    response._nms_auth_source = auth_source
+    response._nms_auth_fingerprint = _token_fingerprint(token)
 
     _handle_server_token_update(response)
     response.raise_for_status()
@@ -1188,7 +1217,190 @@ class MetricsBuffer:
 # MAIN LOOP
 # ==========================
 
+# ============================================================
+# SINGLE-INSTANCE GUARD
+# ============================================================
+
+_agent_lock_file = None  # keep reference so GC doesn't close it
+
+
+def ensure_single_instance() -> None:
+    """Prevent duplicate agent processes using a PID-file lock."""
+    global _agent_lock_file
+    if platform.system() == "Windows":
+        lock_dir = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "nms-agent")
+    else:
+        lock_dir = "/var/run"
+    os.makedirs(lock_dir, exist_ok=True)
+    lock_path = os.path.join(lock_dir, "nms-agent.lock")
+    try:
+        _agent_lock_file = open(lock_path, "w")
+        if platform.system() == "Windows":
+            import msvcrt
+            msvcrt.locking(_agent_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.lockf(_agent_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _agent_lock_file.write(str(os.getpid()))
+        _agent_lock_file.flush()
+    except IOError:
+        sys.stderr.write("[nms-agent] Another instance is already running. Exiting.\n")
+        sys.exit(1)
+    except Exception as exc:
+        sys.stderr.write(f"[nms-agent] Warning: could not acquire lock: {exc}\n")
+
+
+# ============================================================
+# CONFIG GUI (--configure mode)
+# ============================================================
+
+def show_config_gui() -> None:
+    """
+    Tkinter configuration window for NMS Core Agent.
+    Reads existing config.json, lets user edit key fields, then saves and exits.
+    """
+    import tkinter as tk
+    from tkinter import messagebox
+
+    cfg_path = _resolve_config_path_for_write()
+    existing: dict = {}
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path) as _f:
+                _raw = json.load(_f)
+                existing = {k: v for k, v in _raw.items() if not k.startswith("_")}
+        except Exception:
+            pass
+
+    root = tk.Tk()
+    root.title("NMS Core Agent — Configuration")
+    root.resizable(False, False)
+
+    DARK_BG  = "#1e1e2e"
+    PANEL_BG = "#2a2a3e"
+    ACCENT   = "#89b4fa"
+    FG       = "#cdd6f4"
+    ENTRY_BG = "#313244"
+    BTN_FG   = "#1e1e2e"
+
+    root.configure(bg=DARK_BG)
+
+    # header
+    hdr = tk.Frame(root, bg=ACCENT, pady=10)
+    hdr.pack(fill="x")
+    tk.Label(hdr, text="NMS Core Agent", font=("Segoe UI", 13, "bold"),
+             bg=ACCENT, fg=BTN_FG).pack()
+    tk.Label(hdr, text="Configure metrics collection settings",
+             font=("Segoe UI", 9), bg=ACCENT, fg="#2a2a3e").pack()
+
+    body = tk.Frame(root, bg=DARK_BG, padx=24, pady=16)
+    body.pack(fill="both")
+
+    def _field(label_text, default, show=""):
+        row = tk.Frame(body, bg=DARK_BG)
+        row.pack(fill="x", pady=5)
+        tk.Label(row, text=label_text, width=20, anchor="w",
+                 bg=DARK_BG, fg=FG, font=("Segoe UI", 10)).pack(side="left")
+        var = tk.StringVar(value=default)
+        e = tk.Entry(row, textvariable=var, show=show, bg=ENTRY_BG, fg=FG,
+                     insertbackground=FG, font=("Consolas", 10), width=42,
+                     relief="flat", highlightthickness=1, highlightcolor=ACCENT,
+                     highlightbackground=PANEL_BG)
+        e.pack(side="left", ipady=4)
+        return var
+
+    url_var      = _field("NMS Server URL",
+                          str(existing.get("nms_server_url", NMS_SERVER_URL)))
+    token_var    = _field("Agent Token",
+                          str(existing.get("agent_token", AGENT_TOKEN)), show="*")
+    bootstrap_var = _field("Bootstrap Token",
+                           str(existing.get("bootstrap_token", BOOTSTRAP_TOKEN)), show="*")
+    interval_var = _field("Poll Interval (s)",
+                          str(existing.get("interval_seconds", INTERVAL_SECONDS)))
+
+    status_var = tk.StringVar(value="")
+    status_lbl = tk.Label(body, textvariable=status_var, bg=DARK_BG,
+                          font=("Segoe UI", 9), fg="#a6e3a1")
+    status_lbl.pack(anchor="w", pady=(8, 0))
+
+    def _test():
+        status_var.set("Testing…")
+        root.update_idletasks()
+        import requests as _req
+        from urllib.parse import urlparse as _up
+        parsed = _up(url_var.get())
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        try:
+            r = _req.get(f"{base}/health", timeout=4)
+            if r.status_code < 400:
+                status_var.set(f"✓ Server reachable ({r.status_code})")
+                status_lbl.configure(fg="#a6e3a1")
+            else:
+                status_var.set(f"✗ HTTP {r.status_code}")
+                status_lbl.configure(fg="#f38ba8")
+        except Exception as exc:
+            status_var.set(f"✗ {exc}")
+            status_lbl.configure(fg="#f38ba8")
+
+    _saved = [False]
+
+    def _save():
+        url   = url_var.get().strip()
+        token = token_var.get().strip()
+        bootstrap_token = bootstrap_var.get().strip()
+        ivs   = interval_var.get().strip()
+        if not url:
+            messagebox.showerror("Validation", "NMS Server URL is required.", parent=root)
+            return
+        try:
+            iv = int(ivs)
+            if iv < 5:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Validation", "Poll interval must be an integer ≥ 5.", parent=root)
+            return
+        cfg: dict = dict(existing)
+        cfg["nms_server_url"]   = url
+        cfg["agent_token"]      = token
+        cfg["bootstrap_token"]  = bootstrap_token
+        cfg["interval_seconds"] = iv
+        os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+        tmp = cfg_path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(cfg, fh, indent=2)
+        os.replace(tmp, cfg_path)
+        _saved[0] = True
+        root.destroy()
+
+    def _cancel():
+        root.destroy()
+
+    sep = tk.Frame(body, bg=PANEL_BG, height=1)
+    sep.pack(fill="x", pady=(12, 8))
+    btn_row = tk.Frame(body, bg=DARK_BG)
+    btn_row.pack(fill="x")
+
+    tk.Button(btn_row, text="Test Connection", command=_test,
+              bg=PANEL_BG, fg=FG, activebackground=PANEL_BG, relief="flat",
+              font=("Segoe UI", 10), padx=10, pady=5, cursor="hand2").pack(side="left")
+    tk.Button(btn_row, text="Cancel", command=_cancel,
+              bg=PANEL_BG, fg=FG, activebackground=PANEL_BG, relief="flat",
+              font=("Segoe UI", 10), padx=10, pady=5, cursor="hand2").pack(side="right", padx=(8, 0))
+    tk.Button(btn_row, text="Save & Close", command=_save,
+              bg=ACCENT, fg=BTN_FG, activebackground="#7ab8ff", relief="flat",
+              font=("Segoe UI", 10, "bold"), padx=14, pady=5, cursor="hand2").pack(side="right")
+
+    root.protocol("WM_DELETE_WINDOW", _cancel)
+    root.update_idletasks()
+    w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+    x = (root.winfo_screenwidth()  - w) // 2
+    y = (root.winfo_screenheight() - h) // 2
+    root.geometry(f"+{x}+{y}")
+    root.mainloop()
+
+
 def main():
+    global AGENT_TOKEN
     load_config()  # Load config.json overrides
     setup_logging()
     device_uuid = get_or_create_device_uuid()
@@ -1267,12 +1479,26 @@ def main():
             response_text = getattr(e.response, 'text', 'no response body')
             if status_code == 401:
                 _log_endpoint_diagnostics("http_401", status_code=401)
-                _LOG.error(
-                    "HTTP 401 for %s token=%s body=%s",
-                    NMS_SERVER_URL,
+                auth_source = getattr(e.response, "_nms_auth_source", "unknown")
+                auth_fingerprint = getattr(
+                    e.response,
+                    "_nms_auth_fingerprint",
                     _token_fingerprint(AGENT_TOKEN),
+                )
+                _LOG.error(
+                    "HTTP 401 for %s via %s token=%s body=%s. Resetting device token to trigger re-bootstrap.",
+                    NMS_SERVER_URL,
+                    auth_source,
+                    auth_fingerprint,
                     response_text,
                 )
+                AGENT_TOKEN = ""
+                _persist_agent_token_to_config("")
+                if not (BOOTSTRAP_TOKEN or "").strip():
+                    _LOG.error(
+                        "No bootstrap token is configured. Set TRACKING_API_KEY or config.json "
+                        "\"bootstrap_token\" so the agent can recover after a 401."
+                    )
             else:
                 _LOG.error("HTTP Error: %s - %s", status_code, response_text)
         except Exception as e:
@@ -1282,6 +1508,18 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse as _argparse
+    _parser = _argparse.ArgumentParser(add_help=False)
+    _parser.add_argument('--configure', action='store_true',
+                         help='Open the configuration GUI and exit')
+    _args, _ = _parser.parse_known_args()
+
+    if _args.configure:
+        show_config_gui()
+        sys.exit(0)
+
+    ensure_single_instance()
+
     try:
         main()
     except KeyboardInterrupt:

@@ -223,10 +223,10 @@
                         <label class="settings-label" for="monitoringInterval">Check devices every (seconds)</label>
                         <input type="number" id="monitoringInterval" class="settings-input"
                                value="{{ monitoring.value }}"
-                               min="60" max="3600" step="30" placeholder="300">
+                               min="10" max="3600" step="5" placeholder="15">
                         <span class="settings-hint">
-                            1 minute to 1 hour. Currently <strong style="color:var(--ui-text-primary);">{{ monitoring.value }}s</strong>.
-                            Changes take effect within one minute — no restart required.
+                            10 seconds to 1 hour. Currently <strong style="color:var(--ui-text-primary);">{{ monitoring.value }}s</strong>.
+                            Changes take effect within a few seconds — no restart required.
                         </span>
                     </div>
                 </div>

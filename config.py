@@ -62,21 +62,15 @@ class Config:
 
     # Security
     SECRET_KEY = os.environ.get('SECRET_KEY', 'change-this-secret-key-in-production')
-    
-    # Database - Save to EXEC_DIR/instance so data persists outside the temp folder
-    # Ensure instance folder exists
+
     INSTANCE_DIR = os.path.join(EXEC_DIR, 'instance')
     if not os.path.exists(INSTANCE_DIR):
         try:
             os.makedirs(INSTANCE_DIR)
         except OSError:
-            pass # Might fail if no write permissions, but we try
-            
-    # Normalize path for SQLite URI on Windows (backslashes -> forward slashes)
-    _default_db_path = os.path.join(INSTANCE_DIR, 'device_monitoring.db')
-    if os.name == 'nt':
-        _default_db_path = _default_db_path.replace('\\', '/')
-
+            pass
+    
+    # Database
     _env_db_url = os.environ.get('DATABASE_URL')
     
     # Defensive fix: If DATABASE_URL is set but looks like a raw file path (no scheme), fix it
@@ -85,7 +79,7 @@ class Config:
             _env_db_url = _env_db_url.replace('\\', '/')
         _env_db_url = 'sqlite:///' + _env_db_url
 
-    SQLALCHEMY_DATABASE_URI = _env_db_url or ('sqlite:///' + _default_db_path)
+    SQLALCHEMY_DATABASE_URI = _env_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False
 
@@ -98,7 +92,7 @@ class Config:
         # Keep connections healthy in long-running app
         'pool_pre_ping': True
     }
-    if SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+    if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
         # SQLite Options: 30s timeout to allow concurrent writes (prevents "database is locked" errors)
         SQLALCHEMY_ENGINE_OPTIONS.update({
             'connect_args': {
@@ -278,6 +272,11 @@ class Config:
         minimum=5,
     )
     REDIS_SSE_ENABLED = os.environ.get('REDIS_SSE_ENABLED', 'true').lower() == 'true'
+    TRACKING_ELIGIBLE_INVENTORY_CACHE_TTL_SECONDS = _env_int(
+        'TRACKING_ELIGIBLE_INVENTORY_CACHE_TTL_SECONDS',
+        90,
+        minimum=30,
+    )
 
     # Enforce Postgres-only ingestion for agent metrics
     REQUIRE_POSTGRES_ONLY = os.environ.get('REQUIRE_POSTGRES_ONLY', 'false').lower() == 'true'
@@ -366,3 +365,38 @@ class Config:
     # Role mapping
     LDAP_DEFAULT_ROLE = os.environ.get('LDAP_DEFAULT_ROLE', 'user')
     LDAP_ADMIN_GROUP = os.environ.get('LDAP_ADMIN_GROUP', '')         # CN=MonitorAdmins,OU=Groups,...
+
+
+class TestingConfig(Config):
+    TESTING = True
+
+    # Keep test SQLite support available for create_app(test_config=...) and direct use.
+    _default_db_path = os.path.join(Config.INSTANCE_DIR, 'device_monitoring-test.db')
+    if os.name == 'nt':
+        _default_db_path = _default_db_path.replace('\\', '/')
+
+    SQLALCHEMY_DATABASE_URI = Config._env_db_url or ('sqlite:///' + _default_db_path)
+    SQLALCHEMY_ENGINE_OPTIONS = dict(Config.SQLALCHEMY_ENGINE_OPTIONS)
+    if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+        SQLALCHEMY_ENGINE_OPTIONS.update({
+            'connect_args': {
+                'timeout': 30,
+                'check_same_thread': False,
+            }
+        })
+
+
+class ProductionConfig(Config):
+    APP_ENV = 'production'
+    IS_PRODUCTION = True
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+
+    @classmethod
+    def require_database_url(cls):
+        database_url = os.environ.get('DATABASE_URL')
+        if not database_url:
+            raise RuntimeError(
+                "ProductionConfig requires DATABASE_URL to be set. "
+                "SQLite fallback is disabled outside TestingConfig."
+            )
+        return database_url

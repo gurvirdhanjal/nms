@@ -359,6 +359,7 @@ function renderTrendChart(metric, trend, metaId) {
     const canvasId = `chart-fleet-trend-${metric}`;
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === 'undefined') return;
+    if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
 
     const rangeHours = toNumber(trend?.range_hours, 24);
     const labels = Array.isArray(trend?.labels) ? trend.labels.map((l) => formatTrendLabel(l, rangeHours)) : [];
@@ -374,7 +375,13 @@ function renderTrendChart(metric, trend, metaId) {
     const colorMap = { cpu: '#74c0fc', memory: '#ffd166', disk: '#a7f3d0' };
     const datasetColor = colorMap[metric] || '#74c0fc';
 
-    const ctx = canvas.getContext('2d');
+    let ctx = null;
+    try {
+        ctx = canvas.getContext('2d');
+    } catch (_error) {
+        return;
+    }
+    if (!ctx || typeof ctx.createLinearGradient !== 'function') return;
     const gradient = makeGradient(ctx, canvas, datasetColor);
 
     const datasets = [

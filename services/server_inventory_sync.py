@@ -13,7 +13,12 @@ from models.device import Device
 from models.device_identity_link import DeviceIdentityLink
 from models.scan_history import DeviceScanHistory
 from services.dashboard_cache_service import invalidate_dashboard_server_views
-from services.device_identity import compute_subnet_cidr
+from services.device_identity import (
+    _is_generic_hostname,
+    _is_invalid_text,
+    _merge_duplicate_device_dependencies,
+    compute_subnet_cidr,
+)
 from utils.server_health import is_server_device
 
 logger = logging.getLogger(__name__)
@@ -55,10 +60,43 @@ def _active_links_for_tracked_device(tracked_device_id: int):
     )
 
 
-def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_at_utc=None, session=None) -> dict:
+def _active_link_for_inventory_device(device_id: int):
+    return (
+        DeviceIdentityLink.query.filter_by(device_id=int(device_id), is_active=True)
+        .order_by(DeviceIdentityLink.id.desc())
+        .first()
+    )
+
+
+def _normalize_hostname(hostname_value):
+    text = str(hostname_value or "").strip()
+    return text or None
+
+
+def _should_sync_inventory_hostname(device, hostname_value):
+    candidate = _normalize_hostname(hostname_value)
+    if not candidate or _is_invalid_text(candidate) or _is_generic_hostname(candidate):
+        return False
+    if getattr(device, "name_locked", False):
+        return False
+    current = _normalize_hostname(getattr(device, "hostname", None))
+    return current != candidate
+
+
+def sync_linked_inventory_ip(
+    *,
+    tracked_device,
+    old_ip,
+    new_ip,
+    reason,
+    hostname=None,
+    changed_at_utc=None,
+    session=None,
+) -> dict:
     tracked_device_id = int(getattr(tracked_device, "id", 0) or 0)
     normalized_new_ip = _normalize_ip(new_ip)
     normalized_old_ip = _normalize_ip(old_ip)
+    normalized_hostname = _normalize_hostname(hostname)
     changed_at = changed_at_utc or datetime.utcnow()
 
     result = {
@@ -68,6 +106,9 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
         "tracked_device_id": tracked_device_id or None,
         "link_id": None,
         "fatal": False,
+        "collision_device_id": None,
+        "resolution_action": None,
+        "hostname_updated": False,
     }
 
     if not tracked_device_id or not normalized_new_ip or normalized_new_ip == normalized_old_ip:
@@ -134,28 +175,59 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
         .first()
     )
     if collision is not None:
+        collision_id = int(collision.device_id)
+        result["collision_device_id"] = collision_id
         # A collision device with no real MAC and no active tracking binding is a
         # weak IP-scan-only record that got superseded when the real device identified
         # itself via MAC/UUID.  Clear its stale IP so the MAC-identified device can
         # claim the address instead of hard-failing with 409.
         collision_mac = _normalize_mac(getattr(collision, "macaddress", None))
-        collision_has_tracking = (
-            DeviceIdentityLink.query.filter_by(
-                device_id=int(collision.device_id), is_active=True
-            ).first()
-            is not None
+        identity_mac = tracked_mac or linked_mac
+        collision_link = _active_link_for_inventory_device(collision_id)
+        collision_linked_tracked_id = int(getattr(collision_link, "tracked_device_id", 0) or 0) or None
+        collision_has_tracking = collision_link is not None
+        same_identity_collision = (
+            collision_linked_tracked_id == tracked_device_id
+            or (
+                bool(identity_mac)
+                and collision_mac == identity_mac
+                and not collision_has_tracking
+            )
         )
-        if not collision_mac and not collision_has_tracking:
+        if same_identity_collision:
+            logger.warning(
+                "[InventorySync] merging duplicate collision device_id=%s into linked device_id=%s "
+                "tracked_device_id=%s link_id=%s old_ip=%s new_ip=%s",
+                collision_id,
+                device.device_id,
+                tracked_device_id,
+                link.id,
+                normalized_old_ip,
+                normalized_new_ip,
+            )
+            if not _normalize_mac(getattr(device, "macaddress", None)) and collision_mac:
+                device.macaddress = collision.macaddress
+            if not normalized_hostname and _should_sync_inventory_hostname(device, collision.hostname):
+                normalized_hostname = _normalize_hostname(collision.hostname)
+            _merge_duplicate_device_dependencies(
+                primary=device,
+                duplicate=collision,
+                target_ip=normalized_new_ip,
+            )
+            db.session.flush()
+            result["resolution_action"] = "MERGED_DUPLICATE"
+        elif not collision_mac and not collision_has_tracking:
             logger.warning(
                 "[InventorySync] clearing stale IP-scan collision device_id=%s ip=%s "
                 "to allow tracked_device_id=%s (device_id=%s) to claim it",
-                collision.device_id,
+                collision_id,
                 normalized_new_ip,
                 tracked_device_id,
                 device.device_id,
             )
             collision.device_ip = None
             db.session.flush()
+            result["resolution_action"] = "CLEARED_STALE_COLLISION"
         else:
             result["reason_code"] = "IP_COLLISION"
             result["fatal"] = True
@@ -164,7 +236,7 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
                 result["reason_code"],
                 tracked_device_id,
                 device.device_id,
-                collision.device_id,
+                collision_id,
                 link.id,
                 normalized_old_ip,
                 normalized_new_ip,
@@ -177,6 +249,10 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
     device.updated_at = changed_at
     if _should_rename_autogenerated_name(device.device_name, previous_device_ip):
         device.device_name = f"Device-{normalized_new_ip}"
+    previous_hostname = _normalize_hostname(getattr(device, "hostname", None))
+    if _should_sync_inventory_hostname(device, normalized_hostname):
+        device.hostname = normalized_hostname
+        result["hostname_updated"] = True
     if previous_device_ip and previous_device_ip != normalized_new_ip:
         DeviceScanHistory.query.filter_by(device_ip=previous_device_ip).update(
             {"device_ip": normalized_new_ip},
@@ -200,6 +276,10 @@ def sync_linked_inventory_ip(*, tracked_device, old_ip, new_ip, reason, changed_
                 "link_id": int(link.id),
                 "old_ip": previous_device_ip,
                 "new_ip": normalized_new_ip,
+                "old_hostname": previous_hostname,
+                "new_hostname": _normalize_hostname(getattr(device, "hostname", None)),
+                "collision_device_id": result.get("collision_device_id"),
+                "resolution_action": result.get("resolution_action"),
             },
         )
     )

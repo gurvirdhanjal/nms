@@ -530,17 +530,20 @@ def attempt_identity_relocation(
             "old_ip": current_ip,
             "new_ip": new_ip,
             "reason": "IDENTITY_RELOCATION",
+            "status": "planned" if dry_run else "pending",
         }
         discovery_cache.last_relocation_plan.append(update_item)
-        updated_count += 1
 
         if dry_run:
+            updated_count += 1
             continue
 
+        new_hostname = (target.get("hostname") or "").strip() or None
         try:
-            apply_tracked_device_ip_change(
+            ip_change = apply_tracked_device_ip_change(
                 tracked_device=device,
                 new_ip=new_ip,
+                resolved_hostname=new_hostname,
                 now_utc=datetime.utcnow(),
                 payload_ip=new_ip,
                 payload_candidates=[new_ip],
@@ -555,11 +558,28 @@ def attempt_identity_relocation(
                 sync_reason='RECONCILE_RELOCATION',
             )
         except TrackedDeviceIpSyncError as exc:
-            raise RuntimeError(f"Tracked device relocation sync blocked: {exc.reason_code}") from exc
+            update_item["status"] = "blocked"
+            update_item["sync_reason_code"] = exc.reason_code
+            collision_device_id = exc.sync_result.get("collision_device_id")
+            if collision_device_id:
+                update_item["collision_device_id"] = collision_device_id
+            logger.warning(
+                "[TrackingReconcile] relocation blocked device_id=%s old_ip=%s new_ip=%s reason=%s collision_device_id=%s",
+                device.id,
+                current_ip,
+                new_ip,
+                exc.reason_code,
+                collision_device_id,
+            )
+            continue
 
-        new_hostname = (target.get("hostname") or "").strip()
-        if new_hostname:
-            device.hostname = new_hostname
+        sync_result = (ip_change or {}).get("sync_result") or {}
+        if sync_result.get("resolution_action"):
+            update_item["resolution_action"] = sync_result["resolution_action"]
+        if sync_result.get("hostname_updated"):
+            update_item["hostname_updated"] = True
+        update_item["status"] = "applied"
+        updated_count += 1
 
     return updated_count
 

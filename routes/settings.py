@@ -126,12 +126,12 @@ def api_save_monitoring():
         seconds = int(data.get('monitoring_interval_seconds', 300))
     except (TypeError, ValueError):
         return jsonify({'ok': False, 'message': 'Invalid interval — must be an integer.'}), 400
-    if not (60 <= seconds <= 3600):
-        return jsonify({'ok': False, 'message': 'Interval must be between 60 and 3600 seconds.'}), 400
+    if not (10 <= seconds <= 3600):
+        return jsonify({'ok': False, 'message': 'Interval must be between 10 and 3600 seconds.'}), 400
     try:
         from services.settings_service import set_monitoring_interval
         set_monitoring_interval(seconds, actor_id=actor_id)
-        return jsonify({'ok': True, 'message': f'Monitoring interval set to {seconds}s. Takes effect within 1 minute.'})
+        return jsonify({'ok': True, 'message': f'Monitoring interval set to {seconds}s. Takes effect within a few seconds.'})
     except Exception as exc:
         logger.exception("[settings] Failed to save monitoring interval")
         return jsonify({'ok': False, 'message': f'Save failed: {exc}'}), 500

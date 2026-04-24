@@ -231,11 +231,12 @@ function buildThresholdLineDatasets(labels, thresholdConfig, colors = {}) {
         datasets.push({
             label: 'Warning threshold',
             data: labels.map(() => warning),
-            borderColor: colors.warning || 'rgba(255, 170, 0, 0.7)',
-            borderWidth: 1,
+            borderColor: colors.warning || 'rgba(255, 170, 0, 0.85)',
+            borderWidth: 1.5,
             pointRadius: 0,
+            pointHoverRadius: 0,
             fill: false,
-            borderDash: [6, 4],
+            borderDash: [5, 3],
             tension: 0,
             isThresholdLine: true,
         });
@@ -244,11 +245,12 @@ function buildThresholdLineDatasets(labels, thresholdConfig, colors = {}) {
         datasets.push({
             label: 'Critical threshold',
             data: labels.map(() => critical),
-            borderColor: colors.critical || 'rgba(255, 59, 92, 0.8)',
-            borderWidth: 1,
+            borderColor: colors.critical || 'rgba(255, 59, 92, 0.9)',
+            borderWidth: 1.5,
             pointRadius: 0,
+            pointHoverRadius: 0,
             fill: false,
-            borderDash: [6, 4],
+            borderDash: [5, 3],
             tension: 0,
             isThresholdLine: true,
         });
@@ -279,8 +281,9 @@ function sortProcesses(processes, mode) {
 
 function buildChartGradient(ctx, hexColor, chartArea) {
     const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-    gradient.addColorStop(0, `${hexColor}40`);
-    gradient.addColorStop(1, `${hexColor}02`);
+    gradient.addColorStop(0,    `${hexColor}55`); // ~33% at peak
+    gradient.addColorStop(0.42, `${hexColor}1A`); // ~10% at mid
+    gradient.addColorStop(1,    `${hexColor}00`); // fully transparent at baseline
     return gradient;
 }
 
@@ -299,6 +302,10 @@ export function createServerMetricsView({ root, prefix }) {
     let initialDataLoaded = false;
     let sharedHoveredIndex = null;
     const registeredCharts = [];
+
+    // Mutable threshold band store — keyed by canvasId so the plugin reads
+    // the latest bands on every draw, even after chart data updates.
+    const thresholdBandStore = new Map();
 
     // Disk I/O sparkline state
     const diskReadHistory = [];
@@ -391,24 +398,57 @@ export function createServerMetricsView({ root, prefix }) {
         const spanMs = labelDates.length > 1 ? (labelDates[labelDates.length - 1] - labelDates[0]) : 0;
         const showDate = spanMs > (36 * 60 * 60 * 1000);
 
+        // Always write the latest bands + config into the store so
+        // that afterDraw picks them up on every chart.update() call.
+        thresholdBandStore.set(canvasId, { thresholds, thresholdConfig });
+
         const thresholdPlugin = {
             id: `${prefix}-${canvasId}-threshold-bands`,
             beforeDraw(chart) {
                 const yScale = chart.scales?.y;
                 const chartArea = chart.chartArea;
-                if (!yScale || !chartArea || !thresholds.length) return;
+                const stored = thresholdBandStore.get(canvasId);
+                const activeBands = stored?.thresholds || [];
+                if (!yScale || !chartArea || !activeBands.length) return;
                 const chartCtx = chart.ctx;
-                thresholds.forEach((band) => {
+                activeBands.forEach((band) => {
                     const from = band.from ?? 0;
                     const to = band.to ?? 0;
                     if (to <= from) return;
-                    const yTop = yScale.getPixelForValue(to);
-                    const yBottom = yScale.getPixelForValue(from);
+                    const yTop    = yScale.getPixelForValue(Math.min(to, yScale.max));
+                    const yBottom = yScale.getPixelForValue(Math.max(from, yScale.min));
+                    if (yBottom <= yTop) return;
                     chartCtx.save();
                     chartCtx.fillStyle = band.color || 'rgba(255,255,255,0.04)';
                     chartCtx.fillRect(chartArea.left, yTop, chartArea.right - chartArea.left, yBottom - yTop);
                     chartCtx.restore();
                 });
+            },
+            afterDraw(chart) {
+                // Draw compact warn/crit value labels at the right edge
+                const yScale = chart.scales?.y;
+                const chartArea = chart.chartArea;
+                const stored = thresholdBandStore.get(canvasId);
+                const cfg = stored?.thresholdConfig;
+                if (!yScale || !chartArea || !cfg?.enabled) return;
+                const chartCtx = chart.ctx;
+                const warn = toFiniteNumber(cfg.warning);
+                const crit = toFiniteNumber(cfg.critical);
+                chartCtx.save();
+                chartCtx.font = '600 9px "JetBrains Mono", "Fira Code", monospace';
+                chartCtx.textAlign = 'right';
+                chartCtx.textBaseline = 'bottom';
+                if (warn !== null && warn >= yScale.min && warn <= yScale.max) {
+                    const y = yScale.getPixelForValue(warn);
+                    chartCtx.fillStyle = 'rgba(255,170,0,0.75)';
+                    chartCtx.fillText(`W ${warn}`, chartArea.right - 3, y - 2);
+                }
+                if (crit !== null && crit >= yScale.min && crit <= yScale.max) {
+                    const y = yScale.getPixelForValue(crit);
+                    chartCtx.fillStyle = 'rgba(255,59,92,0.8)';
+                    chartCtx.fillText(`C ${crit}`, chartArea.right - 3, y - 2);
+                }
+                chartCtx.restore();
             },
         };
 
@@ -547,6 +587,8 @@ export function createServerMetricsView({ root, prefix }) {
         };
 
         if (charts[canvasId]) {
+            // Refresh the band store so the plugin paints the latest thresholds.
+            thresholdBandStore.set(canvasId, { thresholds, thresholdConfig });
             charts[canvasId].data.labels = labels;
             charts[canvasId].data.datasets = datasets;
             // Only patch the y-axis label when it actually changes (e.g. KB/s→MB/s on network chart).
@@ -1315,7 +1357,7 @@ export function createServerMetricsView({ root, prefix }) {
         renderChart({
             canvasId: 'chart-cpu',
             labels,
-            series: [{ label: 'CPU', data: cpu, color: '#0d6efd' }],
+            series: [{ label: 'CPU', data: cpu, color: '#3b82f6' }],
             unit: '%',
             yAxisLabel: 'Utilization %',
             thresholds: thresholds.metrics?.cpu_usage_pct?.bands || [],
@@ -1325,7 +1367,7 @@ export function createServerMetricsView({ root, prefix }) {
         renderChart({
             canvasId: 'chart-mem',
             labels,
-            series: [{ label: 'Memory', data: memory, color: '#6610f2' }],
+            series: [{ label: 'Memory', data: memory, color: '#a78bfa' }],
             unit: '%',
             yAxisLabel: 'Utilization %',
             thresholds: thresholds.metrics?.memory_usage_pct?.bands || [],
@@ -1335,7 +1377,7 @@ export function createServerMetricsView({ root, prefix }) {
         renderChart({
             canvasId: 'chart-disk',
             labels,
-            series: [{ label: 'Disk', data: disk, color: '#dc3545' }],
+            series: [{ label: 'Disk', data: disk, color: '#f87171' }],
             unit: '%',
             yAxisLabel: 'Utilization %',
             thresholds: thresholds.metrics?.disk_usage_pct?.bands || [],

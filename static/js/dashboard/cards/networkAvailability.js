@@ -1,7 +1,7 @@
 /**
  * Card Component: Network Availability
  */
-import { formatPercent, checkStale } from '../utils.js';
+import { formatPercent, checkStale, timeAgo } from '../utils.js';
 
 let chartInstance = null;
 let breakdownChart = null;
@@ -44,9 +44,22 @@ export function renderNetworkAvailability(data, trendsData) {
             breakdownVal.textContent = formatPercent(percentValue);
             breakdownVal.className = `fw-bold text-${severity}`;
         }
+
+        const stateEl = document.getElementById('state-availability');
+        if (stateEl) {
+            const status = severity === 'success' ? 'Healthy' : severity === 'warning' ? 'Degraded' : 'Critical';
+            stateEl.textContent = status;
+            stateEl.className = `soc-kpi-status ${status === 'Healthy' ? 'status-healthy' : status === 'Degraded' ? 'status-warning' : 'status-critical'}`;
+        }
+
+        const contextEl = document.getElementById('ctx-availability');
+        if (contextEl) {
+            contextEl.textContent = `history 24h ${data.availability?.history_24h_pct != null ? formatPercent(data.availability.history_24h_pct) : 'n/a'} · current ${formatPercent(percentValue)}`;
+        }
     }
 
-    renderAvailabilityTrendSummary(percentValue, trendsData);
+    const freshness = getAvailabilityFreshness(data);
+    renderAvailabilityTrendSummary(percentValue, trendsData, freshness);
 
     if (data && data.availability) {
         const hist = data.availability.history_24h_pct ?? 0;
@@ -60,7 +73,25 @@ export function renderNetworkAvailability(data, trendsData) {
         renderBreakdownTrend(trendsData.availability_trend);
     }
 
-    checkStale(data?.timestamp, cardId);
+    checkStale(freshness.displayTimestamp, cardId);
+}
+
+function getAvailabilityFreshness(data) {
+    const snapshotTimestamp = data?.snapshot_generated_at ?? data?.timestamp ?? null;
+    const sourceTimestamp = data?.source_data_freshness_at ?? null;
+    const snapshotDate = snapshotTimestamp ? new Date(snapshotTimestamp) : null;
+    const sourceDate = sourceTimestamp ? new Date(sourceTimestamp) : null;
+    const hasSnapshot = snapshotDate instanceof Date && !Number.isNaN(snapshotDate.getTime());
+    const hasSource = sourceDate instanceof Date && !Number.isNaN(sourceDate.getTime());
+    const displayDate = hasSource ? sourceDate : (hasSnapshot ? snapshotDate : null);
+    const staleGapMs = hasSource && hasSnapshot ? Math.max(0, snapshotDate.getTime() - sourceDate.getTime()) : 0;
+    const isStaleGap = staleGapMs > (5 * 60 * 1000);
+
+    return {
+        displayTimestamp: displayDate ? displayDate.toISOString() : snapshotTimestamp,
+        isStaleGap,
+        label: displayDate ? `${isStaleGap ? 'Warning: ' : ''}updated ${timeAgo(displayDate.toISOString())}` : 'updated n/a'
+    };
 }
 
 function getRangeLabel(range) {
@@ -97,16 +128,20 @@ function formatDelta(deltaValue) {
     return Number.isInteger(oneDecimal) ? oneDecimal.toFixed(0) : oneDecimal.toFixed(1);
 }
 
-function renderAvailabilityTrendSummary(currentPercent, trendsData) {
+function renderAvailabilityTrendSummary(currentPercent, trendsData, freshness = null) {
     const subEl = document.getElementById('sub-availability-trend');
     if (!subEl) return;
 
     const trend = trendsData?.availability_trend;
     const firstPoint = getFirstTrendPoint(trend);
     const rangeLabel = getRangeLabel(trendsData?.range);
+    const freshnessClass = freshness?.isStaleGap ? 'text-warning' : 'text-secondary';
+    const freshnessMarkup = `<span class="${freshnessClass}">${freshness?.label || 'updated n/a'}</span>`;
 
     if (!firstPoint || typeof firstPoint.value !== 'number') {
-        subEl.innerHTML = `<span class="text-secondary">Availability: ${formatPercent(currentPercent)} (${rangeLabel})</span>`;
+        subEl.innerHTML = `<span class="text-secondary">Availability: ${formatPercent(currentPercent)} (${rangeLabel})</span> <span class="text-secondary">·</span> ${freshnessMarkup}`;
+        const trendEl = document.getElementById('trend-availability');
+        if (trendEl) trendEl.innerHTML = '&rarr; steady';
         return;
     }
 
@@ -123,7 +158,11 @@ function renderAvailabilityTrendSummary(currentPercent, trendsData) {
         deltaClass = 'text-danger';
     }
 
-    subEl.innerHTML = `Availability: ${formatPercent(currentPercent)} <span class="${deltaClass} fw-semibold">${arrow} ${deltaText}%</span> <span class="text-secondary">(${rangeLabel})</span>`;
+    subEl.innerHTML = `Availability: ${formatPercent(currentPercent)} <span class="${deltaClass} fw-semibold">${arrow} ${deltaText}%</span> <span class="text-secondary">(${rangeLabel})</span> <span class="text-secondary">·</span> ${freshnessMarkup}`;
+    const trendEl = document.getElementById('trend-availability');
+    if (trendEl) {
+        trendEl.innerHTML = `<span class="${deltaClass}">${arrow} ${deltaText}%</span>`;
+    }
 }
 
 function renderSparkline(trendData) {

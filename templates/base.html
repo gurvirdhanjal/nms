@@ -440,37 +440,37 @@
         }
 
         .tactical-clock {
+            background: var(--ui-accent-soft);
+            border: 1px solid var(--ui-border-strong);
+            border-radius: 6px;
+            padding: 4px 10px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 0 16px;
+            gap: 8px;
             line-height: 1;
-            font-family: var(--ui-font-mono);
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
             user-select: none;
-            border-right: 1px solid var(--ui-border);
         }
 
         .tactical-clock #clock-date {
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: var(--ui-text-muted);
-            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
         }
 
         .tactical-clock #clock-time {
-            font-size: 0.95rem;
+            font-size: 0.8rem;
             color: var(--ui-text);
-            font-weight: 600;
-            letter-spacing: 0.05em;
         }
 
         .theme-toggle-btn {
             background: var(--ui-accent-soft);
             border: 1px solid var(--ui-border-strong);
             color: var(--ui-text);
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
             border-radius: 6px;
             display: inline-flex;
             align-items: center;
@@ -489,21 +489,21 @@
             background: var(--ui-accent-soft);
             border: 1px solid var(--ui-border-strong);
             color: var(--ui-text);
-            padding: 6px 14px;
+            padding: 4px 10px;
             border-radius: 6px;
             font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             letter-spacing: 0.5px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .header-user-btn::after {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
         }
 
         .header-user-btn:hover {
@@ -1908,7 +1908,7 @@
                     (function(){
                         var d = new Date();
                         document.getElementById('clock-date').textContent = d.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
-                        document.getElementById('clock-time').textContent = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
+                        document.getElementById('clock-time').textContent = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'});
                     })();
                 </script>
                 {% if session.logged_in %}
@@ -2291,7 +2291,7 @@
                 }
                 if (timeEl) {
                     timeEl.textContent = now.toLocaleTimeString('en-US', {
-                        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+                        hour12: false, hour: '2-digit', minute: '2-digit'
                     });
                 }
             }

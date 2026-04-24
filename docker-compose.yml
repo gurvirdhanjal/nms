@@ -1,30 +1,45 @@
 version: "3.9"
 
 services:
+
   db:
     image: postgres:15
+    container_name: nms_db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: monitoring_db
-      POSTGRES_USER: monitoring_man
+      POSTGRES_DB:       monitoring_db
+      POSTGRES_USER:     monitoring_man
       POSTGRES_PASSWORD: admin123
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitoring_man -d monitoring_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nms_app
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://monitoring_man:admin123@db:5432/monitoring_db
+      DATABASE_URL:          postgresql+psycopg2://monitoring_man:admin123@db:5432/monitoring_db
       SESSION_COOKIE_SECURE: "False"
+      WEB_OPEN_BROWSER:      "0"
     ports:
       - "5001:5001"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
-      - .:/app
+      - app_instance:/app/instance   # persists SQLite fallback + uploads
 
 volumes:
   pgdata:
+  app_instance:

@@ -1,35 +1,297 @@
--- TimescaleDB Migration Script (Fixed for existing primary keys)
--- Device Monitoring System - Time-Clustered Database Implementation
+-- Proper TimescaleDB migration for the current monitoring schema.
+--
+-- Important design choice:
+-- - tracking_samples remains a regular PostgreSQL table because it carries
+--   relational/idempotency semantics that are not a good fit for a Timescale
+--   hypertable in the current app schema.
+-- - The raw append-only history tables become hypertables:
+--     * server_health_logs
+--     * device_resource_logs
+--     * device_activity_logs
+--     * device_application_logs
+-- This script is also safe to run after the older broken migration attempt:
+-- it restores the tracking_samples primary key / sample foreign keys and then
+-- performs the supported hypertable conversion.
+
+\set ON_ERROR_STOP on
 
 \echo '=== Phase 1: Enabling TimescaleDB Extension ==='
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
-SELECT default_version, installed_version 
-FROM pg_available_extensions 
+SELECT default_version, installed_version
+FROM pg_available_extensions
 WHERE name = 'timescaledb';
 
-\echo '=== Phase 2: Preparing Tables for Hypertable Conversion ==='
+\echo '=== Phase 2: Restoring Relational Constraints ==='
 
--- Drop primary keys that don't include timestamp
-\echo 'Dropping incompatible primary keys...'
-ALTER TABLE server_health_logs DROP CONSTRAINT IF EXISTS server_health_logs_pkey CASCADE;
-ALTER TABLE tracking_samples DROP CONSTRAINT IF EXISTS tracking_samples_pkey CASCADE;
-ALTER TABLE device_resource_logs DROP CONSTRAINT IF EXISTS device_resource_logs_pkey CASCADE;
-ALTER TABLE device_activity_logs DROP CONSTRAINT IF EXISTS device_activity_logs_pkey CASCADE;
-ALTER TABLE device_application_logs DROP CONSTRAINT IF EXISTS device_application_logs_pkey CASCADE;
+DROP INDEX IF EXISTS idx_tracking_samples_id;
 
--- Add unique indexes instead (without primary key constraint)
-\echo 'Creating unique indexes...'
-CREATE UNIQUE INDEX IF NOT EXISTS idx_server_health_logs_id ON server_health_logs(id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tracking_samples_id ON tracking_samples(id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_device_resource_logs_id ON device_resource_logs(id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_device_activity_logs_id ON device_activity_logs(id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_device_application_logs_id ON device_application_logs(id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'tracking_samples'::regclass
+          AND conname = 'tracking_samples_pkey'
+          AND contype = 'p'
+    ) THEN
+        ALTER TABLE tracking_samples
+            ADD CONSTRAINT tracking_samples_pkey PRIMARY KEY (id);
+    END IF;
+END $$;
 
-\echo '=== Phase 3: Converting Tables to Hypertables ==='
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'tracking_samples'
+          AND column_name = 'previous_sample_id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'tracking_samples'::regclass
+          AND conname = 'tracking_samples_previous_sample_id_fkey'
+    ) THEN
+        ALTER TABLE tracking_samples
+            ADD CONSTRAINT tracking_samples_previous_sample_id_fkey
+            FOREIGN KEY (previous_sample_id) REFERENCES tracking_samples(id);
+    END IF;
+END $$;
 
--- Convert server_health_logs
-\echo 'Converting server_health_logs to hypertable...'
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'tracked_device_availability_events'
+          AND column_name = 'sample_id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'tracked_device_availability_events'::regclass
+          AND conname = 'tracked_device_availability_events_sample_id_fkey'
+    ) THEN
+        ALTER TABLE tracked_device_availability_events
+            ADD CONSTRAINT tracked_device_availability_events_sample_id_fkey
+            FOREIGN KEY (sample_id) REFERENCES tracking_samples(id);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'device_activity_logs'
+          AND column_name = 'sample_id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'device_activity_logs'::regclass
+          AND conname = 'device_activity_logs_sample_id_fkey'
+    ) THEN
+        ALTER TABLE device_activity_logs
+            ADD CONSTRAINT device_activity_logs_sample_id_fkey
+            FOREIGN KEY (sample_id) REFERENCES tracking_samples(id);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'device_resource_logs'
+          AND column_name = 'sample_id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'device_resource_logs'::regclass
+          AND conname = 'device_resource_logs_sample_id_fkey'
+    ) THEN
+        ALTER TABLE device_resource_logs
+            ADD CONSTRAINT device_resource_logs_sample_id_fkey
+            FOREIGN KEY (sample_id) REFERENCES tracking_samples(id);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'device_application_logs'
+          AND column_name = 'sample_id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'device_application_logs'::regclass
+          AND conname = 'device_application_logs_sample_id_fkey'
+    ) THEN
+        ALTER TABLE device_application_logs
+            ADD CONSTRAINT device_application_logs_sample_id_fkey
+            FOREIGN KEY (sample_id) REFERENCES tracking_samples(id);
+    END IF;
+END $$;
+
+\echo '=== Phase 3: Preparing Hypertable Candidates ==='
+
+DROP INDEX IF EXISTS idx_server_health_logs_id;
+DROP INDEX IF EXISTS idx_device_resource_logs_id;
+DROP INDEX IF EXISTS idx_device_activity_logs_id;
+DROP INDEX IF EXISTS idx_device_application_logs_id;
+
+UPDATE server_health_logs
+SET timestamp = NOW()
+WHERE timestamp IS NULL;
+
+UPDATE device_resource_logs
+SET timestamp = NOW()
+WHERE timestamp IS NULL;
+
+UPDATE device_activity_logs
+SET timestamp = NOW()
+WHERE timestamp IS NULL;
+
+UPDATE device_application_logs
+SET timestamp = NOW()
+WHERE timestamp IS NULL;
+
+ALTER TABLE server_health_logs
+    ALTER COLUMN id SET NOT NULL,
+    ALTER COLUMN timestamp SET NOT NULL;
+
+ALTER TABLE device_resource_logs
+    ALTER COLUMN id SET NOT NULL,
+    ALTER COLUMN timestamp SET NOT NULL;
+
+ALTER TABLE device_activity_logs
+    ALTER COLUMN id SET NOT NULL,
+    ALTER COLUMN timestamp SET NOT NULL;
+
+ALTER TABLE device_application_logs
+    ALTER COLUMN id SET NOT NULL,
+    ALTER COLUMN timestamp SET NOT NULL;
+
+DO $$
+DECLARE
+    current_pk_name text;
+    current_pk_cols text[];
+BEGIN
+    SELECT c.conname,
+           array_agg(a.attname ORDER BY k.ordinality)
+      INTO current_pk_name, current_pk_cols
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON TRUE
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = k.attnum
+    WHERE c.conrelid = 'server_health_logs'::regclass
+      AND c.contype = 'p'
+    GROUP BY c.conname;
+
+    IF current_pk_cols IS DISTINCT FROM ARRAY['id', 'timestamp'] THEN
+        IF current_pk_name IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE server_health_logs DROP CONSTRAINT %I',
+                current_pk_name
+            );
+        END IF;
+        ALTER TABLE server_health_logs
+            ADD CONSTRAINT server_health_logs_pkey PRIMARY KEY (id, timestamp);
+    END IF;
+END $$;
+
+DO $$
+DECLARE
+    current_pk_name text;
+    current_pk_cols text[];
+BEGIN
+    SELECT c.conname,
+           array_agg(a.attname ORDER BY k.ordinality)
+      INTO current_pk_name, current_pk_cols
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON TRUE
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = k.attnum
+    WHERE c.conrelid = 'device_resource_logs'::regclass
+      AND c.contype = 'p'
+    GROUP BY c.conname;
+
+    IF current_pk_cols IS DISTINCT FROM ARRAY['id', 'timestamp'] THEN
+        IF current_pk_name IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE device_resource_logs DROP CONSTRAINT %I',
+                current_pk_name
+            );
+        END IF;
+        ALTER TABLE device_resource_logs
+            ADD CONSTRAINT device_resource_logs_pkey PRIMARY KEY (id, timestamp);
+    END IF;
+END $$;
+
+DO $$
+DECLARE
+    current_pk_name text;
+    current_pk_cols text[];
+BEGIN
+    SELECT c.conname,
+           array_agg(a.attname ORDER BY k.ordinality)
+      INTO current_pk_name, current_pk_cols
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON TRUE
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = k.attnum
+    WHERE c.conrelid = 'device_activity_logs'::regclass
+      AND c.contype = 'p'
+    GROUP BY c.conname;
+
+    IF current_pk_cols IS DISTINCT FROM ARRAY['id', 'timestamp'] THEN
+        IF current_pk_name IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE device_activity_logs DROP CONSTRAINT %I',
+                current_pk_name
+            );
+        END IF;
+        ALTER TABLE device_activity_logs
+            ADD CONSTRAINT device_activity_logs_pkey PRIMARY KEY (id, timestamp);
+    END IF;
+END $$;
+
+DO $$
+DECLARE
+    current_pk_name text;
+    current_pk_cols text[];
+BEGIN
+    SELECT c.conname,
+           array_agg(a.attname ORDER BY k.ordinality)
+      INTO current_pk_name, current_pk_cols
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON TRUE
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = k.attnum
+    WHERE c.conrelid = 'device_application_logs'::regclass
+      AND c.contype = 'p'
+    GROUP BY c.conname;
+
+    IF current_pk_cols IS DISTINCT FROM ARRAY['id', 'timestamp'] THEN
+        IF current_pk_name IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE device_application_logs DROP CONSTRAINT %I',
+                current_pk_name
+            );
+        END IF;
+        ALTER TABLE device_application_logs
+            ADD CONSTRAINT device_application_logs_pkey PRIMARY KEY (id, timestamp);
+    END IF;
+END $$;
+
+\echo '=== Phase 4: Converting Supported Tables to Hypertables ==='
+
 SELECT create_hypertable(
     'server_health_logs',
     'timestamp',
@@ -38,18 +300,6 @@ SELECT create_hypertable(
     migrate_data => TRUE
 );
 
--- Convert tracking_samples
-\echo 'Converting tracking_samples to hypertable...'
-SELECT create_hypertable(
-    'tracking_samples',
-    'received_at',
-    chunk_time_interval => INTERVAL '1 day',
-    if_not_exists => TRUE,
-    migrate_data => TRUE
-);
-
--- Convert device_resource_logs
-\echo 'Converting device_resource_logs to hypertable...'
 SELECT create_hypertable(
     'device_resource_logs',
     'timestamp',
@@ -58,95 +308,145 @@ SELECT create_hypertable(
     migrate_data => TRUE
 );
 
--- Convert device_activity_logs
-\echo 'Converting device_activity_logs to hypertable...'
 SELECT create_hypertable(
     'device_activity_logs',
     'timestamp',
-    chunk_time_interval => INTERVAL '1 day',
+    chunk_time_interval => INTERVAL '3 days',
     if_not_exists => TRUE,
     migrate_data => TRUE
 );
 
--- Convert device_application_logs
-\echo 'Converting device_application_logs to hypertable...'
 SELECT create_hypertable(
     'device_application_logs',
     'timestamp',
-    chunk_time_interval => INTERVAL '1 day',
+    chunk_time_interval => INTERVAL '3 days',
     if_not_exists => TRUE,
     migrate_data => TRUE
 );
 
--- Verify hypertables created
-\echo 'Verifying hypertables...'
-SELECT hypertable_schema, hypertable_name, num_chunks 
-FROM timescaledb_information.hypertables;
+\echo '=== Phase 5: Configuring Chunk Intervals ==='
 
-\echo '=== Phase 4: Configuring Compression Policies ==='
+SELECT set_chunk_time_interval('server_health_logs', INTERVAL '1 day');
+SELECT set_chunk_time_interval('device_resource_logs', INTERVAL '1 day');
+SELECT set_chunk_time_interval('device_activity_logs', INTERVAL '3 days');
+SELECT set_chunk_time_interval('device_application_logs', INTERVAL '3 days');
 
--- Enable compression on server_health_logs
-\echo 'Enabling compression on server_health_logs...'
+\echo '=== Phase 6: Creating Indexes ==='
+
+CREATE INDEX IF NOT EXISTS idx_server_health_source_device_id_id
+ON server_health_logs (source, device_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_server_health_device_source_timestamp
+ON server_health_logs (device_id, source, timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_server_health_timestamp_brin
+ON server_health_logs USING BRIN (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_device_resource_logs_device_ts_id
+ON device_resource_logs (device_id, timestamp DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_device_resource_logs_sample_id
+ON device_resource_logs (sample_id);
+
+CREATE INDEX IF NOT EXISTS idx_device_resource_logs_timestamp_brin
+ON device_resource_logs USING BRIN (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_device_activity_logs_device_ts_id
+ON device_activity_logs (device_id, timestamp DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_device_activity_logs_sample_id
+ON device_activity_logs (sample_id);
+
+CREATE INDEX IF NOT EXISTS idx_device_activity_logs_timestamp_brin
+ON device_activity_logs USING BRIN (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_device_application_logs_device_ts_id
+ON device_application_logs (device_id, timestamp DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_device_application_logs_sample_id
+ON device_application_logs (sample_id);
+
+CREATE INDEX IF NOT EXISTS idx_device_application_logs_timestamp_brin
+ON device_application_logs USING BRIN (timestamp);
+
+\echo '=== Phase 7: Configuring Compression Policies ==='
+
 ALTER TABLE server_health_logs SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'device_id,source',
     timescaledb.compress_orderby = 'timestamp DESC'
 );
 
-SELECT add_compression_policy(
-    'server_health_logs',
-    INTERVAL '7 days'
-);
-
--- Enable compression on tracking_samples
-\echo 'Enabling compression on tracking_samples...'
-ALTER TABLE tracking_samples SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
-    timescaledb.compress_orderby = 'received_at DESC'
-);
-SELECT add_compression_policy('tracking_samples', INTERVAL '30 days');
-
--- Enable compression on device_resource_logs
-\echo 'Enabling compression on device_resource_logs...'
 ALTER TABLE device_resource_logs SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'device_id',
     timescaledb.compress_orderby = 'timestamp DESC'
 );
-SELECT add_compression_policy('device_resource_logs', INTERVAL '30 days');
 
--- Enable compression on device_activity_logs
-\echo 'Enabling compression on device_activity_logs...'
 ALTER TABLE device_activity_logs SET (
     timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
+    timescaledb.compress_segmentby = 'device_id,activity_type',
     timescaledb.compress_orderby = 'timestamp DESC'
 );
-SELECT add_compression_policy('device_activity_logs', INTERVAL '30 days');
 
--- Enable compression on device_application_logs
-\echo 'Enabling compression on device_application_logs...'
 ALTER TABLE device_application_logs SET (
     timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
+    timescaledb.compress_segmentby = 'device_id,application_name',
     timescaledb.compress_orderby = 'timestamp DESC'
 );
-SELECT add_compression_policy('device_application_logs', INTERVAL '30 days');
 
-\echo '=== Phase 5: Configuring Retention Policies ==='
+SELECT add_compression_policy(
+    'server_health_logs',
+    INTERVAL '7 days',
+    if_not_exists => TRUE
+);
 
--- Automatically drop old chunks
-SELECT add_retention_policy('server_health_logs', INTERVAL '30 days');
-SELECT add_retention_policy('tracking_samples', INTERVAL '60 days');
-SELECT add_retention_policy('device_resource_logs', INTERVAL '60 days');
-SELECT add_retention_policy('device_activity_logs', INTERVAL '60 days');
-SELECT add_retention_policy('device_application_logs', INTERVAL '60 days');
+SELECT add_compression_policy(
+    'device_resource_logs',
+    INTERVAL '30 days',
+    if_not_exists => TRUE
+);
 
-\echo '=== Phase 6: Creating Continuous Aggregates ==='
+SELECT add_compression_policy(
+    'device_activity_logs',
+    INTERVAL '30 days',
+    if_not_exists => TRUE
+);
 
--- Hourly server health aggregate
-\echo 'Creating hourly continuous aggregate...'
+SELECT add_compression_policy(
+    'device_application_logs',
+    INTERVAL '30 days',
+    if_not_exists => TRUE
+);
+
+\echo '=== Phase 8: Configuring Retention Policies ==='
+
+SELECT add_retention_policy(
+    'server_health_logs',
+    INTERVAL '30 days',
+    if_not_exists => TRUE
+);
+
+SELECT add_retention_policy(
+    'device_resource_logs',
+    INTERVAL '60 days',
+    if_not_exists => TRUE
+);
+
+SELECT add_retention_policy(
+    'device_activity_logs',
+    INTERVAL '60 days',
+    if_not_exists => TRUE
+);
+
+SELECT add_retention_policy(
+    'device_application_logs',
+    INTERVAL '60 days',
+    if_not_exists => TRUE
+);
+
+\echo '=== Phase 9: Creating Continuous Aggregates ==='
+
 CREATE MATERIALIZED VIEW IF NOT EXISTS server_health_hourly_cagg
 WITH (timescaledb.continuous) AS
 SELECT
@@ -169,105 +469,81 @@ SELECT
 FROM server_health_logs
 GROUP BY device_id, source, bucket_hour;
 
-SELECT add_continuous_aggregate_policy('server_health_hourly_cagg',
-    start_offset => INTERVAL '3 hours',
-    end_offset => INTERVAL '1 hour',
-    schedule_interval => INTERVAL '5 minutes'
-);
-
--- Daily server health aggregate
-\echo 'Creating daily continuous aggregate...'
 CREATE MATERIALIZED VIEW IF NOT EXISTS server_health_daily_cagg
 WITH (timescaledb.continuous) AS
 SELECT
     device_id,
-    source,
-    time_bucket('1 day', bucket_hour) AS bucket_day,
-    AVG(avg_cpu_usage) AS avg_cpu_usage,
-    MAX(max_cpu_usage) AS max_cpu_usage,
-    AVG(avg_memory_usage) AS avg_memory_usage,
-    MAX(max_memory_usage) AS max_memory_usage,
-    AVG(avg_disk_usage) AS avg_disk_usage,
-    AVG(avg_network_in_bps) AS avg_network_in_bps,
-    AVG(avg_network_out_bps) AS avg_network_out_bps,
-    SUM(sample_count) AS sample_count,
-    SUM(online_samples) AS online_samples,
-    AVG(avg_ping_latency_ms) AS avg_ping_latency_ms,
-    MAX(max_ping_latency_ms) AS max_ping_latency_ms,
-    AVG(avg_packet_loss_pct) AS avg_packet_loss_pct,
-    MAX(max_packet_loss_pct) AS max_packet_loss_pct
-FROM server_health_hourly_cagg
+    COALESCE(source, 'agent') AS source,
+    time_bucket('1 day', timestamp) AS bucket_day,
+    AVG(cpu_usage) AS avg_cpu_usage,
+    MAX(cpu_usage) AS max_cpu_usage,
+    AVG(memory_usage) AS avg_memory_usage,
+    MAX(memory_usage) AS max_memory_usage,
+    AVG(disk_usage) AS avg_disk_usage,
+    AVG(network_in_bps) AS avg_network_in_bps,
+    AVG(network_out_bps) AS avg_network_out_bps,
+    COUNT(*) AS sample_count,
+    COUNT(CASE WHEN cpu_usage IS NOT NULL THEN 1 END) AS online_samples,
+    AVG(ping_latency_ms) AS avg_ping_latency_ms,
+    MAX(ping_latency_ms) AS max_ping_latency_ms,
+    AVG(packet_loss_pct) AS avg_packet_loss_pct,
+    MAX(packet_loss_pct) AS max_packet_loss_pct
+FROM server_health_logs
 GROUP BY device_id, source, bucket_day;
 
-SELECT add_continuous_aggregate_policy('server_health_daily_cagg',
-    start_offset => INTERVAL '7 days',
-    end_offset => INTERVAL '1 day',
-    schedule_interval => INTERVAL '1 day'
-);
-
--- Tracking hourly aggregate
-\echo 'Creating tracking hourly continuous aggregate...'
-CREATE MATERIALIZED VIEW IF NOT EXISTS tracking_hourly_cagg
-WITH (timescaledb.continuous) AS
-SELECT
-    device_id,
-    time_bucket('1 hour', received_at) AS bucket_hour,
-    COUNT(*) AS sample_count
-FROM tracking_samples
-GROUP BY device_id, bucket_hour;
-
-SELECT add_continuous_aggregate_policy('tracking_hourly_cagg',
+SELECT add_continuous_aggregate_policy(
+    'server_health_hourly_cagg',
     start_offset => INTERVAL '3 hours',
     end_offset => INTERVAL '1 hour',
-    schedule_interval => INTERVAL '10 minutes'
+    schedule_interval => INTERVAL '5 minutes',
+    if_not_exists => TRUE
 );
 
-\echo '=== Phase 7: Creating Optimized Indexes ==='
+SELECT add_continuous_aggregate_policy(
+    'server_health_daily_cagg',
+    start_offset => INTERVAL '7 days',
+    end_offset => INTERVAL '1 day',
+    schedule_interval => INTERVAL '1 day',
+    if_not_exists => TRUE
+);
 
-CREATE INDEX IF NOT EXISTS idx_server_health_device_source 
-ON server_health_logs (device_id, source, timestamp DESC);
+\echo '=== Phase 10: Verification ==='
 
-CREATE INDEX IF NOT EXISTS idx_tracking_device_time 
-ON tracking_samples (device_id, received_at DESC);
-
-\echo '=== Phase 8: Verification ==='
-
--- Show hypertables
 \echo 'Hypertables:'
-SELECT 
+SELECT
     hypertable_schema,
     hypertable_name,
     num_chunks
-FROM timescaledb_information.hypertables;
+FROM timescaledb_information.hypertables
+WHERE hypertable_name IN (
+    'server_health_logs',
+    'device_resource_logs',
+    'device_activity_logs',
+    'device_application_logs'
+)
+ORDER BY hypertable_name;
 
--- Show compression settings
-\echo 'Compression Settings:'
-SELECT 
-    hypertable_schema,
-    hypertable_name,
-    attname,
-    segmentby_column_index,
-    orderby_column_index
-FROM timescaledb_information.compression_settings;
-
--- Show continuous aggregates
 \echo 'Continuous Aggregates:'
-SELECT 
+SELECT
     view_schema,
     view_name,
-    materialization_hypertable_schema,
     materialization_hypertable_name
-FROM timescaledb_information.continuous_aggregates;
+FROM timescaledb_information.continuous_aggregates
+WHERE view_name IN ('server_health_hourly_cagg', 'server_health_daily_cagg')
+ORDER BY view_name;
 
--- Show scheduled jobs
 \echo 'Scheduled Jobs:'
-SELECT 
+SELECT
     job_id,
     application_name,
     schedule_interval,
     next_start
 FROM timescaledb_information.jobs
-ORDER BY next_start;
+WHERE application_name LIKE '%Columnstore%'
+   OR application_name LIKE '%Compression%'
+   OR application_name LIKE '%Retention%'
+   OR application_name LIKE '%Refresh%'
+ORDER BY application_name, job_id;
 
 \echo '=== Migration Complete ==='
-\echo 'TimescaleDB is now configured and ready to use!'
+\echo 'TimescaleDB is enabled. tracking_samples remains relational by design.'

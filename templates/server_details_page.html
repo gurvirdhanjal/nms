@@ -318,7 +318,7 @@
 
             // Remove skeleton shimmer on first data arrival
             if (!vitalsAnimated) {
-                document.querySelectorAll('#smc-v-uptime, #smc-v-avail, #smc-v-downtime, #smc-v-boot')
+                document.querySelectorAll('#smc-v-uptime, #smc-v-avail, #smc-v-downtime, #smc-v-boot, #smc-v-cpu, #smc-v-mem, #smc-v-disk, #smc-v-lastseen')
                     .forEach(el => el.classList.remove('smc-skeleton'));
             }
 

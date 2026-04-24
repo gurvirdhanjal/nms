@@ -16,6 +16,14 @@ except ImportError:
 _discovery_service = None
 logger = logging.getLogger(__name__)
 
+
+def _is_mac_unique_violation(error: Exception) -> bool:
+    message = str(error).lower()
+    if "idx_device_macaddress_unique" in message or "duplicate key value" in message:
+        return True
+    orig = getattr(error, "orig", None)
+    return getattr(orig, "pgcode", None) == "23505" and "macaddress" in message
+
 def get_discovery_service():
     # Try to use current_app if available (Flask context)
     if current_app:
@@ -409,8 +417,54 @@ class DiscoveryService:
                     elif action == "updated":
                         count_updated += 1
                 except Exception as e:
-                    # Rollback to prevent session pollution from affecting subsequent devices
                     db.session.rollback()
+
+                    if _is_mac_unique_violation(e):
+                        try:
+                            logger.warning(
+                                "[Discovery] MAC collision for %s; retrying identity upsert without MAC",
+                                device_data.get('ip', 'unknown'),
+                            )
+                            ip = device_data.get('ip')
+                            hostname = device_data.get('hostname') or ''
+                            macless_device, action, _prev_ip = upsert_device_from_identity(
+                                ip=ip,
+                                mac=None,
+                                hostname=hostname or 'Unknown',
+                                manufacturer=device_data.get('manufacturer') or 'Unknown',
+                                device_type=device_type or 'unknown',
+                                is_monitored=monitor_new,
+                                is_active=True,
+                                site_id=site_id,
+                            )
+                            if macless_device and (
+                                classification_confidence
+                                or confidence_score is not None
+                                or classification_details
+                            ):
+                                if (macless_device.classification_confidence or '').strip().lower() != 'manual':
+                                    if classification_confidence:
+                                        macless_device.classification_confidence = classification_confidence
+                                    if confidence_score is not None:
+                                        macless_device.confidence_score = confidence_score
+                                    if classification_details is not None:
+                                        if not isinstance(classification_details, str):
+                                            classification_details = json.dumps(classification_details)
+                                        macless_device.classification_details = classification_details
+
+                            if action == "created":
+                                count_added += 1
+                            elif action == "updated":
+                                count_updated += 1
+                            continue
+                        except Exception as retry_error:
+                            db.session.rollback()
+                            logger.error(
+                                "[Discovery] MAC-collision retry failed for %s: %s",
+                                device_data.get('ip', 'unknown'),
+                                retry_error,
+                            )
+
                     logger.error("[Discovery] Failed to add device %s: %s", device_data.get('ip', 'unknown'), e)
                     continue
 

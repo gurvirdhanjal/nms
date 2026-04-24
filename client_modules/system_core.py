@@ -6,12 +6,15 @@ class SystemMonitor:
     def get_core_metrics(self):
         """Get current CPU and Memory usage"""
         mem = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
         return {
             "cpu_percent": psutil.cpu_percent(interval=None),
             "memory_percent": mem.percent,
             "used_gb": round(mem.used / (1024**3), 2),
             "total_gb": round(mem.total / (1024**3), 2),
-            "disk_usage": psutil.disk_usage('/').percent
+            "disk_usage": disk.percent,
+            "disk_used_gb": round(disk.used / (1024**3), 2),
+            "disk_total_gb": round(disk.total / (1024**3), 2)
         }
 
 class NetworkMonitor:

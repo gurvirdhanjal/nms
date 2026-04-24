@@ -9,48 +9,40 @@ export function renderInventoryTable(devices) {
 
     patchKeyedTableRows(tableBody, devices || [], {
         getKey: (device, index) => device.device_id || `${device.device_ip || 'unknown'}-${index}`,
-        emptyColSpan: 6,
+        emptyColSpan: 8,
         emptyMessage: 'No devices in inventory',
         emptyClassName: 'text-center p-3 text-secondary',
         renderCells: (device) => {
-            const brands = ['Cisco', 'Juniper', 'Aruba', 'Ubiquiti', 'HP', 'MikroTik', 'Generic'];
             const tiers = ['Critical', 'Standard', 'Low'];
-
-            const brandOptions = brands.map(b =>
-                `<option value="${b}" ${device.switch_brand === b ? 'selected' : ''}>${b}</option>`
-            ).join('');
-
             const tierOptions = tiers.map(t =>
                 `<option value="${t}" ${device.cos_tier === t ? 'selected' : ''}>${t}</option>`
             ).join('');
 
-            const serverHealth = device.server_health || 'Unknown';
-            const deviceType = (device.device_type || '').toLowerCase();
-            const isServer = deviceType === 'server';
-            let healthBadge = '';
-
-            if (isServer || serverHealth !== 'Unknown') {
-                const colors = {
-                    'Healthy': 'text-success',
-                    'Warning': 'text-warning',
-                    'Critical': 'text-danger',
-                    'Offline': 'text-secondary',
-                    'Maintenance': 'text-warning', // Yellow for maintenance
-                    'Unknown': 'text-muted'
-                };
-                const icons = {
-                    'Healthy': 'fa-check-circle',
-                    'Warning': 'fa-exclamation-triangle',
-                    'Critical': 'fa-times-circle',
-                    'Offline': 'fa-plug',
-                    'Maintenance': 'fa-wrench',
-                    'Unknown': 'fa-question-circle'
-                };
-                const colorClass = colors[serverHealth] || 'text-muted';
-                const iconClass = icons[serverHealth] || 'fa-question-circle';
-
-                healthBadge = `<div class="mt-1 small ${colorClass}"><i class="fas ${iconClass}"></i> ${serverHealth}</div>`;
-            }
+            const status = String(device.status_label || device.availability_status || device.server_health || 'No Data');
+            const lastSeen = device.last_seen
+                ? new Date(device.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+                : 'No sample';
+            const primaryMetricValue = device.primary_metric_value != null
+                ? `${device.primary_metric_value}${device.primary_metric_unit || ''}`
+                : 'No data';
+            const trend = Number(device.primary_metric_trend);
+            const trendArrow = Number.isFinite(trend)
+                ? trend > 0.2
+                    ? '&uarr;'
+                    : trend < -0.2
+                        ? '&darr;'
+                        : '&rarr;'
+                : '&rarr;';
+            const trendClass = Number.isFinite(trend)
+                ? trend > 0.2
+                    ? 'text-danger'
+                    : trend < -0.2
+                        ? 'text-success'
+                        : 'text-secondary'
+                : 'text-secondary';
+            const alertLabel = Number(device.active_alert_count || 0) > 0
+                ? `${device.active_alert_count} active alerts`
+                : 'No active alerts';
 
             return `
             <td>
@@ -59,35 +51,36 @@ export function renderInventoryTable(devices) {
                 </div>
             </td>
             <td class="device-cell">
-                <div class="fw-bold">${device.device_name}</div>
-                <div class="small text-secondary">${device.device_type || 'Unknown'}</div>
-                ${(device.maintenance_mode || device.status === 'Maintenance')
-                    ? '<div class="mt-1 small text-warning"><i class="fas fa-wrench"></i> Maintenance</div>'
-                    : healthBadge}
+                <div class="inventory-device-name">${device.device_name}</div>
+                <div class="inventory-device-meta">${device.device_type || 'Unknown'} - ${device.device_ip || 'No IP'}</div>
+                <span class="inventory-secondary">${alertLabel}</span>
             </td>
             <td>
-                ${(device.device_type === 'Switch') ? `
-                    <select class="tactical-select brand-select" data-id="${device.device_id}">
-                        <option value="">Unknown</option>
-                        ${brandOptions}
-                    </select>` : '<span class="text-secondary opacity-50">-</span>'}
+                <span class="inventory-state">
+                    <span class="inventory-state-dot"></span>${status}
+                </span>
+            </td>
+            <td><span class="inventory-metric-value">${lastSeen}</span></td>
+            <td>
+                <span class="inventory-metric-value">${device.primary_metric_label || 'Metric'}: ${primaryMetricValue}</span>
+            </td>
+            <td>
+                <span class="inventory-trend ${trendClass}">${trendArrow} ${Number.isFinite(trend) ? Math.abs(trend).toFixed(1) : '0.0'} ${device.primary_metric_unit || ''}</span>
+                <span class="inventory-secondary">vs previous sample</span>
             </td>
             <td>
                 <select class="tactical-select tier-select" data-id="${device.device_id}">
                     ${tierOptions}
                 </select>
             </td>
-            <td class="font-monospace">${device.device_ip}</td>
             <td>
                 <div class="btn-group btn-group-sm">
                     <button class="btn btn-outline-primary btn-save-device" data-id="${device.device_id}" title="Save Selection">
                         <i class="fas fa-save"></i>
                     </button>
-                    <!-- Edit Button -->
                     <button class="btn btn-outline-secondary btn-edit-device" data-id="${device.device_id}" title="Edit Device">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <!-- Toggle Monitoring Button -->
                     <button class="btn ${device.is_monitored ? 'btn-outline-success' : 'btn-outline-secondary'} btn-toggle-monitor" data-id="${device.device_id}" title="${device.is_monitored ? 'Pause Monitoring' : 'Resume Monitoring'}">
                         <i class="fas ${device.is_monitored ? 'fa-chart-line' : 'fa-pause'}"></i>
                     </button>
@@ -100,6 +93,14 @@ export function renderInventoryTable(devices) {
             row.style.cursor = 'pointer';
             row.dataset.id = device.device_id || '';
             row.dataset.ip = device.device_ip || '';
+            const status = String(device.status_label || device.availability_status || device.server_health || 'No Data').toLowerCase();
+            row.dataset.status = status.includes('critical') || status.includes('offline')
+                ? 'critical'
+                : status.includes('healthy') || status.includes('online')
+                    ? 'healthy'
+                    : status.includes('maintenance')
+                        ? 'maintenance'
+                        : 'nodata';
         }
     });
 }
@@ -108,9 +109,7 @@ async function handleSaveDevice(deviceId) {
     const row = document.querySelector(`tr[data-id="${deviceId}"]`);
     if (!row) return;
 
-    const brandSelect = row.querySelector('.brand-select');
     const tierSelect = row.querySelector('.tier-select');
-    const brand = brandSelect ? brandSelect.value : '';
     const tier = tierSelect ? tierSelect.value : '';
     const btn = row.querySelector('.btn-save-device');
 
@@ -121,10 +120,7 @@ async function handleSaveDevice(deviceId) {
         const response = await fetch(`/api/devices/${deviceId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                switch_brand: brand,
-                cos_tier: tier
-            })
+            body: JSON.stringify({ cos_tier: tier })
         });
 
         if (response.ok) {
@@ -139,7 +135,7 @@ async function handleSaveDevice(deviceId) {
             throw new Error('Save failed');
         }
     } catch (err) {
-        console.error("Save Error:", err);
+        console.error('Save Error:', err);
         btn.classList.replace('btn-outline-primary', 'btn-danger');
         btn.innerHTML = '<i class="fas fa-times"></i>';
         setTimeout(() => {
@@ -154,22 +150,20 @@ export function initInventoryInteractions() {
     const tableContainer = document.querySelector('#tab-inventory-list .table-responsive');
     if (!tableContainer) return;
 
-    // Delegate change events for checkboxes
     tableContainer.addEventListener('change', (e) => {
-        // Handle "Select All" Header Checkbox
         if (e.target && e.target.id === 'inventory-select-all') {
             const isChecked = e.target.checked;
             const checkboxes = document.querySelectorAll('.inventory-checkbox');
-            checkboxes.forEach(cb => cb.checked = isChecked);
+            checkboxes.forEach(cb => {
+                cb.checked = isChecked;
+            });
         }
 
-        // Handle Individual Row Checkboxes
         if (e.target && e.target.classList.contains('inventory-checkbox')) {
             updateSelectAllState();
         }
     });
 
-    // Delegate clicks
     tableContainer.addEventListener('click', (e) => {
         const saveBtn = e.target.closest('.btn-save-device');
         if (saveBtn) {
@@ -190,17 +184,16 @@ export function initInventoryInteractions() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Just reload or update icon
                         location.reload();
                     }
                 });
             return;
         }
 
-        // Navigate to full device detail page from expanded panel rows
         const row = e.target.closest('tr.inventory-row');
-        if (row &&
-            !e.target.closest('a') && // Do not intercept clicks on anchor tags to let them behave naturally
+        if (
+            row &&
+            !e.target.closest('a') &&
             !e.target.closest('td:first-child') &&
             !e.target.closest('td:last-child') &&
             !e.target.closest('select') &&
@@ -217,16 +210,16 @@ function updateSelectAllState() {
     const allCheckboxes = document.querySelectorAll('.inventory-checkbox');
     const checkedCheckboxes = document.querySelectorAll('.inventory-checkbox:checked');
 
-    if (selectAll) {
-        if (allCheckboxes.length > 0 && checkedCheckboxes.length === allCheckboxes.length) {
-            selectAll.indeterminate = false;
-            selectAll.checked = true;
-        } else if (checkedCheckboxes.length > 0) {
-            selectAll.indeterminate = true;
-            selectAll.checked = false;
-        } else {
-            selectAll.indeterminate = false;
-            selectAll.checked = false;
-        }
+    if (!selectAll) return;
+
+    if (allCheckboxes.length > 0 && checkedCheckboxes.length === allCheckboxes.length) {
+        selectAll.indeterminate = false;
+        selectAll.checked = true;
+    } else if (checkedCheckboxes.length > 0) {
+        selectAll.indeterminate = true;
+        selectAll.checked = false;
+    } else {
+        selectAll.indeterminate = false;
+        selectAll.checked = false;
     }
 }

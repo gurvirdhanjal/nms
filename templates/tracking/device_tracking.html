@@ -133,7 +133,7 @@
                     <i data-lucide="check-circle-2"></i>
                 </div>
                 <div class="tracking-action-banner-copy">
-                    <div class="tracking-action-banner-title" id="trackingDeviceActionBannerTitle">Device deleted</div>
+                    <div class="tracking-action-banner-title" id="trackingDeviceActionBannerTitle">Device archived</div>
                     <div class="tracking-action-banner-message" id="trackingDeviceActionBannerMessage"></div>
                     <div class="tracking-action-banner-detail" id="trackingDeviceActionBannerDetail"></div>
                 </div>
@@ -244,8 +244,8 @@
                                         <button class="ops-btn ops-btn-icon delete-device tracking-delete-btn"
                                             data-device-id="{{ device.id }}" data-mac="{{ device.mac_address }}"
                                             data-device-name="{{ device.device_name }}" type="button"
-                                            title="Delete Device">
-                                            <i data-lucide="trash-2" class="tracking-icon-sm"></i>
+                                            title="Archive Device">
+                                            <i data-lucide="archive" class="tracking-icon-sm"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -438,7 +438,7 @@
 </div>
 
 <div class="modal fade" id="addDeviceModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-xl tracking-add-device-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="modalTitle">Add Employee Device</h5>
@@ -447,58 +447,109 @@
             <div class="modal-body">
                 <form id="deviceForm">
                     <input type="hidden" id="editMac" name="mac_address">
+                    <input type="hidden" id="inventoryDeviceId" name="inventory_device_id">
 
-                    <div class="mb-3">
-                        <label class="form-label">Device Name</label>
-                        <input type="text" class="form-control tactical-input" id="deviceName" name="device_name"
-                            placeholder="Optional (auto-filled from hostname if empty)">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Employee Name</label>
-                        <input type="text" class="form-control tactical-input" id="employeeName" name="employee_name"
-                            placeholder="Optional assignment label">
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">MAC Address</label>
-                                <input type="text" class="form-control tactical-input" id="macAddress"
-                                    name="mac_address" pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
-                                <div class="form-text">Optional when IP is provided. Format: 00:1A:2B:3C:4D:5E</div>
-                            </div>
+                    <div class="tracking-add-device-shell">
+                        <div class="tracking-add-device-toolbar">
+                            <div class="form-text mb-0">Select a device from the Devices tab list to auto-fill the form, or leave nothing selected and enter details manually.</div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">IP Address</label>
-                                <input type="text" class="form-control tactical-input" id="ipAddress" name="ip_address"
-                                    pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                                <div class="form-text">Required if MAC is unknown. Backend resolves identity via Agent
+
+                        <div class="tracking-add-device-layout">
+                            <section class="tracking-inventory-panel">
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                    <label class="form-label mb-0" for="inventoryDeviceSearch">Devices Tab List</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a href="{{ url_for('devices_bp.device_management') }}" class="small text-decoration-none" target="_blank" rel="noopener">Open Devices Tab</a>
+                                        <button type="button" class="tactical-btn-outline btn-sm" id="refreshInventoryDevicesBtn">
+                                            <i data-lucide="refresh-cw" class="tracking-icon-sm"></i> Refresh List
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
+                                <input type="text" class="form-control tactical-input mb-2" id="inventoryDeviceSearch" placeholder="Search inventory by name, IP, MAC, type...">
+                                <div id="inventoryDeviceList" class="tracking-inventory-list" role="listbox" aria-label="Inventory device list">
+                                    {% for device in eligible_inventory_devices %}
+                                    <button
+                                        type="button"
+                                        class="tracking-inventory-item"
+                                        data-inventory-device-id="{{ device.device_id }}"
+                                        data-device-name="{{ device.device_name }}"
+                                        data-device-ip="{{ device.device_ip }}"
+                                        data-device-mac="{{ device.macaddress }}"
+                                        data-device-hostname="{{ device.hostname }}"
+                                        data-device-type="{{ device.device_type }}"
+                                        data-device-manufacturer="{{ device.manufacturer }}"
+                                        data-device-status="{{ device.status }}"
+                                        data-agent-recent="{{ 1 if device.agent_recent else 0 }}"
+                                        data-last-agent-log-at="{{ device.last_agent_log_at or '' }}"
+                                    >
+                                        <span class="tracking-inventory-item-title">{{ device.device_name or ('Device ' ~ device.device_id) }}</span>
+                                        <span class="tracking-inventory-item-meta">
+                                            {{ device.device_type or 'Unknown' }}
+                                            {% if device.agent_recent %} | service.py active{% elif device.agent_configured %} | agent configured{% endif %}
+                                        </span>
+                                        <span class="tracking-inventory-item-detail">{{ device.device_ip or 'No IP' }}</span>
+                                        <span class="tracking-inventory-item-detail">{{ device.macaddress or 'No MAC' }}</span>
+                                    </button>
+                                    {% endfor %}
+                                </div>
+                                <div id="inventoryDeviceEmptyState" class="small text-muted mt-2 {{ '' if not eligible_inventory_devices else 'd-none' }}">No eligible Devices tab entries are currently available.</div>
+                                <div id="inventoryDeviceMeta" class="small text-muted mt-2 d-none"></div>
+                            </section>
 
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Hostname</label>
-                                <input type="text" class="form-control tactical-input" id="hostname" name="hostname">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Department</label>
-                                <input type="text" class="form-control tactical-input" id="department"
-                                    name="department">
-                            </div>
-                        </div>
-                    </div>
+                            <section class="tracking-device-form-panel">
+                                <div class="mb-3">
+                                    <label class="form-label">Device Name</label>
+                                    <input type="text" class="form-control tactical-input" id="deviceName" name="device_name"
+                                        placeholder="Optional (auto-filled from hostname if empty)">
+                                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Notes</label>
-                        <textarea class="form-control tactical-input" id="notes" name="notes" rows="3"></textarea>
+                                <div class="mb-3">
+                                    <label class="form-label">Employee Name</label>
+                                    <input type="text" class="form-control tactical-input" id="employeeName" name="employee_name"
+                                        placeholder="Optional assignment label">
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">MAC Address</label>
+                                            <input type="text" class="form-control tactical-input" id="macAddress"
+                                                name="mac_address" pattern="([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})">
+                                            <div class="form-text">Optional when IP is provided. Format: 00:1A:2B:3C:4D:5E</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">IP Address</label>
+                                            <input type="text" class="form-control tactical-input" id="ipAddress" name="ip_address"
+                                                pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                                            <div class="form-text">Required if MAC is unknown. Backend resolves identity via Agent</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Hostname</label>
+                                            <input type="text" class="form-control tactical-input" id="hostname" name="hostname">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Department</label>
+                                            <input type="text" class="form-control tactical-input" id="department"
+                                                name="department">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Notes</label>
+                                    <textarea class="form-control tactical-input" id="notes" name="notes" rows="3"></textarea>
+                                </div>
+                            </section>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -514,17 +565,17 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header tracking-delete-header">
-                <h5 class="modal-title"><i data-lucide="trash-2"></i> Confirm Delete</h5>
+                <h5 class="modal-title"><i data-lucide="archive"></i> Archive Device</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
-                <p class="text-muted mb-0"><small>Delete permanently removes the tracked device and its saved tracking history.</small></p>
+                <p>Are you sure you want to archive device <strong id="deleteDeviceName">[Device Name]</strong>?</p>
+                <p class="text-muted mb-0"><small>Archived devices are removed from the active tracking list without purging saved history.</small></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="tactical-btn-outline" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="tactical-btn-outline text-danger border-danger"
-                    id="confirmDeleteBtn">Delete Device</button>
+                    id="confirmDeleteBtn">Archive Device</button>
             </div>
         </div>
     </div>
@@ -542,6 +593,7 @@
         sharedLoading: true,
         sharedRefresh: true
     });
+    window.__TRACKING_INVENTORY_CANDIDATES__ = {{ eligible_inventory_devices|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/tracking/device_tracking.js') }}?v={{ asset_ver }}"></script>
 <script>

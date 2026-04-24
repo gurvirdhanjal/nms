@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Blueprint, current_app, render_template, request, redirect, url_for, session, jsonify, flash
 from datetime import datetime
 from extensions import db, bcrypt
 from models.user import User
@@ -248,7 +248,8 @@ def bulk_delete_users():
     except Exception as e:
         import traceback
         import os
-        log_path = os.path.join('instance', 'error_debug.log')
+        os.makedirs(current_app.instance_path, exist_ok=True)
+        log_path = os.path.join(current_app.instance_path, 'error_debug.log')
         with open(log_path, 'a') as f:
             f.write(f"\n--- {datetime.utcnow()} ---\n")
             f.write(traceback.format_exc())

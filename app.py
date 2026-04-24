@@ -9,7 +9,7 @@ from flask import Flask, jsonify, render_template, request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine.url import make_url
 
-from config import Config
+from config import BASE_DIR, Config, ProductionConfig, TestingConfig
 from extensions import db, bcrypt, limiter
 
 try:
@@ -63,8 +63,20 @@ _ASSET_VERSION = _compute_asset_version()
 
 
 def create_app(test_config=None):
-    app = Flask(__name__)
-    app.config.from_object(Config)
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(BASE_DIR, 'templates'),
+        static_folder=os.path.join(BASE_DIR, 'static'),
+        instance_path=Config.INSTANCE_DIR,
+    )
+    config_object = Config
+    app_env = str(os.environ.get('APP_ENV', os.environ.get('FLASK_ENV', 'development'))).lower()
+    if test_config and test_config.get('TESTING'):
+        config_object = TestingConfig
+    elif app_env == 'production':
+        ProductionConfig.require_database_url()
+        config_object = ProductionConfig
+    app.config.from_object(config_object)
 
     if test_config:
         app.config.update(test_config)
@@ -109,10 +121,21 @@ def create_app(test_config=None):
 
     app.jinja_env.filters['ist'] = _ist_filter
 
-    # Optional hard-enforcement for production deployments.
-    if app.config.get('REQUIRE_POSTGRES'):
-        backend = make_url(app.config.get('SQLALCHEMY_DATABASE_URI', '')).get_backend_name()
-        if backend != 'postgresql':
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    is_testing = bool(app.config.get('TESTING'))
+    if not db_uri:
+        raise RuntimeError(
+            "SQLALCHEMY_DATABASE_URI is not configured. "
+            "Set DATABASE_URL, or supply a test database via test_config in tests."
+        )
+    if not is_testing:
+        backend = make_url(db_uri).get_backend_name()
+        if backend == 'sqlite':
+            raise RuntimeError(
+                "SQLite is not allowed outside tests. "
+                "Set DATABASE_URL to a PostgreSQL DSN before starting the app."
+            )
+        if app.config.get('REQUIRE_POSTGRES') and backend != 'postgresql':
             raise RuntimeError(
                 f"REQUIRE_POSTGRES is enabled, but backend is '{backend}'. "
                 "Set DATABASE_URL to a PostgreSQL DSN."
@@ -146,7 +169,6 @@ def create_app(test_config=None):
     # ---------------------------
     # Initialize extensions
     # ---------------------------
-    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     print(f"[DB] SQLALCHEMY_DATABASE_URI={_safe_db_uri(db_uri)}")
     try:
         url = make_url(db_uri) if db_uri else None
@@ -292,12 +314,12 @@ def create_app(test_config=None):
             ServerHealthLog, ServerThresholdConfig, ServerMetricThresholdState,
             ServerHealthHourlyRollup, ServerHealthDailyRollup, ServerHealthRollupState,
             Subnet,
-            RestrictedSitePolicy, TrackingAgentKeyBinding, RestrictedSiteEvent, RestrictedSiteAlertState,
-            RestrictedSiteDomainMeta,
-            DeviceIdentityLink, DeviceIdentityLinkCandidate,
-            DeviceEffectivePolicyCache, PolicyRebuildTask,
-            AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
-        )
+             RestrictedSitePolicy, TrackingAgentKeyBinding, RestrictedSiteEvent, RestrictedSiteAlertState,
+             RestrictedSiteDomainMeta,
+             DeviceIdentityLink, DeviceIdentityLinkCandidate,
+             DeviceEffectivePolicyCache, PolicyRebuildTask,
+             PollTask, AlertFanoutTask, TrackingSyncEnvelope, ReportExportJob,
+         )
         from models.compliance_profile import ComplianceProfile
         from models.app_settings import AppSettings
         from models.alert_channel import AlertChannel
@@ -308,18 +330,22 @@ def create_app(test_config=None):
             ensure_tracking_stabilization_columns,
             ensure_app_settings_table,
             ensure_device_icmp_threshold_columns,
+            ensure_device_scan_history_columns,
             ensure_alert_channels_table,
         )
 
         from services.discovery_service import get_discovery_service
+        from services.timescaledb_service import ensure_hypertables
         ds = get_discovery_service()
 
         if not os.environ.get('FLASK_RUN_FROM_CLI'):
             db.create_all()
+            ensure_hypertables(db.engine)
             ensure_server_health_columns()
             ensure_tracking_stabilization_columns()
             ensure_app_settings_table()
             ensure_device_icmp_threshold_columns()
+            ensure_device_scan_history_columns()
             ensure_alert_channels_table()
 
             # Seed AppSettings from environment variables (non-destructive).
@@ -334,7 +360,7 @@ def create_app(test_config=None):
             ]
             _monitoring_seeds = [
                 ('monitoring_interval_seconds', 'MONITORING_INTERVAL', 'monitoring',
-                 'Device scan interval in seconds (60–3600)', False),
+                 'Device scan interval in seconds (10–3600)', False),
             ]
             for key, env_var, category, desc, is_secret in _smtp_seeds + _monitoring_seeds:
                 AppSettings.seed_from_env(key, env_var, category, desc, is_secret)

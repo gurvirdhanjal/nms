@@ -27,6 +27,7 @@ except ImportError:
 
 NMS_SERVER_URL = "http://127.0.0.1:5001/api/agent/metrics"
 AGENT_TOKEN = os.environ.get("TRACKING_API_KEY", "")
+BOOTSTRAP_TOKEN = os.environ.get("TRACKING_API_KEY", "")
 INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT = 5
 TOP_PROCESSES_LIMIT = 5
@@ -44,7 +45,7 @@ _ENDPOINT_DIAG_COOLDOWN_SECONDS = 300
 
 def load_config():
     """Load configuration from config.json if it exists, overriding defaults."""
-    global NMS_SERVER_URL, AGENT_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
+    global NMS_SERVER_URL, AGENT_TOKEN, BOOTSTRAP_TOKEN, INTERVAL_SECONDS, REQUEST_TIMEOUT
     global TOP_PROCESSES_LIMIT, BUFFER_MAX_RECORDS
     global _CONFIG_PATH, _CONFIG_SOURCE, _CONFIG_LOAD_ERROR
 
@@ -70,6 +71,7 @@ def load_config():
             cfg = json.load(f)
         NMS_SERVER_URL = cfg.get('nms_server_url', NMS_SERVER_URL)
         AGENT_TOKEN = cfg.get('agent_token', AGENT_TOKEN)
+        BOOTSTRAP_TOKEN = cfg.get('bootstrap_token', BOOTSTRAP_TOKEN)
         INTERVAL_SECONDS = cfg.get('interval_seconds', INTERVAL_SECONDS)
         REQUEST_TIMEOUT = cfg.get('request_timeout', REQUEST_TIMEOUT)
         TOP_PROCESSES_LIMIT = cfg.get('top_processes_limit', TOP_PROCESSES_LIMIT)
@@ -187,6 +189,7 @@ def _persist_agent_token_to_config(new_token):
     config_data["nms_server_url"] = config_data.get("nms_server_url", NMS_SERVER_URL)
     config_data["interval_seconds"] = config_data.get("interval_seconds", INTERVAL_SECONDS)
     config_data["request_timeout"] = config_data.get("request_timeout", REQUEST_TIMEOUT)
+    config_data["bootstrap_token"] = config_data.get("bootstrap_token", BOOTSTRAP_TOKEN)
     config_data["agent_token"] = new_token
 
     try:
@@ -235,6 +238,22 @@ def _handle_server_token_update(response):
             old_fingerprint,
             _token_fingerprint(updated_token),
         )
+
+
+def _get_request_auth_token():
+    token = (AGENT_TOKEN or "").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if token:
+        return token, "agent_token"
+
+    bootstrap_token = (BOOTSTRAP_TOKEN or "").strip()
+    if bootstrap_token.lower().startswith("bearer "):
+        bootstrap_token = bootstrap_token[7:].strip()
+    if bootstrap_token:
+        return bootstrap_token, "bootstrap_token"
+
+    return "", "none"
 
 
 def _parse_server_url(url):
@@ -1146,10 +1165,7 @@ def collect_metrics():
 
 def send_metrics(payload):
     """Send metrics to NMS server"""
-    token = (AGENT_TOKEN or "").strip()
-    # Accept config values that were copied as "Bearer <token>".
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
+    token, auth_source = _get_request_auth_token()
 
     headers = {
         "Content-Type": "application/json"
@@ -1167,6 +1183,8 @@ def send_metrics(payload):
         timeout=REQUEST_TIMEOUT
     )
 
+    response._nms_auth_source = auth_source
+    response._nms_auth_fingerprint = _token_fingerprint(token)
     _handle_server_token_update(response)
     response.raise_for_status()
 
@@ -1341,12 +1359,26 @@ def main():
             response_text = getattr(e.response, 'text', 'no response body')
             if status_code == 401:
                 _log_endpoint_diagnostics("http_401", status_code=401)
-                _LOG.error(
-                    "HTTP 401 for %s token=%s body=%s",
-                    NMS_SERVER_URL,
+                auth_source = getattr(e.response, "_nms_auth_source", "unknown")
+                auth_fingerprint = getattr(
+                    e.response,
+                    "_nms_auth_fingerprint",
                     _token_fingerprint(AGENT_TOKEN),
+                )
+                _LOG.error(
+                    "HTTP 401 for %s via %s token=%s body=%s",
+                    NMS_SERVER_URL,
+                    auth_source,
+                    auth_fingerprint,
                     response_text,
                 )
+                AGENT_TOKEN = ""
+                _persist_agent_token_to_config("")
+                if not (BOOTSTRAP_TOKEN or "").strip():
+                    _LOG.error(
+                        "No bootstrap token is configured. Set TRACKING_API_KEY or config.json "
+                        "\"bootstrap_token\" so the agent can recover after a 401."
+                    )
             else:
                 _LOG.error("HTTP Error: %s - %s", status_code, response_text)
         except Exception as e:

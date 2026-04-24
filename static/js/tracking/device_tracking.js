@@ -11,6 +11,8 @@
     let deleteInFlight = false;
     let actionBannerTimer = null;
     let listSyncFrame = null;
+    let inventoryDevicesCache = [];
+    let inventoryDevicesLoaded = false;
     const PAGINATION = { page: 1, perPage: 50 };
     const surfaceFlags = window.__UI_SURFACE_FLAGS__ || {};
     const toastApi = surfaceFlags.sharedToast !== false && window.UI?.Toast?.show
@@ -26,15 +28,21 @@
     document.addEventListener('DOMContentLoaded', initTrackingDevicePage);
 
     function initTrackingDevicePage() {
+        inventoryDevicesCache = Array.isArray(window.__TRACKING_INVENTORY_CANDIDATES__)
+            ? window.__TRACKING_INVENTORY_CANDIDATES__
+            : [];
+        inventoryDevicesLoaded = inventoryDevicesCache.length > 0;
         bindGlobalActions();
         bindStoredDeviceActions();
         bindModalActions();
         bindFilterActions();
         bindScanActions();
+        renderInventoryDeviceList();
         maybeOpenAddDeviceModalFromQuery();
         maybeRunGoLiveFromQuery();
         scheduleStoredListSync();
         startStoredStatusRefresh();
+        prewarmInventoryDevices();
         runPremiumEntrance();
     }
 
@@ -173,6 +181,16 @@
                 statusRefreshController?.flushDeferred();
             }
         });
+
+        const refreshInventoryButton = document.getElementById('refreshInventoryDevicesBtn');
+        if (refreshInventoryButton) {
+            refreshInventoryButton.addEventListener('click', () => ensureInventoryDevicesLoaded({ force: true }));
+        }
+
+        const inventorySearch = document.getElementById('inventoryDeviceSearch');
+        if (inventorySearch) {
+            inventorySearch.addEventListener('input', renderInventoryDeviceList);
+        }
     }
 
     function checkTabOverflow() {
@@ -632,12 +650,144 @@
 
     function openAddDeviceModal() {
         clearDeviceForm();
+        ensureInventoryDevicesLoaded();
         const modalElement = document.getElementById('addDeviceModal');
         if (!modalElement) {
             return;
         }
         const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
         modal.show();
+    }
+
+    async function prewarmInventoryDevices(options = {}) {
+        try {
+            await requestJson(`/api/tracking/prewarm-eligible-inventory-devices${options.force ? '?force=1' : ''}`);
+        } catch (error) {
+            console.debug('Eligible inventory prewarm failed:', error?.message || error);
+        }
+    }
+
+    async function ensureInventoryDevicesLoaded(options = {}) {
+        if (inventoryDevicesLoaded && !options.force) {
+            renderInventoryDeviceList();
+            return inventoryDevicesCache;
+        }
+
+        const refreshButton = document.getElementById('refreshInventoryDevicesBtn');
+        const originalLabel = refreshButton ? refreshButton.innerHTML : '';
+        if (refreshButton) {
+            setButtonLoading(refreshButton, 'Loading...');
+        }
+
+        try {
+            const response = await requestJson('/api/tracking/eligible-inventory-devices');
+            const devices = Array.isArray(response?.devices) ? response.devices : [];
+            inventoryDevicesCache = devices
+                .slice()
+                .sort((left, right) => safeValue(left.device_name, '').localeCompare(safeValue(right.device_name, '')));
+            inventoryDevicesLoaded = true;
+            renderInventoryDeviceList();
+            return inventoryDevicesCache;
+        } catch (error) {
+            showNotification(error.message || 'Failed to load devices from inventory.', 'danger');
+            return [];
+        } finally {
+            if (refreshButton) {
+                resetButtonLoading(refreshButton, originalLabel || 'Refresh List');
+            }
+        }
+    }
+
+    function renderInventoryDeviceList() {
+        const list = document.getElementById('inventoryDeviceList');
+        const emptyState = document.getElementById('inventoryDeviceEmptyState');
+        if (!list) {
+            return;
+        }
+        const query = safeValue(document.getElementById('inventoryDeviceSearch')?.value, '').trim().toLowerCase();
+        const selectedId = safeValue(document.getElementById('inventoryDeviceId')?.value, '').trim();
+        const filtered = inventoryDevicesCache.filter((device) => {
+            if (!query) {
+                return true;
+            }
+            const haystack = [
+                safeValue(device.device_name, ''),
+                safeValue(device.hostname, ''),
+                safeValue(device.device_ip, ''),
+                safeValue(device.macaddress, ''),
+                safeValue(device.device_type, ''),
+                safeValue(device.manufacturer, ''),
+            ].join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        list.innerHTML = filtered.map((device) => {
+            const deviceId = Number(device.device_id || 0);
+            const isSelected = String(deviceId) === selectedId;
+            const activityLabel = device.agent_recent ? 'service.py active' : 'agent configured';
+            return `
+                <button
+                    type="button"
+                    class="tracking-inventory-item${isSelected ? ' is-selected' : ''}"
+                    data-inventory-device-id="${deviceId}"
+                >
+                    <span class="tracking-inventory-item-title">${escapeHtml(safeValue(device.device_name, `Device ${deviceId}`))}</span>
+                    <span class="tracking-inventory-item-meta">${escapeHtml(safeValue(device.device_type, 'Unknown'))} | ${escapeHtml(activityLabel)}</span>
+                    <span class="tracking-inventory-item-detail">${escapeHtml(safeValue(device.device_ip, 'No IP'))}</span>
+                    <span class="tracking-inventory-item-detail">${escapeHtml(safeValue(device.macaddress, 'No MAC'))}</span>
+                </button>
+            `;
+        }).join('');
+
+        list.querySelectorAll('[data-inventory-device-id]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const selectedIdFromButton = String(button.getAttribute('data-inventory-device-id') || '').trim();
+                handleInventoryDeviceSelection(selectedIdFromButton);
+            });
+        });
+
+        if (emptyState) {
+            emptyState.classList.toggle('d-none', filtered.length > 0);
+        }
+    }
+
+    function handleInventoryDeviceSelection(selectedId) {
+        selectedId = String(selectedId || '').trim();
+        const selectedDevice = inventoryDevicesCache.find((device) => String(device.device_id) === selectedId) || null;
+        setInputValue('inventoryDeviceId', selectedDevice ? selectedId : '');
+        setInventoryDeviceMeta(selectedDevice);
+        renderInventoryDeviceList();
+        if (!selectedDevice) {
+            return;
+        }
+
+        setInputValue('deviceName', selectedDevice.device_name || '');
+        setInputValue('macAddress', selectedDevice.macaddress || '');
+        setInputValue('ipAddress', selectedDevice.device_ip || '');
+        setInputValue('hostname', selectedDevice.hostname || '');
+        setInputValue('department', '');
+    }
+
+    function setInventoryDeviceMeta(device) {
+        const meta = document.getElementById('inventoryDeviceMeta');
+        if (!meta) {
+            return;
+        }
+        if (!device) {
+            meta.textContent = '';
+            meta.classList.add('d-none');
+            return;
+        }
+
+        const parts = [
+            safeValue(device.device_type, 'Unknown type'),
+            safeValue(device.manufacturer, ''),
+            safeValue(device.status, ''),
+            safeValue(device.device_ip, ''),
+            safeValue(device.macaddress, ''),
+        ].filter(Boolean);
+        meta.textContent = parts.join(' | ');
+        meta.classList.remove('d-none');
     }
 
     function openScanResultsModal() {
@@ -668,6 +818,7 @@
     async function saveTrackedDevice() {
         const saveButton = document.getElementById('saveDeviceBtn');
         const originalLabel = saveButton ? saveButton.innerHTML : 'Save Device';
+        const selectedInventoryId = (document.getElementById('inventoryDeviceId')?.value || '').trim();
 
         const originalMac = (document.getElementById('editMac')?.value || '').trim();
         const payload = {
@@ -679,6 +830,10 @@
             department: (document.getElementById('department')?.value || '').trim(),
             notes: (document.getElementById('notes')?.value || '').trim(),
         };
+
+        if (selectedInventoryId) {
+            payload.inventory_device_id = Number.parseInt(selectedInventoryId, 10);
+        }
 
         if (originalMac) {
             payload.mac_address = originalMac;
@@ -721,6 +876,8 @@
             if (modal) {
                 modal.hide();
             }
+            inventoryDevicesLoaded = false;
+            prewarmInventoryDevices({ force: true });
             await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
             showNotification(error.message || 'Save failed.', 'danger');
@@ -751,14 +908,12 @@
             return;
         }
 
-        // Force a full purge instead of a soft archive per user request
-        payload.purge = true;
         deleteInFlight = true;
         const confirmDeleteButton = document.getElementById('confirmDeleteBtn');
         const originalDeleteLabel = confirmDeleteButton ? confirmDeleteButton.innerHTML : '';
 
         if (confirmDeleteButton) {
-            setButtonLoading(confirmDeleteButton, 'Deleting...');
+            setButtonLoading(confirmDeleteButton, 'Archiving...');
         }
 
         try {
@@ -768,16 +923,16 @@
             });
 
             if (!response.success) {
-                showNotification(response.error || 'Delete failed.', 'danger');
+                showNotification(response.error || 'Archive failed.', 'danger');
                 return;
             }
 
             showActionBanner({
-                title: response.already_deleted ? 'Already deleted' : 'Device deleted',
-                message: response.message || 'Device deleted successfully.',
+                title: response.already_deleted ? 'Already removed' : 'Device archived',
+                message: response.message || 'Device archived successfully.',
                 detail: response.already_deleted
                     ? 'The selected device was already removed from stored tracking inventory.'
-                    : 'The selected device and its saved tracking history were removed successfully.',
+                    : 'The selected device was removed from the active tracking list and its saved history was preserved.',
             });
             removeStoredDeviceRow(payload.device_id, payload.mac_address);
             const modalElement = document.getElementById('confirmDeleteModal');
@@ -786,13 +941,15 @@
                 modal.hide();
             }
             deviceToDelete = null;
+            inventoryDevicesLoaded = false;
+            prewarmInventoryDevices({ force: true });
             await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
         } catch (error) {
-            showNotification(error.message || 'Delete failed.', 'danger');
+            showNotification(error.message || 'Archive failed.', 'danger');
         } finally {
             deleteInFlight = false;
             if (confirmDeleteButton) {
-                resetButtonLoading(confirmDeleteButton, originalDeleteLabel || 'Delete Device');
+                resetButtonLoading(confirmDeleteButton, originalDeleteLabel || 'Archive Device');
             }
         }
     }
@@ -811,6 +968,9 @@
         setInputValue('department', device.department || '');
         setInputValue('notes', device.notes || '');
         setInputValue('editMac', device.mac_address || '');
+        setInputValue('inventoryDeviceId', '');
+        setInventoryDeviceMeta(null);
+        renderInventoryDeviceList();
 
         const macField = document.getElementById('macAddress');
         if (macField) {
@@ -838,6 +998,13 @@
         }
 
         setInputValue('editMac', '');
+        setInputValue('inventoryDeviceId', '');
+        setInventoryDeviceMeta(null);
+        const inventorySearch = document.getElementById('inventoryDeviceSearch');
+        if (inventorySearch) {
+            inventorySearch.value = '';
+        }
+        renderInventoryDeviceList();
 
         const macField = document.getElementById('macAddress');
         if (macField) {
@@ -971,8 +1138,8 @@
                     <button class="ops-btn ops-btn-icon edit-device" type="button" title="Edit Device">
                         <i data-lucide="edit" class="tracking-icon-sm"></i>
                     </button>
-                    <button class="ops-btn ops-btn-icon delete-device tracking-delete-btn" data-device-id="${Number(device.id || 0)}" data-mac="${escapeHtml(normalizedMac)}" data-device-name="${escapeHtml(device.device_name || device.hostname || 'Unknown Device')}" type="button" title="Delete Device">
-                        <i data-lucide="trash-2" class="tracking-icon-sm"></i>
+                    <button class="ops-btn ops-btn-icon delete-device tracking-delete-btn" data-device-id="${Number(device.id || 0)}" data-mac="${escapeHtml(normalizedMac)}" data-device-name="${escapeHtml(device.device_name || device.hostname || 'Unknown Device')}" type="button" title="Archive Device">
+                        <i data-lucide="archive" class="tracking-icon-sm"></i>
                     </button>
                 </div>
             </td>

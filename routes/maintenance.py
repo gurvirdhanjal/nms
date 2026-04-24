@@ -183,6 +183,82 @@ def scheduler_status():
     })
 
 
+@maintenance_bp.route('/ping-samples', methods=['GET'])
+@require_role('admin')
+def recent_ping_samples():
+    """Return recent stored ping samples for post-restart validation."""
+    try:
+        from models.scan_history import DeviceScanHistory
+
+        try:
+            limit = int(request.args.get('limit', 10) or 10)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'limit must be an integer'}), 400
+
+        limit = max(1, min(limit, 100))
+        device_ip = (request.args.get('device_ip') or '').strip() or None
+        scan_type = (request.args.get('scan_type') or '').strip().lower() or None
+
+        query = db.session.query(
+            DeviceScanHistory.scan_id,
+            DeviceScanHistory.device_ip,
+            DeviceScanHistory.device_name,
+            DeviceScanHistory.status,
+            DeviceScanHistory.status_detail,
+            DeviceScanHistory.ping_time_ms,
+            DeviceScanHistory.packet_loss,
+            DeviceScanHistory.jitter,
+            DeviceScanHistory.scan_type,
+            DeviceScanHistory.scan_timestamp,
+        )
+
+        if device_ip:
+            query = query.filter(DeviceScanHistory.device_ip == device_ip)
+        if scan_type:
+            query = query.filter(DeviceScanHistory.scan_type == scan_type)
+
+        rows = (
+            query.order_by(
+                DeviceScanHistory.scan_timestamp.desc(),
+                DeviceScanHistory.scan_id.desc(),
+            )
+            .limit(limit)
+            .all()
+        )
+
+        return jsonify(
+            {
+                'timestamp': datetime.utcnow().isoformat(),
+                'filters': {
+                    'device_ip': device_ip,
+                    'scan_type': scan_type,
+                    'limit': limit,
+                },
+                'count': len(rows),
+                'samples': [
+                    {
+                        'scan_id': row.scan_id,
+                        'device_ip': row.device_ip,
+                        'device_name': row.device_name,
+                        'status': row.status,
+                        'status_detail': row.status_detail,
+                        'ping_time_ms': row.ping_time_ms,
+                        'packet_loss': row.packet_loss,
+                        'jitter': row.jitter,
+                        'scan_type': row.scan_type,
+                        'scan_timestamp': row.scan_timestamp.isoformat()
+                        if row.scan_timestamp
+                        else None,
+                    }
+                    for row in rows
+                ],
+            }
+        )
+    except Exception:
+        logger.exception("Maintenance ping samples endpoint error")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 # ============================================================
 # GET /api/maintenance/status
 # ============================================================
@@ -574,6 +650,29 @@ def purge_old_alerts():
         return jsonify({'deleted': deleted, 'cutoff': cutoff.isoformat(), 'days': days})
     except Exception:
         logger.exception("alerts/purge failed")
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# ============================================================
+@maintenance_bp.route('/dedup-mac-conflicts', methods=['POST'])
+@require_role('admin')
+def dedup_mac_conflicts():
+    """Merge duplicate Device rows that share the same MAC address.
+
+    Keeps the oldest record (lowest device_id) and re-parents all
+    related tables (scan history, health logs, rollups, interfaces, etc.)
+    to it before deleting the duplicate.
+
+    Returns: { "merged": N, "details": [...] }
+    """
+    try:
+        from services.device_identity import dedup_devices_by_mac
+        report = dedup_devices_by_mac()
+        logger.info("[MAINTENANCE] dedup-mac-conflicts: merged %d duplicate(s)", len(report))
+        return jsonify({'merged': len(report), 'details': report})
+    except Exception:
+        logger.exception("dedup-mac-conflicts failed")
         db.session.rollback()
         return jsonify({'error': 'Internal server error'}), 500
 

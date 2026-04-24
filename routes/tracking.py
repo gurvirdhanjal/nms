@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, jsonify, make_response, request, session, redirect, url_for, Response, stream_with_context
-from middleware.rbac import require_login, require_permission, require_role, create_audit_log
-from extensions import db
+from middleware.rbac import require_login, require_permission, require_role, create_audit_log, current_scope_cache_fragment
+from extensions import db, redis_client, is_redis_available
 from models.tracked_device import (
     TrackedDevice,
     TrackedDeviceIpHistory,
@@ -144,6 +144,13 @@ from services.tracking_sync_intake_service import (
 )
 
 tracking_bp = Blueprint('tracking_bp', __name__)
+_tracking_local_cache = {}
+_tracking_local_cache_ttl = {}
+_tracking_local_locks = {}
+_tracking_local_registry_lock = threading.Lock()
+_TRACKING_CACHE_NAMESPACE = 'tracking'
+_TRACKING_CACHE_VERSION = 'v1'
+_TRACKING_ELIGIBLE_INVENTORY_KEY_PREFIX = 'eligible-inventory'
 
 
 def _parse_limit(default: int = 100, max_val: int = 500) -> int:
@@ -169,6 +176,42 @@ HOSTNAME_CANDIDATE_RE = re.compile(r'(?<!@)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-
 SYNC_IP_REASON_PAYLOAD = 'SYNC_PAYLOAD_UPDATE'
 SYNC_IP_REASON_MANUAL = 'MANUAL_EDIT'
 SYNC_IP_REASON_RECONCILE = 'RECONCILE_RELOCATION'
+_TRACKING_HARDWARE_SPEC_KEYS = {
+    'cpu_model',
+    'cpu_physical_cores',
+    'cpu_logical_cores',
+    'memory_total_gb',
+    'disk_total_gb',
+    'architecture',
+}
+
+
+def _extract_tracking_hardware_specs(payload):
+    if not isinstance(payload, dict):
+        return None
+
+    raw_specs = payload.get('hardware_specs') if isinstance(payload.get('hardware_specs'), dict) else {}
+    current_stats = extract_current_stats_payload(payload) or {}
+    device_info = current_stats.get('device_info') if isinstance(current_stats.get('device_info'), dict) else {}
+    system_metrics = current_stats.get('system_metrics') if isinstance(current_stats.get('system_metrics'), dict) else {}
+
+    derived_specs = {
+        'cpu_model': raw_specs.get('cpu_model') or device_info.get('processor'),
+        'cpu_physical_cores': raw_specs.get('cpu_physical_cores'),
+        'cpu_logical_cores': raw_specs.get('cpu_logical_cores'),
+        'memory_total_gb': raw_specs.get('memory_total_gb') if raw_specs.get('memory_total_gb') is not None else system_metrics.get('total_gb'),
+        'disk_total_gb': raw_specs.get('disk_total_gb') if raw_specs.get('disk_total_gb') is not None else system_metrics.get('disk_total_gb'),
+        'architecture': raw_specs.get('architecture') or device_info.get('os_arch'),
+    }
+
+    specs = {}
+    for key in _TRACKING_HARDWARE_SPEC_KEYS:
+        value = derived_specs.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            specs[key] = value
+    return specs or None
 
 
 def _inventory_sync_error_message(reason_code):
@@ -232,6 +275,220 @@ def _coerce_bool(value, default=False):
     if isinstance(value, str):
         return value.strip().lower() in ('1', 'true', 'yes', 'on')
     return bool(value)
+
+
+def _tracking_cache_key(key: str) -> str:
+    return f"{_TRACKING_CACHE_NAMESPACE}:{str(key).strip()}:{_TRACKING_CACHE_VERSION}"
+
+
+def _tracking_scope_suffix() -> str:
+    return current_scope_cache_fragment().replace(':', '__')
+
+
+def _eligible_inventory_cache_key(scope_suffix: str | None = None) -> str:
+    return _tracking_cache_key(f"{_TRACKING_ELIGIBLE_INVENTORY_KEY_PREFIX}:{scope_suffix or _tracking_scope_suffix()}")
+
+
+def _get_tracking_local_lock(lock_key: str) -> threading.Lock:
+    with _tracking_local_registry_lock:
+        if lock_key not in _tracking_local_locks:
+            _tracking_local_locks[lock_key] = threading.Lock()
+        return _tracking_local_locks[lock_key]
+
+
+def _get_cached_tracking_value(cache_key: str):
+    if is_redis_available() and not getattr(Config, 'TESTING', False):
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as exc:
+            logger.debug('[TrackingCache] Redis read failed key=%s err=%s', cache_key, exc)
+
+    if cache_key in _tracking_local_cache:
+        if datetime.utcnow() < _tracking_local_cache_ttl.get(cache_key, datetime.min):
+            return _tracking_local_cache[cache_key]
+    return None
+
+
+def _set_cached_tracking_value(cache_key: str, value, ttl_seconds: int):
+    ttl_seconds = max(15, int(ttl_seconds or 90))
+    if is_redis_available() and not getattr(Config, 'TESTING', False):
+        try:
+            redis_client.setex(cache_key, ttl_seconds, json.dumps(value))
+            return
+        except Exception as exc:
+            logger.debug('[TrackingCache] Redis write failed key=%s err=%s', cache_key, exc)
+
+    _tracking_local_cache[cache_key] = value
+    _tracking_local_cache_ttl[cache_key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+
+
+def _acquire_tracking_cache_lock(lock_key: str, ttl_seconds: int = 15) -> bool:
+    versioned_lock_key = _tracking_cache_key(f'lock:{lock_key}')
+    if is_redis_available() and not getattr(Config, 'TESTING', False):
+        try:
+            return bool(redis_client.set(versioned_lock_key, '1', nx=True, ex=max(5, int(ttl_seconds or 15))))
+        except Exception as exc:
+            logger.debug('[TrackingCache] Redis lock failed key=%s err=%s', versioned_lock_key, exc)
+
+    return _get_tracking_local_lock(lock_key).acquire(blocking=False)
+
+
+def _release_tracking_cache_lock(lock_key: str):
+    versioned_lock_key = _tracking_cache_key(f'lock:{lock_key}')
+    if is_redis_available() and not getattr(Config, 'TESTING', False):
+        try:
+            redis_client.delete(versioned_lock_key)
+        except Exception as exc:
+            logger.debug('[TrackingCache] Redis unlock failed key=%s err=%s', versioned_lock_key, exc)
+
+    local_lock = _tracking_local_locks.get(lock_key)
+    if local_lock is not None:
+        try:
+            local_lock.release()
+        except RuntimeError:
+            pass
+
+
+def _invalidate_tracking_inventory_candidates_cache():
+    prefix = _tracking_cache_key(f'{_TRACKING_ELIGIBLE_INVENTORY_KEY_PREFIX}:')
+    local_keys = [key for key in list(_tracking_local_cache.keys()) if key.startswith(prefix)]
+    for key in local_keys:
+        _tracking_local_cache.pop(key, None)
+        _tracking_local_cache_ttl.pop(key, None)
+
+    if is_redis_available() and not getattr(Config, 'TESTING', False):
+        try:
+            redis_keys = list(redis_client.scan_iter(match=f'{prefix}*', count=100))
+            if redis_keys:
+                redis_client.delete(*redis_keys)
+        except Exception as exc:
+            logger.debug('[TrackingCache] Redis invalidation failed prefix=%s err=%s', prefix, exc)
+
+
+def _query_tracking_inventory_candidates():
+    from middleware.rbac import scoped_query
+
+    inventory_devices = scoped_query(Device).order_by(Device.device_name.asc()).all()
+    scanner = NetworkScanner()
+
+    latest_scan_subq = (
+        db.session.query(
+            DeviceScanHistory.device_ip.label('device_ip'),
+            db.func.max(DeviceScanHistory.scan_id).label('max_scan_id'),
+        )
+        .filter(DeviceScanHistory.device_ip.in_([device.device_ip for device in inventory_devices if device.device_ip]))
+        .group_by(DeviceScanHistory.device_ip)
+        .subquery()
+    )
+    latest_scan_rows = (
+        db.session.query(
+            DeviceScanHistory.device_ip,
+            DeviceScanHistory.status,
+        )
+        .join(
+            latest_scan_subq,
+            (DeviceScanHistory.device_ip == latest_scan_subq.c.device_ip)
+            & (DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id),
+        )
+        .all()
+    )
+    latest_status_by_ip = {
+        row.device_ip: ('Online' if str(row.status or '').strip().lower() in ('online', 'up') else 'Offline')
+        for row in latest_scan_rows
+    }
+
+    tracked_devices = scoped_tracked_device_query(
+        include_archived=False,
+        include_unscoped_for_admin=True,
+    ).all()
+    tracked_macs = {
+        normalize_mac(device.mac_address)
+        for device in tracked_devices
+        if getattr(device, 'mac_address', None)
+    }
+    tracked_macs.discard(None)
+
+    active_linked_inventory_ids = {
+        int(device_id)
+        for device_id, in db.session.query(DeviceIdentityLink.device_id)
+        .join(TrackedDevice, TrackedDevice.id == DeviceIdentityLink.tracked_device_id)
+        .filter(
+            DeviceIdentityLink.is_active.is_(True),
+            db.or_(TrackedDevice.is_archived.is_(False), TrackedDevice.is_archived.is_(None)),
+        )
+        .all()
+        if device_id
+    }
+
+    candidates = []
+    for device in inventory_devices:
+        normalized_mac = normalize_mac(getattr(device, 'macaddress', None))
+        if int(device.device_id) in active_linked_inventory_ids:
+            continue
+        if normalized_mac and normalized_mac in tracked_macs:
+            continue
+
+        device_ip = (getattr(device, 'device_ip', None) or '').strip()
+        if not device_ip:
+            continue
+        service_info = scanner.check_tracking_service(device_ip, profile='scan') or {}
+        tracking_status = str(service_info.get('tracking_status') or service_info.get('status') or '').strip().lower()
+        if tracking_status != 'tracking_active':
+            continue
+
+        latest_agent_log_at = None
+        if service_info.get('data') and isinstance(service_info.get('data'), dict):
+            latest_agent_log_at = (
+                service_info['data'].get('last_agent_sync_at')
+                or service_info['data'].get('timestamp')
+            )
+
+        candidates.append({
+            'device_id': int(device.device_id),
+            'device_name': device.device_name or '',
+            'device_type': device.device_type or '',
+            'device_ip': device_ip,
+            'macaddress': device.macaddress or '',
+            'hostname': device.hostname or '',
+            'manufacturer': device.manufacturer or '',
+            'status': 'Maintenance' if getattr(device, 'maintenance_mode', False) else latest_status_by_ip.get(device.device_ip, 'Offline'),
+            'agent_recent': True,
+            'agent_configured': True,
+            'last_agent_log_at': latest_agent_log_at,
+        })
+
+    return candidates
+
+
+def _build_tracking_inventory_candidates(force_refresh=False):
+    cache_ttl_seconds = max(
+        30,
+        int(getattr(Config, 'TRACKING_ELIGIBLE_INVENTORY_CACHE_TTL_SECONDS', 90) or 90),
+    )
+    scope_suffix = _tracking_scope_suffix()
+    cache_key = _eligible_inventory_cache_key(scope_suffix)
+    lock_key = f'{_TRACKING_ELIGIBLE_INVENTORY_KEY_PREFIX}:{scope_suffix}'
+
+    if not force_refresh:
+        cached = _get_cached_tracking_value(cache_key)
+        if isinstance(cached, list):
+            return cached
+
+    acquired = _acquire_tracking_cache_lock(lock_key, ttl_seconds=15)
+    if not acquired:
+        cached = _get_cached_tracking_value(cache_key)
+        if isinstance(cached, list):
+            return cached
+        return _query_tracking_inventory_candidates()
+
+    try:
+        candidates = _query_tracking_inventory_candidates()
+        _set_cached_tracking_value(cache_key, candidates, ttl_seconds=cache_ttl_seconds)
+        return candidates
+    finally:
+        _release_tracking_cache_lock(lock_key)
 
 
 def _super_admin_allowlist():
@@ -1601,6 +1858,7 @@ class NetworkScanner:
                                 apply_tracked_device_ip_change(
                                     tracked_device=device,
                                     new_ip=ip,
+                                    resolved_hostname=(result.get('hostname') or '').strip() or None,
                                     now_utc=datetime.utcnow(),
                                     payload_ip=ip,
                                     payload_candidates=[ip],
@@ -2440,10 +2698,10 @@ def device_tracking():
         if getattr(device, 'last_agent_sync_at', None) and device.last_agent_sync_at >= agent_cutoff
     )
     identity_sources = _identity_source_map_for_tracked_devices([device.id for device in saved_devices])
-
     return render_template('tracking/device_tracking.html', 
                          saved_devices=saved_devices,
                          identity_sources=identity_sources,
+                         eligible_inventory_devices=[],
                          online_count=online_count,
                          degraded_count=degraded_count,
                          reachable_count=reachable_count,
@@ -2453,6 +2711,40 @@ def device_tracking():
                          active_agent_checkins=active_agent_checkins,
                          agent_sync_window_seconds=checkin_window_seconds,
                          workstation_ui_v2=bool(getattr(Config, 'TRACKING_WORKSTATION_UI_V2', False)))
+
+
+@tracking_bp.route('/api/tracking/eligible-inventory-devices')
+@require_login
+def api_tracking_eligible_inventory_devices():
+    try:
+        return jsonify({
+            'success': True,
+            'devices': _build_tracking_inventory_candidates(),
+        })
+    except Exception as exc:
+        return _json_exception(
+            'TRACKING_ELIGIBLE_INVENTORY_FAILED',
+            'Failed to load eligible inventory devices.',
+            exc,
+        )
+
+
+@tracking_bp.route('/api/tracking/prewarm-eligible-inventory-devices')
+@require_login
+def api_tracking_prewarm_eligible_inventory_devices():
+    try:
+        devices = _build_tracking_inventory_candidates(force_refresh=_coerce_bool(request.args.get('force'), False))
+        return jsonify({
+            'success': True,
+            'warmed': True,
+            'count': len(devices),
+        })
+    except Exception as exc:
+        return _json_exception(
+            'TRACKING_PREWARM_ELIGIBLE_INVENTORY_FAILED',
+            'Failed to prewarm eligible inventory devices.',
+            exc,
+        )
 
 @tracking_bp.route('/tracking/history/<int:device_id>')
 @require_permission('tracking.history.view')
@@ -3937,6 +4229,7 @@ def api_scan_devices():
                         apply_tracked_device_ip_change(
                             tracked_device=saved_device,
                             new_ip=device.get('ip'),
+                            resolved_hostname=scanned_hostname,
                             now_utc=datetime.utcnow(),
                             payload_ip=device.get('ip'),
                             payload_candidates=[device.get('ip')],
@@ -4030,12 +4323,43 @@ def api_save_device():
     
     try:
         data = request.json or {}
+        inventory_device_id = data.get('inventory_device_id')
+        inventory_device = None
+        if inventory_device_id not in (None, ''):
+            try:
+                inventory_device_id = int(inventory_device_id)
+            except (TypeError, ValueError):
+                return _json_error(
+                    'INVALID_INVENTORY_DEVICE_ID',
+                    'Inventory device ID must be a valid integer.',
+                    400,
+                )
+            if inventory_device_id <= 0:
+                return _json_error(
+                    'INVALID_INVENTORY_DEVICE_ID',
+                    'Inventory device ID must be greater than zero.',
+                    400,
+                )
+            inventory_device = Device.query.get(inventory_device_id)
+            if inventory_device is None:
+                return _json_error(
+                    'INVENTORY_DEVICE_NOT_FOUND',
+                    'Selected inventory device was not found.',
+                    404,
+                )
+
         ip_address = (data.get('ip_address') or '').strip() or None
         hostname = (data.get('hostname') or '').strip() or None
         unique_client_id = (data.get('unique_client_id') or '').strip() or None
         raw_mac = data.get('mac_address')
+        if not raw_mac and inventory_device is not None:
+            raw_mac = inventory_device.macaddress
         raw_mac_text = str(raw_mac or '').strip()
         mac_address = normalize_mac(raw_mac)
+        if not ip_address and inventory_device is not None:
+            ip_address = (inventory_device.device_ip or '').strip() or None
+        if not hostname and inventory_device is not None:
+            hostname = (inventory_device.hostname or '').strip() or None
 
         if raw_mac_text and not mac_address:
             return _json_error(
@@ -4067,7 +4391,12 @@ def api_save_device():
                 400,
             )
 
-        device_name = (data.get('device_name') or '').strip() or hostname or f"Device_{mac_address[-5:].replace(':', '')}"
+        device_name = (
+            (data.get('device_name') or '').strip()
+            or (getattr(inventory_device, 'device_name', '') or '').strip()
+            or hostname
+            or f"Device_{mac_address[-5:].replace(':', '')}"
+        )
         employee_name = (data.get('employee_name') or '').strip() or None
         department = (data.get('department') or '').strip() or None
         notes = (data.get('notes') or '').strip() or None
@@ -4120,6 +4449,7 @@ def api_save_device():
                 apply_tracked_device_ip_change(
                     tracked_device=device,
                     new_ip=next_ip,
+                    resolved_hostname=hostname,
                     now_utc=datetime.utcnow(),
                     payload_ip=ip_address,
                     payload_candidates=[next_ip],
@@ -4155,6 +4485,7 @@ def api_save_device():
                 apply_tracked_device_ip_change(
                     tracked_device=device,
                     new_ip=ip_address,
+                    resolved_hostname=hostname,
                     now_utc=datetime.utcnow(),
                     payload_ip=ip_address,
                     payload_candidates=[ip_address],
@@ -4170,6 +4501,7 @@ def api_save_device():
                 )
 
         db.session.commit()
+        _invalidate_tracking_inventory_candidates_cache()
         return jsonify({
             'success': True,
             'message': 'Device saved successfully',
@@ -4255,6 +4587,7 @@ def api_delete_device():
         if purge_requested:
             _purge_tracked_device(device)
             db.session.commit()
+            _invalidate_tracking_inventory_candidates_cache()
             return jsonify({
                 'success': True,
                 'message': 'Device and tracking history permanently purged.',
@@ -4270,6 +4603,7 @@ def api_delete_device():
         device.is_active = False
         device.updated_at = now_utc
         db.session.commit()
+        _invalidate_tracking_inventory_candidates_cache()
 
         return jsonify({
             'success': True,
@@ -4453,6 +4787,7 @@ def api_sync_ips():
                         apply_tracked_device_ip_change(
                             tracked_device=saved_device,
                             new_ip=scanned_ip,
+                            resolved_hostname=scanned_hostname,
                             now_utc=datetime.utcnow(),
                             payload_ip=scanned_ip,
                             payload_candidates=[scanned_ip],
@@ -4852,6 +5187,7 @@ def api_tracking_sync():
                     ip_change = apply_tracked_device_ip_change(
                         tracked_device=device,
                         new_ip=resolved_ip,
+                        resolved_hostname=hostname,
                         now_utc=now_utc,
                         payload_ip=payload_ip,
                         payload_candidates=payload_ip_candidates,
@@ -4912,6 +5248,7 @@ def api_tracking_sync():
 
             current_stats = extract_current_stats_payload(payload)
             current_stats_valid = isinstance(current_stats, dict)
+            hardware_specs = _extract_tracking_hardware_specs(payload)
             integrity_error_code = None
             ingest_result = None
 
@@ -4921,6 +5258,25 @@ def api_tracking_sync():
                 current_stats.get('current_activity')
             ))
             if device is not None:
+                inventory_device = None
+                resolved_inventory_device_id = resolution.resolved_inventory_device_id
+                if resolved_inventory_device_id:
+                    inventory_device = Device.query.get(resolved_inventory_device_id)
+                elif device is not None:
+                    active_link = (
+                        DeviceIdentityLink.query
+                        .filter_by(tracked_device_id=device.id, is_active=True)
+                        .order_by(DeviceIdentityLink.updated_at.desc(), DeviceIdentityLink.id.desc())
+                        .first()
+                    )
+                    if active_link and active_link.device_id:
+                        inventory_device = Device.query.get(active_link.device_id)
+
+                if inventory_device is not None and hardware_specs:
+                    merged_specs = dict(inventory_device.hardware_specs or {}) if isinstance(inventory_device.hardware_specs, dict) else {}
+                    merged_specs.update(hardware_specs)
+                    inventory_device.hardware_specs = merged_specs
+
                 if current_stats is not None and not current_stats_valid:
                     integrity_error_code = 'INTEGRITY_PAYLOAD_INVALID'
                     device.availability_status = 'degraded'
@@ -5146,6 +5502,13 @@ def api_live_sync():
 def tracked_device_live(device_id):
     """Canonical full-page live telemetry view for a tracked workstation."""
     device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    active_inventory_link = (
+        DeviceIdentityLink.query
+        .filter_by(tracked_device_id=device.id, is_active=True)
+        .order_by(DeviceIdentityLink.updated_at.desc(), DeviceIdentityLink.id.desc())
+        .first()
+    )
+    linked_inventory_device_id = active_inventory_link.device_id if active_inventory_link else None
     file_transfer_enabled = str(session.get('role') or '').strip().lower() == 'admin'
     identity_text = f"{device.device_name or ''} {device.hostname or ''}".strip().lower()
     if 'server' in identity_text:
@@ -5196,6 +5559,7 @@ def tracked_device_live(device_id):
         initial_daily_uptime=initial_daily_uptime,
         initial_last_seen_utc=initial_last_seen_utc,
         file_transfer_enabled=file_transfer_enabled,
+        linked_inventory_device_id=linked_inventory_device_id,
     )
 
 

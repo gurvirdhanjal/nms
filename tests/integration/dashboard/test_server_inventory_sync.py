@@ -31,6 +31,7 @@ def test_linked_tracked_ip_change_updates_inventory_and_server_endpoints(admin_c
         device_ip='10.0.1.10',
         subnet_cidr='10.0.1.0/24',
         macaddress='AA:BB:CC:DD:EE:FF',
+        hostname='server-alpha-old',
     )
     tracked = TrackedDevice(
         mac_address='AA:BB:CC:DD:EE:FF',
@@ -78,6 +79,7 @@ def test_linked_tracked_ip_change_updates_inventory_and_server_endpoints(admin_c
     apply_tracked_device_ip_change(
         tracked_device=tracked,
         new_ip='10.0.2.20',
+        resolved_hostname='server-alpha-renamed',
         now_utc=datetime.utcnow(),
         payload_ip='10.0.2.20',
         payload_candidates=['10.0.2.20'],
@@ -96,6 +98,7 @@ def test_linked_tracked_ip_change_updates_inventory_and_server_endpoints(admin_c
     db.session.refresh(server)
     assert server.device_ip == '10.0.2.20'
     assert server.subnet_cidr == '10.0.2.0/24'
+    assert server.hostname == 'server-alpha-renamed'
     _clear_server_health_cache()
 
     health_response = admin_client.get('/api/server/health')
@@ -151,3 +154,80 @@ def test_unlinked_tracked_ip_change_does_not_update_inventory(admin_client):
 
     db.session.refresh(server)
     assert server.device_ip == '10.0.3.10'
+
+
+def test_linked_tracked_ip_change_merges_same_mac_collision_and_updates_hostname(admin_client):
+    server = Device(
+        device_name='Server Gamma',
+        device_type='server',
+        device_ip='10.0.5.10',
+        subnet_cidr='10.0.5.0/24',
+        macaddress='22:33:44:55:66:77',
+        hostname='server-gamma-old',
+    )
+    collision = Device(
+        device_name='Device-10.0.6.20',
+        device_type='server',
+        device_ip='10.0.6.20',
+        subnet_cidr='10.0.6.0/24',
+        macaddress='22:33:44:55:66:77',
+        hostname='server-gamma-stale',
+    )
+    tracked = TrackedDevice(
+        mac_address='22:33:44:55:66:77',
+        device_name='Tracked Server Gamma',
+        hostname='server-gamma',
+        ip_address='10.0.5.10',
+    )
+    db.session.add_all([server, collision, tracked])
+    db.session.flush()
+
+    db.session.add(
+        DeviceIdentityLink(
+            device_id=server.device_id,
+            tracked_device_id=tracked.id,
+            normalized_mac='22:33:44:55:66:77',
+            is_active=True,
+            link_source='manual',
+            confidence=100,
+        )
+    )
+    db.session.add(
+        ServerHealthLog(
+            device_id=collision.device_id,
+            source='agent',
+            cpu_usage=25,
+            memory_usage=30,
+            disk_usage=20,
+            timestamp=datetime.utcnow(),
+        )
+    )
+    db.session.commit()
+
+    collision_id = collision.device_id
+
+    apply_tracked_device_ip_change(
+        tracked_device=tracked,
+        new_ip='10.0.6.20',
+        resolved_hostname='server-gamma',
+        now_utc=datetime.utcnow(),
+        payload_ip='10.0.6.20',
+        payload_candidates=['10.0.6.20'],
+        transport_remote_ip='10.0.6.20',
+        transport_forwarded_for=None,
+        agent_key_id=None,
+        reason='TEST_COLLISION_MERGE',
+        ip_source='test',
+        network_signature=None,
+        update_last_seen=False,
+        update_updated_at=True,
+        sync_reason='TEST_COLLISION_MERGE',
+    )
+    db.session.commit()
+
+    db.session.refresh(server)
+    assert server.device_ip == '10.0.6.20'
+    assert server.subnet_cidr == '10.0.6.0/24'
+    assert server.hostname == 'server-gamma'
+    assert db.session.get(Device, collision_id) is None
+    assert ServerHealthLog.query.filter_by(device_id=server.device_id).count() == 1

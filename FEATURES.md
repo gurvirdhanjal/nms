@@ -237,22 +237,10 @@ middleware/            # Request/response middleware
 - Top 5 processes by CPU usage
 - Open file descriptors (count, limit, %)
 
-**Input Activity Tracking**:
-- **Keyboard Activity**: Event counts, duration, and last activity tracking
-- **Mouse Activity**: Precise click counts, movement duration, and coordinate-based tracking
-- **Encrypted Keylogging**: Captures typed text buffer and stores it with AES-256 (Fernet) encryption
-- **Inactivity Threshold**: Configurable threshold (default: 30s) to distinguish between active and idle states
-
-**Application & Context**:
-- **Active Window Tracking**: Captures titles of focused windows every 10 seconds
-- **Usage Duration**: per-application usage timers saved to local encrypted database
-- **Idle Time**: Real-time idle second counter based on input absence
-
 **System**:
 - OS name, version, architecture
 - Uptime (seconds)
 - System alerts (JSON array)
-- **Persistent Identity**: Unique Client ID stored in `client_id.txt` (hidden file) to persist across restarts and network changes
 
 **Agent Configuration**:
 - Token-based authentication (`X-Agent-Token` header)
@@ -260,14 +248,11 @@ middleware/            # Request/response middleware
 - Automatic device registration on first metric submission
 - Hardware specs stored in `device.hardware_specs` (JSON)
 
-- Ingestion Endpoint: `POST /api/agent/metrics`
+**Data Ingestion**:
+- Endpoint: `POST /api/agent/metrics`
 - Validation: Token must match `device.agent_token`
 - Storage: `server_health_logs` table with `source='agent'`
-- **Freshness Fallback**: SNMP polling disabled for servers with active agent (5-minute freshness check)
-- **Reachability Fallback**: 
-    - **Short-Circuit**: Stop probing `/api/secure/stats` and `/api/health` if basic identity fails.
-    - **Ping verification**: Performs ICMP PING if agent port (5002) is closed.
-    - **Classification**: Distinguishes `degraded` (Up host, Missing Agent) from `offline` (Host offline).
+- Fallback: SNMP polling disabled for servers with active agent (5-minute freshness check)
 
 ### WMI Monitoring (Configured, Not Actively Polled)
 
@@ -740,7 +725,6 @@ middleware/            # Request/response middleware
 - Batch SSE updates (accumulates troubled devices)
 - Async audit logging (non-blocking)
 - Bulk insert for audit logs
-- **Inventory aggregation optimization**: Replaced redundant JOIN/COUNT queries with in-memory counting for dashboard stats.
 
 **Resource Management**:
 - Thread pool for SNMP workers (20 concurrent polls)
@@ -819,17 +803,13 @@ middleware/            # Request/response middleware
 - Application usage tracking (`/api/tracking/history/applications/<device_id>`)
 - Resource usage tracking (`/api/tracking/history/resources/<device_id>`)
 
-**Remote Control** (Agent Implementation):
-- **Screen Streaming**: `/stream` - High-performance capture using `mss` (Target: 5 FPS)
-- **Camera Control**: 
-  - Start Stream: `/start_camera` (Target: 15 FPS, 640x480)
-  - Stop Stream: `/stop_camera`
-  - Toggle Camera: `/toggle_camera`
-  - Status: `/camera_status`
-- **Audio Monitoring**:
-  - Live Stream: `/audio_stream.wav` (16kHz Mono, raw PCM/WAV via PyAudio)
-  - Stop Mic: `/stop_mic`
-  - Status: `/mic_status`
+**Remote Control** (Requires Agent):
+- Toggle microphone: `POST /api/tracking/toggle-mic/<mac_address>`
+- Toggle camera: `POST /api/tracking/toggle-camera/<mac_address>`
+- Stop camera: `POST /api/tracking/stop-camera/<mac_address>`
+- Live camera stream: `GET /api/tracking/stream/camera/<mac_address>`
+- Live audio stream: `GET /api/tracking/stream/audio/<mac_address>`
+- Screenshot capture: `GET /api/tracking/stream/screenshot/<mac_address>`
 
 **Metrics**:
 - Performance metrics: CPU, RAM, disk, network
@@ -843,23 +823,24 @@ middleware/            # Request/response middleware
 
 ### File Transfer
 
-**Agent File Operations**:
-- List Files: `GET /api/files/list` (with directory traversal protection)
-- Download: `GET /api/files/download` (supports ZIP for directories)
-- Upload: `POST /api/files/upload` (with duplicate filename handling)
-- Create Folder: `POST /api/files/create_folder`
-- Delete: `POST /api/files/delete`
-- System Info: `GET /api/files/system_info` (Disk usage, drive enumeration, special folders)
+**Capabilities**:
+- Connect to remote client: `POST /api/clients/connect`
+- List remote files: `POST /api/files/client/list`
+- Download from client: `POST /api/files/client/download`
+- Upload to client: `POST /api/files/client/upload` (admin only)
+- Create folder on client: `POST /api/files/client/create_folder` (admin only)
+- Delete file on client: `POST /api/files/client/delete` (admin only)
+- Transfer between systems: `POST /api/files/transfer_between` (admin only)
 
 **Local File Management**:
 - List local files: `POST /api/files/local/list`
 - Download local file: `POST /api/files/local/download`
 - Upload local file: `POST /api/files/local/upload`
 
-**Agent Infrastructure**:
-- **Auto-Discovery**: Automatic scanning for admin servers on local subnets
-- **Failover & Backoff**: Exponential backoff (up to 4x interval) when servers are reachable
-- **Identity API**: `/api/identity` returns persistent ID and hardware fingerprints
+**Client Discovery**:
+- Auto-discover clients: `GET /api/clients/discover`
+- Current client info: `GET /api/clients/current`
+- System info: `GET /api/files/client/system_info`
 
 **UI**:
 - File transfer interface (`/file_transfer`) - admin only
@@ -1247,4 +1228,4 @@ With focused effort on security hardening (1-2 months), the platform can achieve
 
 **Document Version**: 1.0  
 **Last Updated**: 2026-02-26  
-**Maintained By**: Development Team
+**Maintained By**: Gurvir H. Dhanjal

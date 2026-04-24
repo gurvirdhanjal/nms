@@ -429,6 +429,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const checkboxes = document.querySelectorAll('.device-checkbox');
 
         checkboxes.forEach(cb => {
+            if (cb.disabled) return;
             cb.checked = isChecked;
             const ip = cb.closest('tr').getAttribute('data-ip-row');
             if (isChecked) {
@@ -779,7 +780,12 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showToast(`Added ${data.added} devices. Skipped ${data.skipped}.`, 'success', 5000);
+                    const parts = [];
+                    if (data.added > 0) parts.push(`${data.added} new`);
+                    if (data.updated > 0) parts.push(`${data.updated} updated`);
+                    if (data.skipped > 0) parts.push(`${data.skipped} already up to date`);
+                    const summary = parts.length ? parts.join(', ') : 'no changes';
+                    showToast(`Inventory: ${summary}.`, 'success', 5000);
 
                     // Updated visual state for added devices
                     devicesToAdd.forEach(d => {

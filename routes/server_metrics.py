@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, request, session
 from sqlalchemy import func
 
 from extensions import db
-from middleware.rbac import require_login, require_role, scoped_query
+from middleware.rbac import current_scope_cache_fragment, require_login, require_role, scoped_query
 from models.audit_log import AuditLog
 from models.device import Device
 from models.server_health import ServerHealthLog
@@ -626,6 +626,10 @@ def _scoped_server_devices():
     return servers, server_ids
 
 
+def _scoped_server_cache_key(base_key):
+    return f"{base_key}:{current_scope_cache_fragment()}"
+
+
 def _merged_threshold_payload():
     profile = serialize_threshold_profile()
     metrics = {}
@@ -750,7 +754,7 @@ def get_server_health_summary():
     import json
     
     # Try Redis cache first (30 second TTL)
-    cache_key = "server:health:summary"
+    cache_key = _scoped_server_cache_key("server:health:summary")
     if is_redis_available():
         try:
             cached = redis_client.get(cache_key)

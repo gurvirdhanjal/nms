@@ -280,6 +280,341 @@
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 </style>
+<style>
+.device-details-page {
+  --dd-text: #e7f7f6;
+  --dd-text-soft: #a7bfbe;
+  --dd-text-muted: #72908f;
+  --dd-border-soft: rgba(148, 163, 184, 0.16);
+  --dd-shadow: 0 14px 34px rgba(3, 11, 18, 0.34);
+}
+
+.device-details-page .page-container {
+  max-width: 1560px;
+}
+
+.device-details-page .dd-header-bar {
+  align-items: center;
+  margin-bottom: 1.1rem;
+}
+
+.device-details-page .dd-title-kicker {
+  color: #5eead4 !important;
+  letter-spacing: 0.16em;
+}
+
+.device-details-page .dd-title-block h1 {
+  font-size: 1.65rem;
+  line-height: 1.05;
+}
+
+.device-details-page .dd-title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  margin-top: 0.45rem;
+  color: var(--dd-text-soft);
+  font-size: 0.76rem;
+}
+
+.device-details-page .dd-title-meta code {
+  background: rgba(15, 118, 110, 0.18) !important;
+  color: #99f6e4 !important;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+}
+
+.device-details-page .dd-header-actions {
+  gap: 0.55rem;
+}
+
+.device-details-page .dd-header-actions a {
+  padding: 0.55rem 0.82rem;
+  border-radius: 10px;
+  font-size: 0.76rem;
+}
+
+.device-details-page .dd-header-actions a:first-child {
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid var(--dd-border-soft);
+}
+
+.device-details-page .dd-header-actions a:last-child {
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+  box-shadow: 0 8px 18px rgba(20, 184, 166, 0.2);
+}
+
+.device-details-page .dd-status-strip {
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.device-details-page .dd-summary-grid {
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.device-details-page .dd-summary-card,
+.device-details-page .bg-slate-900,
+.device-details-page .bg-slate-900\/60,
+.device-details-page .bg-slate-900\/80,
+.device-details-page .bg-slate-900\/50 {
+  background: linear-gradient(180deg, rgba(10, 22, 30, 0.98), rgba(8, 16, 24, 0.92)) !important;
+  border-color: var(--dd-border-soft) !important;
+  box-shadow: var(--dd-shadow);
+}
+
+.device-details-page .dd-summary-card {
+  padding: 0.9rem 0.95rem;
+}
+
+.device-details-page .dd-summary-card .text-xl {
+  font-size: 1rem;
+}
+
+.device-details-page .dd-summary-card .text-xs,
+.device-details-page .dd-summary-card .text-\[0\.65rem\] {
+  color: var(--dd-text-muted) !important;
+}
+
+.device-details-page .dd-tabs-nav {
+  gap: 0.22rem;
+  margin-bottom: 0.85rem;
+  padding: 0.22rem;
+  border: 1px solid var(--dd-border-soft);
+  border-radius: 10px;
+  background: rgba(7, 18, 26, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(11, 34, 43, 0.5);
+}
+
+.device-details-page .dd-tab-btn {
+  gap: 0.28rem;
+  padding: 0.36rem 0.5rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  border: none;
+  border-radius: 7px;
+  color: var(--dd-text-muted);
+  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.device-details-page .dd-tab-btn:hover {
+  color: var(--dd-text);
+  background: rgba(45, 212, 191, 0.08);
+}
+
+.device-details-page .dd-tab-btn.active {
+  color: #dffcf8;
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.22), rgba(15, 118, 110, 0.14));
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.24);
+}
+
+.device-details-page .dd-live-dot {
+  background: #2dd4bf;
+}
+
+.device-details-page .dd-tab-badge {
+  background: rgba(45, 212, 191, 0.16);
+  color: #99f6e4;
+  font-size: 0.48rem;
+  padding: 0.04rem 0.24rem;
+}
+
+.device-details-page .dd-ping-grid,
+.device-details-page .dd-resource-grid {
+  gap: 0.7rem;
+  margin-bottom: 0.9rem;
+}
+
+.device-details-page .dd-kpi,
+.device-details-page .dd-res-card {
+  background: linear-gradient(180deg, rgba(9, 24, 33, 0.96), rgba(8, 18, 25, 0.92));
+  border-color: var(--dd-border-soft);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.04);
+}
+
+.device-details-page .dd-kpi {
+  padding: 0.72rem 0.82rem;
+}
+
+.device-details-page .dd-res-card {
+  padding: 0.78rem 0.85rem;
+}
+
+.device-details-page .dd-kpi-label,
+.device-details-page .dd-res-label,
+.device-details-page .dd-chart-title,
+.device-details-page .dd-proc-table th {
+  color: var(--dd-text-muted);
+  letter-spacing: 0.11em;
+}
+
+.device-details-page .dd-kpi-label,
+.device-details-page .dd-res-label {
+  font-size: 0.58rem;
+  margin-bottom: 0.42rem;
+}
+
+.device-details-page .dd-kpi-value,
+.device-details-page .dd-res-value {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  color: var(--dd-text);
+}
+
+.device-details-page .dd-kpi-value {
+  font-size: 1.16rem;
+}
+
+.device-details-page .dd-res-value {
+  font-size: 1.24rem;
+}
+
+.device-details-page .dd-kpi-unit,
+.device-details-page .dd-kpi-sub,
+.device-details-page .dd-res-sub,
+.device-details-page .dd-stat-label,
+.device-details-page .dd-refresh-bar,
+.device-details-page .text-slate-500,
+.device-details-page .text-slate-600 {
+  color: var(--dd-text-muted) !important;
+}
+
+.device-details-page .dd-chart-wrap {
+  background: linear-gradient(180deg, rgba(9, 23, 31, 0.98), rgba(8, 16, 24, 0.92));
+  border-color: var(--dd-border-soft);
+  border-radius: 12px;
+  margin-bottom: 0.9rem;
+  box-shadow: var(--dd-shadow);
+}
+
+.device-details-page .dd-chart-header {
+  gap: 0.6rem;
+  padding: 0.72rem 0.9rem;
+  border-bottom-color: var(--dd-border-soft);
+}
+
+.device-details-page .dd-chart-body {
+  padding: 0.72rem 0.85rem;
+}
+
+.device-details-page .dd-port-service {
+  font-size: 0.66rem;
+  background: rgba(13, 148, 136, 0.16);
+  color: #99f6e4;
+  padding: 0.1rem 0.42rem;
+  border-radius: 999px;
+}
+
+.device-details-page .dd-stat-row {
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-bottom-color: rgba(30, 41, 59, 0.72);
+}
+
+.device-details-page .dd-stat-val {
+  font-size: 0.76rem;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--dd-text);
+}
+
+.device-details-page .dd-proc-table th {
+  font-size: 0.58rem;
+  padding: 0.48rem 0.6rem;
+}
+
+.device-details-page .dd-proc-table td {
+  font-size: 0.72rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.device-details-page .dd-proc-table tr:hover td {
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.device-details-page .dd-refresh-bar {
+  flex-wrap: wrap;
+  gap: 0.45rem 0.6rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.64rem;
+  margin-bottom: 0.8rem;
+  border: 1px solid rgba(45, 212, 191, 0.12);
+  border-radius: 10px;
+  background: rgba(7, 18, 26, 0.7);
+}
+
+.device-details-page .dd-refresh-spinner {
+  border-color: rgba(45, 212, 191, 0.24);
+  border-top-color: #2dd4bf;
+}
+
+.device-details-page .dd-snmp-live {
+  font-size: 0.62rem;
+  color: #67e8f9;
+}
+
+.device-details-page .text-slate-400 {
+  color: var(--dd-text-soft) !important;
+}
+
+.device-details-page .text-white,
+.device-details-page .text-slate-200,
+.device-details-page .text-slate-300 {
+  color: var(--dd-text) !important;
+}
+
+.device-details-page .text-blue-300,
+.device-details-page .text-blue-400,
+.device-details-page .text-cyan-500,
+.device-details-page .text-cyan-400 {
+  color: #7dd3fc !important;
+}
+
+.device-details-page .text-emerald-400 {
+  color: #5eead4 !important;
+}
+
+.device-details-page .bg-slate-800\/40,
+.device-details-page .bg-slate-800\/50,
+.device-details-page .bg-slate-800\/60,
+.device-details-page .bg-slate-800\/80,
+.device-details-page .bg-slate-800\/30,
+.device-details-page .bg-slate-800\/20,
+.device-details-page .bg-slate-800\/10 {
+  background-color: rgba(10, 24, 34, 0.72) !important;
+}
+
+.device-details-page .border-slate-700,
+.device-details-page .border-slate-700\/50,
+.device-details-page .border-slate-700\/60,
+.device-details-page .border-slate-700\/80 {
+  border-color: var(--dd-border-soft) !important;
+}
+
+.device-details-page .space-y-3 > * + * {
+  margin-top: 0.6rem;
+}
+
+.device-details-page .divide-y > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(30, 41, 59, 0.72) !important;
+}
+
+@media (max-width: 768px) {
+  .device-details-page .dd-title-block h1 {
+    font-size: 1.35rem;
+  }
+
+  .device-details-page .dd-summary-grid {
+    gap: 0.65rem;
+  }
+
+  .device-details-page .dd-tab-btn {
+    padding: 0.34rem 0.44rem;
+    font-size: 0.54rem;
+  }
+}
+</style>
 {% endblock %}
 
 {% macro dt(value, fallback='Not available') -%}
@@ -308,22 +643,30 @@
 {% set _has_agent = latest_agent_log is not none %}
 {% set _is_server = _dev_type == 'server' %}
 {% set _is_workstation = _dev_type in ('workstation', 'desktop', 'laptop', 'pc') %}
+{% set _is_camera = camera_access.get('is_camera') if camera_access else _dev_type in ('camera', 'camera/iot', 'camera_iot', 'iot') %}
 {% set _show_agent_tab = _has_agent %}
 {% set _show_snmp_tab = (snmp_config or latest_snmp_log or interfaces) %}
+{% set _hardware_cpu = hardware_specs.get('cpu_model') if hardware_specs else none %}
+{% set _hardware_arch = hardware_specs.get('architecture') if hardware_specs else none %}
+{% set _hardware_ram = hardware_specs.get('memory_total_gb') if hardware_specs else none %}
+{% set _hardware_disk = hardware_specs.get('disk_total_gb') if hardware_specs else none %}
+{% set _hardware_physical_cores = hardware_specs.get('cpu_physical_cores') if hardware_specs else none %}
+{% set _hardware_logical_cores = hardware_specs.get('cpu_logical_cores') if hardware_specs else none %}
+{% set _has_hardware_specs = _hardware_cpu or _hardware_arch or _hardware_ram is not none or _hardware_disk is not none or _hardware_physical_cores is not none or _hardware_logical_cores is not none %}
 
 {% block content %}
-<div class="page-section">
+<div class="page-section device-details-page">
     <div class="page-container">
 
         <!-- ── Header ──────────────────────────────────────────── -->
-        <div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-            <div>
-                <div class="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">Inventory Profile</div>
+        <div class="dd-header-bar flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+            <div class="dd-title-block">
+                <div class="dd-title-kicker text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">Inventory Profile</div>
                 <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
                     <i data-lucide="{{ 'server-cog' if _is_server else ('monitor' if _is_workstation else 'box') }}" class="w-6 h-6 text-slate-400"></i>
                     {{ device.device_name }}
                 </h1>
-                <div class="text-sm text-slate-400 mt-2 flex items-center gap-2">
+                <div class="dd-title-meta text-sm text-slate-400 mt-2 flex items-center gap-2">
                     <code class="bg-slate-800 text-blue-300 px-1.5 py-0.5 rounded text-xs">{{ device.device_ip }}</code>
                     <span class="text-slate-600">|</span>
                     <span>{{ (_dev_type or 'unknown')|replace('_', ' ')|title }}</span>
@@ -333,7 +676,7 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="dd-header-actions flex flex-wrap items-center gap-3">
                 <a href="{{ url_for('devices_bp.device_management') }}" class="inline-flex items-center justify-center rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-300 shadow-sm ring-1 ring-inset ring-slate-700 hover:bg-slate-700 transition-colors">
                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Devices
                 </a>
@@ -346,7 +689,7 @@
         </div>
 
         <!-- ── Status Badges ──────────────────────────────────── -->
-        <div class="flex flex-wrap gap-2 mb-6">
+        <div class="dd-status-strip flex flex-wrap gap-2 mb-6">
             {{ ui_badge(availability_summary.label, type=availability_summary.tone|replace('success','emerald')|replace('danger','red')|replace('warning','amber')|replace('muted','slate')) }}
             {% if device.is_monitored %}{{ ui_badge('Monitored', type='emerald') }}{% else %}{{ ui_badge('Not Monitored', type='slate') }}{% endif %}
             {% if device.maintenance_mode %}{{ ui_badge('Maintenance Enabled', type='amber') }}{% else %}{{ ui_badge('Maintenance Off', type='slate') }}{% endif %}
@@ -355,26 +698,26 @@
         </div>
 
         <!-- ── Hero Stats Grid ────────────────────────────────── -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+        <div class="dd-summary-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="dd-summary-card bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Availability</div>
                 <div>
                     {% set avail_color = 'text-emerald-400' if availability_summary.tone == 'success' else ('text-amber-400' if availability_summary.tone == 'warning' else 'text-red-400') %}
                     <div class="text-xl font-bold {{ avail_color }} mb-1">{{ availability_summary.label }}</div>
                     <div class="text-xs text-slate-400 leading-tight mb-2">{{ availability_summary.detail }}</div>
                     <div class="text-[0.65rem] text-slate-500">
-                        {% if latest_scan and latest_scan.scan_timestamp %}Last check {{ latest_scan.scan_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No scan timestamp{% endif %}
+                        {% if latest_scan and latest_scan.scan_timestamp %}Last check {{ latest_scan.scan_timestamp|ist('%d %b %Y, %H:%M:%S IST') }}{% else %}No scan timestamp{% endif %}
                     </div>
                 </div>
             </div>
-            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+            <div class="dd-summary-card bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Latest Telemetry</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1">
                         {% if latest_health_log %}{{ telemetry_source_label }}{% else %}<span class="text-slate-500">No telemetry</span>{% endif %}
                     </div>
                     <div class="text-xs text-slate-400 leading-tight mb-2">
-                        {% if latest_health_log and latest_health_log.timestamp %}Captured {{ latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No telemetry ingested{% endif %}
+                        {% if latest_health_log and latest_health_log.timestamp %}Captured {{ latest_health_log.timestamp|ist('%d %b %Y, %H:%M:%S IST') }}{% else %}No telemetry ingested{% endif %}
                     </div>
                     <div class="text-[0.65rem] text-slate-500">
                         {% if latest_health_log and latest_health_log.os_name %}{{ latest_health_log.os_name }}
@@ -383,7 +726,7 @@
                     </div>
                 </div>
             </div>
-            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+            <div class="dd-summary-card bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Assignment</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1 whitespace-nowrap overflow-hidden text-ellipsis" title="{{ device.site.site_name if device.site else 'Unassigned Site' }}">
@@ -393,7 +736,7 @@
                     <div class="text-[0.65rem] text-slate-500 font-mono">Subnet: {{ device.subnet_cidr or 'Unassigned' }}</div>
                 </div>
             </div>
-            <div class="bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
+            <div class="dd-summary-card bg-slate-900/80 border border-slate-700 rounded-lg p-4 flex flex-col justify-between">
                 <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Monitoring Posture</div>
                 <div>
                     <div class="text-xl font-bold text-white mb-1">{{ (device.monitoring_mode or 'ping')|upper }}</div>
@@ -464,10 +807,69 @@
                         {{ prop_row('Parent Switch', dt(device.parent_switch.device_name if device.parent_switch else none, 'None linked')) }}
                         {{ prop_row('Parent Port', dt(device.parent_port.canonical_name if device.parent_port and device.parent_port.canonical_name else (device.parent_port.name if device.parent_port else none), 'None linked')) }}
                         {{ prop_row('Discovery Method', dt(device.last_discovery_method)) }}
-                        {{ prop_row('Created', device.created_at.strftime('%Y-%m-%d %H:%M:%S') if device.created_at else 'Unknown') }}
-                        {{ prop_row('Updated', device.updated_at.strftime('%Y-%m-%d %H:%M:%S') if device.updated_at else 'Unknown') }}
+                        {{ prop_row('Created', device.created_at|ist('%d %b %Y, %H:%M:%S IST') if device.created_at else 'Unknown') }}
+                        {{ prop_row('Updated', device.updated_at|ist('%d %b %Y, %H:%M:%S IST') if device.updated_at else 'Unknown') }}
                     </dl>
                 {% endcall %}
+
+                {% if _has_hardware_specs %}
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="microchip" class="w-4 h-4 mr-2 text-teal-300"></i> Hardware Inventory</div>') %}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                        {{ metric_box('RAM', '%.1f'|format(_hardware_ram), ' GB') if _hardware_ram is not none else metric_box('RAM', none) }}
+                        {{ metric_box('Disk', '%.0f'|format(_hardware_disk), ' GB') if _hardware_disk is not none else metric_box('Disk', none) }}
+                        {{ metric_box('P-Cores', _hardware_physical_cores) }}
+                        {{ metric_box('L-Cores', _hardware_logical_cores) }}
+                    </div>
+                    <dl class="divide-y divide-slate-800/50">
+                        {{ prop_row('CPU Model', dt(_hardware_cpu, 'Not reported')) }}
+                        {{ prop_row('Architecture', dt(_hardware_arch, 'Not reported')) }}
+                        {{ prop_row('Total RAM', ('%.1f GB'|format(_hardware_ram)) if _hardware_ram is not none else 'Not reported') }}
+                        {{ prop_row('Total Disk', ('%.0f GB'|format(_hardware_disk)) if _hardware_disk is not none else 'Not reported') }}
+                        {{ prop_row('Physical Cores', _hardware_physical_cores if _hardware_physical_cores is not none else 'Not reported') }}
+                        {{ prop_row('Logical Cores', _hardware_logical_cores if _hardware_logical_cores is not none else 'Not reported') }}
+                    </dl>
+                {% endcall %}
+                {% endif %}
+
+                {% if _is_camera or (camera_access and (camera_access.get('rtsp_url') or camera_access.get('web_url'))) %}
+                {% call ui_card(title='<div class="flex items-center"><i data-lucide="cctv" class="w-4 h-4 mr-2 text-cyan-300"></i> Camera Access</div>') %}
+                    <div class="space-y-4">
+                        <dl class="divide-y divide-slate-800/50">
+                            {{ prop_row('Camera Profile', 'Yes' if _is_camera else 'Detected Access Endpoints') }}
+                            {{ prop_row('Web UI', dt(camera_access.get('web_url') if camera_access else none, 'Not available')) }}
+                            {{ prop_row('RTSP Link', dt(camera_access.get('rtsp_url') if camera_access else none, 'Not available')) }}
+                            {{ prop_row('Saved Username', dt(camera_access.get('username') if camera_access else none, 'Not saved')) }}
+                        </dl>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="block">
+                                <span class="block text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-500 mb-2">Username</span>
+                                <input id="cameraAccessUsername" type="text" value="{{ camera_access.get('username') if camera_access else '' }}" autocomplete="username"
+                                    class="w-full rounded-md border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-500/40">
+                            </label>
+                            <label class="block">
+                                <span class="block text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-500 mb-2">Password</span>
+                                <input id="cameraAccessPassword" type="password" value="" autocomplete="current-password"
+                                    class="w-full rounded-md border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-500/40">
+                            </label>
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            {% if camera_access and camera_access.get('web_url') %}
+                            <button type="button" id="openCameraLoginBtn" data-base-url="{{ camera_access.get('web_url') }}"
+                                class="inline-flex items-center justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 transition-colors">
+                                <i data-lucide="globe" class="w-4 h-4 mr-2"></i> Open Camera Login
+                            </button>
+                            {% endif %}
+                            {% if camera_access and camera_access.get('rtsp_url') %}
+                            <button type="button" id="openCameraRtspBtn" data-base-url="{{ camera_access.get('rtsp_url') }}"
+                                class="inline-flex items-center justify-center rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 shadow-sm ring-1 ring-inset ring-slate-700 hover:bg-slate-700 transition-colors">
+                                <i data-lucide="radio-tower" class="w-4 h-4 mr-2"></i> Open RTSP Link
+                            </button>
+                            {% endif %}
+                        </div>
+                        <p class="text-xs text-slate-500">We use the saved camera URL when available. Username can be prefilled, but password is never stored here; enter it when you need to open the camera login or RTSP stream.</p>
+                    </div>
+                {% endcall %}
+                {% endif %}
 
                 <!-- Telemetry Snapshot -->
                 <div class="bg-slate-900 border border-slate-700/60 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
@@ -487,7 +889,7 @@
                         </div>
                         <dl class="divide-y divide-slate-800/50">
                             {{ prop_row('Source', telemetry_source_label) }}
-                            {{ prop_row('Captured At', latest_health_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_health_log.timestamp else 'Unknown') }}
+                            {{ prop_row('Captured At', latest_health_log.timestamp|ist('%d %b %Y, %H:%M:%S IST') if latest_health_log.timestamp else 'Unknown') }}
                             {{ prop_row('OS', dt(latest_health_log.os_name)) }}
                             {{ prop_row('Uptime', dt(latest_health_log.uptime)) }}
                             {{ prop_row('Latency', '%.1f'|format(latest_health_log.ping_latency_ms) ~ ' ms' if latest_health_log.ping_latency_ms is not none else 'N/A') }}
@@ -522,7 +924,7 @@
                                 </div>
                                 <div class="text-xs text-slate-400 leading-relaxed mb-1">{{ source.detail }}</div>
                                 <div class="text-[0.65rem] text-slate-500 font-mono">
-                                    {% if source.timestamp %}<i class="far fa-clock mr-1"></i>{{ source.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}No sample timestamp{% endif %}
+                                    {% if source.timestamp %}<i class="far fa-clock mr-1"></i>{{ source.timestamp|ist('%d %b %Y, %H:%M:%S IST') }}{% else %}No sample timestamp{% endif %}
                                 </div>
                             </div>
                             {% endfor %}
@@ -538,7 +940,7 @@
                         {{ prop_row('Normalized MAC', active_identity_link.normalized_mac) }}
                         {{ prop_row('Link Source', active_identity_link.link_source) }}
                         {{ prop_row('Confidence', active_identity_link.confidence) }}
-                        {{ prop_row('Updated', active_identity_link.updated_at.strftime('%Y-%m-%d %H:%M:%S') if active_identity_link.updated_at else 'Unknown') }}
+                        {{ prop_row('Updated', active_identity_link.updated_at|ist('%d %b %Y, %H:%M:%S IST') if active_identity_link.updated_at else 'Unknown') }}
                     </dl>
                     {% else %}
                     <div class="p-4 border border-dashed border-slate-700/80 rounded-md mb-6 bg-slate-800/10 text-center">
@@ -551,7 +953,7 @@
                         {% for cand in pending_identity_candidates %}
                         <li class="border border-slate-700/50 rounded-md p-3 bg-slate-800/20">
                             <div class="text-sm text-slate-200 mb-1">Tracked Device #{{ cand.tracked_device_id }} | Score: {{ cand.candidate_score }}</div>
-                            <div class="text-xs text-slate-400">{{ cand.candidate_source }} · {{ cand.detected_at.strftime('%Y-%m-%d %H:%M:%S') if cand.detected_at else 'Unknown' }}</div>
+                            <div class="text-xs text-slate-400">{{ cand.candidate_source }} · {{ cand.detected_at|ist('%d %b %Y, %H:%M:%S IST') if cand.detected_at else 'Unknown' }}</div>
                         </li>
                         {% endfor %}
                     </ul>
@@ -634,12 +1036,12 @@
                 <div class="dd-kpi">
                     <div class="dd-kpi-label">Online Checks</div>
                     <div class="dd-kpi-value good" id="pingOnline">{{ ping_stats.online_count }}</div>
-                    <div class="dd-kpi-sub">of {{ ping_stats.total_scans }} scans</div>
+                    <div class="dd-kpi-sub" id="pingOnlineSub">of {{ ping_stats.total_scans }} scans</div>
                 </div>
                 <div class="dd-kpi">
                     <div class="dd-kpi-label">Offline Checks</div>
                     <div class="dd-kpi-value {{ 'bad' if ping_stats.offline_count > 0 else 'good' }}" id="pingOffline">{{ ping_stats.offline_count }}</div>
-                    <div class="dd-kpi-sub">Missed pings</div>
+                    <div class="dd-kpi-sub" id="pingOfflineSub">Missed pings</div>
                 </div>
             </div>
 
@@ -673,7 +1075,7 @@
                         <tbody id="pingHistoryBody" class="divide-y divide-slate-700/30">
                             {% for pt in ping_stats.sparkline | reverse %}
                             <tr class="hover:bg-slate-800/30 transition-colors">
-                                <td class="px-4 py-2 text-xs font-mono text-slate-400">{{ pt.t }}</td>
+                                <td class="px-4 py-2 text-xs font-mono text-slate-400">{{ pt.display_t or pt.t }}</td>
                                 <td class="px-4 py-2 text-xs">
                                     {% if pt.status == 'online' %}
                                     <span class="text-emerald-400 font-semibold">● Online</span>
@@ -734,7 +1136,7 @@
                                 </td>
                                 <td class="px-4 py-2.5 text-xs font-semibold dd-port-badge-{{ port.status or 'open' }}">{{ (port.status or 'open')|upper }}</td>
                                 <td class="px-4 py-2.5 text-xs text-slate-400 font-mono max-w-xs truncate" title="{{ port.banner or '' }}">{{ port.banner or '—' }}</td>
-                                <td class="px-4 py-2.5 text-xs text-slate-500 font-mono">{{ port.scan_timestamp.strftime('%Y-%m-%d %H:%M') if port.scan_timestamp else '—' }}</td>
+                                <td class="px-4 py-2.5 text-xs text-slate-500 font-mono">{{ port.scan_timestamp|ist('%d %b %Y, %H:%M IST') if port.scan_timestamp else '—' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -761,7 +1163,7 @@
                 <div class="dd-refresh-spinner" id="agentSpinner"></div>
                 <span id="agentLastUpdated">
                     {% if latest_agent_log and latest_agent_log.timestamp %}
-                        Agent sample: {{ latest_agent_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    Agent sample: {{ latest_agent_log.timestamp|ist('%d %b %Y, %H:%M:%S IST') }}
                     {% else %}No agent data{% endif %}
                 </span>
                 <button onclick="refreshAgentMetrics()" class="text-cyan-500 hover:text-cyan-300 transition-colors font-semibold" style="font-size:0.67rem;background:none;border:none;cursor:pointer;padding:0;">↻ Refresh</button>
@@ -801,7 +1203,7 @@
                         {{ '%.1f'|format(cpu) if cpu is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
                     </div>
                     <div class="dd-res-bar-bg">
-                        <div class="dd-res-bar-fill {{ 'bad' if cpu is not none and cpu > 90 else ('warn' if cpu is not none and cpu > 70 else 'good') }}" id="agentCpuBar" style="width:{{ cpu|int if cpu is not none else 0 }}%"></div>
+                        <div class="dd-res-bar-fill {{ 'bad' if cpu is not none and cpu > 90 else ('warn' if cpu is not none and cpu > 70 else 'good') }}" id="agentCpuBar" data-width="{{ cpu|int if cpu is not none else 0 }}"></div>
                     </div>
                     <div class="dd-res-sub" id="agentCpuSub">
                         {% if latest_agent_log and latest_agent_log.cpu_iowait_percent is not none %}I/O Wait: {{ '%.1f'|format(latest_agent_log.cpu_iowait_percent) }}%{% endif %}
@@ -819,7 +1221,7 @@
                         {{ '%.1f'|format(mem) if mem is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
                     </div>
                     <div class="dd-res-bar-bg">
-                        <div class="dd-res-bar-fill {{ 'bad' if mem is not none and mem > 90 else ('warn' if mem is not none and mem > 75 else 'good') }}" id="agentMemBar" style="width:{{ mem|int if mem is not none else 0 }}%"></div>
+                        <div class="dd-res-bar-fill {{ 'bad' if mem is not none and mem > 90 else ('warn' if mem is not none and mem > 75 else 'good') }}" id="agentMemBar" data-width="{{ mem|int if mem is not none else 0 }}"></div>
                     </div>
                     <div class="dd-res-sub" id="agentMemSub">
                         {% if latest_agent_log and latest_agent_log.memory_used_gb is not none %}{{ '%.1f'|format(latest_agent_log.memory_used_gb) }} / {{ '%.1f'|format(latest_agent_log.memory_total_gb or 0) }} GB used{% endif %}
@@ -837,7 +1239,7 @@
                         {{ '%.1f'|format(disk) if disk is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
                     </div>
                     <div class="dd-res-bar-bg">
-                        <div class="dd-res-bar-fill {{ 'bad' if disk is not none and disk > 90 else ('warn' if disk is not none and disk > 75 else 'good') }}" id="agentDiskBar" style="width:{{ disk|int if disk is not none else 0 }}%"></div>
+                        <div class="dd-res-bar-fill {{ 'bad' if disk is not none and disk > 90 else ('warn' if disk is not none and disk > 75 else 'good') }}" id="agentDiskBar" data-width="{{ disk|int if disk is not none else 0 }}"></div>
                     </div>
                     <div class="dd-res-sub" id="agentDiskSub">
                         {% if latest_agent_log and latest_agent_log.disk_used_gb is not none %}{{ '%.1f'|format(latest_agent_log.disk_used_gb) }} / {{ '%.1f'|format(latest_agent_log.disk_total_gb or 0) }} GB used{% endif %}
@@ -855,7 +1257,7 @@
                         {{ '%.1f'|format(swap) if swap is not none else '—' }}<span style="font-size:0.8rem;color:#64748b;font-weight:400">%</span>
                     </div>
                     <div class="dd-res-bar-bg">
-                        <div class="dd-res-bar-fill {{ 'bad' if swap is not none and swap > 80 else 'ok' }}" id="agentSwapBar" style="width:{{ swap|int if swap is not none else 0 }}%"></div>
+                        <div class="dd-res-bar-fill {{ 'bad' if swap is not none and swap > 80 else 'ok' }}" id="agentSwapBar" data-width="{{ swap|int if swap is not none else 0 }}"></div>
                     </div>
                     <div class="dd-res-sub" id="agentSwapSub">
                         {% if latest_agent_log and latest_agent_log.swap_used_mb is not none %}{{ '%.0f'|format((latest_agent_log.swap_used_mb or 0) / 1024) }} / {{ '%.0f'|format((latest_agent_log.swap_total_mb or 0) / 1024) }} GB used{% endif %}
@@ -1127,8 +1529,8 @@
                 {% if snmp_enabled %}<div class="dd-live-dot" style="background:#60a5fa"></div>{% endif %}
                 <div class="dd-refresh-spinner" id="snmpSpinner"></div>
                 <span id="snmpLastUpdated">
-                    {% if latest_snmp_log and latest_snmp_log.timestamp %}SNMP: {{ latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
-                    {% elif snmp_config and snmp_config.last_successful_poll %}Last poll: {{ snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% if latest_snmp_log and latest_snmp_log.timestamp %}SNMP: {{ latest_snmp_log.timestamp|ist('%d %b %Y, %H:%M:%S IST') }}
+                    {% elif snmp_config and snmp_config.last_successful_poll %}Last poll: {{ snmp_config.last_successful_poll|ist('%d %b %Y, %H:%M:%S IST') }}
                     {% else %}No SNMP data{% endif %}
                 </span>
                 {% if snmp_enabled %}
@@ -1155,9 +1557,9 @@
                                 {{ prop_row('SNMP Enabled', 'Yes' if snmp_enabled else 'No') }}
                                 {{ prop_row('Version', dt('v' ~ snmp_config.snmp_version if snmp_config and snmp_config.snmp_version else none, 'Not configured')) }}
                                 {{ prop_row('Port', dt(snmp_config.snmp_port if snmp_config else none, 'Not configured')) }}
-                                {{ prop_row('Last Success', snmp_config.last_successful_poll.strftime('%Y-%m-%d %H:%M:%S') if snmp_config and snmp_config.last_successful_poll else 'None recorded') }}
+                                {{ prop_row('Last Success', snmp_config.last_successful_poll|ist('%d %b %Y, %H:%M:%S IST') if snmp_config and snmp_config.last_successful_poll else 'None recorded') }}
                                 {{ prop_row('Last Error', dt(snmp_config.last_poll_error if snmp_config else none, 'None recorded')) }}
-                                {{ prop_row('Last Metric', latest_snmp_log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_snmp_log and latest_snmp_log.timestamp else 'None recorded') }}
+                                {{ prop_row('Last Metric', latest_snmp_log.timestamp|ist('%d %b %Y, %H:%M:%S IST') if latest_snmp_log and latest_snmp_log.timestamp else 'None recorded') }}
                                 {{ prop_row('Interfaces', interfaces|length|string) }}
                             </dl>
                             {% if latest_snmp_log %}
@@ -1189,7 +1591,7 @@
                                             <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-400">{{ iface.alias or 'N/A' }}</td>
                                             <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-300">{{ (iface.oper_status or 'unknown')|upper }}</td>
                                             <td class="whitespace-nowrap px-3 py-2.5 text-xs font-mono text-slate-300">{% if iface.speed_bps %}{{ '%.2f'|format(iface.speed_bps / 1000000.0) }} Mbps{% else %}N/A{% endif %}</td>
-                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-500">{{ iface.last_poll_time.strftime('%Y-%m-%d %H:%M:%S') if iface.last_poll_time else 'N/A' }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-500">{{ iface.last_poll_time|ist('%d %b %Y, %H:%M:%S IST') if iface.last_poll_time else 'N/A' }}</td>
                                         </tr>
                                         {% endfor %}
                                         {% if interfaces|length > 12 %}
@@ -1273,7 +1675,7 @@
                             <span class="text-xs text-slate-500 font-mono"><i class="far fa-user mr-1"></i>{{ entry.username }}</span>
                         </div>
                         <div class="text-sm text-slate-300 leading-relaxed">{{ entry.description or 'No description provided' }}</div>
-                        <div class="text-[0.65rem] text-slate-500 mt-2"><i class="far fa-clock mr-1"></i>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else 'Unknown' }}</div>
+                        <div class="text-[0.65rem] text-slate-500 mt-2"><i class="far fa-clock mr-1"></i>{{ entry.timestamp|ist('%d %b %Y, %H:%M:%S IST') if entry.timestamp else 'Unknown' }}</div>
                     </li>
                     {% endfor %}
                 </ul>
@@ -1290,6 +1692,12 @@
 {% endblock %}
 
 {% block extra_js %}
+<script id="device-details-bootstrap" type="application/json">
+{{ {
+    'deviceId': device.device_id,
+    'pingSparklineData': ping_stats.sparkline if ping_stats and ping_stats.sparkline else []
+} | tojson }}
+</script>
 <script>
 if (window.lucide && typeof window.lucide.createIcons === 'function') {
     window.lucide.createIcons();
@@ -1298,16 +1706,81 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
 <script>
 (function () {
     'use strict';
-    var DEVICE_ID = {{ device.device_id }};
+    var bootstrapEl = document.getElementById('device-details-bootstrap');
+    var bootstrap = {};
+    if (bootstrapEl) {
+        try {
+            bootstrap = JSON.parse(bootstrapEl.textContent || '{}');
+        } catch (err) {
+            bootstrap = {};
+        }
+    }
+    var DEVICE_ID = bootstrap.deviceId;
+    var KOLKATA_TIMEZONE = 'Asia/Kolkata';
     var perfInited = false;
     var serverMetricsInited = false;
     var pingChartInited = false;
     var agentRefreshTimer = null;
     var snmpRefreshTimer = null;
+    var pingRefreshTimer = null;
     var pingChart = null;
 
+    function formatKolkataDateTime(value, includeTz) {
+        if (!value) return '—';
+        var date = value instanceof Date ? value : new Date(value);
+        if (isNaN(date)) return String(value);
+        var rendered = date.toLocaleString('en-IN', {
+            timeZone: KOLKATA_TIMEZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        return includeTz ? rendered + ' IST' : rendered;
+    }
+
+    function formatKolkataTime(value) {
+        if (!value) return '—';
+        var date = value instanceof Date ? value : new Date(value);
+        if (isNaN(date)) return String(value);
+        return date.toLocaleTimeString('en-IN', {
+            timeZone: KOLKATA_TIMEZONE,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }) + ' IST';
+    }
+
+    function getSparklineLabel(point) {
+        if (point && point.ts) {
+            var date = new Date(point.ts);
+            if (!isNaN(date)) {
+                return date.toLocaleTimeString('en-IN', {
+                    timeZone: KOLKATA_TIMEZONE,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
+        }
+        return point && point.display_t ? point.display_t : (point && point.t ? point.t : '—');
+    }
+
+    function hydrateInitialBarWidths() {
+        document.querySelectorAll('.dd-res-bar-fill[data-width]').forEach(function (bar) {
+            var rawWidth = parseInt(bar.dataset.width || '0', 10);
+            var safeWidth = isNaN(rawWidth) ? 0 : Math.min(100, Math.max(0, rawWidth));
+            bar.style.width = safeWidth + '%';
+        });
+    }
+
     // ── Ping sparkline data (server-rendered) ──────────────────
-    var pingSparklineData = {{ ping_stats.sparkline | tojson }};
+    var pingSparklineData = Array.isArray(bootstrap.pingSparklineData) ? bootstrap.pingSparklineData : [];
+    hydrateInitialBarWidths();
 
     // ── Tab switching ──────────────────────────────────────────
     function switchTab(tabId) {
@@ -1320,6 +1793,7 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
 
         // lazy-init charts on first show
         if (tabId === 'ping' && !pingChartInited) { pingChartInited = true; initPingChart(pingSparklineData); }
+        if (tabId === 'ping' && !pingRefreshTimer) { pingRefreshTimer = setInterval(refreshPingStats, 30000); }
         if (tabId === 'performance' && !perfInited) {
             perfInited = true;
             var sec = document.getElementById('perfSection');
@@ -1354,7 +1828,7 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
         var ctx = document.getElementById('pingSparklineChart');
         if (!ctx || !window.Chart) return;
         if (pingChart) { pingChart.destroy(); pingChart = null; }
-        var labels = data.map(function (d) { return d.t; });
+        var labels = data.map(getSparklineLabel);
         var values = data.map(function (d) { return d.v || null; });
         var colors = data.map(function (d) { return d.status === 'online' ? 'rgba(52,211,153,0.9)' : 'rgba(248,113,113,0.9)'; });
         pingChart = new Chart(ctx, {
@@ -1438,7 +1912,7 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
             if (err || !data) return;
             var ps = data.ping_stats || {};
             var now = new Date(data.updated_at || Date.now());
-            if (lastUpd) lastUpd.textContent = 'Updated ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) + ' IST';
+            if (lastUpd) lastUpd.textContent = 'Updated ' + formatKolkataTime(now);
             // update KPI values
             function setKpi(id, val, dec, suffix, thresholds) {
                 var el = document.getElementById(id);
@@ -1457,7 +1931,7 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
             if (offEl) offEl.textContent = ps.offline_count != null ? ps.offline_count : '—';
             // update chart
             if (pingChart && ps.sparkline && ps.sparkline.length) {
-                var labels = ps.sparkline.map(function (d) { return d.t; });
+                var labels = ps.sparkline.map(getSparklineLabel);
                 var values = ps.sparkline.map(function (d) { return d.v || null; });
                 var colors = ps.sparkline.map(function (d) { return d.status === 'online' ? 'rgba(52,211,153,0.9)' : 'rgba(248,113,113,0.9)'; });
                 pingChart.data.labels = labels;
@@ -1479,7 +1953,7 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
             if (err || !data || !data.agent_metrics) return;
             var m = data.agent_metrics;
             var ts = m.timestamp ? new Date(m.timestamp) : new Date(data.updated_at || Date.now());
-            if (lastUpd) lastUpd.textContent = 'Agent sample: ' + ts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+            if (lastUpd) lastUpd.textContent = 'Agent sample: ' + formatKolkataDateTime(ts, true);
 
             function setBar(barId, valId, subId, val, thr) {
                 var bar = document.getElementById(barId);
@@ -1514,15 +1988,16 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
             var sm = data.snmp_metrics;
             if (sm && sm.timestamp) {
                 var ts = new Date(sm.timestamp);
-                if (lastUpd) lastUpd.textContent = 'SNMP: ' + ts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+                if (lastUpd) lastUpd.textContent = 'SNMP: ' + formatKolkataDateTime(ts, true);
             }
             var now = new Date(data.updated_at || Date.now());
-            if (lastUpd && !sm) lastUpd.textContent = 'Refreshed ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) + ' IST';
+            if (lastUpd && !sm) lastUpd.textContent = 'Refreshed ' + formatKolkataTime(now);
         });
     };
 
     // stop timers on unload
     window.addEventListener('beforeunload', function () {
+        if (pingRefreshTimer)  clearInterval(pingRefreshTimer);
         if (agentRefreshTimer) clearInterval(agentRefreshTimer);
         if (snmpRefreshTimer)  clearInterval(snmpRefreshTimer);
     }, { once: true });
@@ -1585,6 +2060,40 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
 </script>
 {% endif %}
 
+<script>
+(function () {
+    function withCredentials(rawUrl) {
+        if (!rawUrl) return null;
+        var username = (document.getElementById('cameraAccessUsername') || {}).value || '';
+        var password = (document.getElementById('cameraAccessPassword') || {}).value || '';
+        try {
+            var url = new URL(rawUrl);
+            if (username) url.username = username;
+            if (password) url.password = password;
+            return url.toString();
+        } catch (e) {
+            return rawUrl;
+        }
+    }
+
+    var loginBtn = document.getElementById('openCameraLoginBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', function () {
+            var target = withCredentials(loginBtn.dataset.baseUrl);
+            if (target) window.open(target, '_blank', 'noopener');
+        });
+    }
+
+    var rtspBtn = document.getElementById('openCameraRtspBtn');
+    if (rtspBtn) {
+        rtspBtn.addEventListener('click', function () {
+            var target = withCredentials(rtspBtn.dataset.baseUrl);
+            if (target) window.open(target, '_blank', 'noopener');
+        });
+    }
+}());
+</script>
+
 {% if _is_server and enable_server_fullpage_telemetry %}
 <script type="module">
     import { createServerMetricsView } from "{{ url_for('static', filename='js/dashboard/servers/serverMetricsView.js') }}?v={{ asset_ver }}";
@@ -1617,26 +2126,4 @@ if (window.lucide && typeof window.lucide.createIcons === 'function') {
 {% if _is_server %}
 <script src="{{ url_for('static', filename='js/ui/devicePerformance.js') }}?v={{ asset_ver }}"></script>
 {% endif %}
-
-<script>
-// IST timestamp conversion
-(function () {
-    var container = document.querySelector('.page-container');
-    if (!container) return;
-    var re = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:Z)?)\b/g;
-    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-    var nodes = [];
-    var node;
-    while ((node = walker.nextNode())) { if (re.test(node.nodeValue)) nodes.push(node); re.lastIndex = 0; }
-    nodes.forEach(function (textNode) {
-        textNode.nodeValue = textNode.nodeValue.replace(re, function (match) {
-            var iso = match.replace(' ','T');
-            if (!iso.endsWith('Z')) iso += 'Z';
-            var d = new Date(iso);
-            if (isNaN(d)) return match;
-            return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        });
-    });
-}());
-</script>
 {% endblock %}

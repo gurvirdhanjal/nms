@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first (layer cache)
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.server.txt /app/requirements.server.txt
+RUN pip install --no-cache-dir -r requirements.server.txt
 
 # Copy application source
 COPY app.py config.py extensions.py web_main.py /app/

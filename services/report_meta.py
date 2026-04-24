@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 
 from flask import has_request_context
-from sqlalchemy import and_, bindparam, func, or_, text
+from sqlalchemy import and_, bindparam, case, func, or_, text
 
 from extensions import db
 from middleware.rbac import build_scope_context, scoped_query
@@ -407,19 +407,23 @@ def _collect_source_stats(report_type: str, start_date: datetime, end_date: date
         if query is None:
             stats[source_name] = {"count": 0, "latest": None, "range_count": 0, "distinct_buckets": 0}
             continue
-        count = int(query.count())
-        latest = _coerce_datetime(query.with_entities(func.max(freshness_column)).scalar())
         range_start, range_end = _range_bounds_for_source(source_name, start_date, end_date)
-        ranged_query = query.filter(freshness_column >= range_start, freshness_column <= range_end)
-        range_count = int(ranged_query.count())
-        distinct_buckets = int(
-            ranged_query.with_entities(func.count(func.distinct(freshness_column))).scalar() or 0
-        )
+        in_range = and_(freshness_column >= range_start, freshness_column <= range_end)
+        aggregate_row = query.with_entities(
+            func.count().label("count"),
+            func.max(freshness_column).label("latest"),
+            func.sum(case((in_range, 1), else_=0)).label("range_count"),
+            func.count(
+                func.distinct(
+                    case((in_range, freshness_column), else_=None)
+                )
+            ).label("distinct_buckets"),
+        ).one()
         stats[source_name] = {
-            "count": count,
-            "latest": latest,
-            "range_count": range_count,
-            "distinct_buckets": distinct_buckets,
+            "count": int(aggregate_row.count or 0),
+            "latest": _coerce_datetime(aggregate_row.latest),
+            "range_count": int(aggregate_row.range_count or 0),
+            "distinct_buckets": int(aggregate_row.distinct_buckets or 0),
         }
     return stats
 

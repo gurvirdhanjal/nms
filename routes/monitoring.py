@@ -283,16 +283,20 @@ def get_monitoring_status():
                 status = "Offline"
                 latency = None
                 packet_loss = None
+                status_detail = None
 
                 if isinstance(result, Exception):
                     fallback_errors += 1
                 elif isinstance(result, tuple) and len(result) >= 3:
                     status, latency, packet_loss, *_ = result
+                    if len(result) >= 6:
+                        status_detail = result[5]
                     status = normalize_availability_status(status)
 
                 entry = device_index.get(device.device_id)
                 if entry:
                     entry["status"] = status
+                    entry["status_detail"] = status_detail
                     entry["latency"] = latency
                     entry["packet_loss"] = packet_loss
 
@@ -302,6 +306,7 @@ def get_monitoring_status():
                         device_ip=device.device_ip,
                         device_name=device.device_name,
                         status=status,
+                        status_detail=status_detail,
                         ping_time_ms=latency,
                         packet_loss=pkt_loss,
                         scan_timestamp=datetime.utcnow(),
@@ -357,7 +362,8 @@ def get_monitoring_status():
 
         try:
             # Optimization: Single ping for dashboard speed
-            status, latency, _packet_loss, *_ = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
+            status, latency, _packet_loss, *_rest = await monitor.scanner.ping_device(device.device_ip, count=1, timeout=1.5)
+            status_detail = _rest[2] if len(_rest) >= 3 else None
             status = normalize_availability_status(status)
             
             # Fallback: Check Tactical Agent Port (5002) if Ping fails
@@ -366,8 +372,9 @@ def get_monitoring_status():
                     agent_info = await monitor.scanner.check_tactical_agent(device.device_ip)
                     if agent_info:
                         status = 'Online'
+                        status_detail = 'Reply via tactical agent'
                         if latency is None:
-                            latency = 1.0 
+                            latency = agent_info.get("http_latency_ms", 1.0)
                         logger.debug("Status check - %s (%s) IS ONLINE via Agent", device.device_name, device.device_ip)
                 except Exception:
                     pass
@@ -385,6 +392,7 @@ def get_monitoring_status():
                 "port": device.port,
                 "is_monitored": device.is_monitored,
                 "status": status,
+                "status_detail": status_detail,
                 "latency": latency,
                 "packet_loss": _packet_loss if '_packet_loss' in locals() else 0,
             }
@@ -427,6 +435,7 @@ def get_monitoring_status():
                     device_ip=d['device_ip'],
                     device_name=d.get('device_name'),
                     status=normalize_status(d.get('status')),
+                    status_detail=d.get('status_detail'),
                     ping_time_ms=d.get('latency'),
                     packet_loss=pkt_loss,
                     scan_timestamp=datetime.utcnow(),

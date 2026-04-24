@@ -20,6 +20,7 @@ def apply_tracked_device_ip_change(
     *,
     tracked_device,
     new_ip,
+    resolved_hostname=None,
     now_utc=None,
     payload_ip=None,
     payload_candidates=None,
@@ -35,7 +36,10 @@ def apply_tracked_device_ip_change(
 ):
     old_ip = (str(getattr(tracked_device, "ip_address", "") or "").strip() or None)
     next_ip = (str(new_ip or "").strip() or None)
+    next_hostname = (str(resolved_hostname or "").strip() or None)
     if not next_ip or next_ip == old_ip:
+        if next_hostname and next_hostname != (str(getattr(tracked_device, "hostname", "") or "").strip() or None):
+            tracked_device.hostname = next_hostname
         return {
             "changed": False,
             "old_ip": old_ip,
@@ -52,6 +56,8 @@ def apply_tracked_device_ip_change(
 
     timestamp = now_utc or datetime.utcnow()
     tracked_device.ip_address = next_ip
+    if next_hostname and next_hostname != (str(getattr(tracked_device, "hostname", "") or "").strip() or None):
+        tracked_device.hostname = next_hostname
     if update_last_seen:
         tracked_device.last_seen = timestamp
     if update_updated_at:
@@ -81,6 +87,7 @@ def apply_tracked_device_ip_change(
         old_ip=old_ip,
         new_ip=next_ip,
         reason=sync_reason or reason,
+        hostname=next_hostname,
         changed_at_utc=timestamp,
     )
     if sync_result.get("fatal"):

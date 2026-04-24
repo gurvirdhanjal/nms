@@ -12,7 +12,7 @@ from models.scan_history import DeviceScanHistory
 from models.server_health import ServerHealthLog
 from models.server_health_rollups import ServerHealthDailyRollup, ServerHealthHourlyRollup
 from services.timescaledb_service import TimescaleDBService
-from .base import _utcnow_naive, _safe_round, _row_value
+from .base import _non_agent_scan_filter, _utcnow_naive, _safe_round, _row_value
 
 
 class HealthReportMixin:
@@ -542,6 +542,7 @@ class HealthReportMixin:
                 AVG(jitter) FILTER (WHERE jitter IS NOT NULL AND jitter < 1e15) AS jitter_avg_ms
             FROM device_scan_history
             WHERE device_ip IN :ips
+              AND (scan_type IS NULL OR scan_type <> 'agent_push')
               AND scan_timestamp BETWEEN :start_dt AND :end_dt
             GROUP BY device_ip
         """)
@@ -559,6 +560,7 @@ class HealthReportMixin:
                     ) AS rn
                 FROM device_scan_history
                 WHERE device_ip IN :ips
+                  AND (scan_type IS NULL OR scan_type <> 'agent_push')
                   AND scan_timestamp BETWEEN :start_dt AND :end_dt
                 GROUP BY device_ip,
                          date_trunc('hour', scan_timestamp AT TIME ZONE 'Asia/Kolkata')

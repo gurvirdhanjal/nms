@@ -985,42 +985,42 @@ def require_validated_session(func):
 # PHASE 7: Audit Logging
 # ============================================================================
 
-def create_audit_log(action, entity_type, entity_id=None, entity_name=None, 
-                     description=None, changes=None):
-    """
-    Create an audit log entry for sensitive operations.
-    
-    This function is resilient - if audit logging fails, it logs the error
-    but does not prevent the operation from completing.
-    
-    Args:
-        action: Action performed (e.g., 'create', 'update', 'delete', 'login')
-        entity_type: Type of entity affected (e.g., 'device', 'user', 'site')
-        entity_id: ID of the affected entity (optional)
-        entity_name: Name of the affected entity for readability (optional)
-        description: Human-readable description of the action (optional)
-        changes: Dict of before/after values for updates (optional)
-    
-    Returns:
-        AuditLog object if successful, None if failed
+def create_audit_log(action, entity_type, entity_id=None, entity_name=None,
+                     description=None, changes=None, context=None):
+    """Create an audit log entry for sensitive operations.
+
+    Works in two modes:
+    - Request-driven (default): reads user/IP from the active Flask session and
+      request globals. Use this from route handlers.
+    - Explicit-context: pass a plain dict as ``context`` with keys
+      ``user_id``, ``username``, ``role``, ``ip_address``, ``user_agent``.
+      Use this from background threads that have no request context.
+
+    The function is resilient — if audit logging fails it logs the error but
+    does not prevent the calling operation from completing.
     """
     import logging
-    from flask import session as flask_session
     from models.audit_log import AuditLog
-    
-    logger = logging.getLogger(__name__)
-    
+
+    _logger = logging.getLogger(__name__)
+
     try:
-        # Extract user info from session
-        user_id = flask_session.get('user_id')
-        username = flask_session.get('username', 'unknown')
-        user_role = flask_session.get('role', 'unknown')
-        
-        # Extract request info
-        ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent', '')[:200]  # Truncate to fit column
-        
-        # Create audit log entry
+        if context is not None:
+            # Explicit-context mode — safe to call from background threads.
+            user_id   = context.get('user_id')
+            username  = context.get('username', 'system')
+            user_role = context.get('role', 'unknown')
+            ip_address = context.get('ip_address')
+            user_agent = (context.get('user_agent') or '')[:200]
+        else:
+            # Request-driven mode — must be called inside a Flask request.
+            from flask import session as flask_session
+            user_id   = flask_session.get('user_id')
+            username  = flask_session.get('username', 'unknown')
+            user_role = flask_session.get('role', 'unknown')
+            ip_address = request.remote_addr
+            user_agent = request.headers.get('User-Agent', '')[:200]
+
         audit_entry = AuditLog(
             user_id=user_id,
             username=username,
@@ -1032,29 +1032,25 @@ def create_audit_log(action, entity_type, entity_id=None, entity_name=None,
             description=description,
             changes=changes,
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
-        
+
         db.session.add(audit_entry)
         db.session.commit()
-        
-        logger.info(
-            f"Audit log created: {username} ({user_role}) {action} {entity_type} "
-            f"{entity_id or 'N/A'} from {ip_address}"
+
+        _logger.info(
+            "Audit log created: %s (%s) %s %s %s from %s",
+            username, user_role, action, entity_type,
+            entity_id or 'N/A', ip_address,
         )
-        
         return audit_entry
-        
+
     except Exception as e:
-        # Log the error but don't fail the operation
-        logger.error(f"Failed to create audit log: {e}", exc_info=True)
-        
-        # Rollback the audit log transaction to prevent affecting the main operation
+        _logger.error("Failed to create audit log: %s", e, exc_info=True)
         try:
             db.session.rollback()
         except Exception:
             pass
-        
         return None
 
 

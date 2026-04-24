@@ -20,7 +20,7 @@ from flask import (
     session,
     url_for,
 )
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 
 from extensions import db
 from models.restricted_site_policy import RestrictedSiteEvent
@@ -36,11 +36,31 @@ from services.report_export_job_service import (
 )
 from services.report_meta import build_report_meta
 from services.report_metrics_enricher import ReportMetricsEnricher
-from services.settings_service import get_monitoring_interval
+from services.settings_service import get_monitoring_interval, format_monitoring_interval_label
 
 reports_bp = Blueprint('reports_bp', __name__, url_prefix='')
 monitor = DeviceMonitor()
 logger = logging.getLogger(__name__)
+
+
+def _exclude_agent_push_scan(model):
+    return or_(
+        model.scan_type.is_(None),
+        model.scan_type != 'agent_push',
+    )
+
+
+def _normalize_report_scan_status(status, ping_time_ms=None):
+    normalized = str(status or '').strip().lower()
+    if normalized == 'online':
+        return 'online'
+    if normalized in {'no_response', 'timeout'}:
+        return 'no_response'
+    if normalized == 'offline' and ping_time_ms is None:
+        return 'no_response'
+    if normalized == 'offline':
+        return 'offline'
+    return normalized or 'unknown'
 
 
 @reports_bp.before_request
@@ -73,6 +93,23 @@ _report_cache_lock = threading.Lock()
 
 _rate_limit_hits = {}
 _rate_limit_lock = threading.Lock()
+
+
+def invalidate_short_ttl_report_cache(max_ttl_seconds: int = 180) -> int:
+    """Drop all in-memory report cache entries whose original TTL is <= max_ttl_seconds.
+
+    Called by DeviceMonitor after each scan cycle so that 24h-range reports
+    (TTL=120s by default) are rebuilt from fresh DB data on the next request,
+    rather than serving stale results for up to 2 minutes.
+    Longer-range reports (7d/30d/executive) are left untouched.
+    """
+    removed = 0
+    with _report_cache_lock:
+        stale = [k for k, v in list(_report_cache.items()) if float(v.get('ttl', 9999)) <= max_ttl_seconds]
+        for k in stale:
+            _report_cache.pop(k, None)
+            removed += 1
+    return removed
 
 _NAIVE_ISO_DATETIME_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$')
 
@@ -456,13 +493,13 @@ def _get_cached_report(cache_key):
 
 def _cache_ttl_seconds(report_type, start_date, end_date):
     if report_type in ('executive', 'operational'):
-        return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 300))
+        return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 600))
     span = end_date - start_date
     if span <= timedelta(hours=24):
-        return int(current_app.config.get('REPORT_CACHE_TTL_24H_SECONDS', 60))
+        return int(current_app.config.get('REPORT_CACHE_TTL_24H_SECONDS', 120))
     if span <= timedelta(days=30):
-        return int(current_app.config.get('REPORT_CACHE_TTL_7D_30D_SECONDS', 180))
-    return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 300))
+        return int(current_app.config.get('REPORT_CACHE_TTL_7D_30D_SECONDS', 600))
+    return int(current_app.config.get('REPORT_CACHE_TTL_LONG_RANGE_SECONDS', 600))
 
 
 def _set_cached_report(cache_key, payload, ttl):
@@ -625,19 +662,6 @@ def _run_report(
     enforce_rate_limit=True,
     cache_key_override=None,
 ):
-    max_rows = _max_rows_limit(is_export=is_export)
-    estimated_rows = _estimate_report_rows(report_type, start_date, end_date, device_ids)
-
-    if estimated_rows > max_rows:
-        if is_export:
-            raise ReportValidationError(
-                'Export exceeds allowed size. Please reduce time range or filter devices.',
-                413,
-            )
-        raise ReportValidationError(
-            'Projected result exceeds allowed size. Please reduce time range or filter devices.'
-        )
-
     ttl = _cache_ttl_seconds(report_type, start_date, end_date)
     cache_key = None
     if use_cache:
@@ -661,7 +685,7 @@ def _run_report(
                 report_type,
                 start_date,
                 end_date,
-                estimated_rows,
+                0,
                 row_count,
                 0.0,
                 cached=True,
@@ -674,6 +698,19 @@ def _run_report(
                 'cache_age_seconds': max(0.0, time.time() - float(cached_entry.get('created_at') or time.time())),
                 'cache_key': cache_key,
             }
+
+    # Row estimation is skipped on cache hits — only run on actual DB queries.
+    max_rows = _max_rows_limit(is_export=is_export)
+    estimated_rows = _estimate_report_rows(report_type, start_date, end_date, device_ids)
+    if estimated_rows > max_rows:
+        if is_export:
+            raise ReportValidationError(
+                'Export exceeds allowed size. Please reduce time range or filter devices.',
+                413,
+            )
+        raise ReportValidationError(
+            'Projected result exceeds allowed size. Please reduce time range or filter devices.'
+        )
 
     if enforce_rate_limit:
         _enforce_rate_limit(report_type, is_export=is_export)
@@ -882,9 +919,12 @@ def _run_export_job_worker(
 
 @reports_bp.route('/reports')
 def reports_page():
+    monitoring_interval_seconds = get_monitoring_interval()
     return render_template(
         'reports.html',
         productivity_report_enabled=_is_productivity_report_enabled(),
+        monitoring_interval_seconds=monitoring_interval_seconds,
+        monitoring_interval_label=format_monitoring_interval_label(monitoring_interval_seconds),
     )
 
 
@@ -946,16 +986,25 @@ def _build_device_stats(device_ip: str, hours: int):
     # Per-scan ICMP series — needed for Inspector PDF timeline / availability bar
     from models.scan_history import DeviceScanHistory as _DSH
     try:
-        scan_records = (
+        scan_records = list(reversed(
             _DSH.query
-            .filter(_DSH.device_ip == device_ip, _DSH.scan_timestamp >= cutoff)
-            .order_by(_DSH.scan_timestamp.asc())
+            .filter(
+                _DSH.device_ip == device_ip,
+                _DSH.scan_timestamp >= cutoff,
+                _exclude_agent_push_scan(_DSH),
+            )
+            .order_by(_DSH.scan_timestamp.desc())
             .limit(500)
             .all()
-        )
+        ))
         stats['scan_series'] = [
-            {'ts': r.scan_timestamp.isoformat(), 'status': r.status,
-             'ping_ms': r.ping_time_ms, 'pkt_loss': r.packet_loss}
+            {
+                'ts': r.scan_timestamp.isoformat(),
+                'status': _normalize_report_scan_status(r.status, r.ping_time_ms),
+                'status_detail': getattr(r, 'status_detail', None),
+                'ping_ms': r.ping_time_ms,
+                'pkt_loss': r.packet_loss,
+            }
             for r in scan_records
         ]
     except Exception:
@@ -973,6 +1022,45 @@ def _build_device_stats(device_ip: str, hours: int):
         logger.warning("[DeviceStats] website violation lookup failed for %s", device_ip)
 
     return device, stats
+
+
+# ── Inspector device search-list (lightweight, Redis-cached) ──────────────────
+_DEVICE_SEARCH_LIST_KEY = "reports:device_search_list"
+_DEVICE_SEARCH_LIST_TTL = 60  # seconds — refreshed by scan cycle invalidation
+
+
+@reports_bp.route('/api/reports/device-search-list')
+def get_device_search_list():
+    """Return a minimal name+IP list for the Device Inspector search dropdown.
+
+    Cached in Redis (60s TTL) so the inspector tab opens instantly instead of
+    running a full scan-status join on every page load.
+    """
+    from extensions import redis_client, is_redis_available
+    from models.device import Device
+
+    if is_redis_available():
+        try:
+            cached = redis_client.get(_DEVICE_SEARCH_LIST_KEY)
+            if cached:
+                return current_app.response_class(cached, mimetype='application/json')
+        except Exception:
+            pass
+
+    devices = scoped_query(Device).order_by(Device.device_ip.asc()).all()
+    result = [
+        {'device_name': d.device_name or d.device_ip, 'device_ip': d.device_ip}
+        for d in devices if d.device_ip
+    ]
+    payload = json.dumps(result)
+
+    if is_redis_available():
+        try:
+            redis_client.setex(_DEVICE_SEARCH_LIST_KEY, _DEVICE_SEARCH_LIST_TTL, payload)
+        except Exception:
+            pass
+
+    return current_app.response_class(payload, mimetype='application/json')
 
 
 @reports_bp.route('/api/device_statistics')
@@ -1120,13 +1208,16 @@ def get_device_history():
     scans = DeviceScanHistory.query.filter(
         DeviceScanHistory.device_ip == device_ip,
         DeviceScanHistory.scan_timestamp >= cutoff_time,
+        _exclude_agent_push_scan(DeviceScanHistory),
     ).order_by(DeviceScanHistory.scan_timestamp).all()
 
     history_data = [
         {
             'timestamp': scan.scan_timestamp.isoformat(),
             'status': scan.status,
+            'status_detail': getattr(scan, 'status_detail', None),
             'latency': scan.ping_time_ms,
+            'packet_loss': scan.packet_loss,
             'scan_type': scan.scan_type,
         }
         for scan in scans

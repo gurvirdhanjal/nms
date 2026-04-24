@@ -294,9 +294,9 @@ def build_chart_threshold_bands(metric_key: str, thresholds: dict[str, Any] | No
     warning = float(metric_threshold["warning"])
     critical = float(metric_threshold["critical"])
     return [
-        {"from": 0.0, "to": warning, "color": "rgba(0, 255, 136, 0.08)"},
-        {"from": warning, "to": critical, "color": "rgba(255, 170, 0, 0.12)"},
-        {"from": critical, "to": critical * 1.1, "color": "rgba(255, 59, 92, 0.16)"},
+        {"from": 0.0,    "to": warning,  "color": "rgba(0, 212, 170, 0.05)"},
+        {"from": warning, "to": critical, "color": "rgba(255, 170, 0,  0.10)"},
+        {"from": critical, "to": 100.0,  "color": "rgba(255, 59,  92, 0.15)"},
     ]
 
 

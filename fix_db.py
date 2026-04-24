@@ -1,19 +1,19 @@
-import os
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from app import create_app
+from extensions import db
+from models.device import Device
 
-load_dotenv()
-db_url = os.getenv("DATABASE_URL")
-if not db_url:
-    print("No DATABASE_URL found in .env")
-    exit(1)
+app = create_app()
+with app.app_context():
+    d2 = Device.query.get(8848)
+    if d2:
+        print(f"Renaming IP of conflicting device 8848 from {d2.device_ip} to None to clear collision")
+        d2.device_ip = None
 
-print(f"Connecting to {db_url}")
-engine = create_engine(db_url)
-with engine.begin() as conn:
-    try:
-        conn.execute(text('ALTER TABLE departments ADD COLUMN created_by VARCHAR(80);'))
-        print("Success: added created_by column")
-    except Exception as e:
-        print(f"Failed to add column: {e}")
-
+    d1 = Device.query.get(8745)
+    if d1:
+        d1.device_ip = '172.16.2.110'
+        d1.device_type = 'server'
+        print(f"Updated device 8745: IP={d1.device_ip}, Type={d1.device_type}")
+    
+    db.session.commit()
+    print("Database successfully updated.")

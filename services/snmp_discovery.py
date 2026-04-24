@@ -1,17 +1,25 @@
 import ipaddress
+import logging
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
-from pysnmp.hlapi import (
-    SnmpEngine,
-    CommunityData,
-    UdpTransportTarget,
-    ContextData,
-    ObjectType,
-    ObjectIdentity,
-    nextCmd,
-    getCmd,
-)
+log = logging.getLogger(__name__)
+
+try:
+    from pysnmp.hlapi import (
+        SnmpEngine,
+        CommunityData,
+        UdpTransportTarget,
+        ContextData,
+        ObjectType,
+        ObjectIdentity,
+        nextCmd,
+        getCmd,
+    )
+    PYSNMP_AVAILABLE = True
+except ImportError:
+    PYSNMP_AVAILABLE = False
+    log.warning("pysnmp not available. Switch SNMP discovery disabled.")
 
 
 # ---------------------------

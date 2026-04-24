@@ -13,6 +13,7 @@ import logging
 import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ from services.report_rules import (
     should_render_exception_table,
 )
 from services.pdf_style_registry import PDFStyleRegistry
+from services.settings_service import format_monitoring_interval_label
 
 # ── Colour palette ───────────────────────────────────────────────────────────
 NAVY        = "#1B2A4A"
@@ -234,12 +236,20 @@ def base_table_style(header_rows: int = 1):
     ])
 
 
+class _SafeSpacer(Spacer):
+    """Spacer that silently shrinks when the remaining frame space is smaller
+    than the requested height.  Prevents ReportLab LayoutError when a spacer
+    lands at the bottom of an almost-full frame."""
+    def wrap(self, availWidth, availHeight):
+        return (availWidth, min(self.height, max(availHeight, 0)))
+
+
 # ── Spacer rhythm constants ───────────────────────────────────────────────────
-SP_CAPTION    = Spacer(1, 4)
-SP_BLOCK      = Spacer(1, 8)
-SP_TABLE_GAP  = Spacer(1, 10)
-SP_SECTION    = Spacer(1, 14)
-SP_AFTER_TITLE = Spacer(1, 6)
+SP_CAPTION    = _SafeSpacer(1, 4)
+SP_BLOCK      = _SafeSpacer(1, 8)
+SP_TABLE_GAP  = _SafeSpacer(1, 10)
+SP_SECTION    = _SafeSpacer(1, 14)
+SP_AFTER_TITLE = _SafeSpacer(1, 6)
 
 
 def sla_bar_cell(pct: float, color_hex: str, width: int = 150) -> Table:
@@ -273,7 +283,6 @@ def _kpi_color(val: float, high: float = 90.0, med: float = 70.0) -> str:
 
 
 # ── 3-table layout helpers ────────────────────────────────────────────────────
-
 def _fmt_min_max(row: dict) -> str:
     """Format 'Min / Max' latency cell. Returns '8 / 210' or '— / —'."""
     mn = row.get("min_latency_ms")
@@ -655,7 +664,7 @@ def _build_exception_strip(
 
     _AMBER = "#92400E"
     elems: List[Any] = [
-        Spacer(1, 6),
+        _SafeSpacer(1, 6),
         Paragraph(label, ParagraphStyle(
             "ExcStripLabel",
             parent=styles["Normal"],
@@ -708,7 +717,7 @@ def _build_exception_strip(
     )
     elems.append(SP_CAPTION)
     elems.append(normal_paragraph(caption, styles, size=6.5, color=TEXT_LIGHT))
-    elems.append(Spacer(1, 8))
+    elems.append(_SafeSpacer(1, 8))
     return elems
 
 
@@ -745,17 +754,17 @@ def _build_cover(report: dict, styles, fleet: str = "all") -> list:
     # Return cover flowables directly — wrapping in a Table prevents PageBreak from working.
     # The navy background is painted by the _draw_cover_bg canvas callback in generate_enterprise_pdf.
     return [
-        Spacer(1, 1.2 * inch),
+        _SafeSpacer(1, 1.2 * inch),
         Paragraph(title_line1, _reg.cover_title),
         Paragraph(title_line2, _reg.cover_title),
-        Spacer(1, 0.3 * inch),
+        _SafeSpacer(1, 0.3 * inch),
         Paragraph(subtitle_text, _reg.cover_subtitle),
-        Spacer(1, 0.6 * inch),
+        _SafeSpacer(1, 0.6 * inch),
         HRFlowable(width="100%", thickness=1, color=hex_color(TEAL), spaceAfter=16),
         Paragraph(f"Report Period:  {_start_str()}  →  {_end_str()}", _reg.cover_meta),
         Paragraph(f"Days Covered:   {period.get('days', '—')}", _reg.cover_meta),
         Paragraph(f"Generated:      {gen_at}", _reg.cover_meta),
-        Spacer(1, 0.4 * inch),
+        _SafeSpacer(1, 0.4 * inch),
         Paragraph("Internal Use Only", _reg.cover_confidential),
         PageBreak(),
     ]
@@ -920,7 +929,7 @@ def _build_decision_banner(cross_report: Optional[dict], styles) -> list:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
     ]))
-    return [KeepTogether([tbl, Spacer(1, 8)])]
+    return [KeepTogether([tbl, _SafeSpacer(1, 8)])]
 
 
 # ── Executive summary page ────────────────────────────────────────────────────
@@ -987,7 +996,7 @@ def _build_executive_summary(report: dict, styles) -> list:
         and r.get("uptime_pct") is not None
     ]
     if _breached_rows:
-        elems.append(Spacer(1, 8))
+        elems.append(_SafeSpacer(1, 8))
         elems.append(_table_label("SLA Compliance — Devices Below Threshold", styles))
         _sla_mini_hdr = ["Device", "SLA Target", "Actual Uptime", "Downtime (min)", "Met?"]
         _sla_mini_data: List[List[str]] = [_sla_mini_hdr]
@@ -1181,7 +1190,7 @@ def _build_executive_summary(report: dict, styles) -> list:
             sc_style.add("TEXTCOLOR", (3, row_idx), (3, row_idx), hex_color(text_c))
             sc_style.add("TEXTCOLOR", (4, row_idx), (4, row_idx), hex_color(text_c))
     scorecard.setStyle(sc_style)
-    elems += [scorecard, Spacer(1, 16)]
+    elems += [scorecard, _SafeSpacer(1, 16)]
 
     # ── Teal dashed divider between the two tables ───────────────────────────────────────────────────────
     elems.append(HRFlowable(
@@ -1372,7 +1381,7 @@ def _build_executive_summary(report: dict, styles) -> list:
     )[:MAX_ALERTS_EXECUTIVE]
 
     if alert_sources:
-        elems.append(Spacer(1, 10))
+        elems.append(_SafeSpacer(1, 10))
         elems.append(_table_label(
             "Top Alert Sources  (devices with most alerts this period)",
             styles,
@@ -1533,7 +1542,7 @@ def _build_server_device_card(row: dict, styles) -> List[Any]:
             ts.add("FONTNAME",  (1, 2), (1, 2), "Helvetica-Bold")
 
     tbl.setStyle(ts)
-    return [KeepTogether([tbl, Spacer(1, 5)])]
+    return [KeepTogether([tbl, _SafeSpacer(1, 5)])]
 
 
 # ── Server fleet section ──────────────────────────────────────────────────────
@@ -1852,7 +1861,7 @@ def _build_violations_section(report: dict, styles) -> list:
         d_rows = [d_header] + [[dom, str(cnt)] for dom, cnt in top_domains]
         d_table = Table(d_rows, colWidths=["70%", "30%"])
         d_table.setStyle(base_table_style())
-        story += [d_table, Spacer(1, 0.3 * cm)]
+        story += [d_table, _SafeSpacer(1, 0.3 * cm)]
 
     # ── Top offending device ──────────────────────────────────────────────────
     if top_device:
@@ -1879,7 +1888,7 @@ def _build_confidence_footnotes(report: dict, styles) -> list:
     if not confidence:
         return []
 
-    story = [Spacer(1, 0.5 * cm)]
+    story = [_SafeSpacer(1, 0.5 * cm)]
     story.append(HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER)))
 
     legend = (
@@ -2041,15 +2050,15 @@ def generate_alert_report_pdf(report_data: dict) -> io.BytesIO:
 
     # ── Cover ──────────────────────────────────────────────────────────────────
     story: List[Any] = [
-        Spacer(1, 1.2 * inch),
+        _SafeSpacer(1, 1.2 * inch),
         Paragraph("Alert History", _reg.cover_title),
         Paragraph("Report", _reg.cover_title),
-        Spacer(1, 0.3 * inch),
+        _SafeSpacer(1, 0.3 * inch),
         Paragraph("System Alerts — Severity, Response Times &amp; Unresolved Aging", _reg.cover_subtitle),
-        Spacer(1, 0.2 * inch),
+        _SafeSpacer(1, 0.2 * inch),
         Paragraph(f"Period:  {start_str} — {end_str}", _reg.cover_meta),
         Paragraph(f"Generated:  {gen_at}", _reg.cover_meta),
-        Spacer(1, 0.15 * inch),
+        _SafeSpacer(1, 0.15 * inch),
         Paragraph("INTERNAL USE ONLY", _reg.cover_confidential),
         PageBreak(),
     ]
@@ -2242,12 +2251,12 @@ def generate_device_health_pdf(report_data: dict) -> io.BytesIO:
 
     # ── Cover ──────────────────────────────────────────────────────────────────
     story: List[Any] = [
-        Spacer(1, 1.2 * inch),
+        _SafeSpacer(1, 1.2 * inch),
         Paragraph("Device Health", _reg.cover_title),
         Paragraph("Report", _reg.cover_title),
-        Spacer(1, 0.3 * inch),
+        _SafeSpacer(1, 0.3 * inch),
         Paragraph("CPU, Memory &amp; Disk Capacity Risks — Threshold Breaches &amp; Runway Estimates", _reg.cover_subtitle),
-        Spacer(1, 0.2 * inch),
+        _SafeSpacer(1, 0.2 * inch),
         Paragraph(f"Period:  {start_str} — {end_str}", _reg.cover_meta),
         Paragraph(f"Generated:  {gen_at}", _reg.cover_meta),
         PageBreak(),
@@ -2611,7 +2620,7 @@ def _build_downtime_timeline(incidents: List[dict], styles, content_w: float) ->
                            fontSize=11, spaceBefore=10, spaceAfter=5,
                            textColor=hex_color(NAVY))),
         Table(rows, colWidths=widths, hAlign='LEFT', style=ts_tl, repeatRows=1),
-        Spacer(1, 0.4 * cm),
+        _SafeSpacer(1, 0.4 * cm),
     ]
 
 
@@ -2659,8 +2668,208 @@ def _build_notable_events(scan_series: List[dict], styles, content_w: float) -> 
                            fontSize=11, spaceBefore=10, spaceAfter=5,
                            textColor=hex_color(NAVY))),
         Table(rows, colWidths=widths, hAlign='LEFT', style=base_table_style(), repeatRows=1),
-        Spacer(1, 0.4 * cm),
+        _SafeSpacer(1, 0.4 * cm),
     ]
+
+
+def _fmt_window_range(window: Optional[dict]) -> str:
+    if not window:
+        return "No qualifying window"
+    start = window.get("start")
+    end = window.get("end")
+    point = window.get("timestamp")
+    if start and end and start != end:
+        return f"{_fmt_ts_short(start)} to {_fmt_ts_short(end)}"
+    if start:
+        return _fmt_ts_short(start)
+    if point:
+        return _fmt_ts_short(point)
+    return "Unknown"
+
+
+def _has_material_spike(window: Optional[dict]) -> bool:
+    if not window:
+        return False
+    peak = window.get("peak_latency_ms")
+    loss = window.get("packet_loss_avg_pct")
+    return bool(
+        (peak is not None and float(peak) >= 100.0)
+        or (loss is not None and float(loss) >= 5.0)
+    )
+
+
+def _latest_anomaly_rows(latest_anomaly: Optional[dict]) -> List[str]:
+    if not latest_anomaly:
+        return []
+    rows = []
+    status = (latest_anomaly.get("status") or "").replace("_", " ").title()
+    if status:
+        rows.append(status)
+    latency = latest_anomaly.get("latency_ms")
+    if latency is not None:
+        rows.append(f"Latency {_fmt_num(latency, ' ms')}")
+    packet_loss = latest_anomaly.get("packet_loss_pct")
+    if packet_loss is not None:
+        rows.append(f"Packet loss {_fmt_num(packet_loss, '%')}")
+    detail = latest_anomaly.get("status_detail")
+    if detail:
+        rows.append(str(detail))
+    return rows
+
+
+def _build_ping_stability_summary(ping_summary: dict, styles, content_w: float) -> list:
+    """Premium ping stability section shared by Inspector UI and PDF export."""
+    if not ping_summary:
+        return []
+
+    _cs = ParagraphStyle('pingSumCell', fontName='Helvetica', fontSize=7.5, leading=10, wordWrap='CJK')
+    _hdr = ParagraphStyle('pingSumHdr', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                          wordWrap='CJK', textColor=colors.white)
+
+    def _cell(val):
+        return Paragraph(str(val if val not in (None, '') else '—'), _cs)
+
+    def _h(val):
+        return Paragraph(str(val), _hdr)
+
+    worst_window = ping_summary.get("worst_window") or {}
+    stable_window = ping_summary.get("stable_window") or {}
+    latest_anomaly = ping_summary.get("latest_anomaly") or {}
+
+    avg_latency = ping_summary.get("avg_latency_ms")
+    p95_latency = ping_summary.get("p95_latency_ms")
+    jitter_ms = ping_summary.get("jitter_ms")
+    coverage_pct = ping_summary.get("coverage_pct")
+    packet_loss = ping_summary.get("packet_loss_avg_pct")
+    timeout_count = ping_summary.get("timeout_count")
+
+    has_spike = _has_material_spike(worst_window)
+    has_stable = bool(stable_window)
+    has_latest = bool(latest_anomaly)
+
+    story = [
+        Paragraph('<b>Ping Stability Summary</b>',
+            ParagraphStyle('ps_sec', parent=styles['Normal'], fontName='Helvetica-Bold',
+                           fontSize=11, spaceBefore=8, spaceAfter=5,
+                           textColor=hex_color(NAVY)))
+    ]
+
+    summary_note = []
+    if has_spike:
+        summary_note.append(
+            f"Peak latency reached {_fmt_num(worst_window.get('peak_latency_ms'), ' ms')} "
+            f"during {_fmt_window_range(worst_window)}."
+        )
+    else:
+        summary_note.append("No material ping spike crossed the Inspector alert threshold in this period.")
+    if has_stable:
+        summary_note.append(
+            f"The best sustained baseline was {_fmt_num(stable_window.get('baseline_latency_ms'), ' ms')} "
+            f"during {_fmt_window_range(stable_window)}."
+        )
+    if coverage_pct is not None:
+        summary_note.append(f"Scan coverage was {_fmt_num(coverage_pct, '%')}.")
+    story.append(normal_paragraph(" ".join(summary_note), styles, size=8.5, color=TEXT_MID))
+    story.append(_SafeSpacer(1, 0.15 * cm))
+
+    kpi_rows = [
+        [_h("Avg Latency"), _h("P95"), _h("Jitter"), _h("Coverage"), _h("Avg Packet Loss"), _h("Timeout Count")],
+        [
+            _cell(_fmt_num(avg_latency, ' ms')),
+            _cell(_fmt_num(p95_latency, ' ms')),
+            _cell(_fmt_num(jitter_ms, ' ms')),
+            _cell(_fmt_num(coverage_pct, '%')),
+            _cell(_fmt_num(packet_loss, '%')),
+            _cell(timeout_count if timeout_count is not None else '—'),
+        ],
+    ]
+    story.append(Table(
+        kpi_rows,
+        colWidths=[content_w / 6] * 6,
+        hAlign='LEFT',
+        style=base_table_style(),
+        repeatRows=1,
+    ))
+    story.append(_SafeSpacer(1, 0.2 * cm))
+
+    detail_rows = [[
+        _h("Window"),
+        _h("Time (IST)"),
+        _h("Latency Profile"),
+        _h("Packet Loss"),
+        _h("Interpretation"),
+    ]]
+
+    if has_spike:
+        detail_rows.append([
+            _cell("Worst Spike"),
+            _cell(_fmt_window_range(worst_window)),
+            _cell(
+                f"Peak {_fmt_num(worst_window.get('peak_latency_ms'), ' ms')}"
+                f"<br/>Baseline {_fmt_num(worst_window.get('baseline_latency_ms'), ' ms')}"
+            ),
+            _cell(_fmt_num(worst_window.get('packet_loss_avg_pct'), '%')),
+            _cell(worst_window.get("diagnosis") or "Highest latency window in the selected range"),
+        ])
+
+    if has_stable:
+        stability_note = (
+            f"Baseline {_fmt_num(stable_window.get('baseline_latency_ms'), ' ms')}"
+            f"<br/>Jitter {_fmt_num(stable_window.get('stability_score_ms'), ' ms')}"
+        )
+        detail_rows.append([
+            _cell("Best Stable"),
+            _cell(_fmt_window_range(stable_window)),
+            _cell(stability_note),
+            _cell(_fmt_num(stable_window.get('packet_loss_avg_pct'), '%')),
+            _cell(stable_window.get("diagnosis") or "Most stable sustained latency window"),
+        ])
+
+    if has_latest:
+        detail_rows.append([
+            _cell("Latest Issue"),
+            _cell(_fmt_ts_short(latest_anomaly.get("timestamp"))),
+            _cell("<br/>".join(_latest_anomaly_rows(latest_anomaly)) or "Recent anomaly"),
+            _cell(_fmt_num(latest_anomaly.get("packet_loss_pct"), '%')),
+            _cell(latest_anomaly.get("diagnosis") or "Most recent issue window"),
+        ])
+
+    if len(detail_rows) > 1:
+        detail_table = Table(
+            detail_rows,
+            colWidths=[
+                content_w * 0.14,
+                content_w * 0.25,
+                content_w * 0.20,
+                content_w * 0.12,
+                content_w * 0.29,
+            ],
+            hAlign='LEFT',
+            style=base_table_style(),
+            repeatRows=1,
+        )
+        detail_style = TableStyle([])
+        if has_spike:
+            detail_style.add('BACKGROUND', (0, 1), (-1, 1), hex_color('#FEF2F2'))
+            detail_style.add('TEXTCOLOR', (0, 1), (-1, 1), hex_color('#991B1B'))
+        stable_row = 2 if has_spike else 1
+        if has_stable:
+            detail_style.add('BACKGROUND', (0, stable_row), (-1, stable_row), hex_color('#ECFDF5'))
+            detail_style.add('TEXTCOLOR', (0, stable_row), (-1, stable_row), hex_color('#166534'))
+        latest_row = 1 + int(has_spike) + int(has_stable)
+        if has_latest:
+            detail_style.add('BACKGROUND', (0, latest_row), (-1, latest_row), hex_color('#FFFBEB'))
+            detail_style.add('TEXTCOLOR', (0, latest_row), (-1, latest_row), hex_color('#92400E'))
+        detail_table.setStyle(detail_style)
+        story.append(detail_table)
+    else:
+        story.append(normal_paragraph(
+            "Scan density in this period was too low to compute stable or degraded windows reliably.",
+            styles, size=8.5, color=TEXT_MID,
+        ))
+
+    story.append(_SafeSpacer(1, 0.4 * cm))
+    return story
 
 
 def generate_device_inspector_pdf(
@@ -2732,10 +2941,11 @@ def generate_device_inspector_pdf(
     _interval_s     = _get_interval()
     _interval_per_h = 3600.0 / _interval_s if _interval_s > 0 else 12.0
     expected_scans  = int(period_hours * _interval_per_h)
-    _interval_label = f"{_interval_s // 60} min" if _interval_s > 0 else "5 min"
+    _interval_label = format_monitoring_interval_label(_interval_s)
     coverage_pct    = round(total_scans / expected_scans * 100, 1) if expected_scans else 0
     timeout_count   = stats.get('no_response_count', 0) or 0
     timeout_pct     = round(timeout_count / expected_scans * 100, 2) if expected_scans > 0 else 0.0
+    ping_summary    = stats.get('ping_summary') or {}
 
     # ── Data Confidence Banner ────────────────────────────────────────────────
     _conf_level = _confidence_label(coverage_pct)
@@ -2759,7 +2969,7 @@ def generate_device_inspector_pdf(
             ('BOX',           (0, 0), (-1, -1), 0.5, hex_color(BORDER)),
         ]),
     ))
-    story.append(Spacer(1, 0.25 * cm))
+    story.append(_SafeSpacer(1, 0.25 * cm))
 
     tier = (
         "Gold"    if uptime >= SLA_GOLD    else
@@ -2798,7 +3008,7 @@ def generate_device_inspector_pdf(
                        textColor=hex_color(NAVY))))
     story.append(Table(avail_data, colWidths=_col8, hAlign='LEFT',
                        style=ts_avail, repeatRows=1))
-    story.append(Spacer(1, 0.3 * cm))
+    story.append(_SafeSpacer(1, 0.3 * cm))
 
     # ── Availability Bar ──────────────────────────────────────────────────────
     if scan_series:
@@ -2813,21 +3023,23 @@ def generate_device_inspector_pdf(
                            spaceBefore=0, spaceAfter=3),
         ))
         story.extend(_build_availability_bar(scan_series, _CONTENT_W))
-    story.append(Spacer(1, 0.5 * cm))
+    story.append(_SafeSpacer(1, 0.5 * cm))
 
     # ── Latency & Packet Loss ──────────────────────────────────────────────────
     if stats.get('avg_latency') is not None:
         # 6 columns, equal widths
-        _col6 = [_CONTENT_W / 6] * 6
+        _col8_ping = [_CONTENT_W / 8] * 8
         lat_data = [
-            [_h("Ping Interval"), _h("Avg Latency"), _h("Min Latency"),
-             _h("Max Latency"), _h("Avg Pkt Loss"), _h("Timeout %")],
+            [_h("Ping Interval"), _h("Avg Latency"), _h("P95 Latency"), _h("Jitter"),
+             _h("Min Latency"), _h("Max Latency"), _h("Avg Pkt Loss"), _h("Timeout %")],
             [
                 _cell(_interval_label),
-                _cell(_fmt_num(stats.get('avg_latency'),     ' ms')),
-                _cell(_fmt_num(stats.get('min_latency'),     ' ms')),
-                _cell(_fmt_num(stats.get('max_latency'),     ' ms')),
-                _cell(_fmt_num(stats.get('avg_packet_loss'), '%')),
+                _cell(_fmt_num(ping_summary.get('avg_latency_ms', stats.get('avg_latency')), ' ms')),
+                _cell(_fmt_num(ping_summary.get('p95_latency_ms'), ' ms')),
+                _cell(_fmt_num(ping_summary.get('jitter_ms'), ' ms')),
+                _cell(_fmt_num(ping_summary.get('min_latency_ms', stats.get('min_latency')), ' ms')),
+                _cell(_fmt_num(ping_summary.get('max_latency_ms', stats.get('max_latency')), ' ms')),
+                _cell(_fmt_num(ping_summary.get('packet_loss_avg_pct', stats.get('avg_packet_loss')), '%')),
                 _cell(f"{timeout_pct:.2f}%" if expected_scans > 0 else "—"),
             ],
         ]
@@ -2835,9 +3047,18 @@ def generate_device_inspector_pdf(
             ParagraphStyle('sec', parent=styles['Normal'], fontName='Helvetica-Bold',
                            fontSize=11, spaceBefore=8, spaceAfter=5,
                            textColor=hex_color(NAVY))))
-        story.append(Table(lat_data, colWidths=_col6, hAlign='LEFT',
+        story.append(Table(lat_data, colWidths=_col8_ping, hAlign='LEFT',
                            style=base_table_style(), repeatRows=1))
-        story.append(Spacer(1, 0.5*cm))
+        story.append(_SafeSpacer(1, 0.12 * cm))
+        story.append(normal_paragraph(
+            f"Coverage {_fmt_num(ping_summary.get('coverage_pct', coverage_pct), '%')} "
+            f"with {total_scans:,} collected scans against {expected_scans:,} expected probes. "
+            f"Timeout count: {ping_summary.get('timeout_count', timeout_count)}.",
+            styles, size=8, color=TEXT_MID,
+        ))
+        story.append(_SafeSpacer(1, 0.5*cm))
+
+    story.extend(_build_ping_stability_summary(ping_summary, styles, _CONTENT_W))
 
     # ── Agent Telemetry ────────────────────────────────────────────────────────
     agent = stats.get('agent_data', {})
@@ -2871,7 +3092,7 @@ def generate_device_inspector_pdf(
                            textColor=hex_color(NAVY))))
         story.append(Table(ag_data, colWidths=_ag_widths, hAlign='LEFT',
                            style=ts_ag, repeatRows=1))
-        story.append(Spacer(1, 0.5*cm))
+        story.append(_SafeSpacer(1, 0.5*cm))
     else:
         # Explicit message when agent data is absent — never silently omit the section
         gap_reason = (stats.get("_data_gaps") or {}).get("telemetry", "no_agent_data")
@@ -2894,7 +3115,7 @@ def generate_device_inspector_pdf(
             ParagraphStyle('agent_na', parent=styles['Normal'],
                            fontName='Helvetica-Oblique', fontSize=8, spaceBefore=2),
         ))
-        story.append(Spacer(1, 0.5*cm))
+        story.append(_SafeSpacer(1, 0.5*cm))
 
     # ── Health Diagnosis (rule-based narrative) ───────────────────────────────
     try:
@@ -2949,9 +3170,9 @@ def generate_device_inspector_pdf(
                     ('BOX',           (0, 0), (-1, -1), 0.4, hex_color(BORDER)),
                 ]),
             ))
-            story.append(Spacer(1, 2))
+            story.append(_SafeSpacer(1, 2))
         if _interp:
-            story.append(Spacer(1, 4))
+            story.append(_SafeSpacer(1, 4))
             story.append(Paragraph(
                 f'<i>{_interp}</i>',
                 ParagraphStyle('_interp', parent=styles['Normal'],
@@ -2959,7 +3180,7 @@ def generate_device_inspector_pdf(
                                spaceBefore=4, textColor=hex_color(TEXT_MID)),
             ))
         if _actions and _actions != ["No immediate action required"]:
-            story.append(Spacer(1, 4))
+            story.append(_SafeSpacer(1, 4))
             story.append(Paragraph('<b>Recommended Actions</b>',
                 ParagraphStyle('_act_h', parent=styles['Normal'], fontName='Helvetica-Bold',
                                fontSize=9, spaceBefore=4, spaceAfter=3,
@@ -2971,7 +3192,7 @@ def generate_device_inspector_pdf(
                                    fontName='Helvetica', fontSize=8.5, leading=13,
                                    leftIndent=10),
                 ))
-        story.append(Spacer(1, 0.4 * cm))
+        story.append(_SafeSpacer(1, 0.4 * cm))
     except Exception as _narr_err:
         logger.warning("[InspectorPDF] Health diagnosis skipped: %s", _narr_err)
 
@@ -2996,13 +3217,15 @@ def generate_device_inspector_pdf(
     story.append(Table(tier_data,
                        colWidths=[_CONTENT_W * 0.35, _CONTENT_W * 0.30, _CONTENT_W * 0.35],
                        hAlign='LEFT', style=tier_ts))
-    story.append(Spacer(1, 0.4*cm))
+    story.append(_SafeSpacer(1, 0.4*cm))
 
     # ── Footer note ────────────────────────────────────────────────────────────
+    from services.settings_service import get_monitoring_interval as _get_interval
     story.append(HRFlowable(width="100%", thickness=0.5, color=hex_color(BORDER), spaceBefore=4))
     story.append(Paragraph(
         f'<i><font color="{TEXT_LIGHT}">'
-        f'ICMP scan interval: 5 min &nbsp;·&nbsp; Agent telemetry requires on-device agent'
+        f'ICMP collection interval: {format_monitoring_interval_label(_get_interval())} &nbsp;·&nbsp;'
+        f' Device detail pages show recent raw checks; reports may aggregate longer windows'
         f' &nbsp;·&nbsp; All times in IST (Asia/Kolkata)'
         f'</font></i>',
         ParagraphStyle('note', parent=styles['Normal'], fontSize=7, spaceBefore=6),

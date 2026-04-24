@@ -7,11 +7,11 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}?v={{ asset_ver }}">
 <script type="module">
-  import { statusBadge } from "{{ url_for('static', filename='js/reports/reportsUtils.js') }}?v={{ asset_ver }}";
-  import { patchKeyedTableRows, setTableMessageRow } from "{{ url_for('static', filename='js/dashboard/domPatch.js') }}?v={{ asset_ver }}";
-  window._statusBadge = statusBadge;
-  window._patchKeyedTableRows = patchKeyedTableRows;
-  window._setTableMessageRow = setTableMessageRow;
+    import { statusBadge } from "{{ url_for('static', filename='js/reports/reportsUtils.js') }}?v={{ asset_ver }}";
+    import { patchKeyedTableRows, setTableMessageRow } from "{{ url_for('static', filename='js/dashboard/domPatch.js') }}?v={{ asset_ver }}";
+    window._statusBadge = statusBadge;
+    window._patchKeyedTableRows = patchKeyedTableRows;
+    window._setTableMessageRow = setTableMessageRow;
 </script>
 {% endblock %}
 
@@ -50,57 +50,62 @@
     </div>
 </div>
 
+<div class="container-fluid mb-2">
+    <div class="small text-muted">
+        ICMP collection interval: {{ monitoring_interval_label }}. Inspector views use raw filtered checks for
+        troubleshooting, while broader report summaries may use aggregated windows for readability.
+    </div>
+</div>
+
 <div class="container-fluid tactical-theme dashboard-enterprise reports-enterprise">
     <!-- Tabs -->
     <div class="report-tabs-shell" data-report-tab-shell="dense">
-    <ul class="nav nav-pills mb-1" id="reportTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="executive-tab" data-bs-toggle="pill" data-bs-target="#executive"
-                type="button" role="tab">
-                <i class="fas fa-briefcase me-1"></i> Executive
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="serverreports-tab" data-bs-toggle="pill"
-                data-bs-target="#serverreports" type="button" role="tab"
-                onclick="lazyLoadServerReports()">
-                <i class="fas fa-server me-1"></i> Servers
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="workstationhealth-tab" data-bs-toggle="pill"
-                data-bs-target="#workstationhealth" type="button" role="tab"
-                onclick="lazyLoadWorkstationHealth()">
-                <i class="fas fa-desktop me-1"></i> Workstations
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="inspector-tab" data-bs-toggle="pill" data-bs-target="#inspector" type="button"
-                role="tab">
-                <i class="fas fa-search me-1"></i> Inspector
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="devicehealth-tab" data-bs-toggle="pill" data-bs-target="#devicehealth"
-                type="button" role="tab">
-                <i class="fas fa-heartbeat me-1"></i> Health
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="alerthistory-tab" data-bs-toggle="pill" data-bs-target="#alerthistory"
-                type="button" role="tab">
-                <i class="fas fa-bell me-1"></i> Alerts
-            </button>
-        </li>
-        {% if productivity_report_enabled %}
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="productivity-tab" data-bs-toggle="pill" data-bs-target="#productivity"
-                type="button" role="tab">
-                <i class="fas fa-user-clock me-1"></i> Productivity
-            </button>
-        </li>
-        {% endif %}
-    </ul>
+        <ul class="nav nav-pills mb-1" id="reportTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="executive-tab" data-bs-toggle="pill" data-bs-target="#executive"
+                    type="button" role="tab">
+                    <i class="fas fa-briefcase me-1"></i> Executive
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="inspector-tab" data-bs-toggle="pill" data-bs-target="#inspector"
+                    type="button" role="tab">
+                    <i class="fas fa-search me-1"></i> Inspector
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="serverreports-tab" data-bs-toggle="pill" data-bs-target="#serverreports"
+                    type="button" role="tab" onclick="lazyLoadServerReports()">
+                    <i class="fas fa-server me-1"></i> Servers
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="workstationhealth-tab" data-bs-toggle="pill"
+                    data-bs-target="#workstationhealth" type="button" role="tab" onclick="lazyLoadWorkstationHealth()">
+                    <i class="fas fa-desktop me-1"></i> Workstations
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="devicehealth-tab" data-bs-toggle="pill" data-bs-target="#devicehealth"
+                    type="button" role="tab">
+                    <i class="fas fa-heartbeat me-1"></i> Health
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="alerthistory-tab" data-bs-toggle="pill" data-bs-target="#alerthistory"
+                    type="button" role="tab">
+                    <i class="fas fa-bell me-1"></i> Alerts
+                </button>
+            </li>
+            {% if productivity_report_enabled %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="productivity-tab" data-bs-toggle="pill" data-bs-target="#productivity"
+                    type="button" role="tab">
+                    <i class="fas fa-user-clock me-1"></i> Productivity
+                </button>
+            </li>
+            {% endif %}
+        </ul>
     </div>
 
     <div class="tab-content" id="reportTabContent">
@@ -143,7 +148,8 @@
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="mtd">Month to Date</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()" aria-label="Refresh executive report">
+                        <button class="btn btn-sm btn-primary" onclick="loadExecutiveReport()"
+                            aria-label="Refresh executive report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('executive','pdf')">
@@ -152,10 +158,40 @@
                     </div>
                 </div>
                 <div class="card-body p-2" id="execContent">
-                    <!-- Loaded via JS -->
-                    <div class="text-center py-5">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2 text-muted">Generating Executive Summary...</p>
+                    <!-- Skeleton shown until JS populates — mirrors 4-col + 3-col stat layout -->
+                    <div class="skel-exec px-1 py-3">
+                        <div class="skel-exec-row">
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                        </div>
+                        <div class="skel-exec-row three-col">
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val sm"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val sm"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                            <div class="skel-stat-col">
+                                <div class="skel-block skel-val sm"></div>
+                                <div class="skel-block skel-lbl mt-2"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -175,7 +211,8 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Top 10 Degraded Devices</h5>
-                    <button class="btn btn-sm btn-outline-secondary" id="sortToggleBtn" onclick="toggleProblematicSort()">
+                    <button class="btn btn-sm btn-outline-secondary" id="sortToggleBtn"
+                        onclick="toggleProblematicSort()">
                         <i class="fas fa-sort-amount-up me-1"></i> Show Best 10
                     </button>
                 </div>
@@ -210,10 +247,10 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center py-2">
                     <h5 class="mb-0"><i class="fas fa-search me-2"></i> Device Inspector</h5>
-                    <div class="d-flex gap-2 align-items-center">
-                        <div class="search-select-container" style="min-width: 260px;">
+                    <div class="d-flex gap-2 align-items-center flex-wrap rpt-inspector-toolbar">
+                        <div class="search-select-container rpt-inspector-search">
                             <input type="text" class="search-select-input" id="deviceSearch"
-                                placeholder="Search device..." autocomplete="off">
+                                placeholder="Search device by name or IP..." autocomplete="off">
                             <i class="fas fa-search search-select-icon"></i>
                             <div class="search-select-dropdown" id="deviceList">
                                 <div class="search-select-item disabled">Loading...</div>
@@ -228,8 +265,8 @@
                         <button class="btn btn-sm btn-primary" id="generateReport">
                             <i class="fas fa-bolt me-1"></i> Generate
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" id="downloadPdfBtn"
-                                disabled title="Generate a report first">
+                        <button class="btn btn-sm btn-outline-secondary" id="downloadPdfBtn" disabled
+                            title="Generate a report first">
                             <i class="fas fa-file-pdf me-1"></i>PDF
                         </button>
                     </div>
@@ -262,7 +299,8 @@
                             <option value="30d">Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadDeviceHealthReport()" aria-label="Refresh device health report">
+                        <button class="btn btn-sm btn-primary" onclick="loadDeviceHealthReport()"
+                            aria-label="Refresh device health report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('device-health','pdf')">
@@ -272,12 +310,15 @@
                 </div>
                 <div class="card-body p-2">
                     <div class="row mb-3" id="dhSummaryCards">
-                        <div class="text-center py-4">
-                            <div class="spinner-border text-primary" role="status"></div>
-                            <p class="mt-2 text-muted">Loading Device Health...</p>
+                        <div class="skel-stat-cards px-3 py-1">
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
                         </div>
                     </div>
-                    <div id="dhDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem"></div>
+                    <div id="dhDataNote" class="alert alert-warning py-2 mb-3" style="display:none; font-size:0.82rem">
+                    </div>
                     <!-- Capacity Runway (U5) — devices where estimated_days_to_breach < 60 -->
                     <div id="dhCapacityRunway" class="mb-3" style="display:none"></div>
                     <div class="row">
@@ -359,7 +400,8 @@
                             <option value="7d">Last 7 Days</option>
                             <option value="30d">Last 30 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadProductivityReport()" aria-label="Refresh productivity report">
+                        <button class="btn btn-sm btn-primary" onclick="loadProductivityReport()"
+                            aria-label="Refresh productivity report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('productivity','pdf')">
@@ -433,7 +475,8 @@
                             <option value="WARNING">Warning</option>
                             <option value="INFO">Info</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadAlertReport()" aria-label="Refresh alert report">
+                        <button class="btn btn-sm btn-primary" onclick="loadAlertReport()"
+                            aria-label="Refresh alert report">
                             <i class="fas fa-sync"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="exportReport('alerts','pdf')">
@@ -443,9 +486,11 @@
                 </div>
                 <div class="card-body p-2">
                     <div class="row mb-3" id="alertKpiCards">
-                        <div class="text-center py-4">
-                            <div class="spinner-border text-primary" role="status"></div>
-                            <p class="mt-2 text-muted">Loading Alert Data...</p>
+                        <div class="skel-stat-cards px-3 py-1">
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
+                            <div class="skel-block skel-stat-card"></div>
                         </div>
                     </div>
                     <div class="row">
@@ -497,17 +542,21 @@
                         </div>
                         <div class="col-md-7">
                             <div class="card h-100">
-                                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div
+                                    class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                                     <h6 class="mb-0">
                                         <i class="fas fa-list me-1"></i> Recent Alerts
                                         <span class="badge bg-secondary ms-1" id="alertListCount">—</span>
-                                        <small id="alertTruncNote" class="text-warning ms-2 d-none" style="font-size:0.72rem">
-                                            Showing <span id="alertShownCount"></span> of <span id="alertTotalCount"></span>
-                                            &mdash; <a href="#" onclick="exportReport('alerts','pdf');return false;" class="text-warning">Export all</a>
+                                        <small id="alertTruncNote" class="text-warning ms-2 d-none"
+                                            style="font-size:0.72rem">
+                                            Showing <span id="alertShownCount"></span> of <span
+                                                id="alertTotalCount"></span>
+                                            &mdash; <a href="#" onclick="exportReport('alerts','pdf');return false;"
+                                                class="text-warning">Export all</a>
                                         </small>
                                     </h6>
                                     <select class="form-select form-select-sm" id="alertListSeverityFilter"
-                                            onchange="applyAlertListFilters()" style="width:auto;min-width:130px;">
+                                        onchange="applyAlertListFilters()" style="width:auto;min-width:130px;">
                                         <option value="">All Severity</option>
                                         <option value="CRITICAL">Critical only</option>
                                         <option value="WARNING">Warning only</option>
@@ -518,14 +567,19 @@
                                         <table class="table table-hover mb-0" id="alertListTable">
                                             <thead class="table-dark">
                                                 <tr>
-                                                    <th class="user-select-none" style="cursor:pointer;white-space:nowrap;" onclick="sortAlertList('time')">
+                                                    <th class="user-select-none"
+                                                        style="cursor:pointer;white-space:nowrap;"
+                                                        onclick="sortAlertList('time')">
                                                         Time <span id="sortIcon_time" class="text-muted">↕</span>
                                                     </th>
-                                                    <th class="user-select-none" style="cursor:pointer;" onclick="sortAlertList('device')">
+                                                    <th class="user-select-none" style="cursor:pointer;"
+                                                        onclick="sortAlertList('device')">
                                                         Device <span id="sortIcon_device" class="text-muted">↕</span>
                                                     </th>
-                                                    <th class="user-select-none" style="cursor:pointer;" onclick="sortAlertList('severity')">
-                                                        Severity <span id="sortIcon_severity" class="text-muted">↕</span>
+                                                    <th class="user-select-none" style="cursor:pointer;"
+                                                        onclick="sortAlertList('severity')">
+                                                        Severity <span id="sortIcon_severity"
+                                                            class="text-muted">↕</span>
                                                     </th>
                                                     <th>Message</th>
                                                     <th></th>
@@ -570,7 +624,8 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
-                        <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation Monitoring — Employee Device Fleet</h5>
+                        <h5 class="mb-0"><i class="fas fa-desktop me-2"></i> Workstation Monitoring — Employee Device
+                            Fleet</h5>
                         <div id="wsConfidenceBadge" class="confidence-badge-line"></div>
                     </div>
                     <div class="d-flex gap-2 align-items-center">
@@ -579,11 +634,11 @@
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadWorkstationHealth(true)" aria-label="Refresh workstation report">
+                        <button class="btn btn-sm btn-primary" onclick="loadWorkstationHealth(true)"
+                            aria-label="Refresh workstation report">
                             <i class="fas fa-sync"></i>
                         </button>
-                        <a id="wsPdfBtn" href="#"
-                            class="btn btn-sm btn-outline-secondary" target="_blank">
+                        <a id="wsPdfBtn" href="#" class="btn btn-sm btn-outline-secondary" target="_blank">
                             <i class="fas fa-file-pdf me-1"></i> Download PDF
                         </a>
                     </div>
@@ -665,9 +720,13 @@
                 <!-- SLA summary -->
                 <div class="col-md-3 mb-3">
                     <div class="card h-100">
-                        <div class="card-header"><h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6></div>
+                        <div class="card-header">
+                            <h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6>
+                        </div>
                         <div class="card-body p-2" id="wsSlaBreakdown">
-                            <div class="text-center py-3"><div class="spinner-border" role="status"></div></div>
+                            <div class="text-center py-3">
+                                <div class="spinner-border" role="status"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -677,8 +736,7 @@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h6 class="mb-0"><i class="fas fa-table me-1"></i> Per-Device Uptime</h6>
                             <input type="text" id="wsSearchInput" class="form-control form-control-sm"
-                                placeholder="Search device / employee…" style="width:200px"
-                                oninput="filterWsTable()">
+                                placeholder="Search device / employee…" style="width:200px" oninput="filterWsTable()">
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive" style="max-height:460px;overflow-y:auto">
@@ -697,14 +755,18 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td colspan="9" class="text-center text-muted p-4">
-                                            Click <strong>Workstation Monitoring</strong> tab to load.
-                                        </td></tr>
+                                        <tr>
+                                            <td colspan="9" class="text-center text-muted p-4">
+                                                Click <strong>Workstation Monitoring</strong> tab to load.
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
                             <div class="px-3 pb-2">
-                                <small class="text-muted" style="font-size:0.72rem">† MTTR, MTBF, incidents, productivity, focus score, and keyboard activity are available in the Device Inspector tab.</small>
+                                <small class="text-muted" style="font-size:0.72rem">† MTTR, MTBF, incidents,
+                                    productivity, focus score, and keyboard activity are available in the Device
+                                    Inspector tab.</small>
                             </div>
                         </div>
                     </div>
@@ -733,7 +795,10 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td colspan="4" class="text-center text-muted p-3">No violation data loaded.</td></tr>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted p-3">No violation data loaded.
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -752,7 +817,8 @@
                         <div class="card-body">
                             <div class="row align-items-end mb-3">
                                 <div class="col-md-5">
-                                    <label class="form-label text-uppercase text-muted small fw-bold">Select Workstation</label>
+                                    <label class="form-label text-uppercase text-muted small fw-bold">Select
+                                        Workstation</label>
                                     <div class="search-select-container">
                                         <input type="text" class="search-select-input" id="wsViolDeviceSearch"
                                             placeholder="Search workstation…" autocomplete="off">
@@ -798,11 +864,11 @@
                             <option value="30d" selected>Last 30 Days</option>
                             <option value="90d">Last 90 Days</option>
                         </select>
-                        <button class="btn btn-sm btn-primary" onclick="loadServerReports(true)" aria-label="Refresh server report">
+                        <button class="btn btn-sm btn-primary" onclick="loadServerReports(true)"
+                            aria-label="Refresh server report">
                             <i class="fas fa-sync"></i>
                         </button>
-                        <a id="srvPdfBtn" href="#"
-                            class="btn btn-sm btn-outline-secondary" target="_blank">
+                        <a id="srvPdfBtn" href="#" class="btn btn-sm btn-outline-secondary" target="_blank">
                             <i class="fas fa-file-pdf me-1"></i> Download PDF
                         </a>
                     </div>
@@ -848,8 +914,8 @@
 
             <!-- Resource details toggle -->
             <div class="mb-2 text-end">
-                <button class="btn btn-sm btn-outline-secondary" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#srvResourceDetails" aria-expanded="false">
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#srvResourceDetails" aria-expanded="false">
                     <i class="fas fa-microchip me-1"></i> Resource Details
                 </button>
             </div>
@@ -886,22 +952,50 @@
                 <div class="row mb-3">
                     <div class="col-md-6 mb-3 mb-md-0">
                         <div class="card h-100">
-                            <div class="card-header"><h6 class="mb-0"><i class="fas fa-fire-alt me-1 text-danger"></i> Top 5 CPU Consumers</h6></div>
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-fire-alt me-1 text-danger"></i> Top 5 CPU Consumers
+                                </h6>
+                            </div>
                             <div class="card-body p-0">
                                 <table class="table table-sm mb-0" id="srvTopCpuTable">
-                                    <thead class="table-dark"><tr><th>Device</th><th class="text-end">Avg</th><th class="text-end">Peak</th><th>SLA</th></tr></thead>
-                                    <tbody><tr><td colspan="4" class="text-center text-muted p-3">—</td></tr></tbody>
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th class="text-end">Avg</th>
+                                            <th class="text-end">Peak</th>
+                                            <th>SLA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted p-3">—</td>
+                                        </tr>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="card h-100">
-                            <div class="card-header"><h6 class="mb-0"><i class="fas fa-memory me-1 text-warning"></i> Top 5 Memory Consumers</h6></div>
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-memory me-1 text-warning"></i> Top 5 Memory Consumers
+                                </h6>
+                            </div>
                             <div class="card-body p-0">
                                 <table class="table table-sm mb-0" id="srvTopMemTable">
-                                    <thead class="table-dark"><tr><th>Device</th><th class="text-end">Avg</th><th class="text-end">Peak</th><th>SLA</th></tr></thead>
-                                    <tbody><tr><td colspan="4" class="text-center text-muted p-3">—</td></tr></tbody>
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Device</th>
+                                            <th class="text-end">Avg</th>
+                                            <th class="text-end">Peak</th>
+                                            <th>SLA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted p-3">—</td>
+                                        </tr>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
@@ -913,9 +1007,13 @@
             <div class="row">
                 <div class="col-md-3 mb-3">
                     <div class="card h-100">
-                        <div class="card-header"><h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6></div>
+                        <div class="card-header">
+                            <h6><i class="fas fa-certificate me-1"></i> SLA Tiers</h6>
+                        </div>
                         <div class="card-body p-2" id="srvSlaBreakdown">
-                            <div class="text-center py-3"><div class="spinner-border" role="status"></div></div>
+                            <div class="text-center py-3">
+                                <div class="spinner-border" role="status"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -924,8 +1022,7 @@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h6 class="mb-0"><i class="fas fa-table me-1"></i> Per-Device Uptime &amp; Health</h6>
                             <input type="text" id="srvSearchInput" class="form-control form-control-sm"
-                                placeholder="Search device / IP…" style="width:200px"
-                                oninput="filterSrvTable()">
+                                placeholder="Search device / IP…" style="width:200px" oninput="filterSrvTable()">
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive" style="max-height:460px;overflow-y:auto">
@@ -945,9 +1042,11 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td colspan="10" class="text-center text-muted p-4">
-                                            Click <strong>Server Reports</strong> tab to load.
-                                        </td></tr>
+                                        <tr>
+                                            <td colspan="10" class="text-center text-muted p-4">
+                                                Click <strong>Server Reports</strong> tab to load.
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -963,125 +1062,155 @@
 <!-- ── Device Detail Modal (Phase 3) ─────────────────────────────── -->
 <!-- Export Confirmation Modal -->
 <div class="modal fade" id="exportConfirmModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
-    <div class="modal-content" style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
-      <div class="modal-header" style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
-        <h6 class="modal-title mb-0" style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
-          <i class="fas fa-file-export me-2"></i>Confirm Export
-        </h6>
-        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" style="padding:1rem">
-        <p class="mb-2 text-muted small">You are about to generate a PDF report for:</p>
-        <div class="d-flex justify-content-between mb-1"><span class="text-muted small">Report type</span><span id="exportConfirmType" class="fw-semibold small text-white"></span></div>
-        <div class="d-flex justify-content-between mb-3"><span class="text-muted small">Range</span><span id="exportConfirmRange" class="fw-semibold small text-white"></span></div>
-        <p class="mb-0 text-muted" style="font-size:0.78rem">Large ranges may take up to 30 seconds. Download starts automatically.</p>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid rgba(255,255,255,0.06);padding:.6rem 1rem;gap:.5rem">
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-sm btn-primary" id="exportConfirmBtn">
-          <i class="fas fa-download me-1"></i> Export PDF
-        </button>
-      </div>
+    <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
+        <div class="modal-content"
+            style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
+            <div class="modal-header"
+                style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
+                <h6 class="modal-title mb-0"
+                    style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
+                    <i class="fas fa-file-export me-2"></i>Confirm Export
+                </h6>
+                <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding:1rem">
+                <p class="mb-2 text-muted small">You are about to generate a PDF report for:</p>
+                <div class="d-flex justify-content-between mb-1"><span class="text-muted small">Report type</span><span
+                        id="exportConfirmType" class="fw-semibold small text-white"></span></div>
+                <div class="d-flex justify-content-between mb-3"><span class="text-muted small">Range</span><span
+                        id="exportConfirmRange" class="fw-semibold small text-white"></span></div>
+                <p class="mb-0 text-muted" style="font-size:0.78rem">Large ranges may take up to 30 seconds. Download
+                    starts automatically.</p>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid rgba(255,255,255,0.06);padding:.6rem 1rem;gap:.5rem">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="exportConfirmBtn">
+                    <i class="fas fa-download me-1"></i> Export PDF
+                </button>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 
 <div class="modal fade" id="deviceDetailModal" role="dialog" aria-modal="true" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content" style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
-      <div class="modal-header" style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
-        <div>
-          <h6 class="modal-title fw-semibold mb-0" style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
-            <i class="fas fa-microchip me-2"></i><span id="ddmDeviceName">Device</span>
-          </h6>
-          <div class="d-flex gap-2 mt-1">
-            <code id="ddmDeviceIp" style="font-size:.76rem;color:#94a3b8"></code>
-            <span id="ddmFleetBadge" class="badge bg-secondary bg-opacity-50" style="font-size:.65rem"></span>
-          </div>
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content"
+            style="background:var(--ui-surface-4,#222222);border:1px solid rgba(0,212,170,0.2);color:#e2e8f0">
+            <div class="modal-header"
+                style="background:var(--ui-surface-1,#0C0C0C);border-bottom:1px solid rgba(0,212,170,0.15);padding:.6rem 1rem">
+                <div>
+                    <h6 class="modal-title fw-semibold mb-0"
+                        style="font-family:'Rajdhani',sans-serif;letter-spacing:1px;text-transform:uppercase;color:#00ffc8">
+                        <i class="fas fa-microchip me-2"></i><span id="ddmDeviceName">Device</span>
+                    </h6>
+                    <div class="d-flex gap-2 mt-1">
+                        <code id="ddmDeviceIp" style="font-size:.76rem;color:#94a3b8"></code>
+                        <span id="ddmFleetBadge" class="badge bg-secondary bg-opacity-50"
+                            style="font-size:.65rem"></span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div id="ddmContent">
+                    <!-- Core metrics -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="card text-center py-2"
+                                style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                <div class="text-muted"
+                                    style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Uptime</div>
+                                <div id="ddmUptime" class="fw-bold mt-1">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card text-center py-2"
+                                style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                <div class="text-muted"
+                                    style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Latency</div>
+                                <div id="ddmLatency" class="fw-bold mt-1">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card text-center py-2"
+                                style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                <div class="text-muted"
+                                    style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Pkt Loss</div>
+                                <div id="ddmPktLoss" class="fw-bold mt-1">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card text-center py-2"
+                                style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                <div class="text-muted"
+                                    style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Downtime</div>
+                                <div id="ddmDowntime" class="fw-bold mt-1">—</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Resource metrics -->
+                    <div class="mb-3">
+                        <div class="text-muted mb-1"
+                            style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:3px">
+                            Resource Metrics</div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <div class="card text-center py-2"
+                                    style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                    <div id="ddmCpuLabel" class="text-muted"
+                                        style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">CPU</div>
+                                    <div id="ddmCpu" class="fw-bold mt-1">—</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="card text-center py-2"
+                                    style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                    <div class="text-muted"
+                                        style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Mem</div>
+                                    <div id="ddmMem" class="fw-bold mt-1">—</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="card text-center py-2"
+                                    style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                                    <div class="text-muted"
+                                        style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Disk</div>
+                                    <div id="ddmDisk" class="fw-bold mt-1">—</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Violations (workstations only) -->
+                    <div id="ddmViolationsSection" style="display:none">
+                        <div class="text-muted mb-1"
+                            style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:3px">
+                            Website Violations</div>
+                        <div id="ddmViolLoading" style="display:none" class="text-muted" style="font-size:.8rem">
+                            <span class="spinner-border spinner-border-sm me-1"></span>Loading…
+                        </div>
+                        <div id="ddmViolNone" style="display:none;font-size:.8rem" class="text-muted">No violations
+                            recorded in this period.</div>
+                        <table class="table table-sm mb-0" id="ddmViolTable" style="display:none">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="font-size:.7rem">Domain</th>
+                                    <th class="text-end" style="font-size:.7rem">Count</th>
+                                    <th style="font-size:.7rem">Risk</th>
+                                    <th style="font-size:.7rem">Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ddmViolTbody"></tbody>
+                        </table>
+                    </div>
+                </div><!-- /ddmContent -->
+            </div><!-- /modal-body -->
+            <div class="modal-footer"
+                style="background:var(--ui-surface-1,#0C0C0C);border-top:1px solid rgba(0,212,170,.1);padding:.4rem 1rem">
+                <small class="text-muted me-auto" id="ddmPeriodLabel" style="font-size:.7rem"></small>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
-        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-3">
-        <div id="ddmContent">
-          <!-- Core metrics -->
-          <div class="row g-2 mb-3">
-            <div class="col-6 col-md-3">
-              <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Uptime</div>
-                <div id="ddmUptime" class="fw-bold mt-1">—</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Latency</div>
-                <div id="ddmLatency" class="fw-bold mt-1">—</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Pkt Loss</div>
-                <div id="ddmPktLoss" class="fw-bold mt-1">—</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-3">
-              <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Downtime</div>
-                <div id="ddmDowntime" class="fw-bold mt-1">—</div>
-              </div>
-            </div>
-          </div>
-          <!-- Resource metrics -->
-          <div class="mb-3">
-            <div class="text-muted mb-1" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:3px">Resource Metrics</div>
-            <div class="row g-2">
-              <div class="col-4">
-                <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                  <div id="ddmCpuLabel" class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">CPU</div>
-                  <div id="ddmCpu" class="fw-bold mt-1">—</div>
-                </div>
-              </div>
-              <div class="col-4">
-                <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                  <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Mem</div>
-                  <div id="ddmMem" class="fw-bold mt-1">—</div>
-                </div>
-              </div>
-              <div class="col-4">
-                <div class="card text-center py-2" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
-                  <div class="text-muted" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px">Disk</div>
-                  <div id="ddmDisk" class="fw-bold mt-1">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Violations (workstations only) -->
-          <div id="ddmViolationsSection" style="display:none">
-            <div class="text-muted mb-1" style="font-size:.63rem;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:3px">Website Violations</div>
-            <div id="ddmViolLoading" style="display:none" class="text-muted" style="font-size:.8rem">
-              <span class="spinner-border spinner-border-sm me-1"></span>Loading…
-            </div>
-            <div id="ddmViolNone" style="display:none;font-size:.8rem" class="text-muted">No violations recorded in this period.</div>
-            <table class="table table-sm mb-0" id="ddmViolTable" style="display:none">
-              <thead class="table-dark">
-                <tr>
-                  <th style="font-size:.7rem">Domain</th>
-                  <th class="text-end" style="font-size:.7rem">Count</th>
-                  <th style="font-size:.7rem">Risk</th>
-                  <th style="font-size:.7rem">Last Seen</th>
-                </tr>
-              </thead>
-              <tbody id="ddmViolTbody"></tbody>
-            </table>
-          </div>
-        </div><!-- /ddmContent -->
-      </div><!-- /modal-body -->
-      <div class="modal-footer" style="background:var(--ui-surface-1,#0C0C0C);border-top:1px solid rgba(0,212,170,.1);padding:.4rem 1rem">
-        <small class="text-muted me-auto" id="ddmPeriodLabel" style="font-size:.7rem"></small>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
     </div>
-  </div>
 </div>
 
 {% endblock %}
@@ -1091,7 +1220,7 @@
     // ==========================================
     // Reusable search-select dropdown utility
     // ==========================================
-    function initSearchSelect({inputId, listId, hiddenId, items, renderItem, getSearchText, onSelect}) {
+    function initSearchSelect({ inputId, listId, hiddenId, items, renderItem, getSearchText, onSelect }) {
         const input = document.getElementById(inputId);
         const list = document.getElementById(listId);
         const hidden = document.getElementById(hiddenId);
@@ -1141,6 +1270,10 @@
                 if (!r.ok) clearInterval(_keepalive);
             } catch { clearInterval(_keepalive); }
         }, 120000);
+
+        // Pre-warm the device search list cache in the background so the
+        // Inspector dropdown is instant when the user clicks the tab.
+        fetch('/api/reports/device-search-list', { credentials: 'same-origin' }).catch(() => {});
 
         // Initialization happens after function definitions below.
 
@@ -1233,10 +1366,10 @@
             const map = {
                 daily_device_stats: ['rollup', 'Daily Rollup'],
                 device_scan_history: ['raw', 'Raw Scans'],
-                raw:    ['raw', 'Raw Scans'],
+                raw: ['raw', 'Raw Scans'],
                 hourly: ['rollup', 'Hourly Rollup'],
-                daily:  ['rollup', 'Daily Rollup'],
-                live:   ['live', 'Live'],
+                daily: ['rollup', 'Daily Rollup'],
+                live: ['live', 'Live'],
             };
             const [cls, label] = map[basis] || ['', basis || '—'];
             return `<span class="data-source-badge ${cls}">${label}</span>`;
@@ -1305,20 +1438,20 @@
             };
         }
         const _cpuMemThreshPlugin = _thresholdLinePluginFactory(75, 90);
-        const _diskThreshPlugin   = _thresholdLinePluginFactory(80, 90);
+        const _diskThreshPlugin = _thresholdLinePluginFactory(80, 90);
 
         // ============================================================
         //  UTILITY: Fleet health bar (Executive tab)
         // ============================================================
         function _renderFleetHealthBar(dist) {
-            const barEl    = document.getElementById('execSlaTierBar');
+            const barEl = document.getElementById('execSlaTierBar');
             const legendEl = document.getElementById('execSlaTierLegend');
-            const cardEl   = document.getElementById('execSlaTierCard');
+            const cardEl = document.getElementById('execSlaTierCard');
             if (!dist || !barEl || !legendEl || !cardEl) return;
 
             const tiers = [
-                { key: 'Healthy',  color: '#00d4aa', label: 'Healthy' },
-                { key: 'Warning',  color: '#ffaa00', label: 'Warning' },
+                { key: 'Healthy', color: '#00d4aa', label: 'Healthy' },
+                { key: 'Warning', color: '#ffaa00', label: 'Warning' },
                 { key: 'Critical', color: '#ff3b5c', label: 'Critical' },
             ];
             const total = tiers.reduce((s, t) => s + (dist[t.key] || 0), 0);
@@ -1343,28 +1476,28 @@
         //  UTILITY: Data health banner (Executive tab)
         // ============================================================
         function _renderDataHealthBanner(data) {
-            const card    = document.getElementById('execDataHealthCard');
+            const card = document.getElementById('execDataHealthCard');
             const content = document.getElementById('execDataHealthContent');
             if (!card || !content) return;
 
             const dh = data.data_health || {};
-            const scanDays   = dh.scan_history_days || 0;
-            const statsDays  = dh.daily_stats_coverage || 0;
+            const scanDays = dh.scan_history_days || 0;
+            const statsDays = dh.daily_stats_coverage || 0;
             const windowDays = dh.trend_window_days || 30;
             const trendAvail = data.prev_uptime_score != null;
-            const needDays   = windowDays * 2;
+            const needDays = windowDays * 2;
 
             let trendStatus, cardBorder;
             if (trendAvail) {
                 trendStatus = `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Active</span>`;
-                cardBorder  = 'border-success';
+                cardBorder = 'border-success';
             } else if (scanDays >= needDays) {
                 trendStatus = `<span class="text-warning"><i class="fas fa-exclamation-circle me-1"></i>Pending rollup
                     <a href="#" class="ms-2" style="font-size:0.72rem" onclick="triggerRollup(event)">Run now →</a></span>`;
-                cardBorder  = 'border-warning';
+                cardBorder = 'border-warning';
             } else {
                 trendStatus = `<span class="text-muted"><i class="fas fa-clock me-1"></i>Need ${needDays}d (have ${scanDays}d)</span>`;
-                cardBorder  = '';
+                cardBorder = '';
             }
 
             const icmpWarning = statsDays === 0
@@ -1407,20 +1540,20 @@
         //  UTILITY: Latency distribution histogram (Network tab)
         // ============================================================
         function _renderLatencyHistogram(uptime) {
-            const rowEl   = document.getElementById('netHistRow');
-            const barsEl  = document.getElementById('latencyHistBars');
-            const labsEl  = document.getElementById('latencyHistLabels');
+            const rowEl = document.getElementById('netHistRow');
+            const barsEl = document.getElementById('latencyHistBars');
+            const labsEl = document.getElementById('latencyHistLabels');
             if (!rowEl || !barsEl || !labsEl) return;
 
             const bucketDefs = [
-                { label: '<10',    max: 10 },
-                { label: '10-25',  max: 25 },
-                { label: '25-50',  max: 50 },
+                { label: '<10', max: 10 },
+                { label: '10-25', max: 25 },
+                { label: '25-50', max: 50 },
                 { label: '50-100', max: 100 },
-                { label: '100-200',max: 200 },
-                { label: '200+',   max: Infinity },
+                { label: '100-200', max: 200 },
+                { label: '200+', max: Infinity },
             ];
-            const colors = ['#00d4aa','#00d4aa','#00d4aa','#ffaa00','#ff3b5c','#ff3b5c'];
+            const colors = ['#00d4aa', '#00d4aa', '#00d4aa', '#ffaa00', '#ff3b5c', '#ff3b5c'];
             const counts = new Array(bucketDefs.length).fill(0);
 
             (uptime || []).forEach(row => {
@@ -1461,8 +1594,8 @@
         //  UTILITY: Unresolved alert age panel (Alerts tab)
         // ============================================================
         function _renderUnresolvedAgePanel(alerts) {
-            const rowEl   = document.getElementById('alertAgeRow');
-            const listEl  = document.getElementById('alertAgeList');
+            const rowEl = document.getElementById('alertAgeRow');
+            const listEl = document.getElementById('alertAgeList');
             const countEl = document.getElementById('unresolvedCount');
             if (!rowEl || !listEl || !countEl) return;
 
@@ -1479,7 +1612,7 @@
             countEl.textContent = unresolved.length;
             if (unresolved.length === 0) { rowEl.style.display = 'none'; return; }
 
-            const h2  = 2  * 3600 * 1000;
+            const h2 = 2 * 3600 * 1000;
             const h24 = 24 * 3600 * 1000;
             listEl.innerHTML = unresolved.slice(0, 20).map(a => {
                 const ageCls = a._ageMs < h2 ? 'age-fresh' : a._ageMs < h24 ? 'age-medium' : 'age-old';
@@ -1622,7 +1755,9 @@
         let _inspectorDevices = [];
 
         function loadDevices() {
-            fetch('/api/devices')
+            // Use the lightweight cached endpoint — returns only name+IP, no scan-status join.
+            // Populated from Redis (60s TTL) so the dropdown appears instantly.
+            return fetch('/api/reports/device-search-list', { credentials: 'same-origin' })
                 .then(response => response.json())
                 .then(devices => {
                     _inspectorDevices = devices;
@@ -1699,7 +1834,7 @@
                         ? `<span class="badge ${pktLoss > 10 ? 'bg-danger' : pktLoss > 5 ? 'bg-warning text-dark' : 'bg-secondary opacity-75'}">${pktLoss.toFixed(1)}%</span>`
                         : '<span class="text-muted">—</span>';
                     const viewLink = device.device_id
-                        ? `<a href="/devices/${device.device_id}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem;">View</a>`
+                        ? `<a href="/devices/${device.device_id}/details" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem;">View</a>`
                         : '';
                     return `
                         <td>
@@ -1723,8 +1858,21 @@
             const contentDiv = document.getElementById('execContent');
             const tableBody = document.querySelector('#problematicTable tbody');
 
-            // Show Loading
-            contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Analyzing Fleet Data...</p></div>';
+            // Show skeleton
+            contentDiv.innerHTML = `
+                <div class="skel-exec px-1 py-3">
+                    <div class="skel-exec-row">
+                        <div class="skel-stat-col"><div class="skel-block skel-val"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                        <div class="skel-stat-col"><div class="skel-block skel-val"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                        <div class="skel-stat-col"><div class="skel-block skel-val"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                        <div class="skel-stat-col"><div class="skel-block skel-val"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                    </div>
+                    <div class="skel-exec-row three-col">
+                        <div class="skel-stat-col"><div class="skel-block skel-val sm"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                        <div class="skel-stat-col"><div class="skel-block skel-val sm"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                        <div class="skel-stat-col"><div class="skel-block skel-val sm"></div><div class="skel-block skel-lbl mt-2"></div></div>
+                    </div>
+                </div>`;
             setTableStatusRow(tableBody, 4, 'Loading...');
 
             fetchReportJson(`/api/reports/executive?range=${encodeURIComponent(range)}`)
@@ -1978,29 +2126,165 @@
                         <td><code style="font-size:.8rem;color:#93c5fd">${_esc(v.domain)}</code></td>
                         <td class="text-end"><span class="badge bg-danger">${v.count}</span></td>
                         <td style="color:rgba(255,255,255,0.5)">${v.last_seen
-                            ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
-                                .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
-                            : '\u2014'}</td>
+                    ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
+                        .toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+                    : '\u2014'}</td>
                     </tr>`).join('')}</tbody>
                 </table>
             </div>`;
         }
 
-        function displayReport(stats, deviceIp, period) {
-            const uptimeColor = stats.uptime_percentage >= 90 ? 'success' :
-                stats.uptime_percentage >= 80 ? 'warning' : 'danger';
+        function _fmtInspectorMetric(value, suffix = '', digits = 1, fallback = '—') {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return fallback;
+            return `${numeric.toFixed(digits)}${suffix}`;
+        }
 
+        function _fmtInspectorCount(value) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric.toLocaleString('en-IN') : '—';
+        }
+
+        function _windowTimeLabel(window) {
+            if (!window) return 'No qualifying window in this range';
+            const start = window.start || window.timestamp;
+            const end = window.end || window.timestamp;
+            if (!start) return 'No qualifying window in this range';
+            const startLabel = formatReportDateTime(start, {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+            const endLabel = end
+                ? formatReportDateTime(end, {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                })
+                : 'Ongoing';
+            return start === end ? startLabel : `${startLabel} → ${endLabel}`;
+        }
+
+        function _windowValueLabel(window, primaryKey, suffix = ' ms') {
+            if (!window || window[primaryKey] == null) return '—';
+            return _fmtInspectorMetric(window[primaryKey], suffix);
+        }
+
+        function _renderWindowSpotlight(label, tone, icon, value, meta, detail) {
+            return `
+                <div class="rpt-spotlight-card ${tone}">
+                    <div class="rpt-spotlight-kicker"><i class="${icon}"></i><span>${label}</span></div>
+                    <div class="rpt-spotlight-value">${value}</div>
+                    <p class="rpt-spotlight-meta mb-2">${meta}</p>
+                    <span class="rpt-window-chip"><strong>Window</strong>${detail}</span>
+                </div>
+            `;
+        }
+
+        function _renderInspectorEmptyState(message) {
+            return `
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-chart-line fa-2x mb-3 empty-state-icon"></i>
+                    <p class="mb-0 small">${message}</p>
+                </div>
+            `;
+        }
+
+        function _pingChartState(scan) {
+            if (!scan) return 'unknown';
+            if (scan.status === 'no_response') return 'no_response';
+            if (scan.status === 'offline') return 'offline';
+            return 'online';
+        }
+
+        function _inspectorTooltipTitle(items) {
+            if (!items.length) return '';
+            const point = items[0].raw?._pointData;
+            return point ? formatReportDateTime(point.ts, {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            }) : items[0].label;
+        }
+
+        function _buildInspectorNote(summary, latestAnomaly) {
+            const p95 = summary?.p95_latency_ms;
+            const coverage = summary?.coverage_pct;
+            const anomaly = latestAnomaly?.diagnosis;
+            return `
+                <div class="rpt-intel-note">
+                    <i class="fas fa-wave-square"></i>
+                    <div>
+                        <strong>Ping Intelligence</strong>
+                        <span>
+                            ${p95 != null ? `The 95th percentile latency sat at <b>${_fmtInspectorMetric(p95, ' ms')}</b>, which is a better indicator of real user experience than a single spike.` : 'This range has limited ICMP latency samples, so the view is based on what reachability data is available.'}
+                            ${coverage != null ? ` Scan coverage for the selected window is <b>${_fmtInspectorMetric(coverage, '%')}</b>.` : ''}
+                            ${anomaly ? ` Latest issue: <b>${_esc(anomaly)}</b>.` : ' No recent anomaly exceeded the inspector spike thresholds.'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function _inspectorDensityLabel(scanCount, period) {
+            if (!scanCount) return 'No samples';
+            if (period === '24h') return 'High-resolution raw feed';
+            if (scanCount > 240) return 'Dense raw timeline';
+            if (scanCount > 96) return 'Operational raw timeline';
+            return 'Focused raw timeline';
+        }
+
+        function _buildInspectorChartMeta({ label, tone = 'teal', icon, value }) {
+            return `<span class="rpt-chart-chip rpt-chart-chip--${tone}">
+                <i class="${icon}"></i>
+                <span>${_esc(label)}</span>
+                <strong>${_esc(value)}</strong>
+            </span>`;
+        }
+
+        function displayReport(stats, deviceIp, period) {
             const periodText = {
                 '24h': 'Last 24 Hours',
                 '7d': 'Last 7 Days',
                 '30d': 'Last 30 Days'
             }[period] || period;
 
-            const noResp = stats.no_response_count ?? 0;
-            const noRespColor = noResp > 0 ? 'warning' : 'success';
+            const summary = stats.ping_summary || {};
+            const scanSeries = Array.isArray(stats.scan_series) ? stats.scan_series : [];
+            const avgLatency = summary.avg_latency_ms ?? stats.avg_latency;
+            const minLatency = summary.min_latency_ms ?? stats.min_latency;
+            const maxLatency = summary.max_latency_ms ?? stats.max_latency;
+            const p95Latency = summary.p95_latency_ms;
+            const jitterMs = summary.jitter_ms;
+            const packetLossAvg = summary.packet_loss_avg_pct ?? stats.avg_packet_loss;
+            const stdDev = stats.latency_std_dev;
+            const timeoutCount = summary.timeout_count ?? stats.no_response_count ?? 0;
+            const coveragePct = summary.coverage_pct;
+            const uptimePct = Number(stats.uptime_percentage || 0);
+            const uptimeColor = uptimePct >= 99 ? 'success' : uptimePct >= 95 ? 'warning' : 'danger';
+            const latestAnomaly = summary.latest_anomaly;
+            const worstWindow = summary.worst_window;
+            const stableWindow = summary.stable_window;
+            const latestProbe = scanSeries.length ? scanSeries[scanSeries.length - 1]?.ts : null;
+            const densityLabel = _inspectorDensityLabel(scanSeries.length, period);
+            const latencyChartMeta = [
+                _buildInspectorChartMeta({ label: 'Mode', tone: 'teal', icon: 'fas fa-wave-square', value: 'Raw ICMP' }),
+                _buildInspectorChartMeta({ label: 'Cadence', tone: 'blue', icon: 'fas fa-stopwatch', value: '{{ monitoring_interval_label }}' }),
+                _buildInspectorChartMeta({ label: 'Density', tone: 'violet', icon: 'fas fa-layer-group', value: densityLabel }),
+                _buildInspectorChartMeta({ label: 'Markers', tone: 'amber', icon: 'fas fa-sparkles', value: 'Spikes + outages' }),
+            ].join('');
+            const availabilityChartMeta = [
+                _buildInspectorChartMeta({ label: 'Online', tone: 'green', icon: 'fas fa-circle-check', value: 'Green lane' }),
+                _buildInspectorChartMeta({ label: 'Offline', tone: 'red', icon: 'fas fa-circle-xmark', value: 'Red lane' }),
+                _buildInspectorChartMeta({ label: 'No response', tone: 'amber', icon: 'fas fa-satellite-dish', value: 'Amber lane' }),
+                _buildInspectorChartMeta({ label: 'Timeline', tone: 'slate', icon: 'fas fa-clock-rotate-left', value: periodText }),
+            ].join('');
 
             const html = `
-            <!-- Device header -->
             <div class="rpt-inspector-header mb-4">
                 <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
                     <div>
@@ -2009,100 +2293,134 @@
                         </h4>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <span class="rpt-period-badge"><i class="fas fa-calendar-alt me-1"></i>${_esc(periodText)}</span>
-                            <span class="badge bg-${uptimeColor}" style="font-size:.7rem;padding:.25rem .5rem">${stats.uptime_percentage.toFixed(1)}% uptime</span>
-                            ${stats.avg_latency != null ? `<span class="rpt-period-badge"><i class="fas fa-tachometer-alt me-1"></i>${stats.avg_latency.toFixed(1)} ms avg</span>` : ''}
+                            <span class="badge bg-${uptimeColor}" style="font-size:.7rem;padding:.25rem .5rem">${uptimePct.toFixed(1)}% uptime</span>
+                            ${coveragePct != null ? `<span class="rpt-period-badge"><i class="fas fa-satellite-dish me-1"></i>${_fmtInspectorMetric(coveragePct, '%')} coverage</span>` : ''}
+                            ${latestProbe ? `<span class="rpt-period-badge"><i class="fas fa-clock me-1"></i>${formatReportDateTime(latestProbe, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
                         </div>
                     </div>
                     <div class="text-end">
-                        <div class="rpt-scan-count">${stats.total_scans.toLocaleString()}</div>
-                        <div class="rpt-scan-label">total scans</div>
+                        <div class="rpt-scan-count">${_fmtInspectorCount(stats.total_scans)}</div>
+                        <div class="rpt-scan-label">captured scans</div>
+                        ${latestAnomaly?.timestamp ? `<div class="mt-2"><span class="rpt-window-chip"><strong>Latest Issue</strong>${formatReportDateTime(latestAnomaly.timestamp, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>` : ''}
                     </div>
                 </div>
+                ${scanSeries.length ? `
+                    <div class="rpt-sparkline-shell">
+                        <div class="rpt-chart-subtitle mb-2">Recent latency strip</div>
+                        <canvas id="inspectorSparklineChart"></canvas>
+                    </div>` : ''}
             </div>
 
-            <!-- Availability KPIs -->
-            <div class="rpt-inspector-section">Availability</div>
-            <div class="row mb-3">
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card success">
-                        <h3>${stats.online_count.toLocaleString()}</h3>
-                        <p><i class="fas fa-check-circle me-1 opacity-50"></i>Online</p>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card danger">
-                        <h3>${stats.offline_count.toLocaleString()}</h3>
-                        <p><i class="fas fa-times-circle me-1 opacity-50"></i>Offline</p>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card ${uptimeColor}">
-                        <h3>${stats.uptime_percentage.toFixed(2)}%</h3>
-                        <p><i class="fas fa-heartbeat me-1 opacity-50"></i>Uptime</p>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card ${noRespColor}">
-                        <h3>${noResp.toLocaleString()}</h3>
-                        <p><i class="fas fa-ban me-1 opacity-50"></i>No Response</p>
-                    </div>
-                </div>
-            </div>
+            <div class="rpt-inspector-section">Ping Intelligence</div>
+            <div class="rpt-intel-shell">
+                ${_buildInspectorNote(summary, latestAnomaly)}
 
-            ${stats.avg_latency != null ? `
-            <!-- Latency KPIs -->
-            <div class="rpt-inspector-section">Latency</div>
-            <div class="row mb-3">
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card primary">
-                        <h3>${stats.avg_latency.toFixed(1)}<small class="rpt-unit"> ms</small></h3>
-                        <p><i class="fas fa-tachometer-alt me-1 opacity-50"></i>Average</p>
+                <div class="row mb-1">
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card primary">
+                            <h3>${_fmtInspectorMetric(avgLatency, ' ms')}</h3>
+                            <p><i class="fas fa-tachometer-alt me-1 opacity-50"></i>Average</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card info">
+                            <h3>${_fmtInspectorMetric(minLatency, ' ms')}</h3>
+                            <p><i class="fas fa-arrow-down me-1 opacity-50"></i>Minimum</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card warning">
+                            <h3>${_fmtInspectorMetric(maxLatency, ' ms')}</h3>
+                            <p><i class="fas fa-arrow-up me-1 opacity-50"></i>Maximum</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card violet">
+                            <h3>${_fmtInspectorMetric(p95Latency, ' ms')}</h3>
+                            <p><i class="fas fa-chart-line me-1 opacity-50"></i>P95 Latency</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card blue">
+                            <h3>${_fmtInspectorMetric(jitterMs, ' ms')}</h3>
+                            <p><i class="fas fa-wave-square me-1 opacity-50"></i>Jitter</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card sync">
+                            <h3>${_fmtInspectorMetric(stdDev, ' ms')}</h3>
+                            <p><i class="fas fa-chart-area me-1 opacity-50"></i>Std Dev</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card ${packetLossAvg > 5 ? 'danger' : packetLossAvg > 0 ? 'warning' : 'success'}">
+                            <h3>${_fmtInspectorMetric(packetLossAvg, '%')}</h3>
+                            <p><i class="fas fa-signal me-1 opacity-50"></i>Packet Loss</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="stat-card ${timeoutCount > 0 ? 'warning' : 'success'}">
+                            <h3>${_fmtInspectorCount(timeoutCount)}</h3>
+                            <p><i class="fas fa-ban me-1 opacity-50"></i>Timeouts</p>
+                        </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card info">
-                        <h3>${stats.min_latency.toFixed(1)}<small class="rpt-unit"> ms</small></h3>
-                        <p><i class="fas fa-arrow-down me-1 opacity-50"></i>Minimum</p>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card warning">
-                        <h3>${stats.max_latency.toFixed(1)}<small class="rpt-unit"> ms</small></h3>
-                        <p><i class="fas fa-arrow-up me-1 opacity-50"></i>Maximum</p>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <div class="stat-card violet">
-                        <h3>${stats.latency_std_dev ? stats.latency_std_dev.toFixed(1) + '<small class=\\"rpt-unit\\"> ms</small>' : 'N/A'}</h3>
-                        <p><i class="fas fa-chart-area me-1 opacity-50"></i>Std Dev</p>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Charts -->
-            <div class="row mb-3">
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header py-2 px-3">
-                            <h6 class="mb-0"><i class="fas fa-tachometer-alt me-2 opacity-50"></i>Latency (ms)</h6>
-                        </div>
-                        <div class="card-body chart-pane-250">
-                            <canvas id="latencyChart"></canvas>
+                <div class="rpt-inspector-grid">
+                    ${_renderWindowSpotlight(
+                        'Worst Spike Window',
+                        'danger',
+                        'fas fa-bolt',
+                        _windowValueLabel(worstWindow, 'peak_latency_ms'),
+                        worstWindow?.diagnosis || 'No high-latency spike was detected in the selected range.',
+                        _windowTimeLabel(worstWindow),
+                    )}
+                    ${_renderWindowSpotlight(
+                        'Best Stable Window',
+                        'primary',
+                        'fas fa-shield-heart',
+                        _windowValueLabel(stableWindow, 'baseline_latency_ms'),
+                        stableWindow?.diagnosis || 'No stable baseline could be identified from the current scan density.',
+                        _windowTimeLabel(stableWindow),
+                    )}
+                    ${_renderWindowSpotlight(
+                        'Latest Anomaly',
+                        latestAnomaly ? 'warning' : 'primary',
+                        latestAnomaly ? 'fas fa-triangle-exclamation' : 'fas fa-circle-check',
+                        latestAnomaly?.latency_ms != null ? _fmtInspectorMetric(latestAnomaly.latency_ms, ' ms') : latestAnomaly?.status ? latestAnomaly.status.replace('_', ' ') : 'Healthy',
+                        latestAnomaly?.diagnosis || 'No recent outage or spike crossed the Inspector anomaly threshold.',
+                        latestAnomaly?.timestamp ? formatReportDateTime(latestAnomaly.timestamp, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'No anomaly in range',
+                    )}
+                </div>
+
+                ${scanSeries.length ? `
+                <div class="row mb-3">
+                    <div class="col-xl-7 mb-3">
+                        <div class="card rpt-chart-shell rpt-chart-shell--latency">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-tachometer-alt me-2 opacity-50"></i>Latency Intelligence</h6>
+                                <div class="rpt-chart-subtitle">Same filtered raw ICMP series used for the KPI and PDF export. Collection interval: {{ monitoring_interval_label }}. Longer report ranges may be aggregated elsewhere for readability.</div>
+                                <div class="rpt-chart-meta">${latencyChartMeta}</div>
+                            </div>
+                            <div class="card-body chart-pane-300">
+                                <canvas id="latencyChart"></canvas>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header py-2 px-3">
-                            <h6 class="mb-0"><i class="fas fa-signal me-2 opacity-50"></i>Availability (%)</h6>
-                        </div>
-                        <div class="card-body chart-pane-250">
-                            <canvas id="availabilityChart"></canvas>
+                    <div class="col-xl-5 mb-3">
+                        <div class="card rpt-chart-shell rpt-chart-shell--availability">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-signal me-2 opacity-50"></i>Availability State</h6>
+                                <div class="rpt-chart-subtitle">Step-line view of online, offline, and no-response intervals rendered in India/Kolkata time.</div>
+                                <div class="rpt-chart-meta">${availabilityChartMeta}</div>
+                            </div>
+                            <div class="card-body chart-pane-300">
+                                <canvas id="availabilityChart"></canvas>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </div>` : _renderInspectorEmptyState('No filtered ICMP scan samples were found for this device in the selected range.')}
             </div>
-            ` : ''}
 
             ${agentSection(stats.agent_data)}
             ${_inspectorViolationSection(stats.website_violations)}
@@ -2110,8 +2428,8 @@
 
             document.getElementById('reportResults').innerHTML = html;
 
-            if (stats.avg_latency) {
-                renderCharts(deviceIp, period);
+            if (scanSeries.length) {
+                renderCharts(stats, period);
             }
             if (stats.agent_data && stats.agent_data.available && stats.agent_data.time_series) {
                 renderAgentChart(stats.agent_data.time_series);
@@ -2122,13 +2440,81 @@
         let latencyChart = null;
         let availabilityChart = null;
         let agentCpuMemChart = null;
+        let inspectorSparklineChart = null;
+
+        function _destroyInspectorCharts() {
+            if (latencyChart) latencyChart.destroy();
+            if (availabilityChart) availabilityChart.destroy();
+            if (inspectorSparklineChart) inspectorSparklineChart.destroy();
+            latencyChart = null;
+            availabilityChart = null;
+            inspectorSparklineChart = null;
+        }
+
+        function _latencyGradient(ctx, chartArea) {
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, 'rgba(45, 212, 191, 0.28)');
+            gradient.addColorStop(0.6, 'rgba(45, 212, 191, 0.10)');
+            gradient.addColorStop(1, 'rgba(15, 23, 42, 0.02)');
+            return gradient;
+        }
+
+        const inspectorLatencyBandsPlugin = {
+            id: 'inspectorLatencyBandsPlugin',
+            beforeDatasetsDraw(chart) {
+                const { ctx, chartArea, scales } = chart;
+                if (!chartArea || !scales?.y) return;
+                const y = scales.y;
+                const maxValue = y.max;
+                const bands = [
+                    { from: 0, to: Math.min(25, maxValue), color: 'rgba(34, 197, 94, 0.06)' },
+                    { from: Math.min(25, maxValue), to: Math.min(100, maxValue), color: 'rgba(245, 158, 11, 0.06)' },
+                    { from: Math.min(100, maxValue), to: maxValue, color: 'rgba(248, 113, 113, 0.06)' },
+                ];
+                ctx.save();
+                for (const band of bands) {
+                    if (band.to <= band.from) continue;
+                    const top = y.getPixelForValue(band.to);
+                    const bottom = y.getPixelForValue(band.from);
+                    ctx.fillStyle = band.color;
+                    ctx.fillRect(chartArea.left, top, chartArea.right - chartArea.left, bottom - top);
+                }
+                ctx.restore();
+            },
+        };
+
+        const inspectorChartFramePlugin = {
+            id: 'inspectorChartFramePlugin',
+            afterDraw(chart, args, pluginOptions) {
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return;
+                const tone = pluginOptions?.tone || 'teal';
+                const palette = {
+                    teal: { stroke: 'rgba(45, 212, 191, 0.26)', glow: 'rgba(45, 212, 191, 0.10)' },
+                    emerald: { stroke: 'rgba(74, 222, 128, 0.24)', glow: 'rgba(74, 222, 128, 0.08)' },
+                };
+                const selected = palette[tone] || palette.teal;
+                ctx.save();
+                ctx.shadowColor = selected.glow;
+                ctx.shadowBlur = 22;
+                ctx.strokeStyle = selected.stroke;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(
+                    chartArea.left - 0.5,
+                    chartArea.top - 0.5,
+                    chartArea.right - chartArea.left + 1,
+                    chartArea.bottom - chartArea.top + 1,
+                );
+                ctx.restore();
+            },
+        };
 
         function renderAgentChart(timeSeries) {
             const canvas = document.getElementById('agentCpuMemChart');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
             if (agentCpuMemChart) agentCpuMemChart.destroy();
-            const labels = timeSeries.map(d => formatReportTime(d.timestamp));
+            const labels = timeSeries.map(d => formatReportTime(d.timestamp, { hour: '2-digit', minute: '2-digit' }));
             agentCpuMemChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -2140,17 +2526,17 @@
                             borderColor: '#f59e0b',
                             backgroundColor: 'rgba(245,158,11,0.08)',
                             borderWidth: 2,
-                            tension: 0.3,
+                            tension: 0.32,
                             fill: false,
                             pointRadius: 0,
                         },
                         {
                             label: 'Memory %',
                             data: timeSeries.map(d => d.memory),
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59,130,246,0.08)',
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56,189,248,0.08)',
                             borderWidth: 2,
-                            tension: 0.3,
+                            tension: 0.32,
                             fill: false,
                             pointRadius: 0,
                         },
@@ -2159,121 +2545,315 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#adb5bd' } } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, labels: { color: '#cbd5e1' } },
+                        tooltip: {
+                            callbacks: {
+                                title(items) {
+                                    return items[0]?.label || '';
+                                },
+                            },
+                        },
+                    },
                     scales: {
                         y: {
-                            min: 0, max: 100,
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#adb5bd', callback: v => v + '%' },
+                            min: 0,
+                            max: 100,
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            ticks: { color: '#94a3b8', callback: v => `${v}%` },
                         },
-                        x: { grid: { display: false }, ticks: { color: '#adb5bd' } },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' },
+                        },
                     },
                 },
             });
         }
 
-        function renderCharts(deviceIp, period) {
-            // Fetch Latency Data
-            fetch(`/api/monitoring/metrics?device_ip=${deviceIp}&metric_name=network_latency_ms&time_range=last_${period}`)
-                .then(res => res.json())
-                .then(data => {
-                    const ctx = document.getElementById('latencyChart').getContext('2d');
+        function renderCharts(stats, period) {
+            _destroyInspectorCharts();
 
-                    // Destroy existing chart if needed
-                    if (latencyChart) latencyChart.destroy();
+            const scanSeries = Array.isArray(stats.scan_series) ? stats.scan_series : [];
+            if (!scanSeries.length) return;
 
-                    if (!data.data || data.data.length === 0) {
-                        console.log("No latency data found.");
-                        return;
-                    }
+            const latencyCanvas = document.getElementById('latencyChart');
+            const availabilityCanvas = document.getElementById('availabilityChart');
+            const sparklineCanvas = document.getElementById('inspectorSparklineChart');
+            if (!latencyCanvas || !availabilityCanvas) return;
 
-                    const labels = data.data.map(d => formatReportTime(d.timestamp));
-                    const values = data.data.map(d => d.value);
+            const labels = scanSeries.map(scan => formatReportTime(scan.ts, { hour: '2-digit', minute: '2-digit' }));
+            const latencyValues = scanSeries.map(scan => scan.status === 'online' && scan.ping_ms != null ? Number(scan.ping_ms) : null);
+            const availabilityValues = scanSeries.map(scan => scan.status === 'online' ? 100 : 0);
+            const anomalyIndexes = new Set(
+                scanSeries
+                    .map((scan, index) => ({
+                        index,
+                        isAnomaly: scan.status !== 'online' || (scan.ping_ms != null && Number(scan.ping_ms) >= 100) || (scan.pkt_loss != null && Number(scan.pkt_loss) >= 5),
+                    }))
+                    .filter(entry => entry.isAnomaly)
+                    .map(entry => entry.index)
+            );
+            const latencyMax = Math.max(
+                120,
+                ...latencyValues.filter(value => value != null).map(value => Number(value))
+            );
+            const latencyPoints = scanSeries.map((scan, index) => ({
+                x: labels[index],
+                y: scan.status === 'online' && scan.ping_ms != null ? Number(scan.ping_ms) : null,
+                _pointData: scan,
+            }));
+            const latencyCtx = latencyCanvas.getContext('2d');
+            const availabilityCtx = availabilityCanvas.getContext('2d');
+            const pointStatePalette = {
+                online: '#2dd4bf',
+                offline: '#fb7185',
+                no_response: '#fbbf24',
+                unknown: '#94a3b8',
+            };
+            const sparklineGradient = sparklineCanvas ? (() => {
+                const ctx = sparklineCanvas.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 86);
+                gradient.addColorStop(0, 'rgba(94, 234, 212, 0.28)');
+                gradient.addColorStop(0.7, 'rgba(56, 189, 248, 0.10)');
+                gradient.addColorStop(1, 'rgba(15, 23, 42, 0.02)');
+                return gradient;
+            })() : null;
 
-                    latencyChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Latency (ms)',
-                                data: values,
-                                borderColor: '#00d4aa',
-                                backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                                borderWidth: 2,
-                                tension: 0.3,
-                                fill: true
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { display: false }
+            latencyChart = new Chart(latencyCtx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Latency (ms)',
+                            data: latencyPoints,
+                            borderColor: '#2dd4bf',
+                            backgroundColor(context) {
+                                const chart = context.chart;
+                                const { chartArea } = chart;
+                                if (!chartArea) return 'rgba(45, 212, 191, 0.16)';
+                                return _latencyGradient(chart.ctx, chartArea);
                             },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    grid: { color: 'rgba(255,255,255,0.05)' }
+                            borderWidth: 2.4,
+                            tension: 0.34,
+                            fill: true,
+                            cubicInterpolationMode: 'monotone',
+                            pointRadius(context) {
+                                return anomalyIndexes.has(context.dataIndex) ? 4 : 0;
+                            },
+                            pointHoverRadius(context) {
+                                return anomalyIndexes.has(context.dataIndex) ? 5 : 3;
+                            },
+                            pointBackgroundColor(context) {
+                                const point = scanSeries[context.dataIndex];
+                                if (!point) return pointStatePalette.online;
+                                return pointStatePalette[point.status] || pointStatePalette.unknown;
+                            },
+                            pointBorderWidth(context) {
+                                return anomalyIndexes.has(context.dataIndex) ? 2 : 0;
+                            },
+                            pointBorderColor: 'rgba(7, 10, 18, 0.95)',
+                            spanGaps: true,
+                            segment: {
+                                borderColor(context) {
+                                    const next = scanSeries[context.p1DataIndex];
+                                    if (!next) return '#2dd4bf';
+                                    if (next.status === 'no_response') return '#fbbf24';
+                                    if (next.status === 'offline') return '#fb7185';
+                                    const latency = next.ping_ms != null ? Number(next.ping_ms) : null;
+                                    if (latency != null && latency >= 100) return '#f97316';
+                                    if (latency != null && latency >= 40) return '#38bdf8';
+                                    return '#2dd4bf';
                                 },
-                                x: {
-                                    grid: { display: false }
-                                }
-                            }
-                        }
-                    });
-                });
-
-            // Fetch Availability Data
-            fetch(`/api/monitoring/metrics?device_ip=${deviceIp}&metric_name=device_availability&time_range=last_${period}`)
-                .then(res => res.json())
-                .then(data => {
-                    const ctx = document.getElementById('availabilityChart').getContext('2d');
-
-                    if (availabilityChart) availabilityChart.destroy();
-
-                    if (!data.data || data.data.length === 0) {
-                        console.log("No availability data found.");
-                        return;
-                    }
-
-                    const labels = data.data.map(d => formatReportTime(d.timestamp));
-                    // Convert 0/1 to Percentage (0/100)
-                    const values = data.data.map(d => d.value * 100);
-
-                    availabilityChart = new Chart(ctx, {
-                        type: 'line', // Stepped line for availability
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Availability (%)',
-                                data: values,
-                                borderColor: '#00ff88',
-                                backgroundColor: 'rgba(0, 255, 136, 0.1)',
-                                borderWidth: 2,
-                                stepped: true,
-                                fill: true
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { display: false }
                             },
-                            scales: {
-                                y: {
-                                    min: 0,
-                                    max: 105, // Slight buffer
-                                    grid: { color: 'rgba(255,255,255,0.05)' },
-                                    ticks: {
-                                        callback: function (value) { return value + "%" }
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        inspectorChartFramePlugin: { tone: 'teal' },
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(2, 6, 23, 0.94)',
+                            borderColor: 'rgba(148, 163, 184, 0.18)',
+                            borderWidth: 1,
+                            titleColor: '#f8fafc',
+                            bodyColor: '#cbd5e1',
+                            padding: 12,
+                            displayColors: true,
+                            usePointStyle: true,
+                            callbacks: {
+                                title: _inspectorTooltipTitle,
+                                label(item) {
+                                    const point = item.raw?._pointData;
+                                    if (!point) return 'Latency unavailable';
+                                    if (point.status === 'online' && point.ping_ms != null) {
+                                        return `Latency: ${_fmtInspectorMetric(point.ping_ms, ' ms')}`;
                                     }
+                                    return `State: ${point.status.replace('_', ' ')}`;
                                 },
-                                x: {
-                                    grid: { display: false }
-                                }
-                            }
-                        }
-                    });
+                                afterLabel(item) {
+                                    const point = item.raw?._pointData;
+                                    if (!point) return [];
+                                    const lines = [];
+                                    if (point.pkt_loss != null) lines.push(`Packet loss: ${_fmtInspectorMetric(point.pkt_loss, '%')}`);
+                                    if (point.status_detail) lines.push(point.status_detail);
+                                    return lines;
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: Math.ceil(latencyMax * 1.15),
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            ticks: { color: '#94a3b8', callback: value => `${value} ms` },
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: '#94a3b8',
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: period === '24h' ? 10 : 8,
+                            },
+                        },
+                    },
+                },
+                plugins: [inspectorLatencyBandsPlugin, inspectorChartFramePlugin],
+            });
+
+            availabilityChart = new Chart(availabilityCtx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Availability (%)',
+                            data: availabilityValues.map((value, index) => ({
+                                x: labels[index],
+                                y: value,
+                                _pointData: scanSeries[index],
+                            })),
+                            borderWidth: 2.4,
+                            stepped: true,
+                            fill: true,
+                            borderColor: '#34d399',
+                            backgroundColor: 'rgba(52, 211, 153, 0.10)',
+                            segment: {
+                                borderColor(context) {
+                                    const next = scanSeries[context.p1DataIndex];
+                                    const state = _pingChartState(next);
+                                    if (state === 'no_response') return '#f59e0b';
+                                    if (state === 'offline') return '#f87171';
+                                    return '#34d399';
+                                },
+                                backgroundColor(context) {
+                                    const next = scanSeries[context.p1DataIndex];
+                                    const state = _pingChartState(next);
+                                    if (state === 'no_response') return 'rgba(245, 158, 11, 0.12)';
+                                    if (state === 'offline') return 'rgba(248, 113, 113, 0.12)';
+                                    return 'rgba(52, 211, 153, 0.10)';
+                                },
+                            },
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        inspectorChartFramePlugin: { tone: 'emerald' },
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(2, 6, 23, 0.94)',
+                            borderColor: 'rgba(148, 163, 184, 0.18)',
+                            borderWidth: 1,
+                            titleColor: '#f8fafc',
+                            bodyColor: '#cbd5e1',
+                            padding: 12,
+                            displayColors: true,
+                            usePointStyle: true,
+                            callbacks: {
+                                title: _inspectorTooltipTitle,
+                                label(item) {
+                                    const point = item.raw?._pointData;
+                                    if (!point) return 'Availability unavailable';
+                                    return `State: ${point.status.replace('_', ' ')}`;
+                                },
+                                afterLabel(item) {
+                                    const point = item.raw?._pointData;
+                                    return point?.status_detail ? [point.status_detail] : [];
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 105,
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            ticks: { color: '#94a3b8', callback: value => `${value}%` },
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: '#94a3b8',
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: period === '24h' ? 10 : 8,
+                            },
+                        },
+                    },
+                },
+                plugins: [inspectorChartFramePlugin],
+            });
+
+            if (sparklineCanvas) {
+                const sparkCtx = sparklineCanvas.getContext('2d');
+                inspectorSparklineChart = new Chart(sparkCtx, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            data: latencyValues,
+                            borderColor: '#5eead4',
+                            backgroundColor: sparklineGradient || 'rgba(94, 234, 212, 0.12)',
+                            borderWidth: 1.6,
+                            tension: 0.35,
+                            fill: true,
+                            pointRadius(context) {
+                                return anomalyIndexes.has(context.dataIndex) ? 2.5 : 0;
+                            },
+                            pointBackgroundColor(context) {
+                                const point = scanSeries[context.dataIndex];
+                                if (!point) return pointStatePalette.online;
+                                return pointStatePalette[point.status] || pointStatePalette.unknown;
+                            },
+                            pointBorderWidth: 0,
+                            spanGaps: true,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        scales: {
+                            x: { display: false },
+                            y: { display: false },
+                        },
+                    },
                 });
+            }
         }
 
         function loadDailyReport() {
@@ -2397,7 +2977,12 @@
             const range = document.getElementById('dhRange').value;
             const summaryCards = document.getElementById('dhSummaryCards');
             const tbody = document.querySelector('#dhSummaryTable tbody');
-            summaryCards.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+            summaryCards.innerHTML = `<div class="skel-stat-cards px-3 py-1">
+                <div class="skel-block skel-stat-card"></div>
+                <div class="skel-block skel-stat-card"></div>
+                <div class="skel-block skel-stat-card"></div>
+                <div class="skel-block skel-stat-card"></div>
+            </div>`;
             setTableStatusRow(tbody, 7, 'Loading...');
 
             return fetchReportJson(`/api/reports/device-health?range=${encodeURIComponent(range)}`)
@@ -2605,7 +3190,7 @@
                     _renderLatencyHistogram(uptime);
                     _renderNetIfaceContext(data.bandwidth || {});
                     _applyTableThresholds(tbody, 2, { warn: 50, crit: 150 });
-                    _applyTableThresholds(tbody, 3, { warn: 1,  crit: 5  });
+                    _applyTableThresholds(tbody, 3, { warn: 1, crit: 5 });
                 })
                 .catch(e => { kpi.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; });
         }
@@ -2934,9 +3519,9 @@
             // Reset on error so the user can switch away and back to retry
             const _reset = () => { delete tabLoaded[target]; };
             let p;
-            if (target === 'devicehealth')      p = loadDeviceHealthReport();
+            if (target === 'devicehealth') p = loadDeviceHealthReport();
             else if (target === 'productivity') p = loadProductivityReport();
-            else if (target === 'network')      p = loadNetworkReport();
+            else if (target === 'network') p = loadNetworkReport();
             else if (target === 'alerthistory') p = loadAlertReport();
             else if (target === 'workstationhealth') p = loadWorkstationHealth();
             else if (target === 'serverreports') p = loadServerReports();
@@ -3000,11 +3585,11 @@
         // Debounce helper — prevents choppy rapid-fire API calls on range changes
         function _debounce(fn, ms) {
             let t;
-            return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+            return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
         }
 
         // Range selectors — debounced 350ms so fast switching doesn't stack requests
-        const _loadWsDebounced  = _debounce(() => loadWorkstationHealth(true), 350);
+        const _loadWsDebounced = _debounce(() => loadWorkstationHealth(true), 350);
         const _loadSrvDebounced = _debounce(() => loadServerReports(true), 350);
         const _loadExecDebounced = _debounce(() => loadExecutiveReport(), 350);
         const _loadAlertDebounced = _debounce(() => loadAlertReport(), 350);
@@ -3024,16 +3609,16 @@
         // which is already debounced on execRange change.
 
         // Device detail modal — delegated click (tbody replaced on filter/refresh)
-        document.addEventListener('click', function(e) {
+        document.addEventListener('click', function (e) {
             const tr = e.target.closest(
                 '#srvDeviceTable tbody tr[data-device-ip], #wsDeviceTable tbody tr[data-device-ip]'
             );
             if (!tr) return;
-            const fleet    = tr.dataset.fleet;
+            const fleet = tr.dataset.fleet;
             const deviceId = tr.dataset.deviceId;
             const deviceIp = tr.dataset.deviceIp;
-            const allRows  = fleet === 'workstation' ? _wsAllRows : _srvAllRows;
-            const row      = allRows.find(r =>
+            const allRows = fleet === 'workstation' ? _wsAllRows : _srvAllRows;
+            const row = allRows.find(r =>
                 String(r.device_id) === deviceId && r.device_ip === deviceIp
             );
             if (row) _openDeviceDetail(row);
@@ -3085,7 +3670,7 @@
         const srcLabel = source || (lvl === 'NO_DATA' ? 'No data' : 'Mixed sources');
         let parts = [`Data: ${srcLabel} (<span class="${lvlClass}">${lvl}</span>)`];
         if (period?.start && period?.end) {
-            const fmt = d => new Date(d).toLocaleDateString('en-IN', {day:'2-digit', month:'short', timeZone:'Asia/Kolkata'});
+            const fmt = d => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
             parts.push(`${fmt(period.start)} – ${fmt(period.end)}`);
         }
         if (deviceCount != null && deviceCount > 0) parts.push(`${deviceCount} devices`);
@@ -3157,11 +3742,11 @@
 
     function _slaBadge(tier) {
         const map = {
-            'Gold':    'success',
-            'Silver':  'info',
-            'Bronze':  'warning',
+            'Gold': 'success',
+            'Silver': 'info',
+            'Bronze': 'warning',
             'Warning': 'orange',
-            'Critical':'danger',
+            'Critical': 'danger',
             'Unknown': 'secondary',
         };
         const cls = map[tier] || 'secondary';
@@ -3203,35 +3788,50 @@
 
         const highPktLoss = rows.filter(r => parseFloat(r.avg_packet_loss_pct || 0) > 10);
         const highTimeout = rows.filter(r => parseFloat(r.avg_latency_ms || 0) > 500);
-        const lowUptime   = rows.filter(r => parseFloat(r.uptime_pct ?? 100) < 80);
+        const lowUptime = rows.filter(r => parseFloat(r.uptime_pct ?? 100) < 80);
 
         const causes = [
-            { label: 'High Packet Loss', count: highPktLoss.length, threshold: '>10% loss',   severity: 'danger' },
-            { label: 'High Timeouts',    count: highTimeout.length, threshold: '>500ms avg',  severity: 'warning' },
-            { label: 'Low Uptime',       count: lowUptime.length,   threshold: '<80% uptime', severity: 'secondary' },
+            { label: 'High Packet Loss', count: highPktLoss.length, threshold: '>10% loss', severity: 'danger' },
+            { label: 'High Timeouts', count: highTimeout.length, threshold: '>500ms avg', severity: 'warning' },
+            { label: 'Low Uptime', count: lowUptime.length, threshold: '<80% uptime', severity: 'secondary' },
         ].filter(c => c.count > 0)
-         .sort((a, b) => b.count - a.count)
-         .slice(0, 3);
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
 
         if (!causes.length) { el.innerHTML = ''; return; }
 
+        const _SEV_CLR = {
+            danger: { border: 'var(--status-critical)', bg: 'var(--status-critical-bg)', text: 'var(--status-critical)' },
+            warning: { border: 'var(--status-warning)', bg: 'var(--status-warning-bg)', text: 'var(--status-warning)' },
+            secondary: { border: 'var(--ui-text-dim)', bg: 'rgba(113,113,122,0.12)', text: 'var(--ui-text-muted)' },
+        };
         el.innerHTML = `
             <div class="card mb-2">
                 <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                     <i class="fas fa-exclamation-triangle text-warning"></i>
-                    <strong style="font-size:.85rem">Top Problem Causes</strong>
+                    <strong style="font-size:.85rem;color:var(--ui-text-primary)">Top Problem Causes</strong>
                 </div>
-                <ul class="list-group list-group-flush">
-                    ${causes.map((c, i) => `
-                    <li class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center">
-                        <span style="font-size:.82rem">
-                            <span class="badge bg-${c.severity} me-2">${i + 1}</span>
-                            ${_esc(c.label)}
-                            <small class="text-muted ms-1">${_esc(c.threshold)}</small>
-                        </span>
-                        <span class="badge bg-${c.severity} rounded-pill">${c.count} device${c.count !== 1 ? 's' : ''}</span>
-                    </li>`).join('')}
-                </ul>
+                <div>
+                    ${causes.map((c, i) => {
+            const clr = _SEV_CLR[c.severity] || _SEV_CLR.secondary;
+            return `
+                        <div style="display:flex;justify-content:space-between;align-items:center;
+                                    padding:.45rem .75rem;border-bottom:1px solid var(--ui-border);
+                                    background:var(--ui-surface-2);">
+                            <span style="font-size:.82rem;color:var(--ui-text-primary);display:flex;align-items:center;gap:.45rem">
+                                <span style="display:inline-flex;align-items:center;justify-content:center;
+                                             width:1.2rem;height:1.2rem;border-radius:50%;font-size:.65rem;font-weight:700;
+                                             background:${clr.bg};color:${clr.text};border:1px solid ${clr.border}">${i + 1}</span>
+                                ${_esc(c.label)}
+                                <small style="color:var(--ui-text-muted);font-size:.72rem">${_esc(c.threshold)}</small>
+                            </span>
+                            <span style="font-size:.72rem;font-weight:700;padding:.15rem .55rem;border-radius:20px;
+                                         white-space:nowrap;background:${clr.bg};color:${clr.text};border:1px solid ${clr.border}">
+                                ${c.count} device${c.count !== 1 ? 's' : ''}
+                            </span>
+                        </div>`;
+        }).join('')}
+                </div>
             </div>`;
     }
 
@@ -3240,12 +3840,12 @@
         if (!el || !crossReport) return;
         const status = crossReport.fleet_status || 'ok';
         const _SC = {
-            ok:       { bg: 'rgba(34,197,94,.07)',  border: '#22c55e', text: '#16a34a', label: 'GREEN'  },
-            warning:  { bg: 'rgba(245,158,11,.08)', border: '#f59e0b', text: '#d97706', label: 'AMBER'  },
-            critical: { bg: 'rgba(239,68,68,.08)',  border: '#ef4444', text: '#dc2626', label: 'RED'    },
+            ok: { bg: 'rgba(34,197,94,.07)', border: '#22c55e', text: '#16a34a', label: 'GREEN' },
+            warning: { bg: 'rgba(245,158,11,.08)', border: '#f59e0b', text: '#d97706', label: 'AMBER' },
+            critical: { bg: 'rgba(239,68,68,.08)', border: '#ef4444', text: '#dc2626', label: 'RED' },
         };
         const sc = _SC[status] || _SC.ok;
-        const uptime    = crossReport.fleet_uptime != null ? crossReport.fleet_uptime.toFixed(2) + '%' : null;
+        const uptime = crossReport.fleet_uptime != null ? crossReport.fleet_uptime.toFixed(2) + '%' : null;
         const critCount = crossReport.critical_device_count || 0;
         const unresCount = crossReport.unresolved_alert_count || 0;
 
@@ -3284,7 +3884,7 @@
         const domains = crossReport.domain_statuses || {};
         const _CLS = { ok: 'text-success', warning: 'text-warning', critical: 'text-danger', no_data: 'text-muted' };
         const _ICO = { ok: '●', warning: '●', critical: '●', no_data: '○' };
-        const order = [['fleet','Fleet'],['alerts','Alerts'],['health','Health'],['security','Security']];
+        const order = [['fleet', 'Fleet'], ['alerts', 'Alerts'], ['health', 'Health'], ['security', 'Security']];
         const chips = order.map(([key, label]) => {
             const s = domains[key] || 'no_data';
             return `<span class="${_CLS[s] || 'text-muted'} me-3" style="font-size:.76rem;white-space:nowrap">
@@ -3327,8 +3927,8 @@
         if (!el || !annotations?.length) return;
         const iconMap = {
             critical: 'fa-exclamation-circle text-danger',
-            warning:  'fa-exclamation-triangle text-warning',
-            info:     'fa-info-circle text-info',
+            warning: 'fa-exclamation-triangle text-warning',
+            info: 'fa-info-circle text-info',
         };
         el.innerHTML = `
             <div class="text-muted mb-1" style="font-size:.68rem;text-transform:uppercase;letter-spacing:1px">Auto-detected Patterns</div>
@@ -3364,13 +3964,13 @@
     }
 
     function _renderSlaBreakdown(el, sla) {
-        const tiers = ['Gold','Silver','Bronze','Warning','Critical','Unknown'];
-        const thresh = {'Gold':'≥99.9%','Silver':'≥99.5%','Bronze':'≥99%','Warning':'≥95%','Critical':'<95%','Unknown':'No Data'};
+        const tiers = ['Gold', 'Silver', 'Bronze', 'Warning', 'Critical', 'Unknown'];
+        const thresh = { 'Gold': '≥99.9%', 'Silver': '≥99.5%', 'Bronze': '≥99%', 'Warning': '≥95%', 'Critical': '<95%', 'Unknown': 'No Data' };
         const total = Object.values(sla).reduce((a, b) => a + b, 0) || 1;
         el.innerHTML = tiers.map(t => {
             const count = sla[t] || 0;
             const pct = Math.round(count / total * 100);
-            const colors = {Gold:'#16a34a',Silver:'#65a30d',Bronze:'#d97706',Warning:'#ea580c',Critical:'#dc2626',Unknown:'#6b7280'};
+            const colors = { Gold: '#16a34a', Silver: '#65a30d', Bronze: '#d97706', Warning: '#ea580c', Critical: '#dc2626', Unknown: '#6b7280' };
             return `<div class="mb-2">
                 <div class="d-flex justify-content-between mb-1" style="font-size:0.72rem">
                     <span style="color:${colors[t]};font-weight:700">${t}</span>
@@ -3391,10 +3991,10 @@
     let _wsViolSearchHandle = null;
     function loadWsViolDeviceSearch() {
         fetch('/api/tracking/list', { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
                 var devices = Array.isArray(data) ? data : (data.devices || []);
-                var items = devices.map(function(d) {
+                var items = devices.map(function (d) {
                     return {
                         _selectValue: String(d.id),
                         name: d.device_name || '—',
@@ -3407,17 +4007,17 @@
                     listId: 'wsViolDeviceList',
                     hiddenId: 'wsViolSelectedDeviceId',
                     items: items,
-                    renderItem: function(d) {
+                    renderItem: function (d) {
                         return '<div class="d-flex justify-content-between align-items-center px-1">'
                             + '<span>' + _esc(d.name) + '</span>'
                             + '<span class="text-muted small ms-2">' + _esc(d.employee) + '</span>'
                             + '</div>';
                     },
-                    getSearchText: function(d) { return d.name + " " + d.employee + " " + d.ip; },
+                    getSearchText: function (d) { return d.name + " " + d.employee + " " + d.ip; },
                     onSelect: null,
                 });
             })
-            .catch(function(e) { console.warn('[ws-viol-search] Failed to load device list:', e); });
+            .catch(function (e) { console.warn('[ws-viol-search] Failed to load device list:', e); });
     }
 
     let _wsAllRows = [];
@@ -3578,7 +4178,7 @@
     }
 
     function _wsRowCells(r) {
-        const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}) : '—';
+        const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
         return `<td><span class="fw-semibold">${_esc(r.device_name || '—')}</span>${_dataGapBadge(r)}</td>
             <td class="text-muted">${_esc(r.employee_name || '—')}</td>
             <td class="text-muted" style="font-size:0.78rem">${_esc(r.department || '—')}</td>
@@ -3645,7 +4245,7 @@
         tbody.innerHTML = rows.map(r => {
             const lastViol = r.last_violation
                 ? new Date(r.last_violation.endsWith('Z') ? r.last_violation : r.last_violation + 'Z')
-                    .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
+                    .toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
                 : '\u2014';
             return `<tr>
                 <td class="text-muted">${_esc(r.employee_name || '\u2014')}</td>
@@ -3675,7 +4275,7 @@
         container.innerHTML = '<div class="text-center p-3"><div class="spinner-border spinner-border-sm"></div> Loading\u2026</div>';
 
         try {
-            const resp = await fetch(`/api/reports/device-violations/${deviceId}?range=${range}`, {credentials:'same-origin'});
+            const resp = await fetch(`/api/reports/device-violations/${deviceId}?range=${range}`, { credentials: 'same-origin' });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'Failed');
             _renderDeviceViolDetail(container, data);
@@ -3702,9 +4302,9 @@
                         <td><code style="font-size:0.78rem">${_esc(v.domain)}</code></td>
                         <td class="text-end"><span class="badge bg-danger">${v.count}</span></td>
                         <td style="font-size:0.75rem">${v.last_seen
-                            ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
-                                .toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'})
-                            : '\u2014'}</td>
+                ? new Date(v.last_seen.endsWith('Z') ? v.last_seen : v.last_seen + 'Z')
+                    .toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+                : '\u2014'}</td>
                     </tr>`).join('')}</tbody>
                 </table>
             </div>`;
@@ -3848,9 +4448,9 @@
     function _riskBadge(domain) {
         const d = (domain || '').toLowerCase();
         const HIGH = ['openai', 'chatgpt', 'gemini', 'claude.ai', 'copilot', 'bard',
-                      'midjourney', 'perplexity', 'gpt-4', 'gpt4'];
-        const MED  = ['youtube', 'netflix', 'spotify', 'twitch', 'tiktok',
-                      'facebook', 'instagram', 'twitter', 'reddit', 'discord', 'steam'];
+            'midjourney', 'perplexity', 'gpt-4', 'gpt4'];
+        const MED = ['youtube', 'netflix', 'spotify', 'twitch', 'tiktok',
+            'facebook', 'instagram', 'twitter', 'reddit', 'discord', 'steam'];
         if (HIGH.some(p => d.includes(p)))
             return '<span class="badge bg-danger" style="font-size:.65rem">HIGH</span>';
         if (MED.some(p => d.includes(p)))
@@ -3861,21 +4461,21 @@
     function _populateDeviceDetailModal(row) {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerHTML = v; };
         document.getElementById('ddmDeviceName').textContent = row.device_name || row.employee_name || '—';
-        document.getElementById('ddmDeviceIp').textContent   = row.device_ip || '—';
+        document.getElementById('ddmDeviceIp').textContent = row.device_ip || '—';
         document.getElementById('ddmFleetBadge').textContent = row.fleet === 'workstation' ? 'Workstation' : 'Server';
-        set('ddmUptime',   _fmtUptime(row.uptime_pct));
-        set('ddmLatency',  _fmtNum(row.avg_latency_ms, ' ms'));
-        set('ddmPktLoss',  _fmtNum(row.avg_packet_loss_pct, '%'));
+        set('ddmUptime', _fmtUptime(row.uptime_pct));
+        set('ddmLatency', _fmtNum(row.avg_latency_ms, ' ms'));
+        set('ddmPktLoss', _fmtNum(row.avg_packet_loss_pct, '%'));
         set('ddmDowntime', _fmtHours(row.downtime_hours));
         if (row.fleet === 'server') {
             document.getElementById('ddmCpuLabel').textContent = 'Avg CPU';
-            set('ddmCpu',  _fmtNum(row.avg_cpu,  '%'));
-            set('ddmMem',  _fmtNum(row.avg_mem,  '%'));
+            set('ddmCpu', _fmtNum(row.avg_cpu, '%'));
+            set('ddmMem', _fmtNum(row.avg_mem, '%'));
             set('ddmDisk', _fmtNum(row.avg_disk, '%'));
         } else {
             document.getElementById('ddmCpuLabel').textContent = 'CPU (Active)';
-            set('ddmCpu',  _fmtNum(row.avg_cpu_during_active, '%'));
-            set('ddmMem',  '<span class="text-muted">—</span>');
+            set('ddmCpu', _fmtNum(row.avg_cpu_during_active, '%'));
+            set('ddmMem', '<span class="text-muted">—</span>');
             set('ddmDisk', '<span class="text-muted">—</span>');
         }
         const rangeEl = document.getElementById('wsRange') || document.getElementById('srvRange');
@@ -3885,9 +4485,9 @@
 
     async function _loadViolationsIntoModal(row) {
         const hasViol = (row.policy_violations || row.violation_count || 0) > 0;
-        const violNone  = document.getElementById('ddmViolNone');
+        const violNone = document.getElementById('ddmViolNone');
         const violTable = document.getElementById('ddmViolTable');
-        const violLoad  = document.getElementById('ddmViolLoading');
+        const violLoad = document.getElementById('ddmViolLoading');
         if (!hasViol) { violNone.style.display = ''; violTable.style.display = 'none'; return; }
         violLoad.style.display = ''; violNone.style.display = 'none'; violTable.style.display = 'none';
         try {
@@ -3932,7 +4532,7 @@
             <td><span class="badge bg-secondary bg-opacity-50">${_esc(r.device_type || '—')}</span></td>
             <td class="text-end">${_fmtUptime(r.uptime_pct)}</td>
             <td class="text-end text-muted">${_fmtHours(r.downtime_hours)}</td>
-            <td class="text-end">${r.timeout_count ? '<span class="text-warning fw-bold">'+r.timeout_count+'</span>' : '<span class="text-muted">—</span>'}</td>
+            <td class="text-end">${r.timeout_count ? '<span class="text-warning fw-bold">' + r.timeout_count + '</span>' : '<span class="text-muted">—</span>'}</td>
             <td class="text-end text-muted">${_fmtNum(r.avg_latency_ms, ' ms')}</td>
             <td class="text-end text-muted">${_fmtNum(r.avg_packet_loss_pct, '%')}</td>
             <td>${_slaBadge(r.sla_tier || 'Unknown')}</td>
@@ -4017,21 +4617,56 @@
     }
 
     function _esc(s) {
-        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── Count-up animation for numeric KPI values ──────────────────────────────
+    function _animateCountUp(el, target, suffix, decimals) {
+        if (el == null || target == null) return;
+        const start = 0;
+        const dur = 600; // ms
+        const startTime = performance.now();
+        const run = (now) => {
+            const t = Math.min((now - startTime) / dur, 1);
+            // ease-out cubic
+            const eased = 1 - Math.pow(1 - t, 3);
+            const val = start + (target - start) * eased;
+            el.textContent = (decimals ? val.toFixed(decimals) : Math.round(val)) + (suffix || '');
+            if (t < 1) requestAnimationFrame(run);
+        };
+        requestAnimationFrame(run);
     }
 
     // ── Global summary bar — derived from executive response (no extra fetch) ──
     function _updateGlobalSummary(data) {
         if (!data) return;
-        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        set('gsTotalDevices', data.total_devices ?? '—');
-        set('gsFleetUptime', data.uptime_score != null ? data.uptime_score + '%' : '—');
-        set('gsAvgLatency', data.avg_latency != null ? data.avg_latency + ' ms' : '—');
-        // Critical: count from top_problematic or health_distribution
         const hd = data.health_distribution || {};
-        set('gsCritical', hd['Critical'] ?? 0);
-        set('gsAvgPktLoss', data.avg_packet_loss != null ? data.avg_packet_loss + '%' : '—');
-        set('gsAnomalies', data.anomaly_count ?? 0);
+
+        const chips = [
+            { id: 'gsTotalDevices', num: data.total_devices, suffix: '', dec: 0 },
+            { id: 'gsFleetUptime', num: data.uptime_score, suffix: '%', dec: 0 },
+            { id: 'gsCritical', num: hd['Critical'] ?? 0, suffix: '', dec: 0 },
+            { id: 'gsAvgLatency', num: data.avg_latency, suffix: ' ms', dec: 0 },
+            { id: 'gsAvgPktLoss', num: data.avg_packet_loss, suffix: '%', dec: 1 },
+            { id: 'gsAnomalies', num: data.anomaly_count ?? 0, suffix: '', dec: 0 },
+        ];
+
+        chips.forEach(({ id, num, suffix, dec }) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (num == null) { el.textContent = '—'; return; }
+            // Remove stale animation class, then re-add after paint
+            el.classList.remove('chip-loaded');
+            const chip = el.closest('.reports-kpi-chip');
+            if (chip) chip.classList.remove('chip-glow');
+            requestAnimationFrame(() => {
+                el.classList.add('chip-loaded');
+                if (chip) chip.classList.add('chip-glow');
+                _animateCountUp(el, parseFloat(num), suffix, dec);
+                // Remove glow class after animation completes
+                setTimeout(() => { if (chip) chip.classList.remove('chip-glow'); }, 900);
+            });
+        });
     }
 </script>
 {% endblock %}

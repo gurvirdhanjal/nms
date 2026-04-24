@@ -44,6 +44,11 @@ class Device(db.Model):
     offline_strikes = db.Column(db.Integer, default=0)        # Consecutive offline checks (for 3-strike rule)
     latency_strikes = db.Column(db.Integer, default=0)        # Consecutive high-latency scans
     packet_loss_strikes = db.Column(db.Integer, default=0)    # Consecutive high-packet-loss scans
+
+    # Soft-delete coordination: set True by bulk-delete before the row is
+    # physically removed.  The device monitor skips devices with this flag so
+    # it never races against the delete worker on the same row.
+    delete_pending = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
     
     # Enhanced Identity
     subnet_cidr = db.Column(db.String(50), nullable=True, index=True)  # e.g. "172.16.1.0/24"

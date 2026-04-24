@@ -145,3 +145,93 @@ def test_backfill_rollups_populates_daily_and_tracking_rollups(admin_client):
     assert daily_rollup.sample_count == 2
     assert daily_rollup.keyboard_events == 7
     assert daily_rollup.mouse_events == 5
+
+
+def test_recent_ping_samples_returns_filtered_recent_rows(admin_client):
+    department = Department.query.filter_by(name="Alpha Department").first()
+    device = Device(
+        device_name="Ping Validation Device",
+        device_type="Router",
+        device_ip="10.90.0.25",
+        site_id=department.site_id,
+        department_id=department.id,
+    )
+    other_device = Device(
+        device_name="Other Device",
+        device_type="Switch",
+        device_ip="10.90.0.26",
+        site_id=department.site_id,
+        department_id=department.id,
+    )
+    db.session.add_all([device, other_device])
+    db.session.flush()
+
+    base_time = datetime.utcnow().replace(microsecond=0)
+    db.session.add_all(
+        [
+            DeviceScanHistory(
+                device_ip=device.device_ip,
+                device_name=device.device_name,
+                status="Online",
+                status_detail="Reply received",
+                ping_time_ms=12.4,
+                packet_loss=0.0,
+                jitter=0.2,
+                scan_type="scheduled",
+                scan_timestamp=base_time - timedelta(minutes=10),
+            ),
+            DeviceScanHistory(
+                device_ip=device.device_ip,
+                device_name=device.device_name,
+                status="Offline",
+                status_detail="Request timed out",
+                ping_time_ms=None,
+                packet_loss=100.0,
+                jitter=None,
+                scan_type="scheduled",
+                scan_timestamp=base_time - timedelta(minutes=5),
+            ),
+            DeviceScanHistory(
+                device_ip=other_device.device_ip,
+                device_name=other_device.device_name,
+                status="Online",
+                status_detail="Reply received",
+                ping_time_ms=4.8,
+                packet_loss=0.0,
+                jitter=0.1,
+                scan_type="manual",
+                scan_timestamp=base_time - timedelta(minutes=1),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        "/api/maintenance/ping-samples",
+        query_string={"device_ip": device.device_ip, "limit": 50, "scan_type": "scheduled"},
+    )
+    assert response.status_code == 200
+
+    payload = response.get_json()
+    assert payload["count"] == 2
+    assert payload["filters"] == {
+        "device_ip": device.device_ip,
+        "scan_type": "scheduled",
+        "limit": 50,
+    }
+    assert [sample["status_detail"] for sample in payload["samples"]] == [
+        "Request timed out",
+        "Reply received",
+    ]
+    assert [sample["ping_time_ms"] for sample in payload["samples"]] == [None, 12.4]
+    assert all(sample["device_ip"] == device.device_ip for sample in payload["samples"])
+
+
+def test_recent_ping_samples_caps_limit_and_rejects_invalid_limit(admin_client):
+    response = admin_client.get("/api/maintenance/ping-samples", query_string={"limit": "abc"})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "limit must be an integer"
+
+    response = admin_client.get("/api/maintenance/ping-samples", query_string={"limit": 9999})
+    assert response.status_code == 200
+    assert response.get_json()["filters"]["limit"] == 100

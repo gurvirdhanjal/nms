@@ -385,42 +385,48 @@
 
     .devices-page .devices-table {
         width: 100%;
+        min-width: 1000px;
         table-layout: fixed;
     }
 
     .devices-page .devices-table th:nth-child(1),
     .devices-page .devices-table td:nth-child(1) {
-        width: 40px;
+        width: 44px;
     }
 
     .devices-page .devices-table th:nth-child(2),
     .devices-page .devices-table td:nth-child(2) {
-        width: 31%;
+        width: 25%;
     }
 
     .devices-page .devices-table th:nth-child(3),
     .devices-page .devices-table td:nth-child(3) {
-        width: 17%;
+        width: 16%;
     }
 
     .devices-page .devices-table th:nth-child(4),
     .devices-page .devices-table td:nth-child(4) {
-        width: 18%;
+        width: 14%;
     }
 
     .devices-page .devices-table th:nth-child(5),
     .devices-page .devices-table td:nth-child(5) {
-        width: 14%;
+        width: 15%;
     }
 
     .devices-page .devices-table th:nth-child(6),
     .devices-page .devices-table td:nth-child(6) {
-        width: 8%;
+        width: 12%;
     }
 
     .devices-page .devices-table th:nth-child(7),
     .devices-page .devices-table td:nth-child(7) {
-        width: 88px;
+        width: 90px;
+    }
+
+    .devices-page .devices-table th:nth-child(8),
+    .devices-page .devices-table td:nth-child(8) {
+        width: 80px;
     }
 
     .devices-page .device-name-cell,
@@ -714,6 +720,45 @@
         margin-right: 0;
         display: inline-block;
         vertical-align: middle;
+    }
+
+    /* ── Ping column ─────────────────────────────────────────────────────── */
+    .devices-page .device-ping-cell {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .devices-page .ping-value {
+        font-size: 0.78rem;
+        font-weight: 600;
+        font-family: var(--bs-font-monospace, monospace);
+    }
+
+    .devices-page .ping-unit {
+        font-size: 0.65rem;
+        font-weight: 400;
+        margin-left: 1px;
+        opacity: 0.7;
+    }
+
+    .devices-page .ping-good {
+        color: #4ade80;
+    }
+
+    .devices-page .ping-ok {
+        color: #a3e635;
+    }
+
+    .devices-page .ping-warn {
+        color: #fb923c;
+    }
+
+    .devices-page .ping-bad {
+        color: #f87171;
+    }
+
+    .devices-page .ping-na {
+        color: #64748b;
     }
 
     .devices-page .device-status-cell {
@@ -1212,8 +1257,7 @@
                             <input type="hidden" name="page" value="1">
                             <input type="hidden" name="per_page" value="{{ per_page|default(100) }}">
 
-                            <button type="button" class="btn btn-dark btn-sm border-secondary"
-                                id="devicesRefreshBtn"
+                            <button type="button" class="btn btn-dark btn-sm border-secondary" id="devicesRefreshBtn"
                                 onclick="refreshAllVisibleStatuses()" title="Refresh Status">
                                 <i data-lucide="refresh-cw"></i> Refresh
                             </button>
@@ -1299,11 +1343,11 @@
                 </div>
                 <div class="card-body">
                     <div id="devices-wrapper">
-                        <div id="devicesActiveFilters" class="devices-filter-chips devices-hidden" aria-live="polite"></div>
+                        <div id="devicesActiveFilters" class="devices-filter-chips devices-hidden" aria-live="polite">
+                        </div>
 
                         <!-- Bulk Actions -->
-                        <div id="bulkActions"
-                            class="bulk-actions-layout devices-hidden mb-3">
+                        <div id="bulkActions" class="bulk-actions-layout devices-hidden mb-3">
                             <div class="bulk-actions-summary">
                                 <span class="bulk-actions-kicker">Selection</span>
                                 <span class="bulk-actions-count" id="selectedCount">0</span>
@@ -1318,29 +1362,48 @@
                                 <!-- Bulk assign compliance profile -->
                                 <div class="dropdown">
                                     <button class="btn btn-outline-info btn-sm dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        data-bs-toggle="dropdown" aria-expanded="false">
                                         <i data-lucide="shield-check"></i> Assign Profile
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-dark">
-                                        {% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
+                                        {% for profile in (compliance_profiles if compliance_profiles is defined else
+                                        []) %}
                                         <li><a class="dropdown-item" href="#"
-                                               onclick="bulkAssignProfile({{ profile.id }}, '{{ profile.name | e }}'); return false;">
-                                            {{ profile.name }}
-                                        </a></li>
+                                                onclick="bulkAssignProfile({{ profile.id }}, '{{ profile.name | e }}'); return false;">
+                                                {{ profile.name }}
+                                            </a></li>
                                         {% else %}
-                                        <li><span class="dropdown-item text-muted" style="font-size:.8rem;">No profiles defined</span></li>
+                                        <li><span class="dropdown-item text-muted" style="font-size:.8rem;">No profiles
+                                                defined</span></li>
                                         {% endfor %}
-                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
                                         <li><a class="dropdown-item text-warning" href="#"
-                                               onclick="bulkAssignProfile(null, 'None (unassign)'); return false;">
-                                            Unassign Profile
-                                        </a></li>
+                                                onclick="bulkAssignProfile(null, 'None (unassign)'); return false;">
+                                                Unassign Profile
+                                            </a></li>
                                     </ul>
                                 </div>
                                 <button class="btn btn-danger btn-sm" id="bulkDeleteBtn"
                                     onclick="deleteSelectedDevices()">
                                     <i data-lucide="trash-2"></i> Delete Selected
                                 </button>
+                            </div>
+                        </div>
+                        <div id="bulkDeleteProgress" class="alert alert-info mb-3 devices-hidden" aria-live="polite">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                <div>
+                                    <strong id="bulkDeleteProgressTitle">Deleting devices...</strong>
+                                    <div class="small text-muted" id="bulkDeleteProgressText">Preparing delete job.
+                                    </div>
+                                </div>
+                                <div class="small text-muted" id="bulkDeleteProgressMeta"></div>
+                            </div>
+                            <div class="progress mt-2" style="height: 8px;">
+                                <div id="bulkDeleteProgressBar"
+                                    class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                    style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                             </div>
                         </div>
 
@@ -1351,7 +1414,8 @@
                             Inventory {{ global_device_count|default(total_devices|default(devices|length)) }} |
                             Page {{ page|default(1) }} of {{ total_pages|default(1) }}
                         </div>
-                        <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell" id="devicesTableShell">
+                        <div class="table-responsive border border-secondary rounded overflow-auto devices-table-shell"
+                            id="devicesTableShell">
 
                             <table class="table table-hover devices-table">
                                 <thead class="table-dark">
@@ -1363,6 +1427,7 @@
                                         </th>
                                         <th>Name</th>
                                         <th>IP Address</th>
+                                        <th>Ping</th>
                                         <th>Type</th>
                                         <th>SNMP</th>
                                         <th>Status</th>
@@ -1748,17 +1813,21 @@
                                         <input class="form-check-input" type="checkbox" name="maintenance_mode"
                                             id="maintenance_mode">
                                         <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
-                                        <div class="form-text text-muted">Suppress alerts for this device. Maintenance mode takes precedence over any compliance profile.</div>
+                                        <div class="form-text text-muted">Suppress alerts for this device. Maintenance
+                                            mode takes precedence over any compliance profile.</div>
                                     </div>
 
                                     <div class="operations-panel-card">
-                                        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+                                        <div
+                                            class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
                                             <div>
                                                 <div class="operations-panel-heading">
                                                     <i data-lucide="shield-check"></i>
                                                     Compliance Profile
                                                 </div>
-                                                <p class="operations-panel-copy">Apply per-device CPU, memory, and disk alert thresholds using an existing profile. Only threshold overrides are shown here.</p>
+                                                <p class="operations-panel-copy">Apply per-device CPU, memory, and disk
+                                                    alert thresholds using an existing profile. Only threshold overrides
+                                                    are shown here.</p>
                                             </div>
                                             {% if can_manage_compliance_profiles %}
                                             <a href="/admin/compliance-profiles" class="btn btn-outline-info btn-sm">
@@ -1768,19 +1837,22 @@
                                         </div>
 
                                         <label class="form-label" for="compliance_profile_id">Assigned Profile</label>
-                                        <select class="form-select bg-dark text-light border-secondary" name="compliance_profile_id"
-                                            id="compliance_profile_id">
+                                        <select class="form-select bg-dark text-light border-secondary"
+                                            name="compliance_profile_id" id="compliance_profile_id">
                                             <option value="">Global defaults</option>
-                                            {% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
+                                            {% for profile in (compliance_profiles if compliance_profiles is defined
+                                            else []) %}
                                             <option value="{{ profile.id }}">{{ profile.name }}</option>
                                             {% endfor %}
                                         </select>
-                                        <div class="form-text text-muted">Effective thresholds below match the health alerts evaluated for this device.</div>
+                                        <div class="form-text text-muted">Effective thresholds below match the health
+                                            alerts evaluated for this device.</div>
 
                                         <div class="compliance-preview-shell mt-3" id="complianceThresholdPreview">
                                             <div class="compliance-preview-head">
                                                 <span class="preview-heading">Alert Threshold Preview</span>
-                                                <span class="threshold-pill" id="complianceProfileLabel">Global defaults</span>
+                                                <span class="threshold-pill" id="complianceProfileLabel">Global
+                                                    defaults</span>
                                             </div>
                                             <div class="table-responsive threshold-preview-wrap">
                                                 <table class="threshold-preview-table">
@@ -1794,7 +1866,8 @@
                                                     </thead>
                                                     <tbody id="complianceThresholdPreviewBody">
                                                         <tr>
-                                                            <td colspan="4" class="text-muted">Loading threshold preview...</td>
+                                                            <td colspan="4" class="text-muted">Loading threshold
+                                                                preview...</td>
                                                         </tr>
                                                     </tbody>
                                                 </table>
@@ -1808,13 +1881,15 @@
                     </div>
                     <div class="modal-footer border-secondary">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" form="deviceForm" class="btn btn-primary" id="deviceFormSubmitBtn">Save Device</button>
+                        <button type="submit" form="deviceForm" class="btn btn-primary" id="deviceFormSubmitBtn">Save
+                            Device</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="modal fade snmp-config-modal" id="snmpConfigModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal fade snmp-config-modal" id="snmpConfigModal" tabindex="-1" aria-hidden="true"
+            data-bs-backdrop="static">
             <div class="modal-dialog modal-dialog-centered modal-lg">
                 <div class="modal-content text-white">
                     <div class="snmp-config-header">
@@ -1831,18 +1906,22 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
                     </div>
                     <form id="snmpConfigForm">
                         <div class="snmp-config-body">
                             <p class="snmp-config-lead">
-                                Use this panel only on devices that actually expose SNMP. Enabling SNMP here switches the device monitoring mode to SNMP. Disabling it falls back to ping-only monitoring when SNMP was the active mode.
+                                Use this panel only on devices that actually expose SNMP. Enabling SNMP here switches
+                                the device monitoring mode to SNMP. Disabling it falls back to ping-only monitoring when
+                                SNMP was the active mode.
                             </p>
 
                             <div class="snmp-summary-grid">
                                 <div class="snmp-summary-card state-disabled" id="snmpModalStateCard">
                                     <div class="snmp-summary-label">SNMP State</div>
-                                    <div class="snmp-summary-value snmp-state-badge is-disabled" id="snmpModalStateValue">Disabled</div>
+                                    <div class="snmp-summary-value snmp-state-badge is-disabled"
+                                        id="snmpModalStateValue">Disabled</div>
                                 </div>
                                 <div class="snmp-summary-card">
                                     <div class="snmp-summary-label">Last Poll</div>
@@ -1856,67 +1935,83 @@
 
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" role="switch" id="snmpModalEnabled">
-                                <label class="form-check-label" for="snmpModalEnabled">Enable SNMP polling for this device</label>
+                                <label class="form-check-label" for="snmpModalEnabled">Enable SNMP polling for this
+                                    device</label>
                             </div>
 
                             <div class="snmp-config-panel" id="snmpConfigPanel">
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label" for="snmpModalVersion">Version</label>
-                                        <select class="form-select bg-dark text-light border-secondary" id="snmpModalVersion">
+                                        <select class="form-select bg-dark text-light border-secondary"
+                                            id="snmpModalVersion">
                                             <option value="v2c">v2c</option>
                                             <option value="v3">v3</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label" for="snmpModalPort">Port</label>
-                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="snmpModalPort" min="1" max="65535" value="161">
+                                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                                            id="snmpModalPort" min="1" max="65535" value="161">
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label" for="snmpModalPollInterval">Poll Interval (s)</label>
-                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="snmpModalPollInterval" min="60" max="3600" value="300">
+                                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                                            id="snmpModalPollInterval" min="60" max="3600" value="300">
                                     </div>
                                     <div class="col-12" id="snmpModalV2Fields">
                                         <label class="form-label" for="snmpModalCommunity">Community String</label>
-                                        <input type="text" class="form-control bg-dark text-light border-secondary" id="snmpModalCommunity" value="public">
+                                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            id="snmpModalCommunity" value="public">
                                     </div>
                                     <div class="col-12 monitoring-fields-hidden" id="snmpModalV3Fields">
                                         <div class="row g-3">
                                             <div class="col-md-6">
                                                 <label class="form-label" for="snmpModalUsername">Username</label>
-                                                <input type="text" class="form-control bg-dark text-light border-secondary" id="snmpModalUsername">
+                                                <input type="text"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    id="snmpModalUsername">
                                             </div>
                                             <div class="col-md-6"></div>
                                             <div class="col-md-6">
                                                 <label class="form-label" for="snmpModalAuthProto">Auth Protocol</label>
-                                                <select class="form-select bg-dark text-light border-secondary" id="snmpModalAuthProto">
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    id="snmpModalAuthProto">
                                                     <option value="">None</option>
                                                     <option value="MD5">MD5</option>
                                                     <option value="SHA">SHA</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label" for="snmpModalAuthPassword">Auth Password</label>
-                                                <input type="password" class="form-control bg-dark text-light border-secondary" id="snmpModalAuthPassword">
+                                                <label class="form-label" for="snmpModalAuthPassword">Auth
+                                                    Password</label>
+                                                <input type="password"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    id="snmpModalAuthPassword">
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label" for="snmpModalPrivProto">Priv Protocol</label>
-                                                <select class="form-select bg-dark text-light border-secondary" id="snmpModalPrivProto">
+                                                <select class="form-select bg-dark text-light border-secondary"
+                                                    id="snmpModalPrivProto">
                                                     <option value="">None</option>
                                                     <option value="DES">DES</option>
                                                     <option value="AES">AES</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label" for="snmpModalPrivPassword">Priv Password</label>
-                                                <input type="password" class="form-control bg-dark text-light border-secondary" id="snmpModalPrivPassword">
+                                                <label class="form-label" for="snmpModalPrivPassword">Priv
+                                                    Password</label>
+                                                <input type="password"
+                                                    class="form-control bg-dark text-light border-secondary"
+                                                    id="snmpModalPrivPassword">
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div class="snmp-config-note">
-                                    If SNMP stays disabled, the device will continue using its existing non-SNMP monitoring mode where applicable.
+                                    If SNMP stays disabled, the device will continue using its existing non-SNMP
+                                    monitoring mode where applicable.
                                 </div>
                             </div>
 
@@ -1949,10 +2044,10 @@
         const devicesLoadingApi = devicesSurfaceFlags.sharedLoading !== false && window.UI?.Loading
             ? window.UI.Loading
             : null;
-        const DEVICE_GLOBAL_THRESHOLDS = {{ (global_thresholds if global_thresholds is defined else device_global_threshold_defaults)|tojson }};
+        const DEVICE_GLOBAL_THRESHOLDS = {{ (global_thresholds if global_thresholds is defined else device_global_threshold_defaults)| tojson }};
         const DEVICE_COMPLIANCE_PROFILES = {
 {% for profile in (compliance_profiles if compliance_profiles is defined else []) %}
-            "{{ profile.id }}": {{ (profile.rules_json or {})|tojson }}{% if not loop.last %},{% endif %}
+        "{{ profile.id }}": {{ (profile.rules_json or {})|tojson }}{% if not loop.last %},{% endif %}
 {% endfor %}
         };
         const DEVICE_THRESHOLD_ROWS = [
@@ -2109,6 +2204,16 @@
                 device.snmp_last_error || '',
                 selected
             ].join('|');
+        }
+
+        function _pingCellHtml(latency, status) {
+            const statusKey = normalizeDeviceStatusKey(status);
+            if (statusKey !== 'online' || latency == null) {
+                return `<span class="ping-value ping-na">—</span>`;
+            }
+            const ms = Math.round(Number(latency));
+            const cls = ms < 20 ? 'ping-good' : ms < 80 ? 'ping-ok' : ms < 150 ? 'ping-warn' : 'ping-bad';
+            return `<span class="ping-value ${cls}">${ms}<span class="ping-unit">ms</span></span>`;
         }
 
         function formatSnmpLastPoll(value) {
@@ -2319,7 +2424,7 @@
                         window.patchKeyedTableRows(tbody, devices, {
                             getKey: (d) => d.device_id,
                             getRenderKey: (d) => buildDeviceRowRenderKey(d),
-                            emptyColSpan: 7,
+                            emptyColSpan: 8,
                             emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
                             emptyClassName: 'text-center',
                             applyRow: (row, d) => {
@@ -2435,6 +2540,7 @@
                                      </div>
                                  </td>
                                 <td><code>${d.device_ip}</code></td>
+                                <td class="device-ping-cell" id="ping-cell-${d.device_id}">${_pingCellHtml(d.latency, d.status)}</td>
                                 <td>${typeSelectHtml}</td>
                                 <td>${snmpHtml}</td>
                                 <td class="device-status-cell">
@@ -2509,6 +2615,97 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchDevices(1);
         });
+
+        // ── Real-time ping updates via SSE ────────────────────────────────────
+        (function () {
+            let _sseSource = null;
+
+            function _handleDeviceBatch(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    const devices = data.devices || [];
+                    if (!devices.length) return;
+
+                    requestAnimationFrame(() => {
+                        devices.forEach(d => {
+                            const entry = deviceRowById.get(String(d.device_id));
+                            if (!entry) return;
+
+                            // Update ping cell
+                            if (entry.pingCell) {
+                                entry.pingCell.innerHTML = _pingCellHtml(d.latency, d.status);
+                            }
+
+                            // Update status dot
+                            if (entry.statusElement) {
+                                const status = normalizeDeviceStatusKey(d.status);
+                                const cls = status === 'online' ? 'status-online'
+                                    : status === 'maintenance' ? 'status-maintenance'
+                                        : 'status-offline';
+                                entry.statusElement.className = `status-indicator ${cls}`;
+                                const latencyText = d.latency != null && status === 'online'
+                                    ? ` (${Math.round(d.latency)}ms)` : '';
+                                entry.statusElement.title = statusTextFromKey(status) + latencyText;
+                                entry.row.dataset.liveStatus = status;
+                            }
+                        });
+                    });
+                } catch (e) { /* ignore */ }
+            }
+
+            function _connectSSE() {
+                if (_sseSource) { _sseSource.close(); _sseSource = null; }
+                _sseSource = new EventSource('/api/events/stream');
+                _sseSource.addEventListener('device_update_batch', _handleDeviceBatch);
+                _sseSource.onerror = function () {
+                    _sseSource.close();
+                    _sseSource = null;
+                    setTimeout(_connectSSE, 5000);
+                };
+            }
+
+            _connectSSE();
+            window.addEventListener('beforeunload', () => { if (_sseSource) _sseSource.close(); }, { once: true });
+        }());
+
+        // ── Sidebar tab activity tracking ─────────────────────────────────────
+        (function () {
+            const _NAV_KEY = 'devicesTabActivity';
+            const _MAX_ENTRIES = 50;
+
+            function _logTabActivity(label, href) {
+                try {
+                    const stored = JSON.parse(sessionStorage.getItem(_NAV_KEY) || '[]');
+                    stored.push({ label, href, ts: new Date().toISOString() });
+                    if (stored.length > _MAX_ENTRIES) stored.splice(0, stored.length - _MAX_ENTRIES);
+                    sessionStorage.setItem(_NAV_KEY, JSON.stringify(stored));
+                } catch (e) { /* storage full or unavailable */ }
+            }
+
+            // Track sidebar nav link clicks
+            document.querySelectorAll('.sidebar a[href], nav a[href], .nav-link[href]').forEach(link => {
+                link.addEventListener('click', function () {
+                    _logTabActivity(
+                        (this.textContent || this.getAttribute('title') || this.getAttribute('href') || '').trim().slice(0, 60),
+                        this.getAttribute('href') || ''
+                    );
+                });
+            });
+
+            // Track Bootstrap tab switches (modal tabs: Identity / Monitoring / Operations)
+            document.addEventListener('shown.bs.tab', function (e) {
+                const btn = e.target;
+                _logTabActivity(
+                    'Tab: ' + (btn.textContent || btn.getAttribute('aria-label') || btn.id || '').trim().slice(0, 60),
+                    btn.getAttribute('data-bs-target') || btn.getAttribute('href') || ''
+                );
+            });
+
+            // Expose for debugging: window._getTabActivity()
+            window._getTabActivity = function () {
+                try { return JSON.parse(sessionStorage.getItem(_NAV_KEY) || '[]'); } catch (e) { return []; }
+            };
+        }());
 
 
         function hydrateLucideIcons(root = null) {
@@ -2615,9 +2812,11 @@
             const typeSelect = row.__deviceTypeSelect || row.querySelector('.device-type-select');
             const statusElement = row.__statusElement || row.querySelector('.status-indicator');
             const checkbox = row.__deviceCheckbox || row.querySelector('.device-checkbox');
+            const pingCell = row.__pingCell || row.querySelector('.device-ping-cell');
             row.__deviceTypeSelect = typeSelect || null;
             row.__statusElement = statusElement || null;
             row.__deviceCheckbox = checkbox || null;
+            row.__pingCell = pingCell || null;
             row.dataset.liveStatus = getStatusKeyFromElement(statusElement);
 
             const entry = row.__deviceCacheEntry || {};
@@ -2629,6 +2828,7 @@
             entry.typeSelect = typeSelect || null;
             entry.checkbox = checkbox || null;
             entry.statusElement = statusElement || null;
+            entry.pingCell = pingCell || null;
 
             row.__deviceCacheEntry = entry;
             return entry;
@@ -3750,6 +3950,130 @@
             syncSelectAllWithVisible();
         }
 
+        window.__bulkDeleteState = { active: false, jobId: null, timer: null };
+
+        function setBulkDeleteControlsBusy(isBusy) {
+            const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+            const refreshBtn = document.getElementById('devicesRefreshBtn');
+            if (bulkDeleteBtn) {
+                bulkDeleteBtn.disabled = isBusy;
+                if (!isBusy) {
+                    bulkDeleteBtn.innerHTML = '<i data-lucide="trash-2"></i> Delete Selected';
+                    hydrateLucideIcons(bulkDeleteBtn);
+                }
+            }
+            if (refreshBtn) {
+                refreshBtn.disabled = isBusy;
+            }
+        }
+
+        function renderBulkDeleteProgress({ title, text, meta, percent, done = false, danger = false }) {
+            const container = document.getElementById('bulkDeleteProgress');
+            const titleEl = document.getElementById('bulkDeleteProgressTitle');
+            const textEl = document.getElementById('bulkDeleteProgressText');
+            const metaEl = document.getElementById('bulkDeleteProgressMeta');
+            const barEl = document.getElementById('bulkDeleteProgressBar');
+            if (!container || !titleEl || !textEl || !metaEl || !barEl) return;
+
+            container.classList.remove('devices-hidden', 'alert-danger', 'alert-info', 'alert-success');
+            container.classList.add(danger ? 'alert-danger' : done ? 'alert-success' : 'alert-info');
+            titleEl.textContent = title;
+            textEl.textContent = text;
+            metaEl.textContent = meta || '';
+            barEl.style.width = `${percent}%`;
+            barEl.setAttribute('aria-valuenow', String(percent));
+            barEl.classList.toggle('progress-bar-animated', !done);
+            barEl.classList.toggle('progress-bar-striped', !done);
+            barEl.classList.toggle('bg-danger', danger);
+            barEl.classList.toggle('bg-success', done && !danger);
+        }
+
+        function stopBulkDeleteProgress() {
+            const state = window.__bulkDeleteState;
+            if (state.timer) {
+                clearTimeout(state.timer);
+            }
+            state.active = false;
+            state.jobId = null;
+            state.timer = null;
+            setBulkDeleteControlsBusy(false);
+        }
+
+        function pollBulkDeleteProgress() {
+            const state = window.__bulkDeleteState;
+            if (!state.active || !state.jobId) return;
+
+            fetch(`/api/devices/bulk_delete/${state.jobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    const processed = Number(data.processed || 0);
+                    const eligible = Math.max(Number(data.eligible_count || 0), 1);
+                    const deleted = Number(data.deleted || 0);
+                    const percent = Math.min(100, Math.round((processed / eligible) * 100));
+                    const meta = `${deleted} deleted of ${data.eligible_count || eligible} eligible`;
+
+                    if (data.status === 'completed') {
+                        renderBulkDeleteProgress({
+                            title: 'Delete completed',
+                            text: data.errors?.length
+                                ? `${deleted} devices deleted with ${data.errors.length} issue(s).`
+                                : `${deleted} devices deleted successfully.`,
+                            meta,
+                            percent: 100,
+                            done: true
+                        });
+                        stopBulkDeleteProgress();
+                        fetchDevices(currentPage);
+                        showDevicesNotification(
+                            data.errors?.length
+                                ? `Deleted ${deleted} devices with ${data.errors.length} issue(s).`
+                                : `Successfully deleted ${deleted} devices.`,
+                            data.errors?.length ? 'warning' : 'success'
+                        );
+                        return;
+                    }
+
+                    renderBulkDeleteProgress({
+                        title: 'Deleting devices...',
+                        text: `Processed ${processed} of ${data.eligible_count || eligible} devices in the background.`,
+                        meta,
+                        percent
+                    });
+                    state.timer = setTimeout(pollBulkDeleteProgress, 1000);
+                })
+                .catch(error => {
+                    renderBulkDeleteProgress({
+                        title: 'Delete status unavailable',
+                        text: error.message || 'Could not read delete progress.',
+                        meta: 'Refresh the page to confirm final state.',
+                        percent: 100,
+                        done: true,
+                        danger: true
+                    });
+                    stopBulkDeleteProgress();
+                    showDevicesNotification(error.message || 'Could not track delete progress.', 'danger');
+                });
+        }
+
+        function startBulkDeleteProgress({ jobId, requested, eligible, batchSize }) {
+            const state = window.__bulkDeleteState;
+            stopBulkDeleteProgress();
+            state.active = true;
+            state.jobId = jobId;
+            setBulkDeleteControlsBusy(true);
+            renderBulkDeleteProgress({
+                title: 'Delete queued',
+                text: `Starting background delete for ${eligible} of ${requested} selected devices.`,
+                meta: `Batch size ${batchSize}`,
+                percent: 5
+            });
+            state.timer = setTimeout(pollBulkDeleteProgress, 300);
+        }
+
         function deleteSelectedDevices() {
             const selectedIds = new Set();
             getAllDeviceCheckboxes().forEach(cb => {
@@ -3783,19 +4107,24 @@
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ device_ids: ids })
+                body: JSON.stringify({ device_ids: ids, batch_size: 25 })
             })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
+                    if (data.success && data.job_id) {
                         clearCrossPageSelection();
                         updateBulkUI();
                         const selectAll = document.getElementById('selectAllCheckbox');
                         if (selectAll) {
                             selectAll.checked = false;
                         }
-                        fetchDevices(currentPage);
-                        showDevicesNotification(`Successfully deleted ${data.deleted} devices.`, 'success');
+                        startBulkDeleteProgress({
+                            jobId: data.job_id,
+                            requested: data.requested || ids.length,
+                            eligible: data.eligible || ids.length,
+                            batchSize: data.batch_size || 25
+                        });
+                        showDevicesNotification(`Delete started for ${data.eligible || ids.length} devices.`, 'info');
                     } else {
                         showDevicesNotification(`Delete failed: ${data.error || 'Unknown error'}`, 'danger');
                     }
@@ -3805,7 +4134,7 @@
                     showDevicesNotification('Error deleting devices', 'danger');
                 })
                 .finally(() => {
-                    if (btn) {
+                    if (btn && !window.__bulkDeleteState?.active) {
                         btn.innerHTML = originalText;
                         btn.disabled = false;
                     }
@@ -3922,16 +4251,21 @@
                         'Content-Type': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
-                    body: JSON.stringify({ device_ids: [deviceId] })
+                    body: JSON.stringify({ device_ids: [deviceId], batch_size: 1 })
                 });
                 const data = await response.json();
-                if (!response.ok || !data.success) {
+                if (!response.ok || !data.success || !data.job_id) {
                     throw new Error(data.error || 'Failed to delete device');
                 }
 
                 globalFilteredSelectionIds.delete(Number(deviceId));
-                showDevicesNotification('Device deleted.', 'success');
-                fetchDevices(currentPage);
+                startBulkDeleteProgress({
+                    jobId: data.job_id,
+                    requested: data.requested || 1,
+                    eligible: data.eligible || 1,
+                    batchSize: data.batch_size || 1
+                });
+                showDevicesNotification('Device delete started.', 'info');
             } catch (error) {
                 console.error(error);
                 showDevicesNotification(error.message || 'Failed to delete device.', 'danger');
@@ -4057,6 +4391,11 @@
                                 entry.statusElement.title = nextTitle;
                             }
                             entry.row.dataset.liveStatus = status;
+
+                            // Update ping cell in real-time
+                            if (entry.pingCell) {
+                                entry.pingCell.innerHTML = _pingCellHtml(device.latency, device.status);
+                            }
                         });
 
                         if (statusChanged && hasActiveStatusFilter()) {

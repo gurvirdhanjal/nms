@@ -5,8 +5,11 @@ class DeviceScanHistory(db.Model):
     scan_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_ip = db.Column(db.String(50), nullable=False, index=True)
     device_name = db.Column(db.String(100), nullable=True)
-    ping_time_ms = db.Column(db.Float, nullable=True)
+    ping_time_ms = db.Column(db.Float, nullable=True)   # avg RTT across probes
+    min_rtt = db.Column(db.Float, nullable=True)         # min RTT across probes
+    max_rtt = db.Column(db.Float, nullable=True)         # max RTT across probes
     status = db.Column(db.String(20), nullable=False, index=True)  # online, offline
+    status_detail = db.Column(db.String(100), nullable=True)
     packet_loss = db.Column(db.Float, default=0.0)
     jitter = db.Column(db.Float, nullable=True)
     scan_timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)

@@ -10,6 +10,8 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from services.settings_service import format_monitoring_interval_label
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,11 +45,11 @@ class ReportMetricsEnricher:
 
         if self.interval_seconds > 0 and period_s > 0:
             self.expected_scans: Optional[int]  = int(period_s / self.interval_seconds)
-            self.ping_interval_label: str       = f"{self.interval_seconds // 60} min"
+            self.ping_interval_label: str       = format_monitoring_interval_label(self.interval_seconds)
         elif self.interval_seconds > 0:
             # interval set but period is zero or negative — degrade gracefully
             self.expected_scans      = None
-            self.ping_interval_label = f"{self.interval_seconds // 60} min"
+            self.ping_interval_label = format_monitoring_interval_label(self.interval_seconds)
         else:
             self.expected_scans      = None
             self.ping_interval_label = "—"

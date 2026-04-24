@@ -435,6 +435,10 @@ def _ensure_device_maintenance_columns(inspector=None):
             statements.append("ALTER TABLE device ADD COLUMN last_agent_heartbeat TIMESTAMP")
         if 'last_agent_session_id' not in existing:
             statements.append("ALTER TABLE device ADD COLUMN last_agent_session_id VARCHAR(64)")
+        if 'delete_pending' not in existing:
+            statements.append(
+                "ALTER TABLE device ADD COLUMN delete_pending BOOLEAN NOT NULL DEFAULT FALSE"
+            )
 
         if not statements:
             return
@@ -1147,7 +1151,7 @@ def _ensure_device_classification_cache_table():
         print(f"[DB] Migration warning (device_classification_cache): {exc}")
 
 
-def _ensure_device_name_locked_column():
+def _ensure_device_name_locked_column(inspector=None):
     """Add name_locked column to device table (idempotent).
 
     name_locked = True means a human has intentionally named this device.
@@ -1156,15 +1160,20 @@ def _ensure_device_name_locked_column():
     changes, re-scans, and cross-subnet rediscoveries.
     """
     try:
+        if inspector is None:
+            inspector = inspect(db.engine)
+
+        if 'device' not in inspector.get_table_names():
+            return
+
         backend = db.engine.url.get_backend_name()
-        if backend == 'postgresql':
-            db.session.execute(db.text(
-                "ALTER TABLE device ADD COLUMN IF NOT EXISTS name_locked BOOLEAN NOT NULL DEFAULT FALSE"
-            ))
-        else:
-            # SQLite: check via PRAGMA
-            cols = {row[1] for row in db.session.execute(db.text("PRAGMA table_info(device)"))}
-            if 'name_locked' not in cols:
+        existing = {col['name'] for col in inspector.get_columns('device')}
+        if 'name_locked' not in existing:
+            if backend == 'postgresql':
+                db.session.execute(db.text(
+                    "ALTER TABLE device ADD COLUMN IF NOT EXISTS name_locked BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+            else:
                 db.session.execute(db.text(
                     "ALTER TABLE device ADD COLUMN name_locked BOOLEAN NOT NULL DEFAULT 0"
                 ))
@@ -1432,6 +1441,12 @@ def _ensure_db_safety_constraints():
     if backend != 'postgresql':
         return
 
+    try:
+        existing_tables = set(inspect(db.engine).get_table_names())
+    except Exception as exc:
+        print(f'[DB] Migration warning (safety constraint table discovery): {exc}')
+        existing_tables = set()
+
     # ---------------------------------------------------------------------------
     # CHECK constraints (NOT VALID = enforced on new rows only, no backfill scan)
     # ---------------------------------------------------------------------------
@@ -1462,7 +1477,17 @@ def _ensure_db_safety_constraints():
         ),
     ]
     for table, conname, check_expr in constraints:
+        normalized_table = table.strip('"')
+        if normalized_table not in existing_tables:
+            continue
         try:
+            # Live check — inspector cache can be stale right after db.create_all()
+            tbl_live = db.session.execute(text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = current_schema() AND table_name = :t"
+            ), {'t': normalized_table}).scalar()
+            if not tbl_live:
+                continue
             exists = db.session.execute(text(
                 "SELECT 1 FROM pg_constraint WHERE conname = :n"
             ), {'n': conname}).scalar()
@@ -1572,14 +1597,19 @@ def _ensure_dashboard_events_tenant_columns():
     if backend != 'postgresql':
         return
 
-    # Add columns (idempotent via exception swallow)
-    for col_def in (
-        'ALTER TABLE dashboard_events ADD COLUMN IF NOT EXISTS site_id INTEGER',
-        'ALTER TABLE dashboard_events ADD COLUMN IF NOT EXISTS department_id INTEGER',
-    ):
+    # Add columns only when truly absent — IF NOT EXISTS still acquires ACCESS EXCLUSIVE
+    # lock, which times out when alert_manager is writing; skip the DDL instead.
+    for col_name in ('site_id', 'department_id'):
         try:
-            db.session.execute(text(col_def))
-            db.session.commit()
+            col_exists = db.session.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'dashboard_events' AND column_name = :c"
+            ), {'c': col_name}).scalar()
+            if not col_exists:
+                db.session.execute(text(
+                    f'ALTER TABLE dashboard_events ADD COLUMN {col_name} INTEGER'
+                ))
+                db.session.commit()
         except Exception as exc:
             db.session.rollback()
             print(f'[DB] Migration warning (dashboard_events tenant col): {exc}')
@@ -1629,6 +1659,54 @@ def _ensure_dashboard_events_tenant_columns():
         print(f'[DB] Migration warning (dashboard_events backfill): {exc}')
 
 
+def _cleanup_aioping_inflated_latency():
+    """One-time cleanup of ping_time_ms values inflated by aioping event-loop timing.
+
+    aioping measured Python event-loop wall-clock time (150-250 ms) instead of
+    real network RTT (1-3 ms on LAN). Fixed by replacing aioping with _ping_batch
+    (subprocess ping). This function nulls the bad historical rows so reports
+    no longer show false high-latency averages.
+
+    Idempotent: guarded by app_settings key 'aioping_cleanup_done'.
+    Only touches values in the 100-1000 ms band on Online devices — leaves
+    legitimate high-latency WAN/satellite links (typically >1000 ms) untouched.
+    """
+    try:
+        done = db.session.execute(
+            text("SELECT value FROM app_settings WHERE key = 'aioping_cleanup_done'")
+        ).fetchone()
+        if done:
+            return
+
+        db.session.execute(text("""
+            UPDATE device_scan_history
+            SET ping_time_ms = NULL,
+                min_rtt      = NULL,
+                max_rtt      = NULL,
+                jitter       = NULL
+            WHERE ping_time_ms BETWEEN 100 AND 1000
+              AND status = 'Online'
+        """))
+
+        db.session.execute(text("""
+            DELETE FROM daily_device_stats
+            WHERE avg_latency_ms BETWEEN 100 AND 1000
+        """))
+
+        db.session.execute(text("""
+            INSERT INTO app_settings (key, value, category, description)
+            VALUES ('aioping_cleanup_done', 'true', 'maintenance',
+                    'One-time cleanup of aioping event-loop inflated ping_time_ms values')
+            ON CONFLICT (key) DO UPDATE SET value = 'true'
+        """))
+
+        db.session.commit()
+        print('[DB] aioping inflated latency values cleaned from scan history and daily stats.')
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (aioping_cleanup): {exc}')
+
+
 def ensure_server_health_columns():
     """Run all schema migrations."""
     inspector = inspect(db.engine)
@@ -1665,6 +1743,7 @@ def ensure_server_health_columns():
     _ensure_db_safety_constraints()
     _ensure_dashboard_events_tenant_columns()
     _ensure_device_name_locked_column()
+    _cleanup_aioping_inflated_latency()
 
 
 def _ensure_app_settings_table():
@@ -1734,6 +1813,40 @@ def _ensure_device_icmp_threshold_columns():
         print(f'[DB] Migration warning (device ICMP thresholds): {exc}')
 
 
+def _ensure_device_scan_history_columns():
+    """Add scan-history metadata columns used by reachability diagnostics."""
+    try:
+        inspector = inspect(db.engine)
+        if 'device_scan_history' not in inspector.get_table_names():
+            return
+
+        existing = {col['name'] for col in inspector.get_columns('device_scan_history')}
+        statements = []
+        if 'status_detail' not in existing:
+            statements.append(
+                'ALTER TABLE device_scan_history ADD COLUMN IF NOT EXISTS status_detail VARCHAR(100)'
+            )
+        # min_rtt / max_rtt — per-cycle probe statistics for accurate latency reporting.
+        # ping_time_ms remains the avg RTT; these two add the spread per cycle.
+        if 'min_rtt' not in existing:
+            statements.append(
+                'ALTER TABLE device_scan_history ADD COLUMN IF NOT EXISTS min_rtt DOUBLE PRECISION'
+            )
+        if 'max_rtt' not in existing:
+            statements.append(
+                'ALTER TABLE device_scan_history ADD COLUMN IF NOT EXISTS max_rtt DOUBLE PRECISION'
+            )
+
+        if statements:
+            for stmt in statements:
+                db.session.execute(text(stmt))
+            db.session.commit()
+            print(f'[DB] Applied device_scan_history migrations: {len(statements)} columns added.')
+    except Exception as exc:
+        db.session.rollback()
+        print(f'[DB] Migration warning (device_scan_history columns): {exc}')
+
+
 def ensure_device_icmp_threshold_columns():
     """Public entry point: add ICMP threshold columns to the device table."""
     _ensure_device_icmp_threshold_columns()
@@ -1775,3 +1888,8 @@ def ensure_alert_channels_table():
 def ensure_tracking_stabilization_columns():
     inspector = inspect(db.engine)
     _ensure_tracking_stabilization_columns(inspector)
+
+
+def ensure_device_scan_history_columns():
+    """Public entry point: add auxiliary scan-history columns."""
+    _ensure_device_scan_history_columns()

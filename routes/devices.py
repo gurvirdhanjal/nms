@@ -4,12 +4,17 @@ from config import Config
 from extensions import db
 from services.network_scanner import NetworkScanner
 from services.device_identity import upsert_device_from_identity, compute_subnet_cidr
+from services.settings_service import get_monitoring_interval, format_monitoring_interval_label
 from middleware.rbac import require_login, require_permission, has_permission
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import asyncio
 import json
 import logging
+import threading
+import time
+import uuid
 from sqlalchemy import inspect, or_, func
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
 
 devices_bp = Blueprint('devices_bp', __name__, url_prefix='')
@@ -23,6 +28,68 @@ _DEVICE_THRESHOLD_DEFAULTS = {
     'disk_warning': 80.0,
     'disk_critical': 95.0,
 }
+
+_bulk_delete_jobs = {}
+_bulk_delete_jobs_lock = threading.Lock()
+
+
+def _is_lock_timeout_error(error: Exception) -> bool:
+    """Detect PostgreSQL lock-not-available / lock-timeout errors.
+
+    Check order: SQLSTATE code → exception class name → message substring.
+    String matching alone is brittle across driver versions and locales.
+    """
+    # 1. SQLSTATE (most reliable — set by the server, not the driver)
+    orig = getattr(error, "orig", None)
+    pgcode = getattr(orig, "pgcode", None)
+    if pgcode in ("55P03", "57014", "40P01"):
+        # 55P03 lock_not_available, 57014 query_canceled (lock_timeout),
+        # 40P01 deadlock_detected
+        return True
+    # 2. psycopg2 exception class hierarchy
+    if orig is not None:
+        cls_name = type(orig).__name__
+        if cls_name in ("LockNotAvailable", "QueryCanceled", "DeadlockDetected"):
+            return True
+    # 3. Fallback substring match (last resort)
+    message = str(error).lower()
+    return (
+        "lock not available" in message
+        or "lock timeout" in message
+        or "canceling statement due to lock timeout" in message
+        or "deadlock detected" in message
+    )
+
+
+def _create_bulk_delete_job(*, requested_ids, eligible_ids, batch_size, stopped_scans, initiated_by):
+    job_id = uuid.uuid4().hex
+    job = {
+        'job_id': job_id,
+        'status': 'queued',
+        'requested_count': len(requested_ids),
+        'eligible_count': len(eligible_ids),
+        'deleted': 0,
+        'processed': 0,
+        'errors': [],
+        'batch_size': batch_size,
+        'stopped_scans': stopped_scans,
+        'created_at': datetime.utcnow().isoformat(),
+        'started_at': None,
+        'finished_at': None,
+        'initiated_by': initiated_by,
+    }
+    with _bulk_delete_jobs_lock:
+        _bulk_delete_jobs[job_id] = job
+    return job
+
+
+def _update_bulk_delete_job(job_id, **updates):
+    with _bulk_delete_jobs_lock:
+        job = _bulk_delete_jobs.get(job_id)
+        if not job:
+            return None
+        job.update(updates)
+        return dict(job)
 
 
 def _default_device_thresholds():
@@ -72,6 +139,28 @@ def _iso_utc(ts):
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.isoformat()
+
+
+def _exclude_agent_push_scan(DeviceScanHistory):
+    """Ignore agent HTTP round-trip rows when building ICMP latency views."""
+    return or_(
+        DeviceScanHistory.scan_type.is_(None),
+        DeviceScanHistory.scan_type != 'agent_push',
+    )
+
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+_WORKSTATION_TYPES = {'workstation', 'desktop', 'laptop', 'pc'}
+
+
+def _format_ist(ts, fallback='Not available', include_tz=True):
+    if not ts:
+        return fallback
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    localized = ts.astimezone(_IST)
+    suffix = ' IST' if include_tz else ''
+    return localized.strftime('%d/%m/%Y, %H:%M:%S') + suffix
 
 
 def _json_error_response(*, code, message, status, connections=None, agent_snapshot=None, meta=None):
@@ -212,6 +301,134 @@ def _delete_device_with_dependencies(device, existing_tables=None):
         ServerHealthDailyRollup.query.filter_by(device_id=device_id).delete(synchronize_session=False)
 
     db.session.delete(device)
+
+
+def _run_bulk_delete_job(*, app, job_id, device_ids, batch_size, audit_context=None):
+    from models.device import Device
+
+    with app.app_context():
+        existing_tables = set(inspect(db.engine).get_table_names())
+        deleted_count = 0
+        errors = []
+        deferred_ids = []
+
+        _update_bulk_delete_job(
+            job_id,
+            status='running',
+            started_at=datetime.utcnow().isoformat(),
+        )
+
+        # ── Phase 1: mark rows delete_pending so the monitor skips them ──────
+        # This is a short, low-contention write that removes the race window
+        # before we attempt the heavier cascading delete.
+        try:
+            Device.query.filter(Device.device_id.in_(device_ids)).update(
+                {Device.delete_pending: True},
+                synchronize_session=False,
+            )
+            db.session.commit()
+        except Exception as mark_err:
+            logger.warning("Bulk delete: could not mark delete_pending: %s", mark_err)
+            db.session.rollback()
+
+        def _try_delete_one(dev_id, *, nowait=False):
+            """Attempt to delete one device. Returns True=deleted, None=retry, False=error."""
+            try:
+                with db.session.begin_nested():
+                    q = Device.query.filter(Device.device_id == dev_id)
+                    # SKIP LOCKED on first pass: if the monitor still holds the
+                    # row (rare after delete_pending), defer rather than error.
+                    # NOWAIT on retry pass: by then the monitor has moved on.
+                    if nowait:
+                        q = q.with_for_update(nowait=True)
+                    else:
+                        q = q.with_for_update(skip_locked=True)
+                    device = q.first()
+                    if device is None:
+                        # Row is locked (skip_locked) or already gone.
+                        return None if not nowait else True
+                    _delete_device_with_dependencies(device, existing_tables=existing_tables)
+                return True
+            except OperationalError as e:
+                db.session.rollback()
+                if _is_lock_timeout_error(e):
+                    logger.warning(
+                        "Bulk delete lock/contention: device_id=%s — deferring", dev_id
+                    )
+                    return None  # retry later
+                logger.warning("Bulk delete OperationalError: device_id=%s error=%s", dev_id, e)
+                errors.append(f"Error deleting ID {dev_id}: {str(e)}")
+                return False
+            except Exception as e:
+                db.session.rollback()
+                logger.warning("Bulk delete failure: device_id=%s error=%s", dev_id, e)
+                errors.append(f"Error deleting ID {dev_id}: {str(e)}")
+                return False
+
+        # ── Phase 2: delete in batches ────────────────────────────────────────
+        for start in range(0, len(device_ids), batch_size):
+            batch_ids = device_ids[start:start + batch_size]
+
+            for dev_id in batch_ids:
+                result = _try_delete_one(dev_id, nowait=False)
+                if result is True:
+                    deleted_count += 1
+                elif result is None:
+                    deferred_ids.append(dev_id)
+
+            try:
+                db.session.commit()
+            except Exception as commit_err:
+                logger.warning("Bulk delete batch commit failed: %s", commit_err)
+                db.session.rollback()
+
+            _update_bulk_delete_job(
+                job_id,
+                processed=min(start + len(batch_ids), len(device_ids)),
+                deleted=deleted_count,
+                errors=errors[:50],
+            )
+            time.sleep(0.05)
+
+        # ── Phase 3: retry deferred rows ─────────────────────────────────────
+        # Wait briefly so any in-flight monitor transaction can commit and
+        # release its row lock before we retry with NOWAIT.
+        if deferred_ids:
+            logger.info("Bulk delete: retrying %d deferred devices", len(deferred_ids))
+            time.sleep(1.5)
+            for dev_id in deferred_ids:
+                result = _try_delete_one(dev_id, nowait=True)
+                if result is True:
+                    deleted_count += 1
+                elif result is None:
+                    errors.append(f"Error deleting ID {dev_id}: still locked after retry — skipped")
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning("Bulk delete deferred commit failed: %s", e)
+
+        _update_bulk_delete_job(
+            job_id,
+            status='completed',
+            processed=len(device_ids),
+            deleted=deleted_count,
+            errors=errors[:50],
+            finished_at=datetime.utcnow().isoformat(),
+        )
+
+        # ── Audit log — uses explicit context, no Flask session needed ────────
+        if deleted_count > 0:
+            try:
+                from middleware.rbac import create_audit_log
+                create_audit_log(
+                    action='bulk_delete',
+                    entity_type='device',
+                    description=f"Bulk device deletion: {deleted_count} devices deleted",
+                    context=audit_context,  # plain dict, no Flask proxies
+                )
+            except Exception:
+                logger.warning("Bulk delete audit logging failed for job_id=%s", job_id, exc_info=True)
 
 
 def _normalize_status_filter(raw_status):
@@ -479,15 +696,21 @@ def check_connectivity():
     
     try:
         if mode == 'ping':
-            status, latency, packet_loss, *_ = asyncio.run(scanner.ping_device(ip, timeout=2, count=2))
+            status, latency, packet_loss, *_extra = asyncio.run(scanner.ping_device(ip, timeout=2, count=2))
+            status_detail = _extra[2] if len(_extra) >= 3 else None
             if status == 'Online':
                 return jsonify({
                     'success': True, 
                     'message': f"Ping successful ({latency}ms)",
-                    'latency': latency
+                    'latency': latency,
+                    'status_detail': status_detail,
                 })
             else:
-                return jsonify({'success': False, 'message': 'Ping failed (Host unreachable)'})
+                return jsonify({
+                    'success': False,
+                    'message': status_detail or 'Ping failed (Host unreachable)',
+                    'status_detail': status_detail,
+                })
         
         elif mode == 'snmp':
             community = data.get('snmp_community', 'public')
@@ -1026,7 +1249,7 @@ def _device_availability_summary(device, latest_scan):
     return {
         'label': 'Offline',
         'tone': 'danger',
-        'detail': 'Latest reachability check marked the device offline.',
+        'detail': getattr(latest_scan, 'status_detail', None) or 'Latest reachability check marked the device offline.',
     }
 
 
@@ -1051,10 +1274,42 @@ def device_details_page(device_id):
     from models.scan_history import DeviceScanHistory, PortScanResult
     from models.server_health import ServerHealthLog
     from models.snmp_config import DeviceSnmpConfig
+    from models.tracked_device import TrackedDevice
     from middleware.rbac import scoped_query
     from datetime import timedelta
 
-    device = scoped_query(Device).get_or_404(device_id)
+    device = scoped_query(Device).get(device_id)
+    if device is None:
+        tracked_device = TrackedDevice.query.get(device_id)
+        if tracked_device is not None:
+            active_link = (
+                DeviceIdentityLink.query
+                .filter_by(tracked_device_id=tracked_device.id, is_active=True)
+                .order_by(DeviceIdentityLink.updated_at.desc(), DeviceIdentityLink.id.desc())
+                .first()
+            )
+            if active_link and active_link.device_id:
+                return redirect(url_for('devices_bp.device_details_page', device_id=active_link.device_id))
+
+            fallback_device = None
+            normalized_mac = str(getattr(tracked_device, 'mac_address', '') or '').strip().lower()
+            if normalized_mac:
+                fallback_device = (
+                    scoped_query(Device)
+                    .filter(func.lower(Device.macaddress) == normalized_mac)
+                    .order_by(Device.updated_at.desc(), Device.device_id.desc())
+                    .first()
+                )
+            if fallback_device is None and getattr(tracked_device, 'ip_address', None):
+                fallback_device = (
+                    scoped_query(Device)
+                    .filter(Device.device_ip == tracked_device.ip_address)
+                    .order_by(Device.updated_at.desc(), Device.device_id.desc())
+                    .first()
+                )
+            if fallback_device is not None:
+                return redirect(url_for('devices_bp.device_details_page', device_id=fallback_device.device_id))
+        abort(404)
 
     snmp_config = DeviceSnmpConfig.query.filter_by(device_id=device_id).first()
 
@@ -1083,7 +1338,10 @@ def device_details_page(device_id):
     )
 
     latest_scan = (
-        DeviceScanHistory.query.filter(DeviceScanHistory.device_ip == device.device_ip)
+        DeviceScanHistory.query.filter(
+            DeviceScanHistory.device_ip == device.device_ip,
+            _exclude_agent_push_scan(DeviceScanHistory),
+        )
         .order_by(DeviceScanHistory.scan_timestamp.desc(), DeviceScanHistory.scan_id.desc())
         .first()
     )
@@ -1124,6 +1382,7 @@ def device_details_page(device_id):
         .filter(
             DeviceScanHistory.device_ip == device.device_ip,
             DeviceScanHistory.scan_timestamp >= _seven_days_ago,
+            _exclude_agent_push_scan(DeviceScanHistory),
         )
         .order_by(DeviceScanHistory.scan_timestamp.desc())
         .limit(100)
@@ -1146,6 +1405,8 @@ def device_details_page(device_id):
         'sparkline': [
             {
                 't': s.scan_timestamp.strftime('%H:%M'),
+                'ts': _iso_utc(s.scan_timestamp),
+                'display_t': _format_ist(s.scan_timestamp, include_tz=False),
                 'v': round(s.ping_time_ms, 1) if s.ping_time_ms else 0,
                 'status': (s.status or '').lower(),
             }
@@ -1200,6 +1461,133 @@ def device_details_page(device_id):
         },
     ]
 
+    import json
+    workstation_tracking_data = None
+    tracked_device = None
+    if active_identity_link and getattr(active_identity_link, 'tracked_device_id', None):
+        tracked_device = TrackedDevice.query.get(active_identity_link.tracked_device_id)
+    if not tracked_device and getattr(device, 'macaddress', None):
+        tracked_device = TrackedDevice.query.filter_by(mac_address=device.macaddress).first()
+    
+    if tracked_device and getattr(tracked_device, 'tracking_data', None):
+        try:
+            workstation_tracking_data = json.loads(tracked_device.tracking_data)
+            monitoring_sources[1]['status'] = 'Reporting'
+            monitoring_sources[1]['detail'] = 'Workstation agent telemetry'
+            if workstation_tracking_data.get('timestamp'):
+                from dateutil import parser
+                try:
+                    monitoring_sources[1]['timestamp'] = parser.parse(workstation_tracking_data['timestamp'])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if workstation_tracking_data and not latest_agent_log:
+            class MockAgentLog:
+                def __getattr__(self, name):
+                    return None
+            log = MockAgentLog()
+            stats = workstation_tracking_data.get('current_stats', workstation_tracking_data)
+            sys_metrics = stats.get('system_metrics', {})
+            dev_info = stats.get('device_info', {})
+            try:
+                from dateutil import parser
+                log.timestamp = parser.parse(workstation_tracking_data.get('timestamp', ''))
+            except Exception:
+                log.timestamp = None
+            log.os_name = dev_info.get('system')
+            log.os_version = dev_info.get('os_version')
+            log.os_arch = dev_info.get('os_arch')
+            log.uptime = "N/A"
+            log.process_count = sys_metrics.get('process_count')
+            log.cpu_usage = sys_metrics.get('cpu_percent')
+            log.load_avg_1min = None
+            log.cpu_iowait_percent = None
+            log.memory_usage = sys_metrics.get('memory_percent')
+            log.memory_total_gb = sys_metrics.get('total_gb')
+            log.memory_used_gb = sys_metrics.get('used_gb')
+            log.disk_usage = sys_metrics.get('disk_usage')
+            log.disk_total_gb = sys_metrics.get('disk_total_gb')
+            log.disk_used_gb = sys_metrics.get('disk_used_gb')
+            log.swap_percent = sys_metrics.get('swap_percent')
+            log.swap_total_mb = sys_metrics.get('swap_total_mb')
+            log.swap_used_mb = sys_metrics.get('swap_used_mb')
+            log.top_processes = sys_metrics.get('top_processes') or []
+            log.top_processes_cpu = sys_metrics.get('top_processes') or []
+            latest_agent_log = log
+
+    hardware_specs = dict(device.hardware_specs or {}) if isinstance(device.hardware_specs, dict) else {}
+    tracking_stats = {}
+    tracking_device_info = {}
+    tracking_hardware_specs = {}
+    if isinstance(workstation_tracking_data, dict):
+        tracking_stats = workstation_tracking_data.get('current_stats', workstation_tracking_data)
+        if not isinstance(tracking_stats, dict):
+            tracking_stats = {}
+        tracking_device_info = tracking_stats.get('device_info') if isinstance(tracking_stats.get('device_info'), dict) else {}
+        tracking_hardware_specs = tracking_stats.get('hardware_specs') if isinstance(tracking_stats.get('hardware_specs'), dict) else {}
+        if tracking_hardware_specs:
+            hardware_specs.update({k: v for k, v in tracking_hardware_specs.items() if v not in (None, '')})
+        derived_hardware = {
+            'cpu_model': tracking_device_info.get('processor'),
+            'architecture': tracking_device_info.get('os_arch'),
+            'memory_total_gb': (tracking_stats.get('system_metrics') or {}).get('total_gb') if isinstance(tracking_stats.get('system_metrics'), dict) else None,
+            'disk_total_gb': (tracking_stats.get('system_metrics') or {}).get('disk_total_gb') if isinstance(tracking_stats.get('system_metrics'), dict) else None,
+        }
+        hardware_specs.update({k: v for k, v in derived_hardware.items() if v not in (None, '') and not hardware_specs.get(k)})
+
+    if latest_agent_log and getattr(latest_agent_log, 'os_arch', None) and not hardware_specs.get('architecture'):
+        hardware_specs['architecture'] = latest_agent_log.os_arch
+    if latest_agent_log and getattr(latest_agent_log, 'memory_total_gb', None) is not None and not hardware_specs.get('memory_total_gb'):
+        hardware_specs['memory_total_gb'] = latest_agent_log.memory_total_gb
+    if latest_agent_log and getattr(latest_agent_log, 'disk_total_gb', None) is not None and not hardware_specs.get('disk_total_gb'):
+        hardware_specs['disk_total_gb'] = latest_agent_log.disk_total_gb
+
+    inventory_type = str(getattr(device, 'device_type', '') or '').strip().lower()
+    is_workstation_profile = bool(tracked_device) or inventory_type in _WORKSTATION_TYPES
+    is_camera_profile = inventory_type in {'camera', 'camera/iot', 'camera_iot', 'iot'}
+    open_port_numbers = {
+        int(getattr(port, 'port_number', 0) or 0)
+        for port in open_ports
+        if getattr(port, 'port_number', None) is not None
+    }
+    camera_scheme = 'https' if 443 in open_port_numbers or 8443 in open_port_numbers else 'http'
+    camera_port = (
+        443 if 443 in open_port_numbers else
+        8443 if 8443 in open_port_numbers else
+        80 if 80 in open_port_numbers else
+        8080 if 8080 in open_port_numbers else
+        None
+    )
+    if camera_port is None:
+        try:
+            raw_port = int(str(getattr(device, 'port', '') or '').strip())
+        except (TypeError, ValueError):
+            raw_port = None
+        if raw_port and raw_port != 554:
+            camera_port = raw_port
+            if raw_port in {443, 8443}:
+                camera_scheme = 'https'
+    camera_host = str(getattr(device, 'device_ip', '') or '').strip()
+    camera_web_url = None
+    if camera_host:
+        default_port = 443 if camera_scheme == 'https' else 80
+        camera_web_url = f"{camera_scheme}://{camera_host}"
+        if camera_port and camera_port != default_port:
+            camera_web_url = f"{camera_web_url}:{camera_port}"
+
+    camera_rtsp_url = str(getattr(device, 'rstplink', '') or '').strip() or None
+    if not camera_rtsp_url and camera_host:
+        camera_rtsp_url = f"rtsp://{camera_host}:554/"
+
+    camera_access = {
+        'is_camera': is_camera_profile,
+        'web_url': camera_web_url,
+        'rtsp_url': camera_rtsp_url,
+        'username': getattr(device, 'device_username', None),
+    }
+    monitoring_interval_seconds = get_monitoring_interval()
+
     return render_template(
         'device_details.html',
         device=device,
@@ -1208,6 +1596,7 @@ def device_details_page(device_id):
         snmp_config=snmp_config,
         latest_snmp_log=latest_snmp_log,
         latest_agent_log=latest_agent_log,
+        workstation_tracking_data=workstation_tracking_data,
         interfaces=interfaces,
         snmp_enabled=snmp_enabled,
         has_snmp_metrics=has_snmp_metrics,
@@ -1223,8 +1612,15 @@ def device_details_page(device_id):
         ),
         can_edit_server_thresholds=str(session.get('role') or '').strip().lower() == 'admin',
         ping_stats=ping_stats,
+        monitoring_interval_seconds=monitoring_interval_seconds,
+        monitoring_interval_label=format_monitoring_interval_label(monitoring_interval_seconds),
         open_ports=open_ports,
         compliance_profiles=compliance_profiles,
+        is_workstation_profile=is_workstation_profile,
+        tracked_device=tracked_device,
+        hardware_specs=hardware_specs,
+        camera_access=camera_access,
+        format_ist=_format_ist,
     )
 
 @devices_bp.route('/api/devices/<int:device_id>/connections', methods=['GET'])
@@ -1657,6 +2053,11 @@ def bulk_delete_devices():
         device_ids = data['device_ids']
         if not isinstance(device_ids, list):
              return jsonify({'error': 'device_ids must be a list'}), 400
+        try:
+            batch_size = int(data.get('batch_size', 25) or 25)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'batch_size must be an integer'}), 400
+        batch_size = max(1, min(batch_size, 100))
         logger.info("Bulk delete requested: count=%s", len(device_ids))
 
         # Stop active scans so deleted devices are not immediately re-added by scan completion.
@@ -1674,53 +2075,80 @@ def bulk_delete_devices():
         if stopped_scans:
             logger.info("Bulk delete pre-stop scans: stopped=%s", stopped_scans)
 
-        deleted_count = 0
-        errors = []
-        existing_tables = set(inspect(db.engine).get_table_names())
-        
-        for dev_id in device_ids:
-            try:
-                with db.session.begin_nested():
-                    device_query = scoped_query(Device).filter(Device.device_id == dev_id)
-                    try:
-                        device = device_query.with_for_update().first()
-                    except Exception:
-                        device = device_query.first()
-                    if device:
-                        _delete_device_with_dependencies(device, existing_tables=existing_tables)
-                        deleted_count += 1
-            except Exception as e:
-                logger.warning("Bulk delete cleanup failure: device_id=%s error=%s", dev_id, e)
-                errors.append(f"Error deleting ID {dev_id}: {str(e)}")
-        
-        db.session.commit()
-        logger.info(
-            "Bulk delete completed: requested=%s deleted=%s errors=%s stopped_scans=%s",
-            len(device_ids),
-            deleted_count,
-            len(errors),
-            stopped_scans
+        eligible_ids = [
+            row[0]
+            for row in scoped_query(Device)
+            .with_entities(Device.device_id)
+            .filter(Device.device_id.in_(device_ids))
+            .all()
+        ]
+
+        if not eligible_ids:
+            return jsonify({'error': 'No eligible devices found for deletion'}), 404
+
+        job = _create_bulk_delete_job(
+            requested_ids=device_ids,
+            eligible_ids=eligible_ids,
+            batch_size=batch_size,
+            stopped_scans=stopped_scans,
+            initiated_by=session.get('user_id'),
         )
-        
-        # Audit logging
-        from middleware.rbac import create_audit_log
-        if deleted_count > 0:
-            create_audit_log(
-                action='bulk_delete',
-                entity_type='device',
-                description=f"Bulk device deletion: {deleted_count} devices deleted"
-            )
-        
+        app_obj = current_app._get_current_object()
+        # Capture a plain immutable dict — no Flask proxies, no lazy objects.
+        # The background thread has no request context so anything that touches
+        # flask.session or flask.request will raise RuntimeError there.
+        audit_context = {
+            'user_id':    session.get('user_id'),
+            'username':   str(session.get('username') or 'unknown'),
+            'role':       str(session.get('role') or 'unknown'),
+            'ip_address': str(request.remote_addr or ''),
+            'user_agent': str(request.headers.get('User-Agent', '') or '')[:200],
+        }
+        worker = threading.Thread(
+            target=_run_bulk_delete_job,
+            kwargs={
+                'app': app_obj,
+                'job_id': job['job_id'],
+                'device_ids': eligible_ids,
+                'batch_size': batch_size,
+                'audit_context': audit_context,
+            },
+            daemon=True,
+        )
+        worker.start()
+
+        logger.info(
+            "Bulk delete queued: requested=%s eligible=%s stopped_scans=%s batch_size=%s job_id=%s",
+            len(device_ids),
+            len(eligible_ids),
+            stopped_scans,
+            batch_size,
+            job['job_id'],
+        )
+
         return jsonify({
             'success': True,
-            'deleted': deleted_count,
-            'errors': errors,
-            'stopped_scans': stopped_scans
-        })
+            'queued': True,
+            'job_id': job['job_id'],
+            'requested': len(device_ids),
+            'eligible': len(eligible_ids),
+            'stopped_scans': stopped_scans,
+            'batch_size': batch_size,
+        }), 202
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@devices_bp.route('/api/devices/bulk_delete/<job_id>', methods=['GET'])
+@require_permission('devices.edit')
+def bulk_delete_status(job_id):
+    with _bulk_delete_jobs_lock:
+        job = _bulk_delete_jobs.get(job_id)
+        if not job:
+            return jsonify({'error': 'Bulk delete job not found'}), 404
+        return jsonify(dict(job))
 
 @devices_bp.route('/api/devices/<int:device_id>/update_type', methods=['POST', 'PATCH'])
 @require_permission('devices.edit')
@@ -1764,9 +2192,7 @@ def reclassify_all():
 
     classifier = DeviceClassifier()
     _enrich_svc = DeviceEnrichmentService()
-    devices = Device.query.options(
-        selectinload(Device.snmp_config),
-    ).all()
+    device_ids = [row[0] for row in db.session.query(Device.device_id).all()]
     updated_count = 0
     updated_devices = []
     force = request.args.get('force', 'false').lower() == 'true'
@@ -1775,7 +2201,12 @@ def reclassify_all():
 
     # Change 1: filter to unknowns only when requested
     if unknown_only:
-        devices = [d for d in devices if (d.device_type or "").strip().lower() == "unknown"]
+        device_ids = [
+            row[0]
+            for row in db.session.query(Device.device_id)
+            .filter(func.lower(func.coalesce(Device.device_type, "")) == "unknown")
+            .all()
+        ]
 
     # Resolution counters
     classifier_resolved = 0
@@ -1787,11 +2218,23 @@ def reclassify_all():
 
     logger.info(
         "[Reclassify] start devices=%d force=%s auto=%s unknown_only=%s",
-        len(devices), force, auto_mode, unknown_only,
+        len(device_ids), force, auto_mode, unknown_only,
     )
 
-    for device in devices:
+    for device_id in device_ids:
         try:
+            # ── Fetch phase: grab only what we need, then release the connection
+            # immediately. All network I/O (ping, ARP, port scan, Gemini) happens
+            # below with no open transaction, so idle_in_transaction_session_timeout
+            # can never fire mid-loop.
+            device = (
+                Device.query.options(selectinload(Device.snmp_config))
+                .filter(Device.device_id == device_id)
+                .first()
+            )
+            if device is None:
+                continue
+
             dtype = (device.device_type or "").strip().lower()
             conf = (device.classification_confidence or "").strip().lower()
 
@@ -1804,44 +2247,48 @@ def reclassify_all():
                 if auto_mode and dtype not in ("", "unknown", "network device"):
                     continue
 
-            # Ping first (ICMP may be blocked; do not rely on it for classification)
-            status, _latency, _packet_loss, ttl, *_ = asyncio.run(scanner.ping_device(device.device_ip))
+            # Snapshot the fields we need for network I/O before releasing the session.
+            _device_ip   = device.device_ip
+            _mac         = device.macaddress if device.macaddress and device.macaddress.strip().lower() not in ('n/a', 'na', 'unknown', '') else None
+            _hostname    = device.hostname or ""
+            _manufacturer = device.manufacturer or "Unknown"
+            _device_name = device.device_name or ""
 
-            mac_address = device.macaddress if device.macaddress and device.macaddress.strip().lower() not in ('n/a', 'na', 'unknown', '') else None
-            hostname = device.hostname or ""
-            if not hostname or hostname.strip().lower() in ("unknown", "n/a", "na") or hostname.startswith("Device-"):
-                name_fallback = device.device_name or ""
-                if name_fallback and name_fallback.strip().lower() not in ("unknown", "n/a", "na") and not name_fallback.startswith("Device-"):
-                    hostname = name_fallback
+            # Release the DB connection — no transaction held during network work.
+            db.session.remove()
+
+            # ── Network I/O phase (no DB connection open) ─────────────────────
+            if not _hostname or _hostname.strip().lower() in ("unknown", "n/a", "na") or _hostname.startswith("Device-"):
+                if _device_name and _device_name.strip().lower() not in ("unknown", "n/a", "na") and not _device_name.startswith("Device-"):
+                    _hostname = _device_name
                 else:
-                    hostname = "Unknown"
-            manufacturer = device.manufacturer or "Unknown"
+                    _hostname = "Unknown"
+
+            status, _latency, _packet_loss, ttl, *_ = asyncio.run(scanner.ping_device(_device_ip))
 
             if status == "Online":
-                _scanned_mac = scanner.get_mac_address(device.device_ip)
+                _scanned_mac = scanner.get_mac_address(_device_ip)
                 if _scanned_mac and _scanned_mac.strip().lower() not in ('n/a', 'na', 'unknown', ''):
-                    mac_address = _scanned_mac
-                hostname = scanner.get_hostname(device.device_ip) or hostname
+                    _mac = _scanned_mac
+                _hostname = scanner.get_hostname(_device_ip) or _hostname
 
-            if (manufacturer in ("Unknown", "N/A", "") and mac_address not in ("", "N/A", None)):
+            if _manufacturer in ("Unknown", "N/A", "") and _mac not in ("", "N/A", None):
                 try:
-                    manufacturer = asyncio.run(scanner.get_manufacturer(mac_address))
-                except:
+                    _manufacturer = asyncio.run(scanner.get_manufacturer(_mac))
+                except Exception:
                     pass
 
-            # Port scan for classification (even if ping fails, ports might still be open)
-            open_ports = asyncio.run(scanner.scan_ports(device.device_ip))
+            open_ports = asyncio.run(scanner.scan_ports(_device_ip))
             port_numbers = [p.get("port") for p in open_ports if isinstance(p, dict)]
 
-            # Enrich with banners / mDNS / UPnP before classification
-            is_l2_reachable = bool(mac_address and mac_address not in ("N/A", "Unknown", ""))
-            enriched = asyncio.run(_enrich_svc.enrich(device.device_ip, port_numbers, is_l2_reachable))
+            is_l2_reachable = bool(_mac and _mac not in ("N/A", "Unknown", ""))
+            enriched = asyncio.run(_enrich_svc.enrich(_device_ip, port_numbers, is_l2_reachable))
 
             signals = DeviceSignals(
-                ip_address=device.device_ip,
-                mac_address=mac_address,
-                hostname=hostname,
-                manufacturer=manufacturer,
+                ip_address=_device_ip,
+                mac_address=_mac,
+                hostname=_hostname,
+                manufacturer=_manufacturer,
                 open_ports=port_numbers,
                 ttl=ttl,
                 http_banner=enriched.get("http_banner"),
@@ -1853,25 +2300,23 @@ def reclassify_all():
             result = classifier.classify(signals)
             normalized_type = DeviceClassifier.normalize_device_type(result.device_type)
 
-            # Track classifier resolution
             if result.confidence != ConfidenceLevel.LOW:
                 classifier_resolved += 1
 
-            # Gemini fallback for low-confidence results
             gemini_resolved_this = False
             if result.confidence == ConfidenceLevel.LOW:
                 try:
                     from services.gemini_classifier import classify_device as gemini_classify
                     gemini_signals = {
-                        "manufacturer": manufacturer or "",
-                        "mac_address": mac_address or "",
+                        "manufacturer": _manufacturer or "",
+                        "mac_address": _mac or "",
                         "ttl": ttl,
                         "open_ports": port_numbers,
                         "http_banner": enriched.get("http_banner"),
                         "ssh_banner": enriched.get("ssh_banner"),
                         "mdns_services": enriched.get("mdns_services", []),
                         "upnp_info": enriched.get("upnp_info"),
-                        "hostname": hostname or "",
+                        "hostname": _hostname or "",
                     }
                     gemini_type = gemini_classify(gemini_signals)
                     if gemini_type and gemini_type != "unknown":
@@ -1883,60 +2328,68 @@ def reclassify_all():
             if gemini_resolved_this:
                 gemini_resolved += 1
 
-            # Track devices still unknown after all resolution attempts
             if (normalized_type or "").strip().lower() == "unknown":
                 still_unknown += 1
 
-            # Update device
+            # ── Write phase: re-acquire a fresh connection and commit quickly ──
+            device = (
+                Device.query.options(selectinload(Device.snmp_config))
+                .filter(Device.device_id == device_id)
+                .first()
+            )
+            if device is None:
+                continue  # deleted between fetch and write — skip cleanly
+
             device.device_type = normalized_type
             device.confidence_score = result.score
             device.classification_confidence = result.confidence.value
             device.classification_details = json.dumps(result.to_dict())
-            device.manufacturer = manufacturer
-            # MAC guard: ARP may return a MAC already owned by a different device record
-            # (common when a device roams to a new IP — its old record still holds the MAC).
-            # Writing it unconditionally causes a UniqueViolation on idx_device_macaddress_unique.
-            if mac_address and mac_address != device.macaddress:
+            device.manufacturer = _manufacturer
+
+            if _mac and _mac != device.macaddress:
                 with db.session.no_autoflush:
                     mac_conflict = Device.query.filter(
-                        Device.macaddress == mac_address,
+                        Device.macaddress == _mac,
                         Device.device_id != device.device_id,
                     ).first()
                 if mac_conflict is not None:
                     logger.warning(
                         "[Reclassify] MAC %s already owned by device_id=%s; skipping MAC update for device_id=%s (%s)",
-                        mac_address, mac_conflict.device_id, device.device_id, device.device_ip,
+                        _mac, mac_conflict.device_id, device.device_id, _device_ip,
                     )
                 else:
-                    device.macaddress = mac_address
-            elif not mac_address:
-                device.macaddress = mac_address
-            if hostname and hostname != "Unknown" and not hostname.startswith("Device-"):
-                device.hostname = hostname
+                    device.macaddress = _mac
+            elif not _mac:
+                device.macaddress = _mac
+            if _hostname and _hostname != "Unknown" and not _hostname.startswith("Device-"):
+                device.hostname = _hostname
+
+            db.session.commit()
 
             updated_count += 1
             updated_devices.append({
                 "device_id": device.device_id,
                 "device_type": device.device_type,
                 "classification_confidence": device.classification_confidence,
-                "confidence_score": device.confidence_score
+                "confidence_score": device.confidence_score,
             })
 
-            # Commit every 5 devices. Each device scan includes ping + ARP + port scan +
-            # optional Gemini API call — batches of 20 can easily run 60+ seconds of
-            # network I/O, hitting idle_in_transaction_session_timeout and dropping the
-            # PostgreSQL connection mid-batch.
-            if updated_count % 5 == 0:
-                try:
-                    db.session.commit()
-                except Exception as _ce:
-                    db.session.rollback()
-                    logger.error("[Reclassify] Batch commit failed at %d devices: %s", updated_count, _ce)
-
         except Exception as e:
-            logger.error("[Reclassify] Failed for %s: %s", device.device_ip, e)
+            _ip = "<unknown>"
+            try:
+                _ip = _device_ip  # use the snapshot, not the expired ORM object
+            except Exception:
+                pass
+            db.session.rollback()
+            logger.error("[Reclassify] Failed for %s: %s", _ip, e)
 
-    db.session.commit()
+    # Final commit is now a no-op (each device commits individually), but kept
+    # as a safety net in case any stray session state needs flushing.
+    try:
+        db.session.commit()
+    except Exception as _final_ce:
+        db.session.rollback()
+        logger.error("[Reclassify] Final commit failed: %s", _final_ce)
 
     return jsonify({
         'success': True,
@@ -2449,6 +2902,7 @@ def api_device_live_snapshot(device_id):
         .filter(
             DeviceScanHistory.device_ip == device.device_ip,
             DeviceScanHistory.scan_timestamp >= seven_days_ago,
+            _exclude_agent_push_scan(DeviceScanHistory),
         )
         .order_by(DeviceScanHistory.scan_timestamp.desc())
         .limit(100)
@@ -2472,6 +2926,7 @@ def api_device_live_snapshot(device_id):
             {
                 't': s.scan_timestamp.strftime('%H:%M'),
                 'ts': s.scan_timestamp.isoformat() + 'Z',
+                'display_t': _format_ist(s.scan_timestamp, include_tz=False),
                 'v': round(s.ping_time_ms, 1) if s.ping_time_ms else 0,
                 'status': (s.status or '').lower(),
             }
@@ -2484,6 +2939,49 @@ def api_device_live_snapshot(device_id):
         agent_data = latest_agent.to_dict()
         agent_data['network_in_bps'] = latest_agent.network_in_bps
         agent_data['network_out_bps'] = latest_agent.network_out_bps
+    else:
+        import json
+        tracked_device = None
+        from models.device_identity_link import DeviceIdentityLink
+        active_link = DeviceIdentityLink.query.filter_by(device_id=device_id, is_active=True).first()
+        if active_link and active_link.tracked_device_id:
+            from models.tracked_device import TrackedDevice
+            tracked_device = TrackedDevice.query.get(active_link.tracked_device_id)
+        if not tracked_device and device.macaddress:
+            from models.tracked_device import TrackedDevice
+            tracked_device = TrackedDevice.query.filter_by(mac_address=device.macaddress).first()
+        
+        if tracked_device and tracked_device.tracking_data:
+            try:
+                wt_data = json.loads(tracked_device.tracking_data)
+                stats = wt_data.get('current_stats', wt_data)
+                sys_metrics = stats.get('system_metrics', {})
+                dev_info = stats.get('device_info', {})
+                # build a dictionary shaped exactly like agent_data from ServerHealthLog
+                agent_data = {
+                    'timestamp': wt_data.get('timestamp'),
+                    'os_name': dev_info.get('system'),
+                    'os_version': dev_info.get('os_version'),
+                    'os_arch': dev_info.get('os_arch'),
+                    'uptime': "N/A",
+                    'process_count': sys_metrics.get('process_count'),
+                    'cpu_usage': sys_metrics.get('cpu_percent'),
+                    'load_avg_1min': None,
+                    'memory_usage': sys_metrics.get('memory_percent'),
+                    'memory_total_gb': sys_metrics.get('total_gb'),
+                    'memory_used_gb': sys_metrics.get('used_gb'),
+                    'disk_usage': sys_metrics.get('disk_usage'),
+                    'disk_total_gb': sys_metrics.get('disk_total_gb'),
+                    'disk_used_gb': sys_metrics.get('disk_used_gb'),
+                    'swap_percent': sys_metrics.get('swap_percent'),
+                    'swap_total_mb': sys_metrics.get('swap_total_mb'),
+                    'swap_used_mb': sys_metrics.get('swap_used_mb'),
+                    'top_processes': sys_metrics.get('top_processes') or [],
+                    'network_in_bps': None,
+                    'network_out_bps': None,
+                }
+            except Exception:
+                pass
 
     return jsonify({
         'ping_stats': ping_stats,

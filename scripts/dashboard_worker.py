@@ -23,6 +23,21 @@ DEFAULT_SCOPE_FRAGMENT = 'admin__global'
 DEFAULT_TIME_RANGE = '24h'
 DEFAULT_ALERT_STATUS = 'active'
 DEFAULT_ALERT_LIMIT = '200'
+# extend WORKER_SCOPES env var to warm more combos
+raw = os.environ.get(
+    "WORKER_SCOPES",
+    "admin__global:24h:active:200"
+)
+SCOPES = []
+for scope_entry in raw.split(","):
+    parts = [part.strip() for part in scope_entry.strip().split(":")]
+    if len(parts) != 4 or any(not part for part in parts):
+        logger.warning("Skipping invalid WORKER_SCOPES entry: %r", scope_entry)
+        continue
+    SCOPES.append(parts)
+
+if not SCOPES:
+    SCOPES = [[DEFAULT_SCOPE_FRAGMENT, DEFAULT_TIME_RANGE, DEFAULT_ALERT_STATUS, DEFAULT_ALERT_LIMIT]]
 
 
 def _snapshot_cache_key(
@@ -52,32 +67,58 @@ def compute_and_store_snapshot():
                     sess['role'] = 'admin'
                     sess['user_id'] = 'dashboard-worker'
 
-                # We pass worker_compute=true to bypass the O(1) fetch and force the actual calculation
-                response = client.get('/api/dashboard/full_snapshot?worker_compute=true')
+                for scope_fragment, time_range, alert_status, alert_limit in SCOPES:
+                    scope_start_time = time.time()
+                    response = client.get(
+                        '/api/dashboard/full_snapshot'
+                        f'?worker_compute=true&range={time_range}&status={alert_status}&limit={alert_limit}'
+                    )
 
-                if response.status_code == 200:
-                    # Parse the payload from the response data to ensure we got a valid JSON
-                    payload_dict = json.loads(response.data)
+                    if response.status_code == 200:
+                        # Parse the payload from the response data to ensure we got a valid JSON
+                        payload_dict = json.loads(response.data)
 
-                    # Dump it back to a compact raw string for the DB
-                    raw_json_string = json.dumps(payload_dict)
+                        # Dump it back to a compact raw string for the DB
+                        raw_json_string = json.dumps(payload_dict)
 
-                    cache_key = _snapshot_cache_key()
+                        cache_key = _snapshot_cache_key(
+                            scope_fragment=scope_fragment,
+                            time_range=time_range,
+                            alert_status=alert_status,
+                            alert_limit=alert_limit,
+                        )
 
-                    # Upsert into DashboardSnapshot table
-                    snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()
-                    if not snapshot:
-                        snapshot = DashboardSnapshot(cache_key=cache_key, payload=raw_json_string)
-                        db.session.add(snapshot)
+                        # Upsert into DashboardSnapshot table
+                        snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()
+                        if not snapshot:
+                            snapshot = DashboardSnapshot(cache_key=cache_key, payload=raw_json_string)
+                            db.session.add(snapshot)
+                        else:
+                            snapshot.payload = raw_json_string
+                            snapshot.updated_at = datetime.utcnow()
+
+                        db.session.commit()
+                        logger.info(
+                            "Dashboard Snapshot warmed for %s in %.2f seconds.",
+                            cache_key,
+                            time.time() - scope_start_time,
+                        )
                     else:
-                        snapshot.payload = raw_json_string
-                        snapshot.updated_at = datetime.utcnow()
+                        logger.error(
+                            "Failed to compute dashboard snapshot for %s. HTTP %s",
+                            _snapshot_cache_key(
+                                scope_fragment=scope_fragment,
+                                time_range=time_range,
+                                alert_status=alert_status,
+                                alert_limit=alert_limit,
+                            ),
+                            response.status_code,
+                        )
 
-                    db.session.commit()
-                    duration = time.time() - start_time
-                    logger.info("Dashboard Snapshot successfully updated in %.2f seconds.", duration)
-                else:
-                    logger.error("Failed to compute dashboard snapshot. HTTP %s", response.status_code)
+                logger.info(
+                    "Dashboard Snapshot aggregation cycle completed in %.2f seconds.",
+                    time.time() - start_time,
+                )
 
             except Exception as error:
                 db.session.rollback()
@@ -88,6 +129,10 @@ def compute_and_store_snapshot():
 
 if __name__ == '__main__':
     logger.info("Initializing Dashboard Aggregation Worker...")
+    logger.info(
+        "Warming dashboard scopes: %s",
+        ", ".join(":".join(scope_parts) for scope_parts in SCOPES),
+    )
 
     # Run once immediately on startup
     compute_and_store_snapshot()

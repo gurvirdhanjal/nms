@@ -145,7 +145,6 @@ class TimescaleDBMigrationHelper:
         """Check current table sizes"""
         tables = [
             'server_health_logs',
-            'tracking_samples',
             'device_resource_logs',
             'device_activity_logs',
             'device_application_logs'
@@ -214,7 +213,7 @@ class TimescaleDBMigrationHelper:
             print("1. Install TimescaleDB extension")
             print("   See: INSTALL_TIMESCALEDB_WINDOWS.md")
             print("\n2. Run migration script:")
-            print("   psql -U monitoring_man -h 127.0.0.1 -d monitoring_db -f scripts/migrate_to_timescaledb.sql")
+            print("   psql -U monitoring_man -h 127.0.0.1 -d monitoring_db -f scripts/migrate_to_timescaledb_fixed.sql")
             print("\n3. Run this script again to verify")
             return
         
@@ -248,10 +247,11 @@ class TimescaleDBMigrationHelper:
         print("\n" + "="*70)
         print("Recommendations")
         print("="*70)
+        print("Note: tracking_samples intentionally remains a regular PostgreSQL table in the current migration plan.")
         
         if not has_hypertables:
             print("⚠ Run migration script to convert tables to hypertables")
-            print("  Command: psql -U monitoring_man -h 127.0.0.1 -d monitoring_db -f scripts/migrate_to_timescaledb.sql")
+            print("  Command: psql -U monitoring_man -h 127.0.0.1 -d monitoring_db -f scripts/migrate_to_timescaledb_fixed.sql")
         
         if has_hypertables and not has_compression:
             print("⚠ Compression policies not configured")

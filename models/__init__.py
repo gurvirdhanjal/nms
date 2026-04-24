@@ -27,6 +27,7 @@ from .device_identity_link import DeviceIdentityLink
 from .device_identity_link_candidate import DeviceIdentityLinkCandidate
 from .device_effective_policy_cache import DeviceEffectivePolicyCache
 from .policy_rebuild_task import PolicyRebuildTask
+from .poll_task import PollTask
 from .alert_fanout_task import AlertFanoutTask
 from .tracking_sync_envelope import TrackingSyncEnvelope
 from .report_export_job import ReportExportJob
@@ -58,7 +59,7 @@ __all__ = [
     'TrackingSample', 'TrackingHistoryIntegrityAudit', 'TrackedDeviceAvailabilityEvent',
     'TrackingHourlyRollup', 'TrackingDailyRollup',
     'DeviceIdentityLink', 'DeviceIdentityLinkCandidate',
-    'DeviceEffectivePolicyCache', 'PolicyRebuildTask',
+    'DeviceEffectivePolicyCache', 'PolicyRebuildTask', 'PollTask',
     'AlertFanoutTask', 'TrackingSyncEnvelope', 'ReportExportJob',
     'RestrictedSitePolicy', 'TrackingAgentKeyBinding', 'RestrictedSiteEvent',
     'RestrictedSiteAlertState', 'RestrictedSiteDomainMeta',

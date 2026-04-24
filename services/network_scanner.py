@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import aioping
 import socket
 import subprocess
 import platform
@@ -16,6 +15,7 @@ import struct
 import random
 import time
 import logging
+import re
 
 from services.operational_error_handling import log_operational_exception
 
@@ -54,7 +54,7 @@ class NetworkScanner:
     MAX_HOSTS_DEFAULT = 254           # keeps your current behavior (fast + safe)
     MAX_HOSTS_HARD_CAP = 4096        # hard safety cap to avoid freezes
     DEFAULT_WORKERS = 80             # async concurrency (safe on LAN; tune 40-120)
-    EXECUTOR_WORKERS = 12            # threads for blocking ops (ARP/DNS/vendor)
+    EXECUTOR_WORKERS = 32            # threads for blocking ops; raised from 12 to handle 200+ concurrent ping_batch calls
     VIRTUAL_INTERFACE_HINTS = (
         "loopback",
         "vmware",
@@ -444,76 +444,171 @@ class NetworkScanner:
         except Exception:
             return None
 
-    async def ping_device(self, ip: str, timeout: int = 2, count: int = 4):
-        """
-        Ping a device and return status, latency (ms), packet loss (%), jitter (ms), and TTL.
-        Safe fallback to system ping if aioping lacks permissions.
-        """
-        successful_pings = 0
-        latencies = []
+    def _parse_system_ping_result(self, stdout: str, stderr: str, returncode: int, is_windows: bool):
+        """Parse OS ping output and return (latency_seconds|None, detail)."""
+        output = "\n".join(part for part in (stdout, stderr) if part).strip()
+        lowered = output.lower()
 
-        # Check system type once
-        is_windows = platform.system().lower() == "windows"
+        if is_windows:
+            match = re.search(r'time[=<]\s*(\d+(?:\.\d+)?)\s*ms', output, re.IGNORECASE)
+            if match:
+                latency_ms = float(match.group(1))
+                if 'time<' in match.group(0).lower():
+                    latency_ms = min(latency_ms, 1.0)
+                return latency_ms / 1000.0, "Reply received"
 
-        for _ in range(count):
-            try:
-                # Try aioping first (faster, accurate)
-                delay = await aioping.ping(ip, timeout=timeout)
-                latencies.append(delay * 1000)  # Convert to ms
-                successful_pings += 1
-            except (asyncio.TimeoutError, TimeoutError):
-                pass  # Genuine timeout
-            except Exception:
-                # Permission error or other aioping issue -> Fallback to system ping
-                delay = await self._ping_system(ip, timeout, is_windows)
-                if delay is not None:
-                     latencies.append(delay * 1000)
-                     successful_pings += 1
-
-        packet_loss = ((count - successful_pings) / count) * 100
-
-        if successful_pings > 0:
-            avg_latency = round(sum(latencies) / len(latencies), 2)
-            # Calculate simple jitter: average absolute difference between successive latencies
-            jitter = 0.0
-            if len(latencies) > 1:
-                diffs = [abs(latencies[j] - latencies[j-1]) for j in range(1, len(latencies))]
-                jitter = round(sum(diffs) / len(diffs), 2)
-
-            # Extract TTL in parallel via executor (aioping does not expose TTL)
-            loop = asyncio.get_running_loop()
-            ttl = await loop.run_in_executor(self._executor, self._ping_for_ttl, ip)
-
-            return "Online", avg_latency, packet_loss, jitter, ttl
+            if 'request timed out' in lowered:
+                return None, "Request timed out"
+            if 'destination host unreachable' in lowered:
+                return None, "Destination host unreachable"
+            if 'general failure' in lowered:
+                return None, "General failure"
         else:
-            return "Offline", None, 100.0, None, None
+            match = re.search(r'time=(\d+(?:\.\d+)?)\s*ms', output, re.IGNORECASE)
+            if match:
+                return float(match.group(1)) / 1000.0, "Reply received"
 
-    async def _ping_system(self, ip: str, timeout: int, is_windows: bool) -> float:
-        """Fallback system ping (executes ping command). Returns delay in seconds or None."""
+            if '100% packet loss' in lowered or ', 0 received' in lowered:
+                return None, "No reply"
+            if 'destination host unreachable' in lowered or 'network is unreachable' in lowered:
+                return None, "Destination host unreachable"
+
+        if returncode == 0:
+            return None, "Reply received"
+        return None, "No reply"
+
+    def _ping_batch(
+        self, ip: str, count: int, timeout: int, is_windows: bool
+    ) -> tuple:
+        """Run a single multi-packet ping subprocess.
+
+        Returns (avg_ms, min_ms, max_ms, jitter_ms, packet_loss_pct, ttl).
+        avg_ms is None when all packets are lost.
+        Measures RTT at OS level — not affected by Python event loop scheduling.
+        """
+        if is_windows:
+            cmd = ['ping', '-n', str(count), '-w', str(timeout * 1000), ip]
+        else:
+            cmd = ['ping', '-c', str(count), '-W', str(timeout), ip]
+
         try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout * count + 5,
+            )
+            output = proc.stdout + proc.stderr
+        except subprocess.TimeoutExpired:
+            return None, None, None, None, 100.0, None
+        except Exception:
+            return None, None, None, None, 100.0, None
+
+        ttl = None
+        ttl_m = re.search(r'ttl=(\d+)', output, re.IGNORECASE)
+        if ttl_m:
+            ttl = int(ttl_m.group(1))
+
+        if is_windows:
+            times = []
+            for m in re.finditer(r'time[=<]\s*(\d+(?:\.\d+)?)\s*ms', output, re.IGNORECASE):
+                t = float(m.group(1))
+                if '<' in m.group(0).lower():
+                    t = min(t, 1.0)
+                times.append(t)
+
+            stats_m = re.search(
+                r'Minimum\s*=\s*(\d+)ms.*?Maximum\s*=\s*(\d+)ms.*?Average\s*=\s*(\d+)ms',
+                output, re.IGNORECASE | re.DOTALL,
+            )
+            loss_m = re.search(r'\((\d+)%\s*loss\)', output, re.IGNORECASE)
+            packet_loss = float(loss_m.group(1)) if loss_m else (0.0 if times else 100.0)
+
+            if stats_m:
+                min_ms = float(stats_m.group(1))
+                max_ms = float(stats_m.group(2))
+                avg_ms = float(stats_m.group(3))
+                if len(times) > 1:
+                    diffs = [abs(times[j] - times[j - 1]) for j in range(1, len(times))]
+                    jitter_ms = round(sum(diffs) / len(diffs), 2)
+                else:
+                    jitter_ms = 0.0
+                return avg_ms, min_ms, max_ms, jitter_ms, packet_loss, ttl
+            return None, None, None, None, packet_loss, ttl
+        else:
+            stats_m = re.search(
+                r'rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)\s*ms',
+                output,
+            )
+            loss_m = re.search(r'(\d+)%\s*packet loss', output)
+            packet_loss = float(loss_m.group(1)) if loss_m else (0.0 if stats_m else 100.0)
+
+            if stats_m:
+                min_ms = float(stats_m.group(1))
+                avg_ms = float(stats_m.group(2))
+                max_ms = float(stats_m.group(3))
+                jitter_ms = float(stats_m.group(4))  # mdev ≈ jitter
+                return avg_ms, min_ms, max_ms, jitter_ms, packet_loss, ttl
+            return None, None, None, None, packet_loss, ttl
+
+    async def ping_device(self, ip: str, timeout: int = 2, count: int = 3):
+        """
+        Ping a device and return status, latency (ms), packet loss (%), jitter (ms), TTL, detail,
+        min_rtt (ms), max_rtt (ms).
+
+        Uses a single subprocess ping call (_ping_batch) so RTT is measured at OS level.
+        Avoids aioping's event loop wall-clock timing which inflated latency to 150-250ms
+        when 200+ devices were scanned concurrently on one event loop.
+        """
+        is_windows = platform.system().lower() == "windows"
+        loop = asyncio.get_running_loop()
+
+        avg_ms, min_ms, max_ms, jitter_ms, packet_loss, ttl = await loop.run_in_executor(
+            self._executor, self._ping_batch, ip, count, timeout, is_windows
+        )
+
+        if avg_ms is not None:
+            return (
+                "Online",
+                round(avg_ms, 2),
+                packet_loss,
+                round(jitter_ms, 2) if jitter_ms is not None else 0.0,
+                ttl,
+                "Reply received",
+                round(min_ms, 2),
+                round(max_ms, 2),
+            )
+        else:
+            return "Offline", None, 100.0, None, None, "No reply", None, None
+
+    async def _ping_system(self, ip: str, timeout: int, is_windows: bool):
+        """Fallback system ping. Returns (delay_seconds|None, detail)."""
+        try:
+            loop = asyncio.get_running_loop()
             param = '-n' if is_windows else '-c'
             wait_param = '-w' if is_windows else '-W'
-            # Windows -w is milliseconds, Linux -W is seconds
             wait_value = str(int(timeout * 1000)) if is_windows else str(timeout)
-            
-            # Simple ping, 1 packet
             cmd = ['ping', param, '1', wait_param, wait_value, ip]
-            
-            start = time.time()
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
+
+            def _run_ping():
+                return subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=max(3, int(timeout) + 2),
+                )
+
+            proc = await loop.run_in_executor(self._executor, _run_ping)
+            return self._parse_system_ping_result(
+                proc.stdout,
+                proc.stderr,
+                proc.returncode,
+                is_windows,
             )
-            await proc.wait()
-            end = time.time()
-            
-            if proc.returncode == 0:
-                # Note: This latency includes process overhead, but verifies status.
-                return max(0.001, end - start) 
-            return None
+        except subprocess.TimeoutExpired:
+            return None, "Request timed out"
         except Exception:
-            return None
+            return None, "No reply"
 
     async def scan_ports(self, ip: str, ports=None):
         """Scan ports on a device (concurrent with timeouts)."""
@@ -610,11 +705,15 @@ class NetworkScanner:
 
     def _fetch_agent_identity(self, ip):
         try:
+            import time
+            start_time = time.time()
             url = f"http://{ip}:5002/api/identity"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=2) as response:
                 if response.status == 200:
-                    return json.loads(response.read().decode())
+                    data = json.loads(response.read().decode())
+                    data["http_latency_ms"] = (time.time() - start_time) * 1000.0
+                    return data
         except Exception as e:
             log_operational_exception(
                 logger,
@@ -672,11 +771,15 @@ class NetworkScanner:
 
     def _fetch_agent_identity(self, ip):
         try:
+            import time
+            start_time = time.time()
             url = f"http://{ip}:5002/api/identity"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=2) as response:
                 if response.status == 200:
-                    return json.loads(response.read().decode())
+                    data = json.loads(response.read().decode())
+                    data["http_latency_ms"] = (time.time() - start_time) * 1000.0
+                    return data
         except Exception as e:
             log_operational_exception(
                 logger,
@@ -694,11 +797,12 @@ class NetworkScanner:
     async def scan_single_device(self, ip: str, scan_mode: str = 'heavy'):
         """Comprehensive scan of a single device (fast + safe)."""
         try:
-            status, latency, packet_loss, jitter, ttl = await self.ping_device(ip, timeout=self.timeout)
+            status, latency, packet_loss, jitter, ttl, status_detail, *_ = await self.ping_device(ip, timeout=self.timeout)
 
             device_info = {
                 "ip": ip,
                 "status": status,
+                "status_detail": status_detail,
                 "latency": latency,
                 "packet_loss": packet_loss,  # NEW: Include packet loss
                 "jitter": jitter,            # NEW: Include jitter

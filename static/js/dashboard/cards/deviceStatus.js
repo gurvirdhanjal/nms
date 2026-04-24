@@ -14,6 +14,21 @@ function setValue(id, value) {
     }
 }
 
+function setStatusChip(id, status) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const normalized = String(status || 'No Data');
+    const tone = normalized === 'Healthy'
+        ? 'status-healthy'
+        : normalized === 'Degraded' || normalized === 'Window'
+            ? 'status-warning'
+            : normalized === 'Critical'
+                ? 'status-critical'
+                : 'status-nodata';
+    el.textContent = normalized;
+    el.className = `soc-kpi-status ${tone}`;
+}
+
 function getRangeLabel(range) {
     switch ((range || '').toLowerCase()) {
         case '7d':
@@ -98,7 +113,48 @@ export function renderDeviceStatusCards(data, timestamp, trendsData = null) {
         }
     }
 
+    const healthyTrendEl = document.getElementById('trend-devices-healthy');
+    if (healthyTrendEl) {
+        healthyTrendEl.innerHTML = degraded > 0 ? '&darr; degraded present' : '&uarr; stable';
+    }
+
+    const healthyContextEl = document.getElementById('ctx-devices-healthy');
+    if (healthyContextEl) {
+        healthyContextEl.textContent = `${reachable} reachable devices under current watch`;
+    }
+
+    setStatusChip('state-devices-healthy', offline > 0 ? (degraded > 0 ? 'Degraded' : 'Healthy') : (degraded > 0 ? 'Degraded' : 'Healthy'));
+    setStatusChip('state-devices-maintenance', toCount(devices.maintenance) > 0 ? 'Window' : 'Healthy');
+
     renderOfflineTrendMeta(offline, total, trendsData);
+
+    const offlineTrendEl = document.getElementById('trend-devices-offline');
+    if (offlineTrendEl) {
+        const outagePct = total > 0 ? Math.round((offline / total) * 100) : 0;
+        offlineTrendEl.innerHTML = `${offline > 0 ? '&uarr;' : '&rarr;'} ${outagePct}%`;
+    }
+
+    const offlineContextEl = document.getElementById('ctx-devices-offline');
+    if (offlineContextEl) {
+        offlineContextEl.textContent = `${offline} device${offline === 1 ? '' : 's'} currently unavailable`;
+    }
+
+    const maintenanceTrendEl = document.getElementById('trend-devices-maintenance');
+    if (maintenanceTrendEl) {
+        maintenanceTrendEl.innerHTML = `${toCount(devices.maintenance) > 0 ? '&rarr;' : '&darr;'} scheduled`;
+    }
+
+    const maintenanceContextEl = document.getElementById('ctx-devices-maintenance');
+    if (maintenanceContextEl) {
+        maintenanceContextEl.textContent = `${toCount(devices.maintenance)} device${toCount(devices.maintenance) === 1 ? '' : 's'} in maintenance`;
+    }
+
+    const maintenanceSubEl = document.getElementById('sub-devices-maintenance');
+    if (maintenanceSubEl) {
+        maintenanceSubEl.innerHTML = `<span class="text-secondary">${toCount(devices.maintenance)} excluded from active alerting</span>`;
+    }
+
+    setStatusChip('state-devices-offline', offline > 0 ? 'Critical' : 'Healthy');
 
     checkStale(timestamp, 'card-devices-healthy');
     checkStale(timestamp, 'card-devices-offline');

@@ -1,0 +1,30 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nms_web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Reuse the already-running shared infrastructure containers.
+      DATABASE_URL: postgresql+psycopg2://monitoring_man:admin123@127.0.0.1:5433/monitoring_db
+      REDIS_URL: redis://127.0.0.1:6379/0
+      LDAP_SERVER: ldap://127.0.0.1:389
+      # Preserve containerized web_main behavior over HTTP on port 5001.
+      WEB_HOST: "0.0.0.0"
+      WEB_PORT: "5001"
+      WEB_OPEN_BROWSER: "0"
+      SESSION_COOKIE_SECURE: "False"
+      # The LDAP lab container is reachable on the default project network.
+    network_mode: host
+    volumes:
+      - web_main_uploads:/app/client_uploads
+      - web_main_events:/app/events
+      - web_main_instance:/app/instance
+
+volumes:
+  web_main_uploads:
+  web_main_events:
+  web_main_instance:

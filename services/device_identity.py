@@ -162,10 +162,11 @@ def _propagate_ip_change(device_id, old_ip, new_ip):
     try:
         from models.scan_history import DeviceScanHistory
 
-        updated = DeviceScanHistory.query.filter_by(device_ip=old_ip).update(
-            {"device_ip": new_ip},
-            synchronize_session=False,
-        )
+        with db.session.no_autoflush:
+            updated = DeviceScanHistory.query.filter_by(device_ip=old_ip).update(
+                {"device_ip": new_ip},
+                synchronize_session=False,
+            )
         if updated:
             logger.info(
                 "[Identity] Propagated IP change: %s scan_history rows %s -> %s",
@@ -613,10 +614,16 @@ def upsert_device_from_identity(
             Device.macaddress == normalized_mac,
             Device.device_id != primary.device_id,
         ).first()
+        if mac_owner is None:
+            for obj in db.session:
+                if isinstance(obj, Device) and obj is not primary and obj.macaddress == normalized_mac:
+                    mac_owner = obj
+                    break
+                    
         if mac_owner is not None:
             logger.warning(
-                "[Identity] MAC %s already owned by device_id=%s; skipping MAC assignment to device_id=%s",
-                normalized_mac, mac_owner.device_id, primary.device_id,
+                "[Identity] MAC %s already owned by device_id=%s (or pending in session); skipping MAC assignment to IP=%s",
+                normalized_mac, mac_owner.device_id, ip,
             )
         else:
             primary.macaddress = normalized_mac
@@ -688,3 +695,81 @@ def upsert_device_from_identity(
 
     primary.updated_at = datetime.utcnow()
     return primary, ("updated" if updated else "existing"), previous_ip
+
+
+def dedup_devices_by_mac():
+    """
+    Find all Device rows that share a MAC address and merge duplicates into the
+    oldest record (lowest device_id), preserving all FK-linked history.
+
+    Uses the existing _merge_duplicate_device_dependencies() which handles all
+    15 dependent tables (scan history, health logs, rollups, interfaces, etc.).
+
+    Returns: list of dicts describing each merge performed.
+    """
+    from sqlalchemy import func
+
+    _INVALID_MACS = {"", "unknown", "n/a", "na", "00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}
+
+    dup_groups = (
+        db.session.query(Device.macaddress, func.count(Device.device_id).label("cnt"))
+        .filter(Device.macaddress.isnot(None))
+        .filter(~Device.macaddress.in_(list(_INVALID_MACS)))
+        .group_by(Device.macaddress)
+        .having(func.count(Device.device_id) > 1)
+        .all()
+    )
+
+    report = []
+    existing_tables = _existing_table_names()
+
+    for mac, _cnt in dup_groups:
+        devices = (
+            Device.query.filter_by(macaddress=mac)
+            .order_by(Device.device_id)
+            .all()
+        )
+        if len(devices) < 2:
+            continue
+
+        primary = devices[0]  # keep oldest (lowest device_id) — preserves FK history
+        for dup in devices[1:]:
+            # Copy richer field values into primary before deleting duplicate
+            if not _is_invalid_text(dup.hostname) and _is_invalid_text(primary.hostname):
+                primary.hostname = dup.hostname
+            if not _is_invalid_text(dup.manufacturer) and _is_invalid_text(primary.manufacturer):
+                primary.manufacturer = dup.manufacturer
+            if dup.site_id and not primary.site_id:
+                primary.site_id = dup.site_id
+            if dup.department_id and not primary.department_id:
+                primary.department_id = dup.department_id
+
+            _merge_duplicate_device_dependencies(
+                primary, dup,
+                existing_tables=existing_tables,
+                target_ip=primary.device_ip,
+            )
+            report.append({
+                "kept_device_id": primary.device_id,
+                "merged_device_id": dup.device_id,
+                "mac": mac,
+                "surviving_ip": primary.device_ip,
+            })
+            logger.info(
+                "[Dedup] MAC %s: merged device_id=%s into device_id=%s (ip=%s)",
+                mac, dup.device_id, primary.device_id, primary.device_ip,
+            )
+
+        try:
+            db.session.flush()
+        except Exception as flush_err:
+            db.session.rollback()
+            logger.error("[Dedup] Flush failed for MAC %s: %s", mac, flush_err)
+
+    try:
+        db.session.commit()
+    except Exception as commit_err:
+        db.session.rollback()
+        logger.error("[Dedup] Final commit failed: %s", commit_err)
+
+    return report

@@ -23,7 +23,7 @@ class DashboardEvent(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     resolved = db.Column(db.Boolean, default=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
-    
+
     # Phase 1D: Acknowledgment
     is_acknowledged = db.Column(db.Boolean, default=False)
     acknowledged_at = db.Column(db.DateTime, nullable=True)
@@ -33,7 +33,12 @@ class DashboardEvent(db.Model):
     # for scoped alert queries.  Populated by alert_manager._trigger_alert().
     site_id = db.Column(db.Integer, nullable=True)
     department_id = db.Column(db.Integer, nullable=True)
-    
+
+    __table_args__ = (
+        # Covers MTTA query: WHERE severity='CRITICAL' AND is_acknowledged=true AND timestamp BETWEEN ...
+        db.Index('idx_dashboard_events_sev_ack_time', 'severity', 'is_acknowledged', 'timestamp'),
+    )
+
     def __repr__(self):
         return f'<DashboardEvent {self.event_id[:8]} - {self.severity}>'
     

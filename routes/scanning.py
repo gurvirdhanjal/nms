@@ -205,9 +205,10 @@ def ping_device():
     asyncio.set_event_loop(loop)
 
     try:
-        status, latency, packet_loss, *_ = loop.run_until_complete(
+        status, latency, packet_loss, *extra = loop.run_until_complete(
             service.scanner.ping_device(ip, timeout=PING_TIMEOUT)
         )
+        status_detail = extra[2] if len(extra) >= 3 else None
         
         # Return format expected by JavaScript
         if status == 'Online':
@@ -216,13 +217,15 @@ def ping_device():
                 'latency': latency,
                 'packet_loss': packet_loss,  # NEW: Include packet loss
                 'ttl': 64,  # Standard TTL value
-                'ip_address': ip
+                'ip_address': ip,
+                'status_detail': status_detail,
             })
         else:
             return jsonify({
                 'success': False,
-                'message': 'Host is offline or unreachable',
-                'packet_loss': packet_loss
+                'message': status_detail or 'Host is offline or unreachable',
+                'packet_loss': packet_loss,
+                'status_detail': status_detail,
             })
     except Exception as e:
         return jsonify({

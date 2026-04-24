@@ -1,13 +1,21 @@
+import atexit
+import logging
+import os
+import sys
+import threading
+import webbrowser
+
+# When frozen by PyInstaller, make the extracted bundle importable explicitly.
+if getattr(sys, 'frozen', False):
+    _bundle_root = getattr(sys, '_MEIPASS', None)
+    if _bundle_root and _bundle_root not in sys.path:
+        sys.path.insert(0, _bundle_root)
+
 from app import create_app
 from waitress import serve
-import atexit
-import webbrowser
-import threading
-import os
 
 app = create_app()
 
-import logging
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 

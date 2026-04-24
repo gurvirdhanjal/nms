@@ -265,7 +265,7 @@ def get_local_ip(force_refresh=False, target_host=None):
         pass
 
     try:
-        preferred_prefix = (os.getenv('TRACKING_PREFERRED_SUBNET_PREFIX') or '172.16.2.').strip()
+        preferred_prefix = (os.getenv('TRACKING_PREFERRED_SUBNET_PREFIX') or '').strip()
         if preferred_prefix:
             for ip in current_candidates:
                 if ip.startswith(preferred_prefix):
@@ -274,6 +274,25 @@ def get_local_ip(force_refresh=False, target_host=None):
                     _CACHED_IP_SIGNATURE = current_signature
                     _CACHED_IP_SOURCE = 'preferred_subnet'
                     return _CACHED_IP
+
+        # Default route probe: UDP connect() asks the OS routing table which interface
+        # it would use for outbound traffic — no packets are sent, works on isolated LANs.
+        # This runs before the psutil candidate list so virtual adapters (VirtualBox,
+        # Docker, etc.) cannot win the race via enumeration order.
+        try:
+            _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            _s.settimeout(1.0)
+            _s.connect(("8.8.8.8", 80))
+            route_ip = _s.getsockname()[0]
+            _s.close()
+            if route_ip and not route_ip.startswith('127.') and not route_ip.startswith('169.254.'):
+                _CACHED_IP = route_ip
+                _CACHED_IP_TIME = now
+                _CACHED_IP_SIGNATURE = current_signature
+                _CACHED_IP_SOURCE = 'default_route'
+                return _CACHED_IP
+        except Exception:
+            pass
 
         for ip in current_candidates:
             try:
@@ -293,17 +312,6 @@ def get_local_ip(force_refresh=False, target_host=None):
             _CACHED_IP_SIGNATURE = current_signature
             _CACHED_IP_SOURCE = 'candidate_fallback'
             return _CACHED_IP
-
-        # Fallback to default route probing
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        _CACHED_IP = ip
-        _CACHED_IP_TIME = now
-        _CACHED_IP_SIGNATURE = current_signature
-        _CACHED_IP_SOURCE = 'default_route'
-        return _CACHED_IP
     except Exception:
         _CACHED_IP = "127.0.0.1"
         _CACHED_IP_TIME = now
@@ -523,10 +531,24 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
     used_gb = core_stats.get('used_gb', 0)
     total_gb = core_stats.get('total_gb', 0)
     disk_usage = core_stats.get('disk_usage', 0)
+    disk_total_gb = core_stats.get('disk_total_gb', 0)
+    disk_used_gb = core_stats.get('disk_used_gb', 0)
     network_stats = dict(current_stats.get('network') or {}) if ENABLE_NET_MONITOR else {}
     active_window = current_stats.get('window') if ENABLE_WINDOW_TITLES else None
     top_processes = current_stats.get('top_processes') if ENABLE_TOP_PROCESSES else []
     app_usage_seconds = _collect_app_usage_seconds()
+    
+    try:
+        process_count = len(psutil.pids())
+    except:
+        process_count = 0
+    try:
+        swap = psutil.swap_memory()
+        swap_percent = swap.percent
+        swap_total_mb = swap.total / (1024**2)
+        swap_used_mb = swap.used / (1024**2)
+    except:
+        swap_percent, swap_total_mb, swap_used_mb = 0, 0, 0
 
     payload = {
         "timestamp": sampled_at_utc.isoformat(),
@@ -539,9 +561,11 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
         },
         "device_info": {
             "mac_address": get_mac_address(),
-            "hostname": socket.gethostname(),
+            "hostname": get_exact_hostname(),
             "ip": get_local_ip(),
             "system": platform.system(),
+            "os_version": platform.version(),
+            "os_arch": platform.machine(),
             "processor": platform.processor(),
             "unique_client_id": get_persistent_client_id(),
         },
@@ -568,10 +592,24 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
             "used_gb": used_gb,
             "total_gb": total_gb,
             "disk_usage": disk_usage,
+            "disk_total_gb": disk_total_gb,
+            "disk_used_gb": disk_used_gb,
+            "swap_percent": swap_percent,
+            "swap_total_mb": swap_total_mb,
+            "swap_used_mb": swap_used_mb,
+            "process_count": process_count,
             "boot_time": datetime.utcfromtimestamp(psutil.boot_time()).isoformat() + 'Z',
             "network_speed": network_stats if ENABLE_NET_MONITOR else None,
             "active_window": active_window,
             "top_processes": top_processes,
+        },
+        "hardware_specs": {
+            "cpu_model": platform.processor() or platform.uname().processor or "Unknown CPU",
+            "cpu_physical_cores": psutil.cpu_count(logical=False),
+            "cpu_logical_cores": psutil.cpu_count(logical=True),
+            "memory_total_gb": total_gb,
+            "disk_total_gb": disk_total_gb,
+            "architecture": platform.machine() or platform.architecture()[0],
         },
         "network": network_stats,
     }
@@ -1802,7 +1840,7 @@ class AutoDiscoveryService:
             except Exception:
                 pass
 
-        local_ip = get_local_ip()
+        local_ip = get_local_ip(force_refresh=True)
         ip_parts = local_ip.split('.')
         if len(ip_parts) != 4:
             return [], 'none'

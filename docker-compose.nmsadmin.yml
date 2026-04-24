@@ -1,94 +1,101 @@
 version: "3.9"
 
 # ============================================================
-# NMS Admin Panel — Production Docker Stack
+# NMS Admin Panel - Production Docker Stack
 #
-# Services:
-#   db        TimescaleDB 2.x  (PostgreSQL 16 + TimescaleDB)
-#   redis     Redis 7           (caching, rate limiting, SSE)
-#   app       NMS Admin Panel   (Flask + Waitress, port 5000)
+# PREREQUISITE: Shared infrastructure must already be running via:
+#   docker compose -f docker-compose.timescaledb.yml up -d
+#
+# That stack creates:
+#   monitoring_timescaledb  PostgreSQL/TimescaleDB
+#   monitoring_redis        Redis 7
+#   monitoring_network      shared Docker network
+#
+# This stack adds:
+#   app   NMS Admin Panel (Flask + Waitress, port 5000)
 #
 # Usage:
-#   1. Copy .env.docker.example to .env.docker and fill in secrets
-#   2. docker compose -f docker-compose.nmsadmin.yml up -d
-#   3. Open http://<host>:5000
+#   docker compose -f docker-compose.nmsadmin.yml up -d --build
+#   Open http://<host>:5000
 #
-# First run:
-#   docker compose -f docker-compose.nmsadmin.yml exec app \
-#     python add_admin.py
+# First-run (create admin user):
+#   docker compose -f docker-compose.nmsadmin.yml exec app python add_admin.py
 # ============================================================
 
 services:
-
-  # ── TimescaleDB (PostgreSQL 16 + TimescaleDB 2.x) ────────────────────────
-  db:
-    image: timescale/timescaledb:latest-pg16
-    container_name: nmsadmin_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-monitoring_db}
-      POSTGRES_USER:     ${POSTGRES_USER:-monitoring_man}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_env}
-    ports:
-      - "${DB_PORT:-5433}:5432"
-    volumes:
-      - nmsadmin_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-monitoring_man} -d ${POSTGRES_DB:-monitoring_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # ── Redis 7 ──────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: nmsadmin_redis
-    restart: unless-stopped
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - nmsadmin_redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  # ── NMS Admin Panel ───────────────────────────────────────────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile.nmsadmin
     container_name: nmsadmin_app
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
       - "${WEB_PORT:-5000}:5000"
+    # Allows the container to reach services on the host when needed.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - monitoring_network
     environment:
-      DATABASE_URL:            postgresql+psycopg2://${POSTGRES_USER:-monitoring_man}:${POSTGRES_PASSWORD:-change_me_in_env}@db:5432/${POSTGRES_DB:-monitoring_db}
-      REDIS_URL:               redis://redis:6379/0
-      SECRET_KEY:              ${SECRET_KEY}
-      FERNET_KEY:              ${FERNET_KEY}
-      TRACKING_AGENT_API_KEY:  ${TRACKING_AGENT_API_KEY}
-      SESSION_COOKIE_SECURE:   ${SESSION_COOKIE_SECURE:-false}
-      WEB_HOST:                0.0.0.0
-      WEB_PORT:                5000
-      WEB_OPEN_BROWSER:        "false"
-      SNMP_COMMUNITY:          ${SNMP_COMMUNITY:-public}
-      SNMP_VERSION:            ${SNMP_VERSION:-2c}
-      MONITORING_INTERVAL:     ${MONITORING_INTERVAL:-300}
-      SMTP_SERVER:             ${SMTP_SERVER:-smtp.gmail.com}
-      SMTP_PORT:               ${SMTP_PORT:-587}
-      SMTP_USERNAME:           ${SMTP_USERNAME:-}
-      SMTP_PASSWORD:           ${SMTP_PASSWORD:-}
+      # Database - connects to the shared monitoring_timescaledb container.
+      DATABASE_URL: >-
+        postgresql+psycopg2://${POSTGRES_USER:-monitoring_man}:${POSTGRES_PASSWORD:-admin123}@monitoring_timescaledb:5432/${POSTGRES_DB:-monitoring_db}
+      REQUIRE_POSTGRES_ONLY: "true"
+
+      # Redis - connects to the shared Redis in docker-compose.timescaledb.yml.
+      REDIS_URL: redis://redis:6379/0
+
+      # Flask secrets
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
+      FERNET_KEY: ${FERNET_KEY:-}
+
+      # Agent auth
+      TRACKING_AGENT_API_KEY: ${TRACKING_AGENT_API_KEY:-}
+      TRACKING_API_KEY: ${TRACKING_AGENT_API_KEY:-}
+      MOBILE_API_KEY: ${MOBILE_API_KEY:-}
+
+      # Web server
+      WEB_HOST: "0.0.0.0"
+      WEB_PORT: "5000"
+      WEB_OPEN_BROWSER: "false"
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+
+      # SNMP
+      SNMP_COMMUNITY: ${SNMP_COMMUNITY:-public}
+      SNMP_VERSION: ${SNMP_VERSION:-2c}
+      MONITORING_INTERVAL: ${MONITORING_INTERVAL:-300}
+
+      # SMTP
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+
+      # LDAP
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_SERVER: ${LDAP_SERVER:-ldap://host.docker.internal:389}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-dc=example,dc=local}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-cn=admin,dc=example,dc=local}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      LDAP_USER_SEARCH_FILTER: ${LDAP_USER_SEARCH_FILTER:-(uid={username})}
+      LDAP_USE_SSL: ${LDAP_USE_SSL:-false}
+      LDAP_STARTTLS: ${LDAP_STARTTLS:-false}
+      LDAP_TLS_VALIDATE: ${LDAP_TLS_VALIDATE:-CERT_NONE}
+      LDAP_DEFAULT_ROLE: ${LDAP_DEFAULT_ROLE:-user}
+      LDAP_ADMIN_GROUP: ${LDAP_ADMIN_GROUP:-}
+      LDAP_ATTR_EMAIL: ${LDAP_ATTR_EMAIL:-mail}
+      LDAP_ATTR_DISPLAY_NAME: ${LDAP_ATTR_DISPLAY_NAME:-displayName}
+      LDAP_ATTR_GUID: ${LDAP_ATTR_GUID:-entryUUID}
+      LDAP_GROUP_SEARCH_BASE: ${LDAP_GROUP_SEARCH_BASE:-}
+      LDAP_GROUP_SEARCH_FILTER: ${LDAP_GROUP_SEARCH_FILTER:-(member={user_dn})}
+      LDAP_CONNECT_TIMEOUT: ${LDAP_CONNECT_TIMEOUT:-5}
+      LDAP_RECEIVE_TIMEOUT: ${LDAP_RECEIVE_TIMEOUT:-5}
+
+      # Gemini AI (optional)
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_REPORT_INSIGHTS_ENABLED: ${GEMINI_REPORT_INSIGHTS_ENABLED:-false}
+
     volumes:
-      # Persist uploaded files and agent client uploads
       - nmsadmin_uploads:/app/client_uploads
       - nmsadmin_events:/app/events
     healthcheck:
@@ -98,11 +105,11 @@ services:
       retries: 3
       start_period: 60s
 
+networks:
+  monitoring_network:
+    external: true
+
 volumes:
-  nmsadmin_pgdata:
-    driver: local
-  nmsadmin_redis:
-    driver: local
   nmsadmin_uploads:
     driver: local
   nmsadmin_events:

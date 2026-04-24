@@ -2,7 +2,11 @@ from flask import Blueprint, jsonify, request, current_app
 from extensions import db
 from middleware.rbac import require_login
 
-from services.snmp_discovery import SnmpDiscovery
+try:
+    from services.snmp_discovery import SnmpDiscovery, PYSNMP_AVAILABLE
+except ImportError:
+    SnmpDiscovery = None
+    PYSNMP_AVAILABLE = False
 
 
 switch_discovery_bp = Blueprint('switch_discovery_bp', __name__, url_prefix='')
@@ -76,6 +80,9 @@ def _persist_devices(switches):
 
 @switch_discovery_bp.route('/api/switches/discover', methods=['POST'])
 def discover_switches():
+    if not PYSNMP_AVAILABLE:
+        return jsonify({'error': 'SNMP discovery is not available (pysnmp not installed)'}), 503
+
     data = request.get_json(silent=True) or {}
     seed_ip = data.get('seed_ip')
 

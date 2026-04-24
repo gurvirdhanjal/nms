@@ -65,7 +65,7 @@ class Subnet(db.Model):
                     text(
                         """
                         SELECT id FROM subnets
-                        WHERE :ip::inet << cidr::inet
+                        WHERE CAST(:ip AS inet) << cidr::inet
                         ORDER BY masklen(cidr::inet) DESC
                         LIMIT 1
                         """

@@ -1,11 +1,12 @@
+from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
+
 from extensions import db
+from middleware.rbac import require_agent_token
 from models.device import Device
 from models.server_health import ServerHealthLog
-from datetime import datetime
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
-from middleware.rbac import require_agent_token
 
 agent_bp = Blueprint('agent_bp', __name__)
 
@@ -17,6 +18,22 @@ _ALLOWED_HARDWARE_SPEC_KEYS = {
     'disk_total_gb',
     'architecture'
 }
+
+
+def _is_lock_timeout_error(error):
+    message = str(error).lower()
+    if "lock timeout" in message or "lock not available" in message:
+        return True
+    orig = getattr(error, "orig", None)
+    return getattr(orig, "pgcode", None) in {"55P03", "57014"}
+
+
+def _is_missing_device_error(error):
+    message = str(error).lower()
+    if "has been deleted" in message or "row is otherwise not present" in message:
+        return True
+    orig = getattr(error, "orig", None)
+    return getattr(orig, "pgcode", None) == "23503"
 
 
 def _extract_hardware_specs(payload):
@@ -267,16 +284,50 @@ def receive_metrics():
         # Update specific fields if they are missing
         if device.hostname == 'Unknown' and hostname:
             device.hostname = hostname
-        
-        # We don't have a specific "last_seen" on Device model typically, 
-        # but we can update updated_at or if there's a specific tracking field.
-        # device.updated_at is auto-updated.
-        
+
+        # Update device_ip when the agent's IP has changed (e.g. DHCP lease renewal).
+        # Uses the existing _propagate_ip_change() so DeviceScanHistory stays consistent.
+        new_ip = payload_ip or request.remote_addr
+        if isinstance(new_ip, str):
+            new_ip = new_ip.strip()
+        if new_ip and not new_ip.startswith('127.') and not new_ip.startswith('169.254.') \
+                and new_ip != device.device_ip:
+            from services.device_identity import _propagate_ip_change, compute_subnet_cidr
+            collision = (
+                Device.query.filter(
+                    db.func.lower(Device.device_ip) == new_ip.lower(),
+                    Device.device_id != device.device_id,
+                )
+                .first()
+            )
+            if collision is not None:
+                print(
+                    f"[Agent] Device {device.device_id} IP update skipped: "
+                    f"{new_ip} already belongs to device_id={collision.device_id}"
+                )
+            else:
+                old_ip = device.device_ip
+                device.device_ip = new_ip
+                device.subnet_cidr = compute_subnet_cidr(new_ip)
+                _propagate_ip_change(device.device_id, old_ip, new_ip)
+                print(f"[Agent] Device {device.device_id} IP updated: {old_ip} -> {new_ip}")
+
         try:
             db.session.commit()
         except (IntegrityError, StaleDataError) as commit_err:
             db.session.rollback()
             return jsonify({'error': f'Device no longer exists. {commit_err}'}), 409
+        except OperationalError as commit_err:
+            db.session.rollback()
+            if _is_lock_timeout_error(commit_err):
+                print(
+                    f"[Agent] Metrics skipped for device_id={device.device_id}: "
+                    "device row locked by another operation"
+                )
+                return jsonify({'success': False, 'skipped': 'device_locked'}), 202
+            if _is_missing_device_error(commit_err):
+                return jsonify({'error': f'Device no longer exists. {commit_err}'}), 409
+            raise
 
         # 4. Evaluate Server Health Alerts (strikes-based)
         try:
@@ -295,6 +346,15 @@ def receive_metrics():
 
         return jsonify(response_payload), 200
 
+    except OperationalError as e:
+        db.session.rollback()
+        if _is_lock_timeout_error(e):
+            print(f"[Agent] Metrics skipped during delete window: {e}")
+            return jsonify({'success': False, 'skipped': 'device_locked'}), 202
+        if _is_missing_device_error(e):
+            return jsonify({'error': f'Device no longer exists. {e}'}), 409
+        print(f"Error saving agent metrics: {e}")
+        return jsonify({'error': str(e)}), 500
     except Exception as e:
         db.session.rollback()
         print(f"Error saving agent metrics: {e}")

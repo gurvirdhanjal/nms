@@ -94,8 +94,12 @@ class MonitoringScheduler:
         self._loop = None  # reused event loop — avoids per-cycle asyncio.run() leak
         self.scheduler_thread = None
         # Dynamic interval tracking — updated each run; read from AppSettings (60s cache).
+        # A 1s scheduler heartbeat lets us honor sub-minute cadences like 15s.
+        self._heartbeat_seconds = 1
         self._monitoring_last_run: float = 0.0
         self._snmp_last_run: float = 0.0
+        self._monitoring_lock = threading.Lock()
+        self._snmp_lock = threading.Lock()
 
     def _get_monitoring_interval(self) -> int:
         """Return current monitoring interval in seconds from DB/env (cached)."""
@@ -105,14 +109,14 @@ class MonitoringScheduler:
                 return get_monitoring_interval()
         except Exception:
             pass
-        return max(60, min(3600, self.app.config.get('MONITORING_INTERVAL', 300)))
+        return max(10, min(3600, self.app.config.get('MONITORING_INTERVAL', 300)))
 
     def start_scheduled_monitoring(self):
         """Start the scheduled monitoring tasks"""
-        # Tick every 1 minute; actual fire rate is controlled by _monitoring_last_run
-        # so that the interval can be changed live via AppSettings without a restart.
-        schedule.every(1).minutes.do(self.run_monitoring_task)
-        schedule.every(1).minutes.do(self.enqueue_snmp_tasks)
+        # Tick every second; actual fire rate is controlled by _monitoring_last_run
+        # so sub-minute intervals can be honored without a scheduler restart.
+        schedule.every(self._heartbeat_seconds).seconds.do(self.run_monitoring_task)
+        schedule.every(self._heartbeat_seconds).seconds.do(self.enqueue_snmp_tasks)
         
         # Auto-discovery check every 1 minute (actual scan fires only when interval elapsed)
         schedule.every(1).minutes.do(self.maybe_run_auto_discovery)
@@ -168,7 +172,11 @@ class MonitoringScheduler:
 
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
-        
+
+        # Dashboard snapshot warm-up — keeps DashboardSnapshot table populated so
+        # /api/dashboard/full_snapshot serves O(1) from DB instead of computing inline.
+        schedule.every(30).seconds.do(self.warm_dashboard_snapshot)
+
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
@@ -177,6 +185,10 @@ class MonitoringScheduler:
         # Run immediate scan in background so UI has data
         t_monitoring = threading.Thread(target=self.run_monitoring_task, daemon=True)
         t_monitoring.start()
+
+        # Warm dashboard snapshot immediately on startup — avoids blank dashboard on first load
+        t_snapshot = threading.Thread(target=self.warm_dashboard_snapshot, daemon=True)
+        t_snapshot.start()
 
         # Run an immediate reconciliation pass in background for tracking status freshness.
         t_recon = threading.Thread(target=self.run_tracking_reconciliation, daemon=True)
@@ -271,16 +283,20 @@ class MonitoringScheduler:
     def run_monitoring_task(self):
         """Run monitoring task within application context.
 
-        Respects the live monitoring interval from AppSettings — changes take
-        effect within 1 minute with no scheduler restart required.
+        Respects the live monitoring interval from AppSettings. A short
+        scheduler heartbeat plus a non-blocking lock lets sub-minute cadences
+        work without overlapping scan cycles.
         """
+        if not self._monitoring_lock.acquire(blocking=False):
+            logger.debug("Scheduled monitoring skipped because a prior cycle is still running")
+            return
         with self.app.app_context():
-            now = time.time()
-            interval = self._get_monitoring_interval()
-            if now - self._monitoring_last_run < interval:
-                return  # Not enough time has elapsed — skip this tick.
-            self._monitoring_last_run = now
             try:
+                now = time.time()
+                interval = self._get_monitoring_interval()
+                if now - self._monitoring_last_run < interval:
+                    return  # Not enough time has elapsed — skip this tick.
+                self._monitoring_last_run = now
                 if self._loop is None or self._loop.is_closed():
                     self._loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(self._loop)
@@ -290,6 +306,69 @@ class MonitoringScheduler:
                 logger.exception("Error in scheduled monitoring: %s", e)
             finally:
                 # Ensure session is cleaned up after background task
+                db.session.remove()
+                self._monitoring_lock.release()
+
+    def warm_dashboard_snapshot(self):
+        """Pre-compute and upsert DashboardSnapshot rows every 30 s.
+
+        Mirrors dashboard_worker.py but runs inside the existing web process so
+        no separate container is needed. Eliminates 'Snapshot lock busy' warnings
+        and the slow inline fallback path on every user request.
+        """
+        import json
+        from models.dashboard import DashboardSnapshot
+
+        raw = self.app.config.get('WORKER_SCOPES') or \
+              __import__('os').environ.get('WORKER_SCOPES', 'admin__global:24h:active:200')
+        scopes = []
+        for entry in raw.split(','):
+            parts = [p.strip() for p in entry.strip().split(':')]
+            if len(parts) == 4 and all(parts):
+                scopes.append(parts)
+        if not scopes:
+            scopes = [['admin__global', '24h', 'active', '200']]
+
+        with self.app.app_context():
+            try:
+                with self.app.test_client() as client:
+                    with client.session_transaction() as sess:
+                        sess['logged_in'] = True
+                        sess['role'] = 'admin'
+                        sess['user_id'] = 'dashboard-worker'
+                        sess['last_activity'] = datetime.utcnow().isoformat()
+
+                    for scope_fragment, time_range, alert_status, alert_limit in scopes:
+                        url = (
+                            f'/api/dashboard/full_snapshot'
+                            f'?worker_compute=true&range={time_range}'
+                            f'&status={alert_status}&limit={alert_limit}'
+                        )
+                        response = client.get(url)
+                        if response.status_code != 200:
+                            logger.warning(
+                                "[Scheduler] Dashboard snapshot warm failed HTTP %s for %s",
+                                response.status_code, scope_fragment,
+                            )
+                            continue
+
+                        raw_json = json.dumps(json.loads(response.data))
+                        cache_key = (
+                            f"full_snapshot_{scope_fragment}_{time_range}"
+                            f"_{alert_status}_{alert_limit}"
+                        )
+                        snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()
+                        if not snapshot:
+                            snapshot = DashboardSnapshot(cache_key=cache_key, payload=raw_json)
+                            db.session.add(snapshot)
+                        else:
+                            snapshot.payload = raw_json
+                            snapshot.updated_at = datetime.utcnow()
+                        db.session.commit()
+            except Exception:
+                logger.exception("[Scheduler] Dashboard snapshot warm error")
+                db.session.rollback()
+            finally:
                 db.session.remove()
 
     def run_tracking_reconciliation(self):
@@ -545,13 +624,22 @@ class MonitoringScheduler:
         This method only INSERTs PollTask rows with status='pending'.
         Actual SSH capture happens in workers/snmp_worker.py (_execute_config_backup).
 
-        ssh_profile_id is commented out of the Device ORM (column exists in DB).
-        We use raw SQL so we don't load all devices into Python just to filter.
+        ssh_profile_id is commented out of the Device ORM and may not exist in the DB yet.
+        We check column existence at runtime before querying to avoid startup errors.
         """
         with self.app.app_context():
             try:
                 from models.poll_task import PollTask
                 from sqlalchemy import text
+
+                col_exists = db.session.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'device' AND column_name = 'ssh_profile_id'"
+                )).scalar()
+                if not col_exists:
+                    _record_run("backup_device_configs", True)
+                    logger.debug("[scheduler] backup_device_configs: ssh_profile_id column absent, skipping")
+                    return
 
                 rows = db.session.execute(text(
                     "SELECT device_id FROM device "
@@ -657,7 +745,7 @@ class MonitoringScheduler:
         """Enqueue SNMP health poll tasks for all enabled devices.
 
         Respects the live monitoring interval from AppSettings — same cadence
-        as run_monitoring_task.
+        as run_monitoring_task, with overlap protection.
 
         RULE: Scheduler performs ZERO network I/O.
         This method only INSERTs PollTask rows with status='pending'.
@@ -666,13 +754,16 @@ class MonitoringScheduler:
         Duplicate protection: skips devices that already have a
         pending or running task for the same task_type.
         """
+        if not self._snmp_lock.acquire(blocking=False):
+            logger.debug("SNMP enqueue skipped because a prior cycle is still running")
+            return
         with self.app.app_context():
-            now = time.time()
-            interval = self._get_monitoring_interval()
-            if now - self._snmp_last_run < interval:
-                return  # Not enough time has elapsed — skip this tick.
-            self._snmp_last_run = now
             try:
+                now = time.time()
+                interval = self._get_monitoring_interval()
+                if now - self._snmp_last_run < interval:
+                    return  # Not enough time has elapsed — skip this tick.
+                self._snmp_last_run = now
                 from models.device import Device
                 from models.snmp_config import DeviceSnmpConfig
                 from models.poll_task import PollTask
@@ -733,3 +824,4 @@ class MonitoringScheduler:
                 logger.exception("[SCHEDULER] Error enqueuing SNMP tasks: %s", e)
             finally:
                 db.session.remove()
+                self._snmp_lock.release()

@@ -28,12 +28,13 @@ const dashboardBootKey = '__dashboardBooted';
 
 // Polling state
 let pollingInterval = null;
-const POLLING_INTERVAL_MS = 30000;
+const POLLING_INTERVAL_MS = 15000;
 const SSE_REFRESH_DEBOUNCE_MS = 1200;
 let isSSEConnected = false;
 let sseInitialized = false;
 let sseRefreshTimer = null;
 let sseRefreshForceFreshTopProblems = false;
+let pendingSSEDelta = null;
 
 // Batch DOM updates to the next animation frame
 // Batch DOM updates to the next animation frame
@@ -48,7 +49,10 @@ let subnetDetailsRequestSeq = 0;
 const SUBNET_DETAILS_CACHE_TTL_MS = 15000;
 const subnetDetailsCache = new Map();
 const AVAILABILITY_RANGE_STORAGE_KEY = 'tactical_dashboard_availability_range';
+const AVAILABILITY_REFRESH_BUTTON_ID = 'availability-modal-refresh';
+const AVAILABILITY_MODAL_FOOTER_ID = 'availability-modal-footer';
 let availabilityDetailRange = localStorage.getItem(AVAILABILITY_RANGE_STORAGE_KEY) || '24h';
+let snapshotStaleness = null;
 const dashboardLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false && window.UI?.Loading
     ? window.UI.Loading
     : null;
@@ -232,6 +236,7 @@ function initRealtimeTransport() {
         onConnectionChange: handleSSEConnectionChange,
         onDeviceStatus: (payload) => handleSSEEvent('device_status', payload),
         onDeviceUpdate: (payload) => handleSSEEvent('device_update', payload),
+        onDeviceUpdateBatch: (payload) => handleSSEEvent('device_update_batch', payload),
         onAlertCreated: (payload) => handleSSEEvent('alert_created', payload),
         onLatencySpike: (payload) => handleSSEEvent('latency_spike', payload),
         onInterfaceThreshold: (payload) => handleSSEEvent('interface_threshold', payload),
@@ -272,17 +277,80 @@ function handleSSEConnectionChange(status) {
     }
 }
 
+function isModalOpen() {
+    return !!document.querySelector('.modal.show');
+}
+
+function normalizeSSEDelta(eventType, payload) {
+    return {
+        events: [{
+            eventType,
+            payload: payload || {}
+        }]
+    };
+}
+
+function mergePendingSSEDelta(currentDelta, nextDelta) {
+    const mergedEvents = [];
+    if (Array.isArray(currentDelta?.events)) {
+        mergedEvents.push(...currentDelta.events);
+    }
+    if (Array.isArray(nextDelta?.events)) {
+        mergedEvents.push(...nextDelta.events);
+    }
+    return { events: mergedEvents };
+}
+
+function applySSEDelta(delta) {
+    const events = Array.isArray(delta?.events) ? delta.events : [];
+    events.forEach(({ eventType, payload }) => {
+        try {
+            mergeRealtimeUpdate(eventType, payload || {});
+        } catch (err) {
+            console.error('[Dashboard] Failed to merge SSE event:', eventType, err);
+        }
+    });
+}
+
+function enqueuePendingSSEDelta(delta) {
+    pendingSSEDelta = mergePendingSSEDelta(pendingSSEDelta, delta);
+}
+
+function flushPendingSSEDelta() {
+    if (!pendingSSEDelta || isModalOpen()) return;
+    const delta = pendingSSEDelta;
+    pendingSSEDelta = null;
+    applySSEDelta(delta);
+}
+
+/**
+ * SSE is the primary source for status-card deltas. We apply status patches
+ * directly and only fall back to a coalesced snapshot refresh when the event
+ * explicitly declares `needs_full_refresh` or when a non-delta event requires
+ * sections that are not safely patchable client-side.
+ */
 function handleSSEEvent(eventType, payload) {
-    try {
-        mergeRealtimeUpdate(eventType, payload || {});
-    } catch (err) {
-        console.error('[Dashboard] Failed to merge SSE event:', eventType, err);
+    const data = normalizeSSEDelta(eventType, payload);
+    const isStatusDeltaEvent =
+        eventType === 'device_status' ||
+        eventType === 'device_update' ||
+        eventType === 'device_update_batch';
+
+    if (isStatusDeltaEvent) {
+        if (isModalOpen()) {
+            enqueuePendingSSEDelta(data);
+        } else {
+            applySSEDelta(data);
+        }
+
+        if (eventType !== 'device_update_batch' || !payload?.needs_full_refresh) {
+            return;
+        }
     }
 
     // Keep full refresh coalesced and limited. Classification updates can be noisy.
     const shouldRefresh =
-        eventType === 'device_status' ||
-        eventType === 'device_update' ||
+        eventType === 'device_update_batch' ||
         eventType === 'alert_created' ||
         eventType === 'latency_spike' ||
         eventType === 'interface_threshold';
@@ -323,7 +391,7 @@ async function refreshAll(options = {}) {
         return;
     }
 
-    const hasOpenModal = !!document.querySelector('.modal.show');
+    const hasOpenModal = isModalOpen();
     if (window.cleanupBootstrapModal && !hasOpenModal) {
         window.cleanupBootstrapModal();
     }
@@ -355,6 +423,9 @@ async function refreshAll(options = {}) {
         }
 
         const sectionErrors = snapshot?.errors || {};
+        snapshotStaleness = snapshot?.stale === true
+            ? { ageSeconds: Number(snapshot?.stale_since_seconds) || 0 }
+            : null;
         const nextState = { isLoading: false };
         if (!('summary' in sectionErrors) && snapshot.summary !== undefined) nextState.summary = snapshot.summary;
         if (!('fleetMetrics' in sectionErrors) && snapshot.fleetMetrics !== undefined) nextState.fleetMetrics = snapshot.fleetMetrics;
@@ -459,12 +530,15 @@ function renderSecondary(state) {
         // 8. Timestamps
         const timeEl = document.getElementById('last-updated-text');
         if (timeEl && state.lastUpdated) timeEl.textContent = state.lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+        const timeStripEl = document.getElementById('last-updated-text-strip');
+        if (timeStripEl && state.lastUpdated) timeStripEl.textContent = state.lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
 
         const breakdownUpdated = document.getElementById('device-breakdown-updated');
         if (breakdownUpdated && state.lastUpdated) breakdownUpdated.textContent = state.lastUpdated.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
         const alertsUpdated = document.getElementById('alerts-last-updated');
         if (alertsUpdated && state.lastUpdated) alertsUpdated.textContent = state.lastUpdated.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        renderSnapshotStaleIndicator();
 
         // 9. Global Error Clearing
         if (!state.error) {
@@ -488,6 +562,26 @@ function renderAll(state) {
     } else {
         setTimeout(() => renderSecondary(state), 0);
     }
+}
+
+function renderSnapshotStaleIndicator() {
+    const headerMetaRoot = document.querySelector('.dashboard-header > div:first-child');
+    if (!headerMetaRoot) return;
+
+    let indicatorEl = document.getElementById('dashboard-snapshot-stale-indicator');
+    if (!snapshotStaleness) {
+        if (indicatorEl) indicatorEl.remove();
+        return;
+    }
+
+    if (!indicatorEl) {
+        indicatorEl = document.createElement('div');
+        indicatorEl.id = 'dashboard-snapshot-stale-indicator';
+        indicatorEl.className = 'enterprise-section-sub text-warning';
+        headerMetaRoot.appendChild(indicatorEl);
+    }
+
+    indicatorEl.textContent = `Data may be stale (${snapshotStaleness.ageSeconds}s old)`;
 }
 
 function safeRender(name, renderFn) {
@@ -787,10 +881,54 @@ let availabilityInFlight = false;
 function getAvailabilityModal() {
     const el = document.getElementById('availability-modal');
     if (!el || !window.bootstrap) return null;
+    ensureAvailabilityRefreshControl();
     if (!availabilityModalInstance) {
         availabilityModalInstance = new window.bootstrap.Modal(el);
     }
     return availabilityModalInstance;
+}
+
+function ensureAvailabilityRefreshControl() {
+    const modalEl = document.getElementById('availability-modal');
+    if (!modalEl) return null;
+
+    const modalContent = modalEl.querySelector('.modal-content');
+    if (!modalContent) return null;
+
+    let footerEl = document.getElementById(AVAILABILITY_MODAL_FOOTER_ID);
+    if (!footerEl) {
+        footerEl = document.createElement('div');
+        footerEl.id = AVAILABILITY_MODAL_FOOTER_ID;
+        footerEl.className = 'modal-footer border-0 pt-0';
+        modalContent.appendChild(footerEl);
+    }
+
+    let refreshButton = document.getElementById(AVAILABILITY_REFRESH_BUTTON_ID);
+    if (!refreshButton) {
+        refreshButton = document.createElement('button');
+        refreshButton.type = 'button';
+        refreshButton.id = AVAILABILITY_REFRESH_BUTTON_ID;
+        refreshButton.className = 'btn btn-outline-light btn-sm d-inline-flex align-items-center gap-2';
+        refreshButton.setAttribute('aria-label', 'Refresh availability details');
+        refreshButton.innerHTML = '<i class="fas fa-rotate-right" aria-hidden="true"></i><span>Refresh</span>';
+        refreshButton.addEventListener('click', () => {
+            renderAvailabilityDetails({ forceFresh: true }).catch((error) => {
+                console.error('[Dashboard] Availability refresh error:', error);
+            });
+        });
+        footerEl.appendChild(refreshButton);
+    }
+
+    return refreshButton;
+}
+
+function setAvailabilityRefreshButtonState(isLoading) {
+    const refreshButton = ensureAvailabilityRefreshControl();
+    if (!refreshButton) return;
+    refreshButton.disabled = Boolean(isLoading);
+    refreshButton.innerHTML = isLoading
+        ? '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Refreshing...</span>'
+        : '<i class="fas fa-rotate-right" aria-hidden="true"></i><span>Refresh</span>';
 }
 
 function defaultAvailabilityRangeMeta(rangeKey) {
@@ -871,6 +1009,7 @@ function setAvailabilityDetailRange(nextRange, { persist = true, rerender = fals
 }
 
 function initAvailabilityControls() {
+    ensureAvailabilityRefreshControl();
     updateAvailabilityRangeUi();
     document.querySelectorAll('[data-availability-range]').forEach((button) => {
         if (button.dataset.bound === 'true') return;
@@ -886,13 +1025,14 @@ async function openAvailabilityModal() {
     const modal = getAvailabilityModal();
     if (!modal) return;
     updateAvailabilityRangeUi();
-    await renderAvailabilityDetails();
+    await renderAvailabilityDetails({ forceFresh: false });
     modal.show();
 }
 
-async function renderAvailabilityDetails() {
+async function renderAvailabilityDetails({ forceFresh = false } = {}) {
     if (availabilityInFlight) return;
     availabilityInFlight = true;
+    setAvailabilityRefreshButtonState(forceFresh);
 
     const heatmapEl = document.getElementById('availability-heatmap');
     const axisEl = document.getElementById('availability-heatmap-axis');
@@ -908,7 +1048,7 @@ async function renderAvailabilityDetails() {
     if (worstBody) setTableMessageRow(worstBody, 4, 'Loading...', 'text-center text-secondary p-3');
 
     try {
-        const data = await fetchAvailabilityDetails(availabilityDetailRange, true);
+        const data = await fetchAvailabilityDetails(availabilityDetailRange, forceFresh);
         if (updatedEl) {
             const timestamp = data.generated_at ? new Date(data.generated_at) : new Date();
             updatedEl.textContent = timestamp.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -932,6 +1072,7 @@ async function renderAvailabilityDetails() {
         if (worstBody) setTableMessageRow(worstBody, 4, 'Failed to load data.', 'text-center text-danger p-3');
     } finally {
         availabilityInFlight = false;
+        setAvailabilityRefreshButtonState(false);
     }
 }
 
@@ -1286,6 +1427,38 @@ function renderSubnetHealth(subnetHealth) {
     });
 }
 
+function renderCommandBar(state) {
+    const summary = state.summary;
+    if (!summary) return;
+
+    const total = Number(summary.devices?.total) || 0;
+    const offline = Number(summary.devices?.offline ?? summary.devices?.down) || 0;
+    const availability = Number(summary.availability?.history_24h_pct ?? summary.devices?.online_percent ?? 0) || 0;
+    const alertCounts = getAlertCounts(state.alerts, summary);
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+
+    setText('cmd-total-devices', String(total));
+    setText('cmd-total-context', `${Number(summary.devices?.monitored ?? total)} monitored in scope`);
+    setText('cmd-total-trend', `${Number(summary.devices?.online ?? summary.devices?.up ?? 0)} responding now`);
+
+    setText('cmd-devices-down', String(offline));
+    setText('cmd-down-context', offline > 0 ? 'Immediate operator action required' : 'No active outages');
+    setText('cmd-down-trend', `${total > 0 ? Math.round((offline / total) * 100) : 0}% of fleet`);
+
+    setText('cmd-active-alerts', String(alertCounts.critical + alertCounts.warning));
+    setText('cmd-alert-context', 'Critical / Warning');
+    setText('cmd-alert-breakdown', `${alertCounts.critical} / ${alertCounts.warning}`);
+
+    const slaRisk = availability >= 99 ? 'Low' : availability >= 95 ? 'Guarded' : 'High';
+    setText('cmd-sla-risk', slaRisk);
+    setText('cmd-sla-context', `${formatPercent(availability)} fleet availability`);
+    setText('cmd-sla-window', 'last 24h');
+}
+
 function renderOverallHealth(state) {
     const card = document.getElementById('overall-health-card');
     const statusEl = document.getElementById('overall-health-status');
@@ -1308,6 +1481,8 @@ function renderOverallHealth(state) {
     const alertCounts = getAlertCounts(alerts, summary);
 
     const overall = computeOverallState(networkState, serverState, alertCounts);
+
+    renderCommandBar(state);
 
     card.classList.remove('health-healthy', 'health-degraded', 'health-critical');
     card.classList.add(`health-${overall.toLowerCase()}`);
@@ -1454,6 +1629,10 @@ window.addEventListener('pageshow', (evt) => {
         refreshAll().catch(() => { });
         if (!isSSEConnected) startPolling('pageshow');
     }
+});
+
+document.addEventListener('hidden.bs.modal', () => {
+    flushPendingSSEDelta();
 });
 
 

@@ -153,13 +153,33 @@ def test_smtp_connection(config: dict | None = None) -> tuple:
 # ------------------------------------------------------------------ #
 
 _INTERVAL_KEY = 'monitoring_interval_seconds'
-_INTERVAL_MIN = 60
+_INTERVAL_MIN = 10        # 10s absolute floor — below this, probe overhead dominates
 _INTERVAL_MAX = 3600
-_INTERVAL_DEFAULT = 300
+_INTERVAL_DEFAULT = 15    # 15s: ±15s downtime timestamp accuracy, 3-probe RTT quality
+
+
+def format_monitoring_interval_label(seconds: int | None) -> str:
+    """Return a compact human-readable monitoring interval label."""
+    try:
+        interval = int(seconds or 0)
+    except (TypeError, ValueError):
+        return "—"
+    if interval <= 0:
+        return "—"
+    if interval < 60:
+        return f"{interval} sec"
+    if interval % 3600 == 0:
+        hours = interval // 3600
+        return f"{hours} hr" if hours == 1 else f"{hours} hrs"
+    if interval % 60 == 0:
+        minutes = interval // 60
+        return f"{minutes} min"
+    minutes = interval / 60.0
+    return f"{minutes:.1f} min"
 
 
 def get_monitoring_interval() -> int:
-    """Return monitoring interval in seconds (clamped 60–3600). DB-first."""
+    """Return monitoring interval in seconds (clamped 10–3600). DB-first."""
     from models.app_settings import AppSettings
     db_val = AppSettings.get(_INTERVAL_KEY)
     if db_val is not None:
@@ -193,7 +213,7 @@ def get_monitoring_interval_with_source() -> dict:
 
 
 def set_monitoring_interval(seconds: int, actor_id=None) -> None:
-    """Validate and persist monitoring interval. Clamps to 60–3600."""
+    """Validate and persist monitoring interval. Clamps to 10–3600."""
     from models.app_settings import AppSettings
     clamped = max(_INTERVAL_MIN, min(_INTERVAL_MAX, int(seconds)))
     AppSettings.set(_INTERVAL_KEY, str(clamped), actor_id=actor_id)

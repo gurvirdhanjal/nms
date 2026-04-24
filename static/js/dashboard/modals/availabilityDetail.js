@@ -15,6 +15,23 @@ function toFiniteNumber(value) {
     return Number.isFinite(numeric) ? numeric : null;
 }
 
+function getBucketMinutes(rows) {
+    const bucketHours = Number(rows?.[0]?.bucket_hours ?? 1) || 1;
+    return bucketHours * 60;
+}
+
+function getIntervalLabel(rows) {
+    const bucketMinutes = getBucketMinutes(rows);
+    return bucketMinutes >= 60
+        ? `${bucketMinutes / 60}h intervals`
+        : `${bucketMinutes}m intervals`;
+}
+
+function getWindowDescription(rows) {
+    const bucketCount = Array.isArray(rows) ? rows.length : 0;
+    return bucketCount === 1 ? '1 bucket' : `${bucketCount} buckets`;
+}
+
 function getAxisLabel(isoString, bucketHours = 1) {
     if (!isoString) return '--';
     const date = new Date(isoString);
@@ -90,36 +107,39 @@ export function buildAvailabilitySummary(heatmap) {
 function renderAvailabilitySummary(heatmap, summaryEl) {
     if (!summaryEl) return;
 
+    const rows = Array.isArray(heatmap) ? heatmap : [];
+    const intervalLabel = getIntervalLabel(rows);
+    const windowDescription = getWindowDescription(rows);
     const summary = buildAvailabilitySummary(heatmap);
     if (!summary.observedCount) {
-        summaryEl.innerHTML = '<div class="availability-summary-empty">No observed buckets in the last 24 hours.</div>';
+        summaryEl.innerHTML = `<div class="availability-summary-empty">No observed buckets in this ${windowDescription} window.</div>`;
         return;
     }
 
     const worstMeta = summary.worst
         ? `${summary.worst.label} · ${summary.worst.online}/${summary.worst.total} online`
-        : 'No hourly sample';
+        : `No ${intervalLabel} sample`;
 
     summaryEl.innerHTML = `
         <div class="availability-summary-kpi">
-            <div class="availability-summary-label">Avg 24h</div>
+            <div class="availability-summary-label">Avg Window</div>
             <div class="availability-summary-value">${formatPercent(summary.averagePct)}</div>
-            <div class="availability-summary-meta">${summary.observedCount}/24 buckets observed</div>
+            <div class="availability-summary-meta">${summary.observedCount}/${rows.length} buckets observed</div>
         </div>
         <div class="availability-summary-kpi">
-            <div class="availability-summary-label">Worst Hour</div>
+            <div class="availability-summary-label">Worst Interval</div>
             <div class="availability-summary-value">${summary.worst ? formatPercent(summary.worst.value) : '-'}</div>
             <div class="availability-summary-meta">${escapeHtml(worstMeta)}</div>
         </div>
         <div class="availability-summary-kpi">
             <div class="availability-summary-label">Critical Buckets</div>
             <div class="availability-summary-value">${summary.criticalCount}</div>
-            <div class="availability-summary-meta">Hours below 90% uptime</div>
+            <div class="availability-summary-meta">${escapeHtml(intervalLabel)} below 90% uptime</div>
         </div>
         <div class="availability-summary-kpi">
             <div class="availability-summary-label">Stable Buckets</div>
             <div class="availability-summary-value">${summary.stableCount}</div>
-            <div class="availability-summary-meta">Hours at 99% or better</div>
+            <div class="availability-summary-meta">${escapeHtml(intervalLabel)} at 99% or better</div>
         </div>
     `;
 }
@@ -190,9 +210,10 @@ function availabilityToneClass(value, mode) {
 export function renderAvailabilityRows(rows, tbody, mode) {
     if (!tbody) return;
     if (!Array.isArray(rows) || rows.length === 0) {
+        const windowDescription = getWindowDescription(rows);
         const emptyMessage = mode === 'worst'
             ? 'No availability records yet.'
-            : 'No downtime recorded in the last 24 hours.';
+            : `No downtime recorded in this ${windowDescription} window.`;
         setTableMessageRow(tbody, 4, emptyMessage, 'text-center text-secondary p-3');
         return;
     }

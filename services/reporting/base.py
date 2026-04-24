@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from flask import g as _flask_g, has_request_context
 from sqlalchemy import and_, bindparam, case, cast, desc, func, literal_column, or_, text
 
 from extensions import db
@@ -67,6 +68,14 @@ def _safe_round(value, digits=2):
     return round(value, digits) if value is not None else None
 
 
+def _non_agent_scan_filter(model):
+    """Exclude agent HTTP upload rows from ICMP/latency report calculations."""
+    return or_(
+        model.scan_type.is_(None),
+        model.scan_type != "agent_push",
+    )
+
+
 def _row_value(row, key, default=None):
     if isinstance(row, dict):
         return row.get(key, default)
@@ -90,12 +99,24 @@ class ReportingServiceBase:
         return self._inventory_devices_query(device_ids).with_entities(Device.device_id.label("device_id")).subquery()
 
     def _inventory_device_id_list(self, device_ids=None):
+        # Memoize per request — the health report fallback chain calls this up to 3×
+        # (hourly → raw → daily) for the same device_ids. One DB round-trip is enough.
+        cache_attr = f"_inv_id_list_{tuple(sorted(device_ids)) if device_ids else 'all'}"
+        if has_request_context():
+            cached = getattr(_flask_g, cache_attr, None)
+            if cached is not None:
+                return cached
+
         inventory_ids = self._inventory_device_ids_subquery(device_ids)
-        return [
+        result = [
             int(row.device_id)
             for row in db.session.query(inventory_ids.c.device_id).all()
             if row.device_id is not None
         ]
+
+        if has_request_context():
+            setattr(_flask_g, cache_attr, result)
+        return result
 
     def _inventory_device_ips_subquery(self, device_ids=None):
         return self._inventory_devices_query(device_ids).with_entities(Device.device_ip.label("device_ip")).subquery()
@@ -173,6 +194,7 @@ class ReportingServiceBase:
         time_filter = and_(
             DeviceScanHistory.scan_timestamp >= start_date,
             DeviceScanHistory.scan_timestamp <= end_date,
+            _non_agent_scan_filter(DeviceScanHistory),
         )
 
         columns = (
@@ -182,6 +204,7 @@ class ReportingServiceBase:
             Device.device_type.label("device_type"),
             DeviceScanHistory.scan_id.label("scan_id"),
             DeviceScanHistory.status.label("status"),
+            DeviceScanHistory.status_detail.label("status_detail"),
             DeviceScanHistory.ping_time_ms.label("ping_time_ms"),
             DeviceScanHistory.packet_loss.label("packet_loss"),
         )

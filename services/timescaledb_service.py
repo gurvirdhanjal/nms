@@ -12,6 +12,158 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# tracking_samples intentionally stays a regular PostgreSQL table for now.
+# It has relational/idempotency constraints that need a dedicated schema refactor
+# before it can become a safe TimescaleDB hypertable.
+_HYPERTABLE_SPECS = (
+    {
+        "table_name": "server_health_logs",
+        "time_column": "timestamp",
+        "chunk_time_interval": "1 day",
+    },
+    {
+        "table_name": "device_resource_logs",
+        "time_column": "timestamp",
+        "chunk_time_interval": "1 day",
+    },
+    {
+        "table_name": "device_activity_logs",
+        "time_column": "timestamp",
+        "chunk_time_interval": "3 days",
+    },
+    {
+        "table_name": "device_application_logs",
+        "time_column": "timestamp",
+        "chunk_time_interval": "3 days",
+    },
+)
+
+
+def _has_incompatible_unique_constraint(connection, table_name: str, time_column: str) -> bool:
+    """Return True when the table has a PK/UNIQUE index that omits the time column.
+
+    TimescaleDB hypertables require every unique index and primary key to include
+    the partitioning column. Our runtime bootstrap should not try to convert such
+    tables automatically; they need an explicit schema migration first.
+    """
+    rows = connection.execute(
+        text(
+            """
+            SELECT idx.indexrelid::regclass::text AS index_name
+            FROM pg_index idx
+            JOIN pg_class tbl
+              ON tbl.oid = idx.indrelid
+            JOIN pg_namespace ns
+              ON ns.oid = tbl.relnamespace
+            WHERE ns.nspname = current_schema()
+              AND tbl.relname = :table_name
+              AND (idx.indisprimary OR idx.indisunique)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM unnest(idx.indkey) AS keycols(attnum)
+                  JOIN pg_attribute attr
+                    ON attr.attrelid = tbl.oid
+                   AND attr.attnum = keycols.attnum
+                  WHERE attr.attname = :time_column
+              )
+            """
+        ),
+        {"table_name": table_name, "time_column": time_column},
+    ).fetchall()
+    return bool(rows)
+
+
+def ensure_hypertables(engine) -> None:
+    """Idempotently convert Timescale-managed tables into hypertables.
+
+    Mirrors the table list in scripts/migrate_to_timescaledb.sql, but keeps the
+    startup operation safe to run repeatedly by using if_not_exists => TRUE.
+    """
+    if engine is None:
+        return
+
+    try:
+        backend_name = engine.url.get_backend_name()
+    except Exception:
+        logger.warning("Skipping TimescaleDB hypertable bootstrap: unable to resolve backend")
+        return
+
+    if backend_name != "postgresql":
+        return
+
+    try:
+        with engine.begin() as connection:
+            extension_installed = connection.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_extension
+                        WHERE extname = 'timescaledb'
+                    )
+                    """
+                )
+            ).scalar()
+            if not extension_installed:
+                logger.info("TimescaleDB extension not installed; skipping hypertable bootstrap")
+                return
+
+            for spec in _HYPERTABLE_SPECS:
+                table_name = spec["table_name"]
+                time_column = spec["time_column"]
+                table_exists = connection.execute(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_schema = current_schema()
+                              AND table_name = :table_name
+                        )
+                        """
+                    ),
+                    {"table_name": table_name},
+                ).scalar()
+                if not table_exists:
+                    logger.debug("Skipping hypertable bootstrap for missing table %s", table_name)
+                    continue
+
+                if _has_incompatible_unique_constraint(connection, table_name, time_column):
+                    logger.info(
+                        "Skipping automatic hypertable conversion for %s: "
+                        "a PRIMARY KEY or UNIQUE index does not include %s. "
+                        "Run an explicit schema migration before converting this table.",
+                        table_name,
+                        time_column,
+                    )
+                    continue
+
+                try:
+                    connection.execute(
+                        text(
+                            """
+                            SELECT create_hypertable(
+                                :table_name,
+                                :time_column,
+                                chunk_time_interval => CAST(:chunk_time_interval AS interval),
+                                if_not_exists => TRUE,
+                                migrate_data => TRUE
+                            )
+                            """
+                        ),
+                        spec,
+                    )
+                    logger.info("Ensured hypertable exists for %s", table_name)
+                except Exception as table_exc:
+                    logger.warning(
+                        "Skipping hypertable bootstrap for %s due to conversion error: %s",
+                        table_name,
+                        table_exc,
+                    )
+    except Exception as exc:
+        logger.warning("Failed to ensure TimescaleDB hypertables: %s", exc)
+
+
 class TimescaleDBService:
     """Service for TimescaleDB-specific operations"""
 
@@ -433,7 +585,180 @@ class TimescaleDBService:
             'enabled': True,
             'hypertables': TimescaleDBService.get_hypertable_info(),
             'compression_stats': TimescaleDBService.get_compression_stats(),
+            'compression_health': TimescaleDBService.get_compression_health(),
             'continuous_aggregates': TimescaleDBService.get_continuous_aggregate_stats(),
             'jobs': TimescaleDBService.get_job_stats(),
             'generated_at': datetime.utcnow().isoformat()
         }
+
+    @staticmethod
+    def query_scan_history_cagg(
+        device_ip: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[Dict]:
+        """Query the 15-minute ICMP continuous aggregate for a device.
+
+        Falls back to an empty list if the cagg doesn't exist yet (pre-migration).
+        Uses real-time aggregation so the current partial bucket is always included.
+        """
+        if not TimescaleDBService.is_timescaledb_enabled():
+            return []
+
+        params: dict = {'device_ip': device_ip}
+        where = ['device_ip = :device_ip']
+
+        if start_time:
+            where.append('bucket >= :start_time')
+            params['start_time'] = start_time
+        if end_time:
+            where.append('bucket < :end_time')
+            params['end_time'] = end_time
+
+        where_sql = 'WHERE ' + ' AND '.join(where)
+
+        try:
+            result = db.session.execute(text(f"""
+                SELECT
+                    bucket,
+                    probe_count,
+                    online_count,
+                    ROUND(avg_rtt::numeric, 2)         AS avg_rtt,
+                    ROUND(min_rtt::numeric, 2)         AS min_rtt,
+                    ROUND(max_rtt::numeric, 2)         AS max_rtt,
+                    ROUND(avg_packet_loss::numeric, 2) AS avg_packet_loss,
+                    ROUND(avg_jitter::numeric, 2)      AS avg_jitter,
+                    CASE WHEN probe_count > 0
+                         THEN ROUND((online_count::numeric / probe_count) * 100, 1)
+                         ELSE 0
+                    END AS uptime_pct
+                FROM device_scan_history_15m_cagg
+                {where_sql}
+                ORDER BY bucket ASC
+            """), params)
+            return TimescaleDBService._rows_to_dicts(result)
+        except Exception as e:
+            logger.warning(
+                'device_scan_history_15m_cagg query failed '
+                '(run optimize_scan_history_15s.sql to create it): %s', e
+            )
+            return []
+
+    @staticmethod
+    def get_compression_health() -> List[Dict]:
+        """Return per-hypertable compression health: uncompressed chunk count and age.
+
+        A large uncompressed_chunks count means the compression background job
+        is falling behind — surfaces in the admin health dashboard.
+        """
+        if not TimescaleDBService.is_timescaledb_enabled():
+            return []
+
+        try:
+            result = db.session.execute(text("""
+                SELECT
+                    c.hypertable_name,
+                    COUNT(*) FILTER (WHERE NOT c.is_compressed) AS uncompressed_chunks,
+                    COUNT(*) FILTER (WHERE c.is_compressed)     AS compressed_chunks,
+                    COUNT(*)                                     AS total_chunks,
+                    MIN(c.range_start) FILTER (WHERE NOT c.is_compressed)
+                                                                 AS oldest_uncompressed_start,
+                    pg_size_pretty(
+                        SUM(pg_total_relation_size(
+                            format('%I.%I', c.chunk_schema, c.chunk_name)::regclass
+                        )) FILTER (WHERE NOT c.is_compressed)
+                    )                                            AS uncompressed_size
+                FROM timescaledb_information.chunks c
+                GROUP BY c.hypertable_name
+                ORDER BY uncompressed_chunks DESC, c.hypertable_name
+            """))
+            return TimescaleDBService._rows_to_dicts(result)
+        except Exception as e:
+            logger.error('Failed to get compression health: %s', e)
+            return []
+
+
+    @staticmethod
+    def query_scan_history_cagg(
+        device_ip: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        bucket: str = '15 minutes',
+    ) -> List[Dict]:
+        """Query the 15-minute ICMP continuous aggregate for a device.
+
+        Falls back to an empty list if the cagg doesn't exist yet (pre-migration).
+        The cagg uses real-time aggregation so the current partial bucket is
+        always included without a manual refresh call.
+        """
+        if not TimescaleDBService.is_timescaledb_enabled():
+            return []
+
+        params: dict = {'device_ip': device_ip}
+        where = ['device_ip = :device_ip']
+
+        if start_time:
+            where.append('bucket >= :start_time')
+            params['start_time'] = start_time
+        if end_time:
+            where.append('bucket < :end_time')
+            params['end_time'] = end_time
+
+        where_sql = 'WHERE ' + ' AND '.join(where)
+
+        try:
+            result = db.session.execute(text(f"""
+                SELECT
+                    bucket,
+                    probe_count,
+                    online_count,
+                    ROUND(avg_rtt::numeric, 2)          AS avg_rtt,
+                    ROUND(min_rtt::numeric, 2)          AS min_rtt,
+                    ROUND(max_rtt::numeric, 2)          AS max_rtt,
+                    ROUND(avg_packet_loss::numeric, 2)  AS avg_packet_loss,
+                    ROUND(avg_jitter::numeric, 2)       AS avg_jitter,
+                    CASE WHEN probe_count > 0
+                         THEN ROUND((online_count::numeric / probe_count) * 100, 1)
+                         ELSE 0
+                    END AS uptime_pct
+                FROM device_scan_history_15m_cagg
+                {where_sql}
+                ORDER BY bucket ASC
+            """), params)
+            return TimescaleDBService._rows_to_dicts(result)
+        except Exception as e:
+            logger.warning('device_scan_history_15m_cagg query failed (run optimize_scan_history_15s.sql?): %s', e)
+            return []
+
+    @staticmethod
+    def get_compression_health() -> List[Dict]:
+        """Return per-hypertable compression health: uncompressed chunk count and age.
+
+        A large number of uncompressed chunks means the compression background
+        job is falling behind — useful for the admin health dashboard.
+        """
+        if not TimescaleDBService.is_timescaledb_enabled():
+            return []
+
+        try:
+            result = db.session.execute(text("""
+                SELECT
+                    c.hypertable_name,
+                    COUNT(*) FILTER (WHERE NOT c.is_compressed)     AS uncompressed_chunks,
+                    COUNT(*) FILTER (WHERE c.is_compressed)         AS compressed_chunks,
+                    COUNT(*)                                         AS total_chunks,
+                    MIN(c.range_start) FILTER (WHERE NOT c.is_compressed)
+                                                                     AS oldest_uncompressed_start,
+                    pg_size_pretty(
+                        SUM(pg_total_relation_size(
+                            format('%I.%I', c.chunk_schema, c.chunk_name)::regclass
+                        )) FILTER (WHERE NOT c.is_compressed)
+                    )                                                AS uncompressed_size
+                FROM timescaledb_information.chunks c
+                GROUP BY c.hypertable_name
+                ORDER BY uncompressed_chunks DESC, c.hypertable_name
+            """))
+            return TimescaleDBService._rows_to_dicts(result)
+        except Exception as e:
+            logger.error('Failed to get compression health: %s', e)
+            return []

@@ -217,6 +217,100 @@
     background: var(--red-dim);
 }
 
+.tracking-add-device-dialog {
+    max-width: min(1180px, 96vw);
+}
+
+#addDeviceModal .modal-content {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+}
+
+.tracking-add-device-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tracking-add-device-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.tracking-add-device-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.95fr) minmax(420px, 1.25fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.tracking-inventory-panel,
+.tracking-device-form-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.tracking-inventory-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.tracking-inventory-item {
+    width: 100%;
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: all var(--transition-fast);
+}
+
+.tracking-inventory-item:hover {
+    border-color: var(--border-strong);
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.tracking-inventory-item.is-selected {
+    border-color: var(--teal);
+    background: rgba(32, 201, 151, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(32, 201, 151, 0.24);
+}
+
+.tracking-inventory-item-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.tracking-inventory-item-meta,
+.tracking-inventory-item-detail {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+@media (max-width: 991.98px) {
+    .tracking-add-device-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .tracking-inventory-list {
+        max-height: 260px;
+    }
+}
+
 .tracking-icon-sm {
     width: 13px;
     height: 13px;
