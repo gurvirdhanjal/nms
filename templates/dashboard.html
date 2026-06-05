@@ -4039,14 +4039,23 @@
                         <div class="tactical-card breakdown-subcard">
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
-                                <div class="tabs"><button class="active"
-                                        data-target="tab-latency">Latency</button><button
-                                        data-target="tab-loss">Loss</button><button
-                                        data-target="tab-inventory-list">Inventory</button><button
-                                        data-target="tab-discovery">Discovery</button></div>
+                                <div class="tabs" role="tablist">
+                                    <button class="active" role="tab" aria-selected="true"
+                                        aria-controls="tab-latency" id="tab-btn-latency"
+                                        data-target="tab-latency">Latency</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-loss" id="tab-btn-loss"
+                                        data-target="tab-loss">Loss</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-inventory-list" id="tab-btn-inventory"
+                                        data-target="tab-inventory-list">Inventory</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-discovery" id="tab-btn-discovery"
+                                        data-target="tab-discovery">Discovery</button>
+                                </div>
                             </div>
                             <div class="card-body">
-                                <div id="tab-latency" class="tab-content is-active">
+                                <div id="tab-latency" class="tab-content is-active" role="tabpanel" aria-labelledby="tab-btn-latency">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -4068,7 +4077,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-loss" class="tab-content">
+                                <div id="tab-loss" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-loss">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -4091,7 +4100,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-inventory-list" class="tab-content">
+                                <div id="tab-inventory-list" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-inventory">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0" id="table-inventory">
                                             <thead>
@@ -4118,7 +4127,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-discovery" class="tab-content">
+                                <div id="tab-discovery" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-discovery">
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-6"><label class="form-label small text-secondary">Seed
                                                 IP</label><input id="seed-ip" class="form-control tactical-input"

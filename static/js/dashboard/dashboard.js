@@ -722,8 +722,12 @@ function setupTabs() {
 
             const currentEl = document.querySelector('.tab-content.is-active');
 
-            tabs.forEach(t => t.classList.remove('active'));
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
             e.target.classList.add('active');
+            e.target.setAttribute('aria-selected', 'true');
 
             if (currentEl) {
                 currentEl.classList.remove('is-active');
