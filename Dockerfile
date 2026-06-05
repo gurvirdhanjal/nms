@@ -45,7 +45,7 @@ RUN mkdir -p /app/client_uploads /app/events /app/instance
 
 EXPOSE 5001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:5001/health || exit 1
 
 CMD ["python", "web_main.py"]

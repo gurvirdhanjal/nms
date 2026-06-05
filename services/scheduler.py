@@ -34,6 +34,8 @@ JOB_META: dict[str, tuple[str, int]] = {
     "maybe_run_auto_discovery":        ("auto_discovery",               60),
     "purge_old_alerts":                ("alert_retention",              86400),
     "purge_old_scan_history":          ("scan_history_retention",        86400),
+    "purge_old_activity_logs":         ("activity_log_retention",        86400),
+    "purge_old_task_queues":           ("task_queue_retention",          86400),
 }
 
 
@@ -169,6 +171,18 @@ class MonitoringScheduler:
         # table with NO cleanup job. At 5-min intervals × 239 devices it grows ~70 K rows/day.
         # Default retention: 30 days (configurable via SCAN_HISTORY_RETENTION_DAYS).
         schedule.every().day.at("04:00").do(self.purge_old_scan_history)
+
+        # Activity log retention — device_activity/resource/application_logs had no cleanup.
+        # Default 30 days (ACTIVITY_LOG_RETENTION_DAYS).
+        schedule.every().day.at("02:30").do(self.purge_old_activity_logs)
+
+        # Task queue retention — poll_tasks and alert_fanout_tasks accumulate completed/failed
+        # rows indefinitely without cleanup. Default 7 days (POLL_TASK_RETENTION_DAYS).
+        schedule.every().day.at("04:30").do(self.purge_old_task_queues)
+
+        # SQLite WAL checkpoint — WAL file grows indefinitely without periodic checkpointing.
+        # No-op on PostgreSQL deployments.
+        schedule.every().week.do(self.run_sqlite_maintenance)
 
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
@@ -731,6 +745,126 @@ class MonitoringScheduler:
                 db.session.rollback()
                 _record_run("alert_retention", False)
                 logger.exception("[SCHEDULER] purge_old_alerts failed")
+            finally:
+                db.session.remove()
+
+    def run_sqlite_maintenance(self):
+        """Run WAL checkpoint and PRAGMA optimize for SQLite deployments.
+
+        WAL mode never shrinks the WAL file unless explicitly checkpointed.
+        PRAGMA optimize updates query planner statistics.  Both are no-ops on
+        PostgreSQL so this is safe to schedule unconditionally.
+        """
+        with self.app.app_context():
+            try:
+                db_uri = self.app.config.get('SQLALCHEMY_DATABASE_URI', '')
+                if 'sqlite' not in db_uri:
+                    return
+                from sqlalchemy import text
+                db.session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                db.session.execute(text("PRAGMA optimize"))
+                db.session.commit()
+                logger.info("[SCHEDULER] run_sqlite_maintenance: WAL checkpoint + optimize done")
+            except Exception:
+                db.session.rollback()
+                logger.exception("[SCHEDULER] run_sqlite_maintenance failed")
+            finally:
+                db.session.remove()
+
+    def purge_old_activity_logs(self):
+        """Delete device_activity/resource/application_logs older than ACTIVITY_LOG_RETENTION_DAYS.
+
+        These three tables had no cleanup job and grew unbounded.  Batched 10 K rows per
+        transaction to avoid lock spikes, matching the pattern in purge_old_scan_history.
+        """
+        with self.app.app_context():
+            try:
+                from models.tracked_device import DeviceActivityLog, DeviceResourceLog, DeviceApplicationLog
+                retention_days = int(self.app.config.get('ACTIVITY_LOG_RETENTION_DAYS', 30))
+                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                total_deleted = 0
+
+                for Model in (DeviceActivityLog, DeviceResourceLog, DeviceApplicationLog):
+                    table_deleted = 0
+                    while True:
+                        subq = db.session.query(Model.id).filter(
+                            Model.timestamp < cutoff
+                        ).limit(10000).subquery()
+                        deleted = Model.query.filter(
+                            Model.id.in_(subq)
+                        ).delete(synchronize_session=False)
+                        db.session.commit()
+                        table_deleted += deleted
+                        if deleted < 10000:
+                            break
+                    total_deleted += table_deleted
+
+                _record_run("activity_log_retention", True)
+                logger.info(
+                    "[SCHEDULER] purge_old_activity_logs: deleted %d rows older than %d days",
+                    total_deleted, retention_days,
+                )
+            except Exception:
+                db.session.rollback()
+                _record_run("activity_log_retention", False)
+                logger.exception("[SCHEDULER] purge_old_activity_logs failed")
+            finally:
+                db.session.remove()
+
+    def purge_old_task_queues(self):
+        """Delete completed/failed poll_tasks and alert_fanout_tasks older than retention window.
+
+        Both tables accumulate terminal-state rows (done/failed/delivered) indefinitely.
+        Default 7 days (POLL_TASK_RETENTION_DAYS / ALERT_FANOUT_RETENTION_DAYS).
+        """
+        with self.app.app_context():
+            try:
+                from models.poll_task import PollTask
+                from models.alert_fanout_task import AlertFanoutTask
+
+                poll_days = int(self.app.config.get('POLL_TASK_RETENTION_DAYS', 7))
+                fanout_days = int(self.app.config.get('ALERT_FANOUT_RETENTION_DAYS', 7))
+                total_deleted = 0
+
+                # poll_tasks: remove done/failed rows past retention window
+                poll_cutoff = datetime.utcnow() - timedelta(days=poll_days)
+                while True:
+                    subq = db.session.query(PollTask.id).filter(
+                        PollTask.status.in_(['done', 'failed']),
+                        PollTask.created_at < poll_cutoff,
+                    ).limit(10000).subquery()
+                    deleted = PollTask.query.filter(
+                        PollTask.id.in_(subq)
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
+                    total_deleted += deleted
+                    if deleted < 10000:
+                        break
+
+                # alert_fanout_tasks: remove delivered/failed rows past retention window
+                fanout_cutoff = datetime.utcnow() - timedelta(days=fanout_days)
+                while True:
+                    subq = db.session.query(AlertFanoutTask.id).filter(
+                        AlertFanoutTask.status.in_(['delivered', 'failed']),
+                        AlertFanoutTask.created_at < fanout_cutoff,
+                    ).limit(10000).subquery()
+                    deleted = AlertFanoutTask.query.filter(
+                        AlertFanoutTask.id.in_(subq)
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
+                    total_deleted += deleted
+                    if deleted < 10000:
+                        break
+
+                _record_run("task_queue_retention", True)
+                logger.info(
+                    "[SCHEDULER] purge_old_task_queues: deleted %d rows (poll≤%dd, fanout≤%dd)",
+                    total_deleted, poll_days, fanout_days,
+                )
+            except Exception:
+                db.session.rollback()
+                _record_run("task_queue_retention", False)
+                logger.exception("[SCHEDULER] purge_old_task_queues failed")
             finally:
                 db.session.remove()
 

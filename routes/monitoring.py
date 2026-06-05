@@ -487,24 +487,25 @@ def get_monitoring_statistics():
         # Get REAL-TIME online status (not historical data)
         online_count = 0
         
+        _stats_sem = asyncio.Semaphore(50)
+
         async def check_device_online(device):
-            try:
-                # 1. Try Standard Ping
-                status, latency, _packet_loss, *_ = await monitor.scanner.ping_device(device.device_ip)
-                if status == 'Online':
-                    return True
-                
-                # 2. Try Tactical Agent Port (5002)
-                # print(f"DEBUG: Ping failed for {device.device_ip}, checking Agent Port 5002...")
-                agent_info = await monitor.scanner.check_tactical_agent(device.device_ip)
-                if agent_info:
-                     return True
-                
-                return False
-            except Exception as e:
-                # print(f"DEBUG: Error pinging {device.device_ip}: {e}")
-                return False
-        
+            async with _stats_sem:
+                try:
+                    status, latency, _packet_loss, *_ = await asyncio.wait_for(
+                        monitor.scanner.ping_device(device.device_ip),
+                        timeout=2.0,
+                    )
+                    if status == 'Online':
+                        return True
+                    agent_info = await asyncio.wait_for(
+                        monitor.scanner.check_tactical_agent(device.device_ip),
+                        timeout=2.0,
+                    )
+                    return bool(agent_info)
+                except Exception:
+                    return False
+
         async def check_all_devices():
             tasks = [check_device_online(device) for device in devices_to_scan]
             return await asyncio.gather(*tasks)

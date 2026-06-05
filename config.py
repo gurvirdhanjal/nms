@@ -159,6 +159,20 @@ class Config:
 
     # Interface polling interval (seconds)
     INTERFACE_POLL_INTERVAL = int(os.environ.get('INTERFACE_POLL_INTERVAL', 30))
+
+    # ─── Floor-plan / plant-map geotagging ─────────────────
+    # Uploaded plans live OUTSIDE static/ so they are served only through an
+    # authenticated route (RBAC preserved).
+    FLOOR_PLAN_DIR = os.environ.get('FLOOR_PLAN_DIR', os.path.join(INSTANCE_DIR, 'floor_plans'))
+    FLOOR_PLAN_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
+    # Hard cap on the uploaded file (bytes). Guards against a 300MB CAD export
+    # being rasterised and blowing up memory. Default 25 MB.
+    FLOOR_PLAN_MAX_UPLOAD_BYTES = _env_int('FLOOR_PLAN_MAX_UPLOAD_BYTES', 25 * 1024 * 1024, minimum=1024)
+    # Cap on the normalised raster's longest edge (px). Larger images are
+    # downscaled on save so the browser and server stay responsive.
+    FLOOR_PLAN_MAX_DIMENSION = _env_int('FLOOR_PLAN_MAX_DIMENSION', 6000, minimum=256)
+    # DPI used when rasterising the first page of a PDF.
+    FLOOR_PLAN_PDF_DPI = _env_int('FLOOR_PLAN_PDF_DPI', 150, minimum=36, maximum=600)
     
     # Session
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=5)
@@ -200,6 +214,9 @@ class Config:
     TRACKING_RAW_RETENTION_DAYS = int(os.environ.get('TRACKING_RAW_RETENTION_DAYS', 30))
     TRACKING_HOURLY_RETENTION_DAYS = int(os.environ.get('TRACKING_HOURLY_RETENTION_DAYS', 365))
     TRACKING_DAILY_RETENTION_DAYS = int(os.environ.get('TRACKING_DAILY_RETENTION_DAYS', 1095))
+    ACTIVITY_LOG_RETENTION_DAYS = int(os.environ.get('ACTIVITY_LOG_RETENTION_DAYS', 30))
+    POLL_TASK_RETENTION_DAYS = int(os.environ.get('POLL_TASK_RETENTION_DAYS', 7))
+    ALERT_FANOUT_RETENTION_DAYS = int(os.environ.get('ALERT_FANOUT_RETENTION_DAYS', 7))
     TRACKING_HOURLY_ROLLUP_AT = os.environ.get('TRACKING_HOURLY_ROLLUP_AT', ':12')
     TRACKING_DAILY_ROLLUP_SCHEDULE = os.environ.get('TRACKING_DAILY_ROLLUP_SCHEDULE', '00:35')
     TRACKING_INTEGRITY_CHECK_SCHEDULE = os.environ.get('TRACKING_INTEGRITY_CHECK_SCHEDULE', '03:30')
