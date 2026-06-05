@@ -1027,7 +1027,8 @@
 
     .dashboard-enterprise .network-segments-panel .subnet-table-scroll {
         max-height: 340px;
-        overflow-y: auto;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
     }
 
@@ -3890,6 +3891,7 @@
             overflow: auto;
             scrollbar-width: thin;
             scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+            -webkit-overflow-scrolling: touch;
         }
 
         #device-breakdown .table-responsive::-webkit-scrollbar {
