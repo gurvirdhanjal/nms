@@ -148,3 +148,69 @@ class TestDashboardStats:
                 if dev_obj:
                     _db.session.delete(dev_obj)
                     _db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+def login(client):
+    """Inject an admin session into the test client."""
+    from datetime import datetime
+    with client.session_transaction() as sess:
+        sess['logged_in'] = True
+        sess['role'] = 'admin'
+        sess['username'] = 'test-admin'
+        sess['user_id'] = 1
+        sess['last_activity'] = datetime.utcnow().isoformat()
+
+
+class TestDeviceModal:
+    def test_modal_returns_200(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        assert rv.status_code == 200
+
+    def test_modal_device_fields(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        data = rv.get_json()
+        assert data['device']['device_name'] == 'server-hr-01'
+        assert data['device']['device_ip'] == '10.0.0.3'
+
+    def test_modal_network_section(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        data = rv.get_json()
+        assert 'network' in data
+        assert 'state' in data['network']
+        assert 'ping_ms' in data['network']
+        assert 'packet_loss' in data['network']
+        assert 'last_scan_at' in data['network']
+
+    def test_modal_health_section(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        data = rv.get_json()
+        assert 'health' in data
+        assert 'available' in data['health']
+
+    def test_modal_active_alerts(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        data = rv.get_json()
+        assert 'active_alerts' in data
+        assert len(data['active_alerts']) == 1
+        assert data['active_alerts'][0]['severity'] == 'CRITICAL'
+
+    def test_modal_floor_plan_placement(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/{seed_data["site_id"]}/device/{seed_data["dev3_id"]}/modal')
+        data = rv.get_json()
+        assert 'floor_plan_placement' in data
+        assert 'has_placement' in data['floor_plan_placement']
+
+    def test_modal_wrong_site_returns_404(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/sites/9999/device/{seed_data["dev3_id"]}/modal')
+        assert rv.status_code == 404

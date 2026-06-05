@@ -277,6 +277,127 @@ def site_dashboard_stats(site_id):
     })
 
 
+@sites_bp.route('/api/sites/<int:site_id>/device/<int:device_id>/modal')
+@require_login
+def site_device_modal(site_id: int, device_id: int):
+    """Return a JSON snapshot for the device modal overlay on the site dashboard.
+
+    Sections returned:
+    - device: core identity fields
+    - network: latest ping scan state
+    - health: latest ServerHealthLog entry (if any)
+    - active_alerts: up to 10 unresolved DashboardEvents
+    - floor_plan_placement: whether the device is pinned on a floor plan
+    """
+    from middleware.rbac import scoped_query
+    from models.scan_history import DeviceScanHistory
+
+    # Verify site access
+    scoped_query(Site).get_or_404(site_id)
+
+    # Verify device belongs to this site
+    device = Device.query.filter_by(device_id=device_id, site_id=site_id).first_or_404()
+
+    # ── Network state (latest scan by IP) ──────────────────────────
+    latest_scan = (
+        DeviceScanHistory.query
+        .filter_by(device_ip=device.device_ip)
+        .order_by(DeviceScanHistory.scan_id.desc())
+        .first()
+    )
+
+    if latest_scan is None:
+        network_state = "unknown"
+    elif latest_scan.packet_loss is not None and latest_scan.packet_loss >= 100:
+        network_state = "offline"
+    elif latest_scan.packet_loss is not None and latest_scan.packet_loss > 5:
+        network_state = "degraded"
+    else:
+        network_state = "healthy"
+
+    network = {
+        "state":        network_state,
+        "ping_ms":      latest_scan.ping_time_ms if latest_scan else None,
+        "packet_loss":  latest_scan.packet_loss if latest_scan else None,
+        "last_scan_at": (
+            latest_scan.scan_timestamp.isoformat()
+            if latest_scan and latest_scan.scan_timestamp
+            else None
+        ),
+    }
+
+    # ── Server health (latest log by device_id) ────────────────────
+    # ServerHealthLog is imported at the top of this module
+    latest_health = (
+        ServerHealthLog.query
+        .filter_by(device_id=device_id)
+        .order_by(ServerHealthLog.id.desc())
+        .first()
+    )
+
+    if latest_health:
+        health = {
+            "available":   True,
+            "cpu_pct":     latest_health.cpu_usage,
+            "memory_pct":  latest_health.memory_usage,
+            "disk_pct":    latest_health.disk_usage,
+            "recorded_at": (
+                latest_health.timestamp.isoformat()
+                if latest_health.timestamp
+                else None
+            ),
+        }
+    else:
+        health = {"available": False}
+
+    # ── Active alerts ──────────────────────────────────────────────
+    active_alerts = (
+        DashboardEvent.query
+        .filter_by(device_id=device_id, resolved=False)
+        .order_by(DashboardEvent.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+
+    alerts_payload = [
+        {
+            "alert_id":    ev.event_id,
+            "severity":    ev.severity,
+            "message":     ev.message,
+            "metric_name": getattr(ev, 'metric_name', None),
+            "timestamp":   ev.timestamp.isoformat() if ev.timestamp else None,
+        }
+        for ev in active_alerts
+    ]
+
+    # ── Floor plan placement ───────────────────────────────────────
+    has_placement = bool(device.floor_plan_id is not None and device.map_x is not None)
+    floor_plan_name: str | None = None
+    if has_placement and hasattr(device, 'floor_plan') and device.floor_plan:
+        floor_plan_name = device.floor_plan.name
+
+    floor_plan_placement = {
+        "has_placement":   has_placement,
+        "floor_plan_id":   device.floor_plan_id,
+        "floor_plan_name": floor_plan_name,
+    }
+
+    return jsonify({
+        "device": {
+            "device_id":   device.device_id,
+            "device_name": device.device_name,
+            "device_type": device.device_type,
+            "device_ip":   device.device_ip,
+            "dept_name":   device.department.name if device.department else None,
+            "site_id":     site_id,
+        },
+        "network":              network,
+        "health":               health,
+        "active_alerts":        alerts_payload,
+        "floor_plan_placement": floor_plan_placement,
+    })
+
+
 @sites_bp.route('/api/sites', methods=['GET'])
 @require_login
 def list_sites():
