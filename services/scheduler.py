@@ -36,6 +36,7 @@ JOB_META: dict[str, tuple[str, int]] = {
     "purge_old_scan_history":          ("scan_history_retention",        86400),
     "purge_old_activity_logs":         ("activity_log_retention",        86400),
     "purge_old_task_queues":           ("task_queue_retention",          86400),
+    "drain_alert_fanout_queue":        ("alert_fanout_drain",            10),
 }
 
 
@@ -179,6 +180,11 @@ class MonitoringScheduler:
         # Task queue retention — poll_tasks and alert_fanout_tasks accumulate completed/failed
         # rows indefinitely without cleanup. Default 7 days (POLL_TASK_RETENTION_DAYS).
         schedule.every().day.at("04:30").do(self.purge_old_task_queues)
+
+        # Alert fanout drain — claims pending AlertFanoutTask rows and delivers them
+        # via broadcast_event() (SSE → Redis) or email. Without this, alert rows pile
+        # up in the DB as pending forever and the dashboard never gets push updates.
+        schedule.every(10).seconds.do(self.drain_alert_fanout_queue)
 
         # SQLite WAL checkpoint — WAL file grows indefinitely without periodic checkpointing.
         # No-op on PostgreSQL deployments.
@@ -728,6 +734,31 @@ class MonitoringScheduler:
             finally:
                 db.session.remove()
 
+    def drain_alert_fanout_queue(self):
+        """Claim and deliver pending AlertFanoutTask rows (SSE + email channels).
+
+        Runs every 10 s. Drains up to _FANOUT_BATCH_MAX rows per tick so a
+        burst of alerts doesn't block the scheduler thread for more than a few
+        seconds. Each claim is DB-locked via claim_token so multiple workers
+        (e.g. Gunicorn) don't double-deliver.
+        """
+        _FANOUT_BATCH_MAX = 50
+        with self.app.app_context():
+            try:
+                from workers.alert_fanout_worker import run_once as _fanout_run_once
+                delivered = 0
+                for _ in range(_FANOUT_BATCH_MAX):
+                    task = _fanout_run_once()
+                    if task is None:
+                        break
+                    delivered += 1
+                if delivered:
+                    logger.info("[SCHEDULER] drain_alert_fanout_queue: delivered %d task(s)", delivered)
+                _record_run("alert_fanout_drain", True)
+            except Exception as exc:
+                _record_run("alert_fanout_drain", False)
+                logger.warning("[SCHEDULER] drain_alert_fanout_queue error: %s", exc)
+
     def purge_old_alerts(self):
         """Delete resolved dashboard_events older than 90 days."""
         with self.app.app_context():
@@ -841,11 +872,13 @@ class MonitoringScheduler:
                     if deleted < 10000:
                         break
 
-                # alert_fanout_tasks: remove delivered/failed rows past retention window
+                # alert_fanout_tasks: remove terminal rows (delivered/failed/pending)
+                # past retention window. Include 'pending' so rows that were never
+                # drained (pre-fix backlog) don't grow unbounded.
                 fanout_cutoff = datetime.utcnow() - timedelta(days=fanout_days)
                 while True:
                     subq = db.session.query(AlertFanoutTask.id).filter(
-                        AlertFanoutTask.status.in_(['delivered', 'failed']),
+                        AlertFanoutTask.status.in_(['delivered', 'failed', 'pending']),
                         AlertFanoutTask.created_at < fanout_cutoff,
                     ).limit(10000).subquery()
                     deleted = AlertFanoutTask.query.filter(
