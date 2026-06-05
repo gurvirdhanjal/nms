@@ -40,6 +40,19 @@ def sites_list_page():
     )
 
 
+@sites_bp.route('/sites/<int:site_id>/floor-plans')
+@require_login
+def site_floor_plans_page(site_id):
+    """Render the floor-plan map page for a site (viewers read-only, admin edits)."""
+    from middleware.rbac import scoped_query, current_role
+    site = scoped_query(Site).get_or_404(site_id)
+    return render_template(
+        'sites/floor_plans.html',
+        site=site,
+        is_admin=(current_role() == 'admin'),
+    )
+
+
 @sites_bp.route('/sites/<int:site_id>/dashboard')
 @require_login
 def site_dashboard(site_id):
@@ -166,6 +179,99 @@ def site_dashboard(site_id):
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
+
+@sites_bp.route('/api/sites/<int:site_id>/dashboard-stats')
+@require_login
+def site_dashboard_stats(site_id):
+    """JSON endpoint for live site dashboard polling.
+
+    Returns KPI counts, per-device state + scan freshness, dept aggregates,
+    active alert count, and the configured monitoring interval so the client
+    knows how often to re-poll.
+    """
+    from middleware.rbac import scoped_query
+
+    scoped_query(Site).get_or_404(site_id)
+
+    sites_service = SitesService()
+    devices = sites_service.get_site_devices(site_id)
+    snapshot = build_device_availability_snapshot(devices)
+    stats = sites_service.get_site_stats(site_id, devices=devices, availability_snapshot=snapshot)
+
+    scan_details = snapshot.get("device_scan_details", {})
+    device_states = snapshot.get("device_states", {})
+
+    # ── Per-device payload ──────────────────────────────────────────
+    device_payload = []
+    for d in devices:
+        did = d.device_id
+        detail = scan_details.get(did, {})
+        device_payload.append({
+            "device_id":    did,
+            "dept_id":      d.department_id,
+            "state":        device_states.get(did, "unknown"),
+            "ping_ms":      detail.get("ping_ms"),
+            "packet_loss":  detail.get("packet_loss"),
+            "last_scan_at": detail.get("last_scan_at"),
+        })
+
+    # ── Dept aggregates ────────────────────────────────────────────
+    dept_device_map: dict = {}  # {dept_id: [device, ...]}
+    for d in devices:
+        dept_id = d.department_id  # may be None
+        dept_device_map.setdefault(dept_id, []).append(d)
+
+    # Alert counts per dept for this site (single query)
+    alert_rows = (
+        db.session.query(DashboardEvent.department_id, func.count(DashboardEvent.event_id))
+        .filter(DashboardEvent.site_id == site_id, DashboardEvent.resolved == False)  # noqa: E712
+        .group_by(DashboardEvent.department_id)
+        .all()
+    )
+    alert_by_dept = {row[0]: row[1] for row in alert_rows}
+    active_alert_count = sum(alert_by_dept.values())
+
+    # Build dept aggregate list
+    dept_ids = [did for did in dept_device_map if did is not None]
+    dept_objs = (
+        {d.id: d for d in Department.query.filter(Department.id.in_(dept_ids)).all()}
+        if dept_ids
+        else {}
+    )
+
+    dept_aggregates = []
+    for dept_id, dept_devices in dept_device_map.items():
+        if dept_id is None:
+            continue
+        online = sum(
+            1 for dev in dept_devices
+            if device_states.get(dev.device_id, "unknown") in ("healthy", "degraded")
+        )
+        total = len(dept_devices)
+        offline = total - online
+        health_pct = round(online / total * 100) if total > 0 else 0
+        dept_obj = dept_objs.get(dept_id)
+        dept_aggregates.append({
+            "dept_id":    dept_id,
+            "dept_name":  dept_obj.name if dept_obj else f"Dept {dept_id}",
+            "total":      total,
+            "online":     online,
+            "offline":    offline,
+            "alerts":     alert_by_dept.get(dept_id, 0),
+            "health_pct": health_pct,
+        })
+
+    dept_aggregates.sort(key=lambda x: x["dept_name"])
+
+    return jsonify({
+        "stats":                 stats,
+        "dept_aggregates":       dept_aggregates,
+        "devices":               device_payload,
+        "active_alert_count":    active_alert_count,
+        "monitoring_interval_s": snapshot.get("monitoring_interval_s", 15),
+        "generated_at":          datetime.utcnow().isoformat(),
+    })
+
 
 @sites_bp.route('/api/sites', methods=['GET'])
 @require_login
