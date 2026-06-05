@@ -126,19 +126,22 @@ def site_dashboard(site_id):
     dept_stats_map = {}
     for dept in departments:
         dept_stats_map[dept.id] = {
+            'id': dept.id,
             'name': dept.name,
             'device_count': 0,
             'online_count': 0,
             'offline_count': 0,
-            'warning_count': 0
+            'warning_count': 0,
         }
 
     unassigned_bucket = {
+        'id': 0,
         'name': 'Unassigned',
         'device_count': 0,
         'online_count': 0,
         'offline_count': 0,
-        'warning_count': 0
+        'warning_count': 0,
+        'health_pct': 100,
     }
 
     for device in all_site_devices:
@@ -159,6 +162,11 @@ def site_dashboard(site_id):
             or (device.packet_loss_strikes or 0) >= 2
         ):
             bucket['warning_count'] += 1
+
+    for row in dept_stats_map.values():
+        total  = row['device_count'] or 0
+        online = row['online_count'] or 0
+        row['health_pct'] = round(online / total * 100) if total > 0 else 0
 
     dept_device_stats = sorted(dept_stats_map.values(), key=lambda row: row['name'].lower())
     if unassigned_bucket['device_count'] > 0:
