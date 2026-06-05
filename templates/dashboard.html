@@ -3022,6 +3022,31 @@
             grid-template-columns: 1fr;
         }
     }
+
+    #alerts-table-responsive {
+        max-height: 320px;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        transition: max-height 260ms ease;
+    }
+
+    .btn-expand-rows {
+        display: block;
+        width: 100%;
+        padding: 0.3rem;
+        background: transparent;
+        border: none;
+        border-top: 1px dashed rgba(148, 163, 184, 0.18);
+        font-size: 0.68rem;
+        color: rgba(94, 234, 212, 0.7);
+        cursor: pointer;
+        text-align: center;
+        transition: color 120ms ease;
+    }
+
+    .btn-expand-rows:hover {
+        color: #5eead4;
+    }
 </style>
 {% endblock %}
 
@@ -4531,7 +4556,7 @@
         </div>
 
         <!-- Alerts Table -->
-        <div class="table-responsive">
+        <div class="table-responsive" id="alerts-table-responsive">
             <table class="tactical-table table-hover mb-0">
                 <thead>
                     <tr>
@@ -4548,6 +4573,10 @@
                     </tr>
                 </tbody>
             </table>
+            <button type="button" class="btn-expand-rows" id="alerts-expand-btn"
+                    aria-expanded="false" aria-controls="alerts-table-responsive">
+                <i class="fas fa-chevron-down me-1"></i> Show all rows
+            </button>
         </div>
     </div>
             </div>

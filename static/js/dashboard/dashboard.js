@@ -285,6 +285,7 @@ function initDashboard() {
         // 13. Init KPI interactions
         initDeviceBreakdown();
         initAvailabilityControls();
+        initAlertsExpand();
 
         console.log('[Dashboard] Initialization sequence complete.');
 
@@ -1774,3 +1775,26 @@ document.addEventListener('visibilitychange', () => {
         stopPolling();
     }
 });
+
+function initAlertsExpand() {
+    const alertsExpandBtn = document.getElementById('alerts-expand-btn');
+    const alertsWrapper   = document.getElementById('alerts-table-responsive');
+
+    if (!alertsExpandBtn || !alertsWrapper) return;
+
+    alertsExpandBtn.addEventListener('click', () => {
+        const isExpanded = alertsExpandBtn.getAttribute('aria-expanded') === 'true';
+
+        if (isExpanded) {
+            alertsWrapper.style.maxHeight = '320px';
+            alertsExpandBtn.setAttribute('aria-expanded', 'false');
+            alertsExpandBtn.innerHTML =
+                '<i class="fas fa-chevron-down me-1"></i> Show all rows';
+        } else {
+            alertsWrapper.style.maxHeight = alertsWrapper.scrollHeight + 'px';
+            alertsExpandBtn.setAttribute('aria-expanded', 'true');
+            alertsExpandBtn.innerHTML =
+                '<i class="fas fa-chevron-up me-1"></i> Show fewer rows';
+        }
+    });
+}
