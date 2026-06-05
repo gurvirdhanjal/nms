@@ -119,10 +119,24 @@ def _run_column_migrations(db: "SQLAlchemy", is_pg: bool) -> int:
     return errors
 
 
+def _get_hypertables(conn) -> set[str]:
+    """Return the set of TimescaleDB hypertable names, or empty set if not installed."""
+    from sqlalchemy import text
+
+    try:
+        rows = conn.execute(
+            text("SELECT hypertable_name FROM timescaledb_information.hypertables")
+        ).fetchall()
+        return {row[0] for row in rows}
+    except Exception:
+        return set()
+
+
 def run_startup_migrations(db: "SQLAlchemy") -> None:
     """Create missing indexes idempotently.
 
     PostgreSQL: CONCURRENTLY — no table lock, writes continue during build.
+    TimescaleDB hypertables: standard CREATE INDEX (CONCURRENTLY is unsupported).
     SQLite: standard IF NOT EXISTS — fast because SQLite is single-writer.
     """
     from sqlalchemy import text
@@ -137,11 +151,19 @@ def run_startup_migrations(db: "SQLAlchemy") -> None:
         # CONCURRENTLY requires the connection to be outside any transaction
         # (autocommit mode).  Each statement is its own implicit transaction.
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            hypertables = _get_hypertables(conn)
+            if hypertables:
+                logger.info("[STARTUP MIGRATION] TimescaleDB hypertables detected: %s", hypertables)
+
             for index_name, table, columns in _INDEXES:
-                sql = (
-                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-                    f"{index_name} ON {table} ({columns})"
-                )
+                # TimescaleDB hypertables reject CONCURRENTLY — use standard path for them.
+                if table in hypertables:
+                    sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns})"
+                else:
+                    sql = (
+                        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+                        f"{index_name} ON {table} ({columns})"
+                    )
                 try:
                     conn.execute(text(sql))
                     logger.info(
