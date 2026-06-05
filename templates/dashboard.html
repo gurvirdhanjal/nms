@@ -23,6 +23,21 @@
         transform: translateY(6px);
     }
 
+    /* ── GPU compositor layers: only transform + opacity, never layout props ── */
+    .desk-command-card,
+    .tactical-stat-card,
+    .dash-alert-button,
+    .dash-config-btn,
+    .breakdown-panel,
+    .desk-grid-panel {
+        will-change: transform, opacity;
+    }
+
+    /* ── Paint containment: isolate table repaints to scroll area only ── */
+    .table-responsive {
+        contain: layout style;
+    }
+
     .tabs {
         display: flex;
         flex-wrap: wrap;
@@ -175,18 +190,21 @@
     }
 
     .overall-health-card.health-healthy {
-        border-color: rgba(32, 201, 151, 0.35);
-        background: linear-gradient(90deg, rgba(32, 201, 151, 0.10), transparent 40%);
+        border-color: rgba(148, 163, 184, 0.20);
+        border-left: 2px solid rgba(32, 201, 151, 0.72) !important;
+        background: transparent;
     }
 
     .overall-health-card.health-degraded {
-        border-color: rgba(255, 193, 7, 0.3);
-        background: linear-gradient(90deg, rgba(255, 193, 7, 0.10), transparent 40%);
+        border-color: rgba(148, 163, 184, 0.20);
+        border-left: 2px solid rgba(255, 193, 7, 0.72) !important;
+        background: transparent;
     }
 
     .overall-health-card.health-critical {
-        border-color: rgba(220, 53, 69, 0.35);
-        background: linear-gradient(90deg, rgba(220, 53, 69, 0.10), transparent 40%);
+        border-color: rgba(148, 163, 184, 0.20);
+        border-left: 2px solid rgba(220, 53, 69, 0.72) !important;
+        background: transparent;
     }
 
     .overall-health-card.health-healthy .overall-health-dot {
@@ -244,6 +262,7 @@
         border: 1px solid rgba(148, 163, 184, 0.20);
         border-radius: 8px;
         padding: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
     }
 
     .breakdown-grid {
@@ -403,10 +422,8 @@
     /* Visually attach the table to the overview (inset look) */
     .fleet-table-card {
         background: rgba(16, 19, 27, 0.72);
-        /* Slightly darker/different to show hierarchy but blend */
         border: 1px solid rgba(148, 163, 184, 0.16);
-        box-shadow: none;
-        /* Flatten it to look like a sub-panel */
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
     }
 
     .fleet-table-card .card-body {
@@ -717,26 +734,26 @@
     }
 
     .dashboard-enterprise .tabs button {
-        padding: 0.2rem 0.5rem;
+        padding: 0.18rem 0.44rem;
         font-size: 0.6rem;
         line-height: 1.2;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.08em;
         border-radius: 3px;
-        color: var(--e-text-muted);
-        border: 1px solid var(--e-border);
-        background: rgba(148, 163, 184, 0.08);
+        color: rgba(148, 163, 184, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        background: transparent;
+        transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
     }
 
-    /* v5.0: active tabs are NEVER green */
     .dashboard-enterprise .tabs button.active {
-        color: var(--e-text-primary);
-        border-color: var(--e-border-strong);
-        background: rgba(148, 163, 184, 0.18);
+        color: var(--e-text-secondary);
+        border-color: rgba(148, 163, 184, 0.26);
+        background: rgba(148, 163, 184, 0.10);
     }
 
     .dashboard-enterprise .tabs button:hover {
-        color: var(--e-text-primary);
-        border-color: rgba(173, 186, 201, 0.45);
+        color: var(--e-text-secondary);
+        border-color: rgba(148, 163, 184, 0.22);
     }
 
     .dashboard-enterprise .tactical-btn-outline,
@@ -1602,24 +1619,77 @@
 
     /* ── Quick-Add Device modal (dashboard) ── */
     .dash-config-btn {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        background: rgba(148, 163, 184, 0.08);
+        border-radius: 5px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(255, 255, 255, 0.04);
         color: var(--e-text-secondary, #c3cfdb);
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         cursor: pointer;
         transition: background 140ms ease, border-color 140ms ease;
     }
 
     .dash-config-btn:hover {
-        background: rgba(148, 163, 184, 0.18);
-        border-color: rgba(148, 163, 184, 0.42);
+        background: rgba(148, 163, 184, 0.14);
+        border-color: rgba(148, 163, 184, 0.34);
         color: var(--e-text-primary, #e6edf5);
+    }
+
+    /* ── Header action controls: unified 28px density ── */
+    .header-right #time-range-container .btn.tactical-select {
+        height: 28px;
+        font-size: 0.67rem;
+        padding: 0 0.52rem;
+        border-color: rgba(148, 163, 184, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 5px;
+        line-height: 1;
+    }
+
+    .header-right #btn-refresh {
+        height: 28px;
+        width: 28px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.68rem;
+        border-color: rgba(148, 163, 184, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 5px;
+    }
+
+    .header-right #btn-refresh:hover {
+        background: rgba(148, 163, 184, 0.12);
+        border-color: rgba(148, 163, 184, 0.32);
+    }
+
+    /* ── Filter chips (All / Problems) — segmented control ── */
+    .btn-group [data-server-filter] {
+        height: 28px;
+        font-size: 0.65rem;
+        padding: 0 8px;
+        letter-spacing: 0.04em;
+        border-color: rgba(148, 163, 184, 0.18);
+        background: transparent;
+        color: var(--e-text-muted);
+        border-radius: 4px !important;
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+
+    .btn-group [data-server-filter].active {
+        background: rgba(148, 163, 184, 0.14);
+        border-color: rgba(148, 163, 184, 0.30);
+        color: var(--e-text-primary);
+    }
+
+    .btn-group [data-server-filter]:hover {
+        background: rgba(148, 163, 184, 0.10);
+        color: var(--e-text-secondary);
     }
 
     .dash-modal-overlay {
@@ -1871,15 +1941,18 @@
     }
 
     html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-healthy {
-        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-success) 14%, white), var(--ui-surface-1) 42%) !important;
+        border-left: 2px solid var(--ui-success) !important;
+        background: var(--ui-surface-1) !important;
     }
 
     html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-degraded {
-        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-warning) 16%, white), var(--ui-surface-1) 42%) !important;
+        border-left: 2px solid var(--ui-warning) !important;
+        background: var(--ui-surface-1) !important;
     }
 
     html[data-theme="light"] .dashboard-enterprise .overall-health-card.health-critical {
-        background: linear-gradient(90deg, color-mix(in srgb, var(--ui-danger) 14%, white), var(--ui-surface-1) 42%) !important;
+        border-left: 2px solid var(--ui-danger) !important;
+        background: var(--ui-surface-1) !important;
     }
 
     html[data-theme="light"] .dashboard-enterprise .enterprise-kpi .stat-value,
@@ -2167,36 +2240,809 @@
     .dashboard-dense .dash-modal-footer {
         padding: 0.72rem 0.9rem;
     }
+
+    /* Trading desk bento KPIs */
+    .dashboard-enterprise {
+        --desk-amber: #f6b844;
+        --desk-amber-strong: #ffd166;
+        --desk-amber-soft: rgba(246, 184, 68, 0.15);
+        --desk-ink: #05070b;
+        --desk-panel: rgba(10, 13, 19, 0.96);
+        --desk-panel-alt: rgba(18, 22, 31, 0.94);
+        --desk-grid-line: rgba(246, 184, 68, 0.08);
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 0.72rem;
+        margin: 0 0 1rem !important;
+        --bs-gutter-x: 0;
+        --bs-gutter-y: 0;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col {
+        padding: 0;
+        width: auto !important;
+        max-width: none;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card {
+        min-height: 132px;
+        height: 100%;
+        padding: 0.92rem 0.96rem 0.84rem;
+        overflow: hidden;
+        isolation: isolate;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-top-color: rgba(246, 184, 68, 0.38);
+        background:
+            linear-gradient(135deg, rgba(246, 184, 68, 0.12), transparent 34%),
+            linear-gradient(0deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025)),
+            repeating-linear-gradient(90deg, var(--desk-grid-line) 0 1px, transparent 1px 54px),
+            var(--desk-panel);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        transition: transform 130ms ease, border-color 130ms ease, background 130ms ease;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card::before {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 3px;
+        background: linear-gradient(180deg, var(--desk-amber-strong), rgba(246, 184, 68, 0.18));
+        opacity: 0.88;
+        pointer-events: none;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card::after {
+        content: '';
+        position: absolute;
+        left: 0.96rem;
+        right: 0.96rem;
+        bottom: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(246, 184, 68, 0.58), transparent);
+        opacity: 0.5;
+        pointer-events: none;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(246, 184, 68, 0.42);
+        background:
+            linear-gradient(135deg, rgba(246, 184, 68, 0.16), transparent 34%),
+            linear-gradient(0deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.035)),
+            repeating-linear-gradient(90deg, rgba(246, 184, 68, 0.1) 0 1px, transparent 1px 54px),
+            var(--desk-panel-alt);
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1) {
+        grid-column: span 3;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4) {
+        grid-column: span 2;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+        grid-column: span 3;
+    }
+
+    .dashboard-enterprise .desk-kpi-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .dashboard-enterprise .desk-kpi-head>div {
+        min-width: 0;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-label {
+        margin-bottom: 0.24rem;
+        font-size: 0.62rem !important;
+        line-height: 1.1;
+        letter-spacing: 0;
+        color: rgba(236, 244, 255, 0.72) !important;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-label::before {
+        width: 6px;
+        height: 6px;
+        margin-right: 0.34rem;
+        border-radius: 2px;
+        background: var(--desk-amber);
+        box-shadow: 0 0 0 3px rgba(246, 184, 68, 0.1);
+    }
+
+    .dashboard-enterprise .desk-kpi-context {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.68rem;
+        line-height: 1.2;
+        color: rgba(160, 174, 194, 0.78);
+    }
+
+    .dashboard-enterprise .desk-kpi-value-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.72rem;
+        margin-top: 0.72rem;
+        min-width: 0;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-value,
+    .dashboard-dense #device-kpi-row.trading-kpi-bento .stat-value,
+    .dashboard-dense #device-kpi-row.trading-kpi-bento .tactical-stat-card .stat-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.86rem !important;
+        line-height: 0.95;
+        letter-spacing: 0;
+        font-weight: 700;
+        color: #f8fbff;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento #val-devices-online .anim-online {
+        font-size: 2.08rem;
+        color: #f8fbff;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento #val-devices-online .anim-total {
+        font-size: 1.08rem;
+        color: rgba(160, 174, 194, 0.86);
+    }
+
+    .dashboard-enterprise .desk-kpi-trend,
+    .dashboard-enterprise .soc-kpi-status {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        border: 1px solid rgba(246, 184, 68, 0.22);
+        background: rgba(246, 184, 68, 0.08);
+        color: rgba(255, 222, 158, 0.94);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.62rem;
+        line-height: 1;
+        letter-spacing: 0;
+        font-weight: 700;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .dashboard-enterprise .desk-kpi-trend {
+        padding: 0.28rem 0.42rem;
+        align-self: center;
+    }
+
+    .dashboard-enterprise .soc-kpi-status {
+        padding: 0.32rem 0.48rem;
+    }
+
+    .dashboard-enterprise .soc-kpi-status.status-healthy {
+        border-color: rgba(32, 201, 151, 0.28);
+        background: rgba(32, 201, 151, 0.1);
+        color: #9ce6d0;
+    }
+
+    .dashboard-enterprise .soc-kpi-status.status-warning {
+        border-color: rgba(246, 184, 68, 0.38);
+        background: rgba(246, 184, 68, 0.13);
+        color: #ffd78a;
+    }
+
+    .dashboard-enterprise .soc-kpi-status.status-critical {
+        border-color: rgba(220, 53, 69, 0.32);
+        background: rgba(220, 53, 69, 0.12);
+        color: #f3a3ac;
+    }
+
+    .dashboard-enterprise .soc-kpi-status.status-nodata {
+        border-color: rgba(148, 163, 184, 0.18);
+        background: rgba(148, 163, 184, 0.08);
+        color: rgba(203, 213, 225, 0.72);
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .metric-sub {
+        min-height: 1.82rem;
+        margin-top: 0.64rem;
+        font-size: 0.68rem !important;
+        line-height: 1.34;
+        color: rgba(160, 174, 194, 0.82) !important;
+    }
+
+    .dashboard-enterprise .desk-kpi-tape {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.28rem;
+        margin-top: 0.72rem;
+    }
+
+    .dashboard-enterprise .desk-kpi-tape span {
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(246, 184, 68, 0.95), rgba(32, 201, 151, 0.58));
+    }
+
+    .dashboard-enterprise #card-network-avail .sparkline-wrap {
+        height: 34px;
+        margin-top: 0.38rem;
+        opacity: 0.9;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card {
+        border-color: rgba(45, 55, 72, 0.14);
+        border-top-color: rgba(181, 119, 12, 0.4);
+        background:
+            linear-gradient(135deg, rgba(217, 119, 6, 0.12), transparent 34%),
+            repeating-linear-gradient(90deg, rgba(146, 64, 14, 0.05) 0 1px, transparent 1px 54px),
+            #ffffff;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise .desk-kpi-context,
+    html[data-theme="light"] .dashboard-enterprise #device-kpi-row.trading-kpi-bento .metric-sub {
+        color: rgba(71, 85, 105, 0.82) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-label {
+        color: rgba(15, 23, 42, 0.72) !important;
+    }
+
+    html[data-theme="light"] .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-value,
+    html[data-theme="light"] .dashboard-dense #device-kpi-row.trading-kpi-bento .stat-value {
+        color: #111827;
+    }
+
+    @media (max-width: 1480px) {
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+            grid-column: span 4;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4) {
+            grid-column: span 2;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-value,
+        .dashboard-dense #device-kpi-row.trading-kpi-bento .stat-value,
+        .dashboard-dense #device-kpi-row.trading-kpi-bento .tactical-stat-card .stat-value {
+            font-size: 1.66rem !important;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento #val-devices-online .anim-online {
+            font-size: 1.9rem;
+        }
+    }
+
+    @media (max-width: 992px) {
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+            grid-column: span 2;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+            grid-template-columns: 1fr;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+            grid-column: 1;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card {
+            min-height: 118px;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-value,
+        .dashboard-dense #device-kpi-row.trading-kpi-bento .stat-value,
+        .dashboard-dense #device-kpi-row.trading-kpi-bento .tactical-stat-card .stat-value {
+            font-size: 1.5rem !important;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento #val-devices-online .anim-online {
+            font-size: 1.68rem;
+        }
+    }
+
+    /* Command desk refinement: compact first-screen intelligence */
+    .app-content {
+        padding: 12px 14px 18px;
+    }
+
+    .header-brand-context {
+        margin-left: 0.35rem;
+        padding-left: 0.55rem;
+        border-left: 1px solid rgba(148, 163, 184, 0.26);
+        color: rgba(226, 232, 240, 0.88);
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        line-height: 1;
+        text-shadow: none;
+    }
+
+    .dashboard-enterprise.dashboard-dense {
+        max-width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .dashboard-enterprise .dashboard-header {
+        justify-content: flex-end !important;
+        margin-bottom: 0.42rem !important;
+        min-height: 34px;
+    }
+
+    .dashboard-enterprise .dashboard-heading-copy {
+        display: none;
+    }
+
+    .dashboard-enterprise .breakdown-collapse-btn {
+        display: none !important;
+    }
+
+    .dash-alert-button {
+        position: relative;
+        height: 28px;
+        min-width: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.28rem;
+        border-radius: 5px;
+        border: 1px solid rgba(148, 163, 184, 0.20);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--e-text-secondary, #c3cfdb);
+        cursor: pointer;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.67rem;
+        font-weight: 700;
+        line-height: 1;
+        transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .dash-alert-button:hover {
+        border-color: rgba(246, 184, 68, 0.42);
+        background: rgba(246, 184, 68, 0.08);
+        color: #ffd78a;
+    }
+
+    .dash-alert-button.has-alerts {
+        border-color: rgba(246, 184, 68, 0.32);
+        color: #f0c060;
+    }
+
+    .dash-alert-button.has-alerts::after {
+        content: '';
+        position: absolute;
+        top: 5px;
+        right: 6px;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: #ffd166;
+        box-shadow: 0 0 0 2px rgba(246, 184, 68, 0.12);
+    }
+
+    .dash-alert-button.severity-critical {
+        border-color: rgba(239, 74, 93, 0.32);
+        background: rgba(239, 74, 93, 0.06);
+        color: #f3a3ac;
+    }
+
+    .desk-command-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 0.5rem;
+        margin-top: 0;
+        margin-bottom: 0.54rem;
+    }
+
+    .desk-command-card {
+        min-width: 0;
+        min-height: 80px;
+        padding: 0.6rem 0.66rem;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-left: 2px solid rgba(148, 163, 184, 0.3);
+        background: var(--e-bg-panel, rgba(16, 19, 27, 0.95));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    .desk-command-card.state-ok {
+        border-left: 2px solid rgba(32, 201, 151, 0.7);
+        background: var(--e-bg-panel, rgba(16, 19, 27, 0.95));
+    }
+
+    .desk-command-card.state-warning {
+        border-left: 2px solid rgba(255, 193, 7, 0.7);
+        background: var(--e-bg-panel, rgba(16, 19, 27, 0.95));
+    }
+
+    .desk-command-card.state-critical {
+        border-left: 2px solid rgba(220, 53, 69, 0.7);
+        background: var(--e-bg-panel, rgba(16, 19, 27, 0.95));
+    }
+
+    .desk-command-label {
+        margin-bottom: 0.36rem;
+        color: rgba(178, 192, 210, 0.88);
+        font-size: 0.58rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        line-height: 1.1;
+        text-transform: uppercase;
+    }
+
+    .desk-command-value {
+        color: #f8fbff;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.42rem;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .desk-command-sub,
+    .desk-command-foot {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: rgba(160, 174, 194, 0.78);
+        font-size: 0.66rem;
+        line-height: 1.2;
+    }
+
+    .desk-command-sub {
+        margin-top: 0.44rem;
+    }
+
+    .desk-command-foot {
+        margin-top: 0.2rem;
+        color: rgba(246, 184, 68, 0.82);
+    }
+
+    .tactical-stat-card[data-empty] .stat-value {
+        opacity: 0.5;
+        color: var(--e-text-muted);
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+        display: block;
+        height: 0;
+        margin: 0 !important;
+        overflow: hidden;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col {
+        display: none !important;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4),
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+        grid-column: span 2;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .device-kpi-card {
+        min-height: 108px;
+        padding: 0.68rem 0.72rem 0.66rem;
+    }
+
+    .dashboard-enterprise .desk-kpi-value-row {
+        margin-top: 0.46rem;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .stat-value,
+    .dashboard-dense #device-kpi-row.trading-kpi-bento .stat-value,
+    .dashboard-dense #device-kpi-row.trading-kpi-bento .tactical-stat-card .stat-value {
+        font-size: 1.42rem !important;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento #val-devices-online .anim-online {
+        font-size: 1.62rem;
+    }
+
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .metric-sub {
+        min-height: auto;
+        margin-top: 0.44rem;
+    }
+
+    .dashboard-enterprise .desk-kpi-context,
+    .dashboard-enterprise #device-kpi-row.trading-kpi-bento .metric-sub {
+        display: -webkit-box;
+        overflow: hidden;
+        white-space: normal;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+
+    .dashboard-enterprise .desk-kpi-tape {
+        margin-top: 0.5rem;
+    }
+
+    .desk-main-grid {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        align-items: start;
+        gap: 0.54rem;
+        margin-top: 0.54rem;
+    }
+
+    .desk-grid-panel {
+        min-width: 0;
+    }
+
+    .desk-right-col {
+        display: flex;
+        flex-direction: column;
+        gap: 0.54rem;
+        min-width: 0;
+    }
+
+    .dashboard-enterprise .desk-fleet-panel {
+        /* no order override — natural grid flow: left=NI, right=fleet */
+    }
+
+    .dashboard-enterprise #device-breakdown {
+        /* occupies left column naturally */
+    }
+
+    .dashboard-enterprise #device-breakdown {
+        margin-bottom: 0;
+    }
+
+    .dashboard-enterprise .desk-main-grid #device-breakdown.is-active {
+        margin-top: 0 !important;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-panel,
+    .dashboard-enterprise .desk-fleet-panel {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 8px;
+        background: rgba(10, 13, 19, 0.9);
+        padding: 0.62rem;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-panel {
+        padding-bottom: 0.72rem;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-grid {
+        grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr) !important;
+        gap: 0.62rem;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-section-heading {
+        margin: 0.62rem 0 0.36rem;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-left .table-responsive {
+        max-height: 206px !important;
+    }
+
+    .dashboard-enterprise #device-breakdown .breakdown-right .table-responsive,
+    .dashboard-enterprise #device-breakdown .service-impact-row .table-responsive {
+        max-height: 170px !important;
+    }
+
+    .dashboard-enterprise #device-breakdown .chart-wrap-220 {
+        height: 172px !important;
+    }
+
+    .dashboard-enterprise #device-breakdown .chart-wrap-90 {
+        height: 70px !important;
+    }
+
+    .dashboard-enterprise #fleet-overview-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.56rem;
+        margin-bottom: 0.6rem !important;
+    }
+
+    .dashboard-enterprise #fleet-overview-row .tactical-stat-card {
+        min-height: 92px;
+        padding: 0.62rem 0.66rem;
+    }
+
+    .dashboard-enterprise .desk-mini-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .dashboard-enterprise .desk-mini-head .stat-label {
+        margin-bottom: 0;
+    }
+
+    .dashboard-enterprise #server-health-detail {
+        margin-top: 0.62rem !important;
+    }
+
+    .dashboard-enterprise #server-health-detail .table-responsive {
+        max-height: 220px;
+        overflow: auto;
+    }
+
+    .dashboard-enterprise #server-health-detail .tactical-table th,
+    .dashboard-enterprise #server-health-detail .tactical-table td {
+        padding: 0.38rem 0.48rem;
+        font-size: 0.72rem;
+    }
+
+    .dashboard-enterprise.network-desk-shell {
+        max-width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .network-segments-panel .card-header {
+        padding: 0.62rem 0.76rem;
+    }
+
+    .network-desk-shell .enterprise-divider-fade {
+        display: none;
+    }
+
+    .network-desk-shell .row {
+        margin-top: 0.54rem;
+        margin-bottom: 0.54rem !important;
+    }
+
+    .dashboard-enterprise .network-segments-panel .subnet-table-scroll {
+        max-height: 182px;
+    }
+
+    .alerts-modal .modal-dialog {
+        max-width: min(1180px, calc(100vw - 1.5rem));
+    }
+
+    .alerts-modal-card {
+        background: rgba(9, 13, 19, 0.98) !important;
+        border: 1px solid rgba(246, 184, 68, 0.22) !important;
+        border-radius: 8px !important;
+    }
+
+    .alerts-modal .modal-header {
+        padding: 0.82rem 0.95rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .alerts-modal .modal-body {
+        padding: 0.82rem 0.95rem 0.95rem;
+    }
+
+    .alerts-modal .alerts-container {
+        margin-top: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    .alerts-modal .alerts-container::before {
+        display: none;
+    }
+
+    .alerts-modal .alerts-header {
+        display: none;
+    }
+
+    .alerts-modal .alerts-kpi-grid {
+        margin-bottom: 0.56rem;
+        padding-bottom: 0.56rem;
+    }
+
+    .alerts-modal .table-responsive {
+        max-height: 430px;
+        overflow: auto;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 8px;
+    }
+
+    @media (max-width: 1280px) {
+        .desk-command-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .desk-main-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .desk-right-col {
+            width: 100%;
+        }
+
+        .dashboard-enterprise #fleet-overview-row {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 992px) {
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(1),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(2),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(3),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(4),
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento>.col:nth-child(5) {
+            grid-column: span 1;
+        }
+
+        .dashboard-enterprise #device-breakdown .breakdown-grid,
+        .dashboard-enterprise #device-breakdown .service-impact-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 680px) {
+        .desk-command-grid,
+        .dashboard-enterprise #fleet-overview-row {
+            grid-template-columns: 1fr;
+        }
+
+        .dashboard-enterprise #device-kpi-row.trading-kpi-bento {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
+{% endblock %}
+
+{% block header_actions %}
+<div class="dropdown d-inline-block" id="time-range-container">
+    <button class="btn tactical-select dropdown-toggle btn-sm" type="button" data-bs-toggle="dropdown"
+        data-value="24h">Last 24 Hours</button>
+    <ul class="dropdown-menu tactical-dropdown">
+        <li><a class="dropdown-item" href="#" data-value="24h">Last 24 Hours</a></li>
+        <li><a class="dropdown-item" href="#" data-value="7d">Last 7 Days</a></li>
+        <li><a class="dropdown-item" href="#" data-value="30d">Last 30 Days</a></li>
+    </ul>
+</div>
+<button id="btn-refresh" class="btn tactical-btn-outline btn-sm" title="Refresh data"><i class="fas fa-sync-alt"></i></button>
+<button type="button" class="dash-alert-button" id="dashboard-alerts-button" data-bs-toggle="modal"
+    data-bs-target="#alerts-modal" title="Open alerts">
+    <i class="fas fa-bell"></i>
+    <span id="dashboard-alert-count">0</span>
+</button>
+<button class="dash-config-btn" id="dash-add-device-btn" title="Add / configure device">
+    <i class="fas fa-plus"></i>
+</button>
 {% endblock %}
 
 {% block content %}
 
 <div class="container-fluid dashboard-enterprise dashboard-dense">
-    <!-- Dashboard Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3 dashboard-header">
-        <div>
-            <h2 class="enterprise-section-title mb-0">Network Operations Center</h2>
-            <div class="enterprise-section-sub">Real-time infrastructure monitoring</div>
-            <div id="dashboardScopeSummary" class="enterprise-section-sub">Scope: {{ rbac_context.scope_label }}</div>
-        </div>
-        <div class="d-flex align-items-center gap-2 dashboard-toolbar">
-            <div class="dropdown d-inline-block" id="time-range-container">
-                <button class="btn tactical-select dropdown-toggle btn-sm" type="button" data-bs-toggle="dropdown"
-                    data-value="24h">Last 24 Hours</button>
-                <ul class="dropdown-menu tactical-dropdown">
-                    <li><a class="dropdown-item" href="#" data-value="24h">Last 24 Hours</a></li>
-                    <li><a class="dropdown-item" href="#" data-value="7d">Last 7 Days</a></li>
-                    <li><a class="dropdown-item" href="#" data-value="30d">Last 30 Days</a></li>
-                </ul>
-            </div>
-            <button id="btn-refresh" class="btn tactical-btn-outline btn-sm"><i class="fas fa-sync-alt"></i>
-                Refresh</button>
-            <button class="dash-config-btn" id="dash-add-device-btn" title="Add / configure device">
-                <i class="fas fa-plus"></i>
-            </button>
-        </div>
-    </div>
     <!-- Error Banner -->
     <div id="global-error" class="initially-hidden"
         style="display:none;background:var(--s-critical-bg);border:1px solid var(--s-critical-bd);border-left:3px solid var(--s-critical);border-radius:4px;padding:var(--e-space-3) var(--e-space-4);font-family:var(--t-mono);font-size:0.72rem;color:#f5a0a8;margin-bottom:var(--e-space-3);">
@@ -2220,11 +3066,11 @@
         </div>
         <div class="enterprise-strip-right">
             <div class="enterprise-strip-item">
-                <span class="strip-label">Polling</span>
+                <span class="strip-label">Live Feed</span>
                 <span id="connection-indicator"></span>
             </div>
             <div class="enterprise-strip-item" title="Background scheduler health">
-                <span class="strip-label">Scheduler</span>
+                <span class="strip-label">Workers</span>
                 <span id="scheduler-health-dot" class="strip-dot" style="background:var(--s-warning);"></span>
                 <span id="scheduler-health-text" style="font-size:0.7rem;color:var(--t-secondary);">-</span>
             </div>
@@ -2238,50 +3084,126 @@
             </div>
         </div>
     </div>
+    <div class="desk-command-grid" aria-label="Operations summary">
+        <article class="desk-command-card">
+            <div class="desk-command-label">Total Devices</div>
+            <div class="desk-command-value" id="cmd-total-devices">0</div>
+            <div class="desk-command-sub" id="cmd-total-context">Monitored in scope</div>
+            <div class="desk-command-foot" id="cmd-total-trend"></div>
+        </article>
+        <article class="desk-command-card state-ok">
+            <div class="desk-command-label">Online</div>
+            <div class="desk-command-value" id="cmd-online-devices">0</div>
+            <div class="desk-command-sub" id="cmd-online-context">Responding now</div>
+            <div class="desk-command-foot" id="cmd-online-rate">All offline</div>
+        </article>
+        <article class="desk-command-card state-critical">
+            <div class="desk-command-label">Down</div>
+            <div class="desk-command-value" id="cmd-devices-down">0</div>
+            <div class="desk-command-sub" id="cmd-down-context"></div>
+            <div class="desk-command-foot" id="cmd-down-trend">0% of fleet</div>
+        </article>
+        <article class="desk-command-card">
+            <div class="desk-command-label">Servers</div>
+            <div class="desk-command-value" id="cmd-total-servers">0</div>
+            <div class="desk-command-sub" id="cmd-server-context">Server estate</div>
+            <div class="desk-command-foot" id="cmd-server-breakdown">No telemetry yet</div>
+        </article>
+        <article class="desk-command-card state-warning">
+            <div class="desk-command-label">Active Alerts</div>
+            <div class="desk-command-value" id="cmd-active-alerts">0</div>
+            <div class="desk-command-sub" id="cmd-alert-context">Critical / Warning</div>
+            <div class="desk-command-foot" id="cmd-alert-breakdown">0 / 0</div>
+        </article>
+        <article class="desk-command-card">
+            <div class="desk-command-label">SLA Risk</div>
+            <div class="desk-command-value" id="cmd-sla-risk">-</div>
+            <div class="desk-command-sub" id="cmd-sla-context">Fleet availability</div>
+            <div class="desk-command-foot" id="cmd-sla-window">last 24h</div>
+        </article>
+    </div>
     <!-- LAYER 2: Core KPIs Grid -->
-    <div class="row g-3 mb-4 row-cols-1 row-cols-md-2 row-cols-lg-5" id="device-kpi-row">
+    <div class="trading-kpi-bento" id="device-kpi-row">
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-devices-online">
-                <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Devices Online</div>
-                <div class="stat-value" id="val-devices-online">-/-</div>
+                <div class="desk-kpi-head">
+                    <div>
+                        <div class="stat-label">Devices Online</div>
+                        <div class="desk-kpi-context" id="ctx-devices-online">Initializing feed</div>
+                    </div>
+                    <span class="soc-kpi-status status-nodata" id="state-devices-online">Loading</span>
+                </div>
+                <div class="desk-kpi-value-row">
+                    <div class="stat-value" id="val-devices-online">-/-</div>
+                    <div class="desk-kpi-trend" id="trend-devices-online">--</div>
+                </div>
                 <div class="metric-sub" id="sub-devices-online"><span class="text-secondary">Loading...</span></div>
-                <i class="fas fa-network-wired stat-icon"></i>
+                <div class="desk-kpi-tape" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
             </div>
         </div>
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-devices-healthy">
-                <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Reachable Devices</div>
-                <div class="stat-value text-success" id="val-devices-healthy">-</div>
+                <div class="desk-kpi-head">
+                    <div>
+                        <div class="stat-label">Reachable Devices</div>
+                        <div class="desk-kpi-context" id="ctx-devices-healthy">Current watch</div>
+                    </div>
+                    <span class="soc-kpi-status status-nodata" id="state-devices-healthy">--</span>
+                </div>
+                <div class="desk-kpi-value-row">
+                    <div class="stat-value text-success" id="val-devices-healthy">-</div>
+                    <div class="desk-kpi-trend" id="trend-devices-healthy">--</div>
+                </div>
                 <div class="metric-sub" id="sub-devices-healthy"><span class="text-secondary">Healthy and degraded devices</span></div>
             </div>
         </div>
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-devices-maintenance">
-                <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Maintenance</div>
-                <div class="stat-value text-warning" id="val-devices-maintenance">-</div>
-                <div class="metric-sub"><span class="text-secondary">Click to view list</span></div>
-                <i class="fas fa-wrench stat-icon"></i>
+                <div class="desk-kpi-head">
+                    <div>
+                        <div class="stat-label">Maintenance</div>
+                        <div class="desk-kpi-context" id="ctx-devices-maintenance">Scheduled windows</div>
+                    </div>
+                    <span class="soc-kpi-status status-nodata" id="state-devices-maintenance">--</span>
+                </div>
+                <div class="desk-kpi-value-row">
+                    <div class="stat-value text-warning" id="val-devices-maintenance">-</div>
+                    <div class="desk-kpi-trend" id="trend-devices-maintenance">--</div>
+                </div>
+                <div class="metric-sub" id="sub-devices-maintenance"><span class="text-secondary">Click to view list</span></div>
             </div>
         </div>
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-devices-offline">
-                <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Offline</div>
-                <div class="stat-value text-danger" id="val-devices-offline">-</div>
+                <div class="desk-kpi-head">
+                    <div>
+                        <div class="stat-label">Offline</div>
+                        <div class="desk-kpi-context" id="ctx-devices-offline">Unavailable now</div>
+                    </div>
+                    <span class="soc-kpi-status status-nodata" id="state-devices-offline">--</span>
+                </div>
+                <div class="desk-kpi-value-row">
+                    <div class="stat-value text-danger" id="val-devices-offline">-</div>
+                    <div class="desk-kpi-trend" id="trend-devices-offline">--</div>
+                </div>
                 <div class="metric-sub" id="sub-devices-offline"><span class="text-secondary">No response</span></div>
             </div>
         </div>
         <div class="col">
             <div class="tactical-stat-card device-kpi-card enterprise-kpi" id="card-network-avail">
-                <div class="kpi-view-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-label">Availability</div>
-                <div class="stat-value" id="val-availability">-%</div>
+                <div class="desk-kpi-head">
+                    <div>
+                        <div class="stat-label">Availability</div>
+                        <div class="desk-kpi-context" id="ctx-availability">History loading</div>
+                    </div>
+                    <span class="soc-kpi-status status-nodata" id="state-availability">--</span>
+                </div>
+                <div class="desk-kpi-value-row">
+                    <div class="stat-value" id="val-availability">-%</div>
+                    <div class="desk-kpi-trend" id="trend-availability">--</div>
+                </div>
                 <div class="metric-sub" id="sub-availability-trend"><span class="text-secondary">Loading...</span></div>
                 <div class="sparkline-wrap"><canvas id="chart-availability-spark"></canvas></div>
-                <i class="fas fa-chart-line stat-icon"></i>
             </div>
         </div>
 
@@ -3087,7 +4009,8 @@
             }
         }
     </style>
-    <div id="device-breakdown">
+    <div class="desk-main-grid">
+    <div id="device-breakdown" class="desk-grid-panel is-active">
         <div class="expanded-wrapper">
             <div class="breakdown-panel">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -3325,9 +4248,9 @@
         </div>
     </div>
 
-    <!-- ROW 2: FLEET OVERVIEW & SERVER LIST -->
-    <hr class="enterprise-divider">
-    <div class="section-block">
+    <!-- RIGHT COLUMN: FLEET OVERVIEW, SERVER LIST, NETWORK SEGMENTS -->
+    <div class="desk-right-col">
+    <div class="desk-grid-panel desk-fleet-panel">
 
         <!-- Section Header -->
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -3343,9 +4266,16 @@
                 <div class="tactical-text-muted small server-health-meta d-none d-md-block me-3">
                     Last check: <span id="server-last-check">-</span>
                 </div>
-                <div class="btn-group">
-                    <button class="btn btn-sm tactical-btn-outline active" data-server-filter="all">All</button>
-                    <button class="btn btn-sm tactical-btn-outline" data-server-filter="problem">Problems</button>
+                <div x-data="{ f: 'all' }" class="btn-group"
+                     @nms:filterupdate.window="f = $event.detail">
+                    <button @click="f = 'all'; window.__nms?.filterServer('all')"
+                            :class="{ active: f === 'all' }"
+                            class="btn btn-sm tactical-btn-outline"
+                            data-server-filter="all">All</button>
+                    <button @click="f = 'problem'; window.__nms?.filterServer('problem')"
+                            :class="{ active: f === 'problem' }"
+                            class="btn btn-sm tactical-btn-outline"
+                            data-server-filter="problem">Problems</button>
                 </div>
             </div>
         </div>
@@ -3355,8 +4285,11 @@
 
             <div class="col">
                 <div class="tactical-stat-card h-100" id="card-fleet-health">
-                    <div class="stat-label">Fleet Health</div>
-                    <div class="stat-value" id="val-fleet-health-percent">-%</div>
+                    <div class="desk-mini-head">
+                        <div class="stat-label">Fleet Health</div>
+                        <span class="soc-kpi-status status-nodata" id="val-fleet-health-state">-</span>
+                    </div>
+                    <div class="stat-value" id="val-fleet-health-percent">-</div>
                     <div class="metric-sub">
                         <span id="val-fleet-health-counts">-/- Servers Healthy</span>
                     </div>
@@ -3364,26 +4297,38 @@
             </div>
 
             <div class="col">
-                <div class="tactical-stat-card h-100">
-                    <div class="stat-label">Avg CPU Usage</div>
-                    <div class="stat-value" id="val-fleet-avg-cpu">-%</div>
-                    <div class="metric-sub">P95: <span id="val-fleet-p95-cpu">-</span>%</div>
+                <div class="tactical-stat-card h-100" id="fleet-card-cpu">
+                    <div class="desk-mini-head">
+                        <div class="stat-label">Avg CPU Usage</div>
+                        <span class="soc-kpi-status status-nodata" id="val-fleet-cpu-state">-</span>
+                    </div>
+                    <div class="stat-value" id="val-fleet-avg-cpu">-</div>
+                    <div class="metric-sub"><span id="val-fleet-p95-cpu">Peak: -</span></div>
+                    <div class="metric-sub" id="val-fleet-cpu-impact">0 servers impacted</div>
                 </div>
             </div>
 
             <div class="col">
-                <div class="tactical-stat-card h-100">
-                    <div class="stat-label">Avg Memory Usage</div>
-                    <div class="stat-value" id="val-fleet-avg-mem">-%</div>
-                    <div class="metric-sub">P95: <span id="val-fleet-p95-mem">-</span>%</div>
+                <div class="tactical-stat-card h-100" id="fleet-card-memory">
+                    <div class="desk-mini-head">
+                        <div class="stat-label">Avg Memory Usage</div>
+                        <span class="soc-kpi-status status-nodata" id="val-fleet-memory-state">-</span>
+                    </div>
+                    <div class="stat-value" id="val-fleet-avg-mem">-</div>
+                    <div class="metric-sub"><span id="val-fleet-p95-mem">Peak: -</span></div>
+                    <div class="metric-sub" id="val-fleet-memory-impact">0 servers impacted</div>
                 </div>
             </div>
 
             <div class="col">
-                <div class="tactical-stat-card h-100">
-                    <div class="stat-label">Avg Disk Usage</div>
-                    <div class="stat-value" id="val-fleet-avg-disk">-%</div>
+                <div class="tactical-stat-card h-100" id="fleet-card-disk">
+                    <div class="desk-mini-head">
+                        <div class="stat-label">Avg Disk Usage</div>
+                        <span class="soc-kpi-status status-nodata" id="val-fleet-disk-state">-</span>
+                    </div>
+                    <div class="stat-value" id="val-fleet-avg-disk">-</div>
                     <div class="metric-sub" id="val-fleet-disk-warning">0 Servers &gt; 90%</div>
+                    <div class="metric-sub" id="val-fleet-disk-impact">0 servers impacted</div>
                 </div>
             </div>
 
@@ -3426,64 +4371,68 @@
 
     </div>
 
-    <!-- Usage Alerts (Moved Bottom) -->
+    <!-- Critical Alerts Banner -->
     <div id="fleet-alerts-bar" class="alert alert-danger mb-0 py-2 alert-banner-critical">
         <div class="d-flex align-items-center gap-3"><i class="fas fa-exclamation-triangle text-danger"></i>
-            <div class="flex-grow-1 small fw-bold" id="fleet-alerts-text">No critical alerts.
-            </div><button class="btn btn-sm btn-outline-danger" id="btn-view-critical">View
-                Details</button>
+            <div class="flex-grow-1 small fw-bold" id="fleet-alerts-text">No critical alerts.</div>
+            <button class="btn btn-sm btn-outline-danger" id="btn-view-critical">View Details</button>
         </div>
     </div>
-</div>
 
-
-<!-- LAYER 2.5: Network Segments Breakdown -->
-<div class="container-fluid tactical-theme dashboard-enterprise">
-    <hr class="enterprise-divider-fade">
-    <div class="row mb-4">
-        <div class="col-lg-12">
-            <div class="tactical-card enterprise-panel network-segments-panel">
-                <div class="card-header d-flex align-items-center justify-content-between">
-                    <div>
-                        <h5 class="enterprise-section-title mb-0">
-                            <i class="fas fa-project-diagram me-2"></i>Network Segments
-                        </h5>
-                        <div class="enterprise-section-sub">Online/Offline breakdown per subnet</div>
-                    </div>
-                </div>
-                <hr class="enterprise-divider-fade subnet-panel-divider">
-                <div class="card-body p-0">
-                    <div class="table-responsive subnet-table-scroll">
-                        <table class="tactical-table table-hover mb-0" id="table-subnet-health">
-                            <thead>
-                                <tr>
-                                    <th>Subnet</th>
-                                    <th>Total</th>
-                                    <th>Online</th>
-                                    <th>Offline</th>
-                                    <th>Health</th>
-                                </tr>
-                            </thead>
-                            <tbody id="subnet-health-body">
-                                <tr>
-                                    <td colspan="5" class="text-center text-secondary p-3">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <!-- Network Segments (right column, below fleet) -->
+    <div class="tactical-card enterprise-panel network-segments-panel">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <div>
+                <h5 class="enterprise-section-title mb-0">
+                    <i class="fas fa-project-diagram me-2"></i>Network Segments
+                </h5>
+                <div class="enterprise-section-sub">Online/Offline breakdown per subnet</div>
+            </div>
+        </div>
+        <hr class="enterprise-divider-fade subnet-panel-divider">
+        <div class="card-body p-0">
+            <div class="table-responsive subnet-table-scroll">
+                <table class="tactical-table table-hover mb-0" id="table-subnet-health">
+                    <thead>
+                        <tr>
+                            <th>Subnet</th>
+                            <th>Total</th>
+                            <th>Online</th>
+                            <th>Offline</th>
+                            <th>Health</th>
+                        </tr>
+                    </thead>
+                    <tbody id="subnet-health-body">
+                        <tr>
+                            <td colspan="5" class="text-center text-secondary p-3">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
-</div>
+
+    </div><!-- /desk-right-col -->
+    </div><!-- /desk-main-grid -->
+</div><!-- /container-fluid -->
 
 
-<!-- LAYER 4: Alerts Command Section -->
-<div class="container-fluid tactical-theme dashboard-enterprise">
-    <hr class="enterprise-divider">
-
-    <!-- Tactical Alerts Container -->
-    <div class="alerts-container tactical-card enterprise-panel mb-4">
+<!-- LAYER 4: Alerts Notification Modal -->
+<div class="modal fade alerts-modal dashboard-enterprise" id="alerts-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content tactical-card alerts-modal-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title enterprise-section-title mb-0">
+                        <i class="fas fa-bell me-2"></i>Alerts & Intelligence
+                    </h5>
+                    <div class="enterprise-section-sub">Actionable alerts with domain classification.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+    <div class="alerts-container tactical-card enterprise-panel mb-0">
         <div class="alerts-header">
             <div class="alerts-header-left">
                 <h5 class="alerts-title enterprise-section-title">
@@ -3589,7 +4538,9 @@
             </table>
         </div>
     </div>
-</div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

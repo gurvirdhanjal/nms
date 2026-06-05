@@ -309,7 +309,7 @@ class Config:
     MAX_EXPORT_ROWS = int(os.environ.get('MAX_EXPORT_ROWS', 200000))
     REPORT_CACHE_TTL_SECONDS = int(os.environ.get('REPORT_CACHE_TTL_SECONDS', 180))
     REPORT_STATEMENT_TIMEOUT_MS = int(os.environ.get('REPORT_STATEMENT_TIMEOUT_MS', 15000))
-    REPORT_TIMEOUT_ENTERPRISE_MS = int(os.environ.get('REPORT_TIMEOUT_ENTERPRISE_MS', 20000))
+    REPORT_TIMEOUT_ENTERPRISE_MS = int(os.environ.get('REPORT_TIMEOUT_ENTERPRISE_MS', 45000))
     # Infrastructure device types for Server Fleet reports (lowercase, comma-separated in .env)
     INFRASTRUCTURE_DEVICE_TYPES = [
         t.strip().lower().replace(' ', '_') for t in

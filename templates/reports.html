@@ -269,6 +269,10 @@
                             title="Generate a report first">
                             <i class="fas fa-file-pdf me-1"></i>PDF
                         </button>
+                        <span id="inspectorLiveBadge" style="display:none;align-items:center;gap:6px;font-size:0.72rem;color:#94a3b8;">
+                            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#2dd4bf;animation:inspectorPulse 2s infinite;"></span>
+                            LIVE &bull; <span id="inspectorLastUpdated">just now</span>
+                        </span>
                     </div>
                 </div>
                 <div class="card-body p-3">
@@ -1754,6 +1758,50 @@
         // Device Inspector search-select (uses shared utility)
         let _inspectorDevices = [];
 
+        // Live-refresh state
+        let _inspectorRefreshTimer = null;
+        let _inspectorLastFetchedAt = null;
+        let _inspectorAgeTimer = null;
+
+        function _inspectorRefreshIntervalMs(period) {
+            if (period === '24h') return 60_000;       // 1 min — data changes every scan cycle
+            if (period === '7d')  return 5 * 60_000;   // 5 min
+            return 10 * 60_000;                         // 10 min for 30d
+        }
+
+        function _startInspectorLive(period) {
+            _stopInspectorLive();
+            _inspectorLastFetchedAt = Date.now();
+            const badge  = document.getElementById('inspectorLiveBadge');
+            const ageEl  = document.getElementById('inspectorLastUpdated');
+            if (badge) badge.style.display = 'flex';
+
+            // Age counter — updates every 15 s
+            _inspectorAgeTimer = setInterval(() => {
+                if (!_inspectorLastFetchedAt || !ageEl) return;
+                const secs = Math.round((Date.now() - _inspectorLastFetchedAt) / 1000);
+                if (secs < 60)       ageEl.textContent = `${secs}s ago`;
+                else if (secs < 3600) ageEl.textContent = `${Math.floor(secs / 60)}m ago`;
+                else                  ageEl.textContent = `${Math.floor(secs / 3600)}h ago`;
+            }, 15_000);
+
+            // Data refresh
+            _inspectorRefreshTimer = setInterval(() => {
+                const ip = document.getElementById('selectedDeviceIp')?.value;
+                if (!ip) { _stopInspectorLive(); return; }
+                generateReport(/* silent */ true);
+            }, _inspectorRefreshIntervalMs(period));
+        }
+
+        function _stopInspectorLive() {
+            clearInterval(_inspectorRefreshTimer);
+            clearInterval(_inspectorAgeTimer);
+            _inspectorRefreshTimer = null;
+            _inspectorAgeTimer = null;
+            const badge = document.getElementById('inspectorLiveBadge');
+            if (badge) badge.style.display = 'none';
+        }
+
         function loadDevices() {
             // Use the lightweight cached endpoint — returns only name+IP, no scan-status join.
             // Populated from Redis (60s TTL) so the dropdown appears instantly.
@@ -2007,25 +2055,33 @@
 
 
 
-        function generateReport() {
+        function generateReport(silent = false) {
             const deviceIp = document.getElementById('selectedDeviceIp').value;
             const period = document.getElementById('periodSelect').value;
-            // ... (rest of generateReport logic same as before)
 
             if (!deviceIp) {
-                alert('Please select a device from the list');
+                if (!silent) alert('Please select a device from the list');
                 return;
             }
+
+            // On explicit (non-silent) generate, reset the live timer for the new period
+            if (!silent) _stopInspectorLive();
+
+            const resultsEl = document.getElementById('reportResults');
+            if (!silent && resultsEl) resultsEl.style.opacity = '0.4';
 
             fetch(`/api/device_statistics?device_ip=${deviceIp}&period=${period}`)
                 .then(response => response.json())
                 .then(data => {
+                    if (resultsEl) resultsEl.style.opacity = '1';
                     if (data.error) {
-                        document.getElementById('reportResults').innerHTML = `
-                        <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${data.error}</div>
-                    `;
+                        if (!silent) {
+                            resultsEl.innerHTML = `
+                            <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${data.error}</div>
+                        `;
+                        }
                         const pdfBtn = document.getElementById('downloadPdfBtn');
-                        if (pdfBtn) pdfBtn.disabled = true;
+                        if (pdfBtn && !silent) pdfBtn.disabled = true;
                         return;
                     }
 
@@ -2038,12 +2094,21 @@
                                 `/api/device_statistics/pdf?device_ip=${encodeURIComponent(deviceIp)}&period=${period}`;
                         };
                     }
+
+                    // Stamp fetch time and (re)start live refresh
+                    _inspectorLastFetchedAt = Date.now();
+                    const ageEl = document.getElementById('inspectorLastUpdated');
+                    if (ageEl) ageEl.textContent = 'just now';
+                    if (!_inspectorRefreshTimer) _startInspectorLive(period);
                 })
                 .catch(error => {
-                    console.error('Error generating report:', error);
-                    document.getElementById('reportResults').innerHTML = `
-                    <div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error generating report: ${error.message}</div>
-                `;
+                    if (resultsEl) resultsEl.style.opacity = '1';
+                    if (!silent) {
+                        console.error('Error generating report:', error);
+                        resultsEl.innerHTML = `
+                        <div class="alert alert-danger"><i class="fas fa-times-circle"></i> Error generating report: ${error.message}</div>
+                    `;
+                    }
                 });
         }
 
@@ -2595,10 +2660,11 @@
                     .filter(entry => entry.isAnomaly)
                     .map(entry => entry.index)
             );
-            const latencyMax = Math.max(
-                120,
-                ...latencyValues.filter(value => value != null).map(value => Number(value))
-            );
+            const _validLatencies = latencyValues.filter(v => v != null && !isNaN(Number(v))).map(v => Number(v));
+            const _dataMax = _validLatencies.length > 0 ? Math.max(..._validLatencies) : 0;
+            // Dynamic ceiling: 25% headroom above max data point, at least 2ms so the
+            // chart area isn't zero-height when ping is sub-millisecond.
+            const latencyMax = Math.max(_dataMax, 2);
             const latencyPoints = scanSeries.map((scan, index) => ({
                 x: labels[index],
                 y: scan.status === 'online' && scan.ping_ms != null ? Number(scan.ping_ms) : null,
@@ -2711,7 +2777,7 @@
                     scales: {
                         y: {
                             min: 0,
-                            max: Math.ceil(latencyMax * 1.15),
+                            max: Math.ceil(latencyMax * 1.25),
                             grid: { color: 'rgba(255,255,255,0.06)' },
                             ticks: { color: '#94a3b8', callback: value => `${value} ms` },
                         },
@@ -3533,8 +3599,35 @@
         }
         document.querySelectorAll('#reportTabs button[data-bs-toggle="pill"]').forEach(btn => {
             btn.addEventListener('shown.bs.tab', (e) => {
-                _lazyLoad(e.target.getAttribute('data-bs-target').replace('#', ''));
+                const target = e.target.getAttribute('data-bs-target').replace('#', '');
+                _lazyLoad(target);
+                // Resume live refresh when switching back to inspector
+                if (target === 'inspector' && document.getElementById('selectedDeviceIp')?.value) {
+                    const period = document.getElementById('periodSelect')?.value || '24h';
+                    if (!_inspectorRefreshTimer) _startInspectorLive(period);
+                }
             });
+            btn.addEventListener('hide.bs.tab', (e) => {
+                // Pause live refresh when leaving the inspector tab
+                if (e.target.getAttribute('data-bs-target') === '#inspector') {
+                    _stopInspectorLive();
+                }
+            });
+        });
+
+        // Also pause when the browser tab/window is hidden (e.g. user switches app)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                _stopInspectorLive();
+            } else {
+                // Resume if inspector tab is currently active
+                const inspectorPane = document.getElementById('inspector');
+                if (inspectorPane && inspectorPane.classList.contains('active') &&
+                    document.getElementById('selectedDeviceIp')?.value) {
+                    const period = document.getElementById('periodSelect')?.value || '24h';
+                    _startInspectorLive(period);
+                }
+            }
         });
 
         // ==========================================

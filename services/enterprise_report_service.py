@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 from services.core_metrics_service import (  # noqa: E402
     _safe_round, sla_tier, downtime_hours, coverage_level,
     _inventory_uptime, _count_no_response_scans, _inventory_network_stats,
+    _bulk_inventory_uptime, _bulk_inventory_network_stats, _bulk_count_no_response_scans,
     _compute_uptime_from_events, _bulk_uptime_and_incidents,
     _merge_flapping_incidents, _mttr_mtbf, _detect_anomaly,
     get_device_violations, _bulk_icmp_coverage,
@@ -830,12 +831,19 @@ def build_enterprise_uptime_report(
         inv_sla_thresholds, inv_sla_profiles = _bulk_load_sla_thresholds(inv_profile_map)
         sla_profiles_used.update(inv_sla_profiles)
 
+        # Bulk uptime/network/timeout — replaces N per-device queries with 3 queries total
+        bulk_uptime_map = _bulk_inventory_uptime(inv_devices, start_dt, end_dt)
+        bulk_net_map = _bulk_inventory_network_stats(inv_device_ids, start_dt, end_dt)
+        bulk_timeout_map = _bulk_count_no_response_scans(
+            {dev.device_ip: dev.device_id for dev in inv_devices if dev.device_ip},
+            start_dt, end_dt,
+        )
+
         for dev in inv_devices:
             try:
-                up = _inventory_uptime(dev.device_ip, dev.device_id, start_dt, end_dt,
-                                      device_name=dev.device_name)
+                up = bulk_uptime_map.get(dev.device_id)
                 metrics = all_metrics.get(dev.device_id, {})
-                net_stats = _inventory_network_stats(dev.device_id, start_dt, end_dt)
+                net_stats = bulk_net_map.get(dev.device_id, {})
                 dev_thresholds = inv_sla_thresholds.get(dev.device_id)
                 tier = sla_tier(up, dev_thresholds)
                 dev_cov = icmp_cov.get(dev.device_id, {})
@@ -869,7 +877,7 @@ def build_enterprise_uptime_report(
                     "max_latency_ms": net_stats.get("max_latency_ms"),
                     "avg_packet_loss_pct": net_stats.get("avg_packet_loss_pct"),
                     "total_alerts": net_stats.get("total_alerts", 0),
-                    "timeout_count": _count_no_response_scans(dev.device_ip, start_dt, end_dt),
+                    "timeout_count": bulk_timeout_map.get(dev.device_id, 0),
                     "sla_thresholds": "custom" if dev_thresholds else "default",
                     # PR 17: Classification confidence annotations
                     "classification_confidence": getattr(dev, "classification_confidence", None) or "Low",
@@ -921,10 +929,9 @@ def build_enterprise_uptime_report(
         tracked_devices = td_query.all()
 
         # One bulk availability query instead of N per-device queries.
-        # Apply a 5-second statement timeout to guard against table scans on
-        # large event histories.
+        # 20-second guard: enough for ~500 tracked devices, prevents runaway scans.
         if db.engine.url.get_backend_name() == 'postgresql':
-            db.session.execute(text("SET LOCAL statement_timeout = '5000'"))
+            db.session.execute(text("SET LOCAL statement_timeout = '20000'"))
         tracked_ids = [dev.id for dev in tracked_devices]
         bulk_uptime = _bulk_uptime_and_incidents(tracked_ids, start_dt, end_dt)
         _bulk_violations = get_device_violations(tracked_ids, start_dt, end_dt)

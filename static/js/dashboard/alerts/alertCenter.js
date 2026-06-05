@@ -273,6 +273,18 @@ function renderAlertSummary(alerts) {
     set('val-alerts-critical', counts.Critical);
     set('val-alerts-warning', counts.Warning);
     set('val-alerts-info', counts.Informational);
+    set('dashboard-alert-count', total);
+
+    const alertButton = document.getElementById('dashboard-alerts-button');
+    if (alertButton) {
+        alertButton.classList.toggle('has-alerts', total > 0);
+        alertButton.classList.toggle('severity-critical', counts.Critical > 0);
+        alertButton.classList.toggle('severity-warning', counts.Critical === 0 && counts.Warning > 0);
+        alertButton.setAttribute(
+            'title',
+            `${total} active alerts: ${counts.Critical} critical, ${counts.Warning} warning, ${counts.Informational} info`
+        );
+    }
 
     const scopeEl = document.getElementById('sub-alerts-scope');
     if (scopeEl) {

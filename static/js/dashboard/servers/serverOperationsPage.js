@@ -98,13 +98,12 @@ async function fetchFleetSnapshot({ showBusy = false } = {}) {
     }
 }
 
-function bindFilterButtons() {
-    document.querySelectorAll('[data-server-filter]').forEach((button) => {
-        button.addEventListener('click', () => {
-            setServerHealthFilter(button.getAttribute('data-server-filter') || 'all');
-            renderEnhancedServerTable(currentSnapshot);
-        });
-    });
+function exposeAlpineCallbacks() {
+    window.__nms ??= {};
+    window.__nms.filterServer = (filter) => {
+        setServerHealthFilter(filter);
+        renderEnhancedServerTable(currentSnapshot);
+    };
 }
 
 function bindRefreshButton() {
@@ -118,7 +117,7 @@ function bindRefreshButton() {
 export function initServerOperationsPage() {
     initServerModal();
     setServerHealthFilter('all');
-    bindFilterButtons();
+    exposeAlpineCallbacks();
     bindRefreshButton();
     bindRangePills(() => fetchFleetSnapshot({ showBusy: true }));
     renderSnapshot(currentSnapshot);

@@ -20,6 +20,7 @@ import { patchKeyedTableRows, setTableMessageRow } from './domPatch.js';
 import { enforceSnapshotMeta } from './rbacGuard.js';
 import { renderScopeSummary } from './scopeSummary.js';
 import { renderAvailabilityHeatmap, renderAvailabilityRows } from './modals/availabilityDetail.js';
+import { initQuickAddDevice } from './modals/quickAddDevice.js';
 
 console.log("[Dashboard] Module loading...");
 
@@ -57,6 +58,83 @@ const dashboardLoadingApi = window.__UI_SURFACE_FLAGS__?.sharedLoading !== false
     ? window.UI.Loading
     : null;
 
+function initValueAnimations() {
+    if (typeof MutationObserver === 'undefined') return;
+    const targets = document.querySelectorAll(
+        '.stat-value, .kpi-value, .metric-value, #overall-health-status, #strip-critical-count, #strip-down-count'
+    );
+    if (!targets.length) return;
+    const previousText = new WeakMap();
+
+    const parseNumber = (text) => {
+        const match = String(text || '').match(/-?\d+(?:\.\d+)?/);
+        return match ? Number(match[0]) : null;
+    };
+
+    const tweenSimpleNumber = (el, fromText, toText) => {
+        if (el.children.length > 0) return false;
+        if (String(toText).includes('/')) return false;
+
+        const from = parseNumber(fromText);
+        const to = parseNumber(toText);
+        if (to === null) return false;
+
+        const match = String(toText).match(/^([^\d-]*)(-?\d+(?:\.\d+)?)(.*)$/);
+        if (!match) return false;
+
+        const start = from === null ? 0 : from;
+        const decimals = (match[2].split('.')[1] || '').length;
+        const prefix = match[1] || '';
+        const suffix = match[3] || '';
+        const duration = 420;
+        let startTime = null;
+
+        el.dataset.valueTweening = 'true';
+        const step = (timestamp) => {
+            if (!startTime) startTime = timestamp;
+            const progress = Math.min((timestamp - startTime) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const value = start + ((to - start) * eased);
+            el.textContent = `${prefix}${value.toFixed(decimals)}${suffix}`;
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+                return;
+            }
+            el.textContent = toText;
+            delete el.dataset.valueTweening;
+        };
+
+        window.requestAnimationFrame(step);
+        return true;
+    };
+
+    const observer = new MutationObserver(mutations => {
+        for (const m of mutations) {
+            const el = m.target.nodeType === Node.TEXT_NODE
+                ? m.target.parentElement
+                : m.target;
+            if (!el) continue;
+            if (el.dataset.valueTweening === 'true') continue;
+
+            const nextText = el.textContent.trim();
+            const lastText = previousText.get(el) ?? nextText;
+            previousText.set(el, nextText);
+
+            el.classList.remove('val-did-update');
+            void el.offsetWidth; // force reflow to restart animation
+            el.classList.add('val-did-update');
+
+            if (lastText !== nextText) {
+                tweenSimpleNumber(el, lastText, nextText);
+            }
+        }
+    });
+    targets.forEach(el => {
+        previousText.set(el, el.textContent.trim());
+        observer.observe(el, { childList: true, subtree: true, characterData: true });
+    });
+}
+
 // Init
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDashboard);
@@ -92,6 +170,7 @@ function initDashboard() {
         console.log('[Dashboard] Setting up connection indicator (polling)...');
         initConnectionIndicator();
         initRealtimeTransport();
+        initValueAnimations();
 
         // 2. Initialize Discovery UI
         initDiscovery();
@@ -99,6 +178,8 @@ function initDashboard() {
 
         // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
         // 3. RENDER STRUCTURE FIRST (Skeleton / Cache)
+        initQuickAddDevice();
+
         if (loadFromCache()) {
             console.log('[Dashboard] Loaded cache, immediate critical render...');
             // Render visible state immediately (CRITICAL ONLY)
@@ -162,7 +243,12 @@ function initDashboard() {
                     localStorage.setItem('tactical_dashboard_range', newValue);
                     // Clear stale range data immediately so UI doesn't show wrong-range data
                     updateStateBatch({ summary: null, trends: null });
-                    refreshAll();
+                    // Premium smooth transition: fade data sections during range switch
+                    const dashRoot = document.querySelector('.dashboard-enterprise');
+                    dashRoot?.classList.add('range-transitioning');
+                    refreshAll().finally(() => {
+                        setTimeout(() => dashRoot?.classList.remove('range-transitioning'), 120);
+                    });
                 },
                 [
                     { value: '24h', label: 'Last 24 Hours' },
@@ -1432,9 +1518,17 @@ function renderCommandBar(state) {
     if (!summary) return;
 
     const total = Number(summary.devices?.total) || 0;
+    const online = Number(summary.devices?.online ?? summary.devices?.up) || 0;
     const offline = Number(summary.devices?.offline ?? summary.devices?.down) || 0;
     const availability = Number(summary.availability?.history_24h_pct ?? summary.devices?.online_percent ?? 0) || 0;
     const alertCounts = getAlertCounts(state.alerts, summary);
+    const serverCounts = state.serverHealth?.counts || state.fleetMetrics?.health || {};
+    const totalServers = Number(serverCounts.total ?? state.fleetMetrics?.impact_summary?.total_servers ?? 0) || 0;
+    const healthyServers = Number(serverCounts.healthy ?? 0) || 0;
+    const warningServers = Number(serverCounts.warning ?? 0) || 0;
+    const criticalServers = Number(serverCounts.critical ?? 0) || 0;
+    const offlineServers = Number(serverCounts.offline ?? 0) || 0;
+    const serverIssues = warningServers + criticalServers + offlineServers;
 
     const setText = (id, value) => {
         const el = document.getElementById(id);
@@ -1445,9 +1539,17 @@ function renderCommandBar(state) {
     setText('cmd-total-context', `${Number(summary.devices?.monitored ?? total)} monitored in scope`);
     setText('cmd-total-trend', `${Number(summary.devices?.online ?? summary.devices?.up ?? 0)} responding now`);
 
+    setText('cmd-online-devices', String(online));
+    setText('cmd-online-context', `${online} responding of ${total}`);
+    setText('cmd-online-rate', `${total > 0 ? Math.round((online / total) * 100) : 0}% reachable`);
+
     setText('cmd-devices-down', String(offline));
     setText('cmd-down-context', offline > 0 ? 'Immediate operator action required' : 'No active outages');
     setText('cmd-down-trend', `${total > 0 ? Math.round((offline / total) * 100) : 0}% of fleet`);
+
+    setText('cmd-total-servers', String(totalServers));
+    setText('cmd-server-context', totalServers > 0 ? `${healthyServers} healthy servers` : 'No servers in scope');
+    setText('cmd-server-breakdown', `${healthyServers} healthy / ${serverIssues} issues`);
 
     setText('cmd-active-alerts', String(alertCounts.critical + alertCounts.warning));
     setText('cmd-alert-context', 'Critical / Warning');

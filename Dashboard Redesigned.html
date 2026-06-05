@@ -1,0 +1,1746 @@
+<!DOCTYPE html><html data-src-ver="5105cb02" lang="en" data-theme="dark" data-accent="amber"><head>
+
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NMS · Network Operations Center</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<!-- Satoshi via Fontshare; Inter fallback via Google Fonts; JetBrains Mono for inline data -->
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,900&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+
+<style>
+:root{
+  /* ===== TYPE SCALE (strict hierarchy) ===== */
+  --font-display: 28px;    --lh-display: 32px;
+  --font-h1: 20px;         --lh-h1: 24px;
+  --font-h2: 16px;         --lh-h2: 20px;
+  --font-body: 13px;       --lh-body: 18px;
+  --font-micro: 11px;      --lh-micro: 14px;
+
+  --sans:'Satoshi','Inter',system-ui,-apple-system,sans-serif;
+  --num:'Satoshi','Inter',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  /* ===== SPACING SCALE ===== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 28px;
+  --space-xl: 40px;
+
+  /* ===== ELEVATION SURFACES ===== */
+  --bg-base: #0B0F14;
+  --surf-1:  #0F1620;   /* card level 1 */
+  --surf-2:  #121A24;   /* card level 2 */
+  --surf-3:  #16202B;   /* hover / active */
+  --surf-over: rgba(18,26,36,0.78);
+
+  --hairline: rgba(255,255,255,0.06);
+  --hairline-2: rgba(255,255,255,0.09);
+  --hairline-strong: rgba(255,255,255,0.14);
+
+  /* ===== TEXT HIERARCHY ===== */
+  --t-primary: rgba(255,255,255,0.92);
+  --t-secondary: rgba(255,255,255,0.65);
+  --t-muted: rgba(255,255,255,0.40);
+  --t-faint: rgba(255,255,255,0.22);
+
+  /* ===== ACCENT (amber as default) ===== */
+  --accent: #f59e0b;
+  --accent-strong:#fbbf24;
+  --accent-soft: rgba(245,158,11,0.10);
+  --accent-glow: rgba(245,158,11,0.22);
+
+  /* ===== STATUS ===== */
+  --s-ok:#22c88a;      --s-ok-soft: rgba(34,200,138,0.10); --s-ok-bord: rgba(34,200,138,0.20);
+  --s-warn:#f5b53c;    --s-warn-soft: rgba(245,181,60,0.10); --s-warn-bord: rgba(245,181,60,0.22);
+  --s-crit:#ef4a5d;    --s-crit-soft: rgba(239,74,93,0.10); --s-crit-bord: rgba(239,74,93,0.22);
+  --s-info:#6aa6ff;    --s-info-soft: rgba(106,166,255,0.10); --s-info-bord: rgba(106,166,255,0.22);
+  --s-off:#6c7682;
+
+  /* ===== RADIUS ===== */
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+
+  /* ===== EASING ===== */
+  --ease-out:cubic-bezier(0.4,0,0.2,1);
+  --ease-smooth:cubic-bezier(0.22,0.61,0.36,1);
+  --ease-spring:cubic-bezier(0.34,1.4,0.64,1);
+
+  --gap: var(--space-md);
+}
+
+html[data-accent="teal"]{ --accent:#22d3b4; --accent-strong:#2ee3c2; --accent-soft:rgba(34,211,180,0.10); --accent-glow:rgba(34,211,180,0.22); }
+html[data-accent="indigo"]{ --accent:#818cf8; --accent-strong:#a5b4fc; --accent-soft:rgba(129,140,248,0.10); --accent-glow:rgba(129,140,248,0.22); }
+
+html[data-density="compact"]{ --gap:10px }
+html[data-density="cozy"]{ --gap:16px }
+html[data-density="roomy"]{ --gap:24px }
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow-x:hidden}
+body{
+  font-family:var(--sans);
+  background: var(--bg-base);
+  color: var(--t-primary);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  font-feature-settings:"ss01","cv11","tnum";
+}
+
+/* subtle layered background */
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background:
+    radial-gradient(800px 480px at 8% -4%, rgba(245,158,11,0.05), transparent 60%),
+    radial-gradient(700px 400px at 96% 100%, rgba(106,166,255,0.025), transparent 60%);
+  pointer-events:none; z-index:0;
+}
+
+.app{
+  position:relative; z-index:1;
+  padding: var(--space-md) var(--space-lg) var(--space-xl);
+  display:flex; flex-direction:column; gap: var(--space-lg);
+  max-width:1680px; margin:0 auto;
+}
+
+/* Lucide icon sizing */
+[data-lucide]{ width:14px; height:14px; stroke-width:1.75 }
+.icon-sm[data-lucide]{ width:12px; height:12px }
+.icon-lg[data-lucide]{ width:16px; height:16px }
+
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.brand{
+  display:flex; flex-direction:column; gap:4px;
+}
+.brand h1{
+  font-family:var(--sans);
+  font-size: var(--font-display);
+  line-height: var(--lh-display);
+  letter-spacing:-0.02em;
+  font-weight:600;
+  margin:0;
+  color:var(--t-primary);
+}
+.brand .meta{
+  display:flex; align-items:center; gap:var(--space-sm);
+  font-size: var(--font-micro); line-height: var(--lh-micro);
+  color: var(--t-muted);
+}
+.live-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:2px 8px; border-radius:999px;
+  background: var(--s-ok-soft);
+  border:1px solid var(--s-ok-bord);
+  font-size:10px; letter-spacing:0.12em; font-weight:600;
+  color: var(--s-ok); text-transform:uppercase;
+  font-family:var(--sans);
+}
+.live-dot{
+  width:6px; height:6px; border-radius:50%;
+  background:var(--s-ok);
+  animation:live-pulse 2s ease infinite;
+}
+@keyframes live-pulse{
+  0%{ box-shadow:0 0 0 0 rgba(34,200,138,0.45) }
+  70%{ box-shadow:0 0 0 6px rgba(34,200,138,0) }
+  100%{ box-shadow:0 0 0 0 rgba(34,200,138,0) }
+}
+
+.toolbar{ display:flex; align-items:center; gap: var(--space-sm) }
+
+/* ===== Segmented range ===== */
+.segmented{
+  position:relative;
+  display:inline-flex; padding:3px;
+  background:var(--surf-1);
+  border:1px solid var(--hairline);
+  border-radius:999px;
+}
+.segmented button{
+  position:relative; z-index:2;
+  background:transparent; border:0;
+  padding:6px 14px;
+  font-family:var(--sans);
+  font-size: var(--font-micro); font-weight:600;
+  letter-spacing:0.02em;
+  color: var(--t-muted); cursor:pointer;
+  border-radius:999px;
+  transition:color 180ms var(--ease-out);
+}
+.segmented button.active{ color: var(--t-primary) }
+.segmented button:hover{ color: var(--t-secondary) }
+.segmented .pill{
+  position:absolute; top:3px; bottom:3px;
+  border-radius:999px;
+  background: var(--surf-3);
+  border:1px solid var(--hairline-strong);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 4px 16px rgba(0,0,0,0.4);
+  transition:left 340ms var(--ease-smooth), width 340ms var(--ease-smooth);
+  z-index:1;
+}
+
+/* ===== Buttons ===== */
+.btn{
+  display:inline-flex; align-items:center; gap:6px;
+  background: var(--surf-1);
+  border:1px solid var(--hairline);
+  color: var(--t-secondary);
+  padding:7px 12px;
+  font-family:var(--sans);
+  font-size: var(--font-micro); font-weight:500;
+  border-radius:8px; cursor:pointer;
+  transition:background 160ms, border-color 160ms, transform 160ms, color 160ms;
+}
+.btn:hover{
+  background: var(--surf-2);
+  border-color: var(--hairline-strong);
+  color: var(--t-primary);
+}
+.btn:active{ transform:scale(0.97) }
+.btn.primary{
+  background: linear-gradient(180deg, var(--accent-soft), transparent);
+  border-color: rgba(245,158,11,0.28);
+  color: var(--accent-strong);
+}
+.btn.icon{ width:32px; height:32px; padding:0; justify-content:center }
+.btn.rotating [data-lucide="refresh-cw"]{ animation:spin-once 700ms var(--ease-out) }
+@keyframes spin-once{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
+/* ============================================================
+   STATUS STRIP
+   ============================================================ */
+.status-strip{
+  display:flex; align-items:center; justify-content:space-between;
+  gap: var(--space-md);
+  padding: 12px var(--space-md);
+  background: var(--surf-1);
+  border:1px solid var(--hairline);
+  border-radius: var(--r-md);
+  margin-bottom: var(--gap);
+}
+.status-strip.s-ok{ border-left: 2px solid var(--s-ok) }
+.status-strip.s-warn{ border-left: 2px solid var(--s-warn) }
+.status-strip.s-crit{ border-left: 2px solid var(--s-crit) }
+
+.strip-group{ display:flex; align-items:center; gap: var(--space-lg); flex-wrap:wrap }
+.strip-item{ display:inline-flex; align-items:center; gap:8px; font-size: var(--font-micro); color: var(--t-secondary) }
+.strip-label{
+  font-size: 10px; letter-spacing:0.12em; text-transform:uppercase;
+  color: var(--t-muted); font-weight:600;
+}
+.strip-val{ font-family:var(--sans); font-weight:600; color: var(--t-primary); font-variant-numeric:tabular-nums }
+.strip-sep{ width:1px; height:18px; background: var(--hairline) }
+
+.dot{ width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0 }
+.dot.ok{ background: var(--s-ok); box-shadow:0 0 0 2px rgba(34,200,138,0.16), 0 0 8px rgba(34,200,138,0.35) }
+.dot.warn{ background: var(--s-warn); box-shadow:0 0 0 2px rgba(245,181,60,0.16), 0 0 8px rgba(245,181,60,0.3) }
+.dot.bad{ background: var(--s-crit); box-shadow:0 0 0 2px rgba(239,74,93,0.16), 0 0 8px rgba(239,74,93,0.35) }
+
+/* ============================================================
+   PANEL / CARD (elevation system)
+   ============================================================ */
+.panel{
+  position:relative;
+  background: var(--surf-1);
+  border:1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 8px 28px rgba(0,0,0,0.5);
+  overflow:hidden;
+  transition: border-color 180ms var(--ease-out), background 180ms var(--ease-out);
+}
+.panel:hover{ border-color: var(--hairline-2) }
+
+.panel-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px var(--space-md);
+  border-bottom:1px solid var(--hairline);
+}
+.panel-title{
+  display:flex; align-items:center; gap:8px;
+  font-size: var(--font-h2); line-height: var(--lh-h2);
+  font-weight:600; color: var(--t-primary);
+  letter-spacing:-0.01em;
+}
+.panel-title [data-lucide]{ color: var(--accent); width:15px; height:15px }
+.panel-body{ padding: var(--space-md) }
+.panel-body.flush{ padding:0 }
+.panel-sub{ font-size: var(--font-micro); color: var(--t-muted) }
+
+/* ============================================================
+   KPI CARDS
+   ============================================================ */
+.kpi{
+  position:relative;
+  padding: var(--space-md);
+  background: var(--surf-1);
+  border:1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.18), 0 6px 22px rgba(0,0,0,0.42);
+  overflow:hidden; cursor:pointer;
+  transition: transform 220ms var(--ease-out), border-color 220ms var(--ease-out), background 220ms var(--ease-out), box-shadow 220ms var(--ease-out);
+}
+.kpi:hover{
+  background: var(--surf-2);
+  border-color: var(--hairline-2);
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 12px 32px rgba(0,0,0,0.55);
+}
+
+.kpi-label{
+  display:flex; align-items:center; gap:8px;
+  font-size: 10px;
+  letter-spacing:0.12em; text-transform:uppercase;
+  color: var(--t-faint); font-weight:500;
+}
+.kpi-label .dot{ width:6px; height:6px; box-shadow:none }
+
+.kpi-value{
+  font-family:var(--num);
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum","ss01";
+  font-weight:600;
+  letter-spacing:-0.03em;
+  line-height:1;
+  color: var(--t-primary);
+  margin-top: var(--space-sm);
+  display:flex; align-items:baseline; gap:4px;
+}
+.kpi-value .val-denom{
+  font-size:0.55em; font-weight:500;
+  color: var(--t-muted);
+  letter-spacing:-0.01em;
+}
+.kpi-sub{
+  margin-top: 6px;
+  font-size: var(--font-micro);
+  color: var(--t-muted);
+  display:flex; align-items:center; gap:8px;
+  font-variant-numeric:tabular-nums;
+}
+.delta-up{ color: var(--s-ok); display:inline-flex; align-items:center; gap:3px }
+.delta-down{ color: var(--s-crit); display:inline-flex; align-items:center; gap:3px }
+.delta-up [data-lucide], .delta-down [data-lucide]{ width:10px; height:10px }
+
+.kpi .spark{
+  position:absolute;
+  right:12px; bottom:10px;
+  width: 50px; height: 16px;
+  opacity:0.55; pointer-events:none;
+}
+
+@keyframes val-pop{
+  0%{ transform:scale(1) }
+  40%{ transform:scale(1.03) }
+  100%{ transform:scale(1) }
+}
+.val-pop{ animation: val-pop 320ms var(--ease-spring) }
+
+.range-transitioning .range-fade{
+  opacity:0.4;
+  filter: blur(0.4px);
+  transition: opacity 240ms var(--ease-out), filter 240ms var(--ease-out);
+}
+.range-fade{ transition: opacity 240ms var(--ease-out), filter 240ms var(--ease-out) }
+
+/* ============================================================
+   LAYOUTS
+   ============================================================ */
+.kpi-grid{ display:grid; gap: var(--gap) }
+
+/* ===== Bento — hero primary KPI ===== */
+body[data-layout="bento"] .kpi-grid{
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: minmax(120px, auto);
+}
+body[data-layout="bento"] .kpi.k-online{ grid-column: span 5; grid-row: span 2 }
+body[data-layout="bento"] .kpi.k-online .kpi-value{ font-size: 64px; font-weight:700 }
+body[data-layout="bento"] .kpi.k-online .spark{ width:120px; height:28px; opacity:0.6 }
+body[data-layout="bento"] .kpi.k-healthy{ grid-column: span 4 }
+body[data-layout="bento"] .kpi.k-avail{ grid-column: span 3; grid-row: span 2 }
+body[data-layout="bento"] .kpi.k-avail .kpi-value{ font-size: 44px; font-weight:600 }
+body[data-layout="bento"] .kpi.k-maint{ grid-column: span 4 }
+body[data-layout="bento"] .kpi.k-offline{ grid-column: span 3 }
+
+body[data-layout="bento"] .main-grid{
+  display:grid; grid-template-columns: 1.7fr 1fr;
+  gap: var(--gap); margin-top: var(--gap);
+}
+body[data-layout="bento"] .fleet-grid{ grid-template-columns: repeat(4,1fr) }
+
+/* ===== Trading Desk ===== */
+body[data-layout="desk"]{ --gap:10px }
+body[data-layout="desk"] .kpi-grid{ grid-template-columns: repeat(10,1fr) }
+body[data-layout="desk"] .kpi{ grid-column: span 2; padding:12px; min-height: 96px }
+body[data-layout="desk"] .kpi-value{ font-size: 34px; margin-top:8px; font-weight:600 }
+body[data-layout="desk"] .kpi .spark{ width:40px; height:14px; opacity:0.5 }
+body[data-layout="desk"] .main-grid{
+  display:grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--gap); margin-top: var(--gap);
+}
+body[data-layout="desk"] .main-grid > .wide{ grid-column: span 2 }
+body[data-layout="desk"] .fleet-grid{ grid-template-columns: repeat(4,1fr) }
+
+/* ===== Split ===== */
+body[data-layout="split"] .kpi-grid{ grid-template-columns: repeat(5,1fr) }
+body[data-layout="split"] .kpi-value{ font-size: 38px; font-weight:600 }
+body[data-layout="split"] .main-grid{
+  display:grid; grid-template-columns: 3fr 2fr;
+  gap: var(--gap); margin-top: var(--gap);
+}
+body[data-layout="split"] .fleet-grid{ grid-template-columns: repeat(4,1fr) }
+
+/* Fleet KPI grid inside server panel */
+.fleet-grid{
+  display:grid; gap: var(--space-sm);
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+}
+.mini-stat{
+  background: var(--surf-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.mini-stat .kpi-label{ margin-bottom: 4px; font-size: 10px; letter-spacing:0.1em }
+.mini-stat .kpi-value{ font-size: 22px; margin-top: 2px; font-weight:600 }
+.mini-stat .kpi-value .val-denom{ font-size: 0.55em }
+.mini-stat .kpi-sub{ font-size: 10px; margin-top: 3px; color: var(--t-muted) }
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+.tbl-wrap{ overflow:auto }
+.tbl-wrap::-webkit-scrollbar{ width:6px; height:6px }
+.tbl-wrap::-webkit-scrollbar-thumb{ background: rgba(255,255,255,0.12); border-radius:3px }
+
+table.tbl{
+  width:100%; border-collapse:collapse;
+  font-size: var(--font-body);
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum";
+}
+table.tbl thead th{
+  position:sticky; top:0; z-index:2;
+  background: var(--surf-1);
+  padding: 10px var(--space-md);
+  font-size: 10px; font-weight:600;
+  letter-spacing:0.1em; text-transform:uppercase;
+  color: var(--t-muted);
+  border-bottom: 1px solid var(--hairline);
+  text-align:left;
+}
+table.tbl thead th.num{ text-align:right }
+table.tbl tbody td{
+  padding: 11px var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--t-secondary);
+  vertical-align: middle;
+}
+table.tbl tbody td.num{ text-align:right; font-variant-numeric:tabular-nums }
+table.tbl tbody tr{ transition: background 140ms }
+table.tbl tbody tr:hover{ background: rgba(255,255,255,0.02) }
+table.tbl tbody tr:hover td{ color: var(--t-primary) }
+table.tbl tbody tr:last-child td{ border-bottom:none }
+
+.name-cell strong{
+  color: var(--t-primary); font-weight:600;
+  font-size: var(--font-body);
+}
+.name-cell .sub{
+  font-size: 10px;
+  color: var(--t-faint);
+  font-family: var(--mono);
+  margin-top: 2px;
+  letter-spacing:-0.02em;
+}
+
+/* ===== Chips / Badges ===== */
+.chip{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:var(--sans);
+  font-size: 10px; font-weight:600;
+  padding: 3px 8px; border-radius: 4px;
+  letter-spacing:0.04em; text-transform:capitalize;
+  border:1px solid transparent;
+}
+.chip.ok{ background: var(--s-ok-soft); color: var(--s-ok); border-color: var(--s-ok-bord) }
+.chip.warn{ background: var(--s-warn-soft); color: var(--s-warn); border-color: var(--s-warn-bord) }
+.chip.crit{ background: var(--s-crit-soft); color: var(--s-crit); border-color: var(--s-crit-bord) }
+.chip.info{ background: var(--s-info-soft); color: var(--s-info); border-color: var(--s-info-bord) }
+.chip.off{ background: rgba(108,118,130,0.12); color: #b0b8c0; border-color: rgba(108,118,130,0.25) }
+
+/* Usage bar */
+.usage{
+  display:flex; align-items:center; gap: var(--space-sm);
+  font-size: var(--font-body);
+  color: var(--t-secondary);
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.usage .bar{
+  flex:0 0 60px; height:6px;
+  background: rgba(255,255,255,0.06);
+  border-radius:3px; overflow:hidden;
+}
+.usage .bar > i{
+  display:block; height:100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  border-radius:3px;
+  transition: width 700ms var(--ease-smooth);
+}
+.usage .num{ min-width: 36px; text-align:right; font-weight:500 }
+.usage.warn .bar > i{ background: linear-gradient(90deg, #cc8f30, var(--s-warn)) }
+.usage.bad .bar > i{ background: linear-gradient(90deg, #c73e4d, var(--s-crit)) }
+
+/* Alert row severity strip */
+.alert-row td:first-child{ border-left: 2px solid transparent }
+.alert-row.crit td:first-child{ border-left-color: var(--s-crit); background: rgba(239,74,93,0.03) }
+.alert-row.warn td:first-child{ border-left-color: var(--s-warn); background: rgba(245,181,60,0.03) }
+.alert-row.info td:first-child{ border-left-color: var(--s-info) }
+
+/* Filters */
+.filters{
+  display:grid;
+  grid-template-columns: 160px 160px 180px 1fr;
+  gap: var(--space-sm);
+  padding: 10px var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surf-2);
+}
+.filters select, .filters input{
+  background: var(--surf-1);
+  border: 1px solid var(--hairline);
+  color: var(--t-primary);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: var(--font-micro);
+  font-family: var(--sans);
+  transition: border-color 140ms;
+}
+.filters select:hover, .filters input:hover,
+.filters select:focus, .filters input:focus{
+  border-color: var(--hairline-strong); outline:none;
+}
+.filters select{
+  appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff66' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  padding-right: 28px;
+}
+.filters input::placeholder{ color: var(--t-muted) }
+
+/* Fresh pill */
+.fresh-pill{
+  font-size: 10px;
+  padding: 3px 8px; border-radius: 999px;
+  background: var(--surf-2);
+  border: 1px solid var(--hairline);
+  color: var(--t-muted);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+
+/* Tabs */
+.tabs{ display:flex; gap: 4px }
+.tabs button{
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--t-muted);
+  padding: 4px 10px;
+  font-family: var(--sans); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  border-radius: 6px; cursor: pointer;
+  transition: all 160ms var(--ease-out);
+}
+.tabs button:hover{ color: var(--t-secondary); background: var(--surf-2) }
+.tabs button.active{
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: rgba(245,158,11,0.22);
+}
+
+/* Alerts KPI strip */
+.alerts-kpi-row{
+  display:grid; grid-template-columns: repeat(4,1fr);
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+}
+.alerts-kpi{
+  padding: 8px 10px;
+  background: var(--surf-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.alerts-kpi .kpi-label{ font-size: 9px; margin-bottom: 3px; letter-spacing:0.12em }
+.alerts-kpi .kpi-value{
+  font-family: var(--num);
+  font-size: 20px; font-weight: 600;
+  margin-top: 2px; line-height: 1;
+}
+.alerts-kpi.crit .kpi-value{ color: var(--s-crit) }
+.alerts-kpi.crit .kpi-label{ color: var(--s-crit) }
+.alerts-kpi.warn .kpi-value{ color: var(--s-warn) }
+.alerts-kpi.warn .kpi-label{ color: var(--s-warn) }
+.alerts-kpi.info .kpi-value{ color: var(--s-info) }
+.alerts-kpi.info .kpi-label{ color: var(--s-info) }
+
+/* Donut legend */
+.donut-wrap{
+  display:flex; align-items:center; gap: var(--space-md);
+  padding: var(--space-md);
+}
+.donut-wrap canvas{ width:140px; height:140px; flex-shrink:0 }
+.donut-legend{ flex:1; display:flex; flex-direction:column; gap: 6px }
+.donut-legend .li{
+  display:flex; align-items:center; justify-content:space-between;
+  font-size: var(--font-micro);
+}
+.donut-legend .lk{
+  display:flex; align-items:center; gap:8px; color: var(--t-secondary);
+}
+.donut-legend .sw{ width:8px; height:8px; border-radius: 2px }
+.donut-legend .lv{ color: var(--t-primary); font-variant-numeric: tabular-nums; font-weight:500 }
+
+/* Tweaks */
+.tweaks-toggle{ position:fixed; top: 20px; right: var(--space-lg); z-index: 999 }
+.tweaks-panel{
+  position:fixed; top: 72px; right: var(--space-lg);
+  width: 280px; z-index: 1000;
+  background: var(--surf-over);
+  border: 1px solid var(--hairline-2);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: var(--space-md);
+  display:none;
+  animation: twk-in 180ms var(--ease-out);
+}
+.tweaks-panel.show{ display:block }
+@keyframes twk-in{
+  from{ opacity:0; transform: translateY(-6px) }
+  to{ opacity:1; transform: translateY(0) }
+}
+.tweaks-panel h3{
+  margin: 0 0 var(--space-sm);
+  font-size: 11px; letter-spacing: 0.14em;
+  color: var(--t-secondary);
+  text-transform: uppercase; font-weight: 600;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.tweaks-panel .close{
+  background: transparent; border: 0;
+  color: var(--t-muted); cursor: pointer;
+  display:inline-flex; align-items:center;
+}
+.tweaks-panel .close:hover{ color: var(--t-primary) }
+.tweaks-group{ margin-top: var(--space-sm) }
+.tweaks-group label{
+  display:block; font-size: 10px;
+  color: var(--t-muted);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 600; margin-bottom: 6px;
+}
+.tweaks-group .btn-row{ display:flex; gap: 4px }
+.tweaks-group .btn-row button{
+  flex:1;
+  background: var(--surf-1);
+  border: 1px solid var(--hairline);
+  color: var(--t-secondary);
+  padding: 6px 8px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  border-radius: 6px; cursor: pointer;
+  transition: all 160ms;
+}
+.tweaks-group .btn-row button.active{
+  background: var(--accent-soft);
+  border-color: rgba(245,158,11,0.28);
+  color: var(--accent-strong);
+}
+.tweaks-group .btn-row button:hover{ color: var(--t-primary) }
+
+::-webkit-scrollbar{ width: 8px; height: 8px }
+::-webkit-scrollbar-track{ background: transparent }
+::-webkit-scrollbar-thumb{ background: rgba(255,255,255,0.08); border-radius: 4px }
+::-webkit-scrollbar-thumb:hover{ background: rgba(255,255,255,0.16) }
+
+@media(max-width: 1200px){
+  body[data-layout="bento"] .kpi.k-online{ grid-column: span 12; grid-row: auto }
+  body[data-layout="bento"] .kpi.k-avail{ grid-column: span 6; grid-row: auto }
+  body[data-layout="bento"] .kpi.k-healthy,
+  body[data-layout="bento"] .kpi.k-maint,
+  body[data-layout="bento"] .kpi.k-offline{ grid-column: span 6 }
+  body[data-layout="bento"] .main-grid{ grid-template-columns: 1fr }
+  body[data-layout="desk"] .main-grid{ grid-template-columns: 1fr }
+  body[data-layout="split"] .main-grid{ grid-template-columns: 1fr }
+  body[data-layout="split"] .kpi-grid{ grid-template-columns: repeat(2,1fr) }
+  .filters{ grid-template-columns: 1fr 1fr }
+}
+</style>
+</head>
+<body data-layout="desk" data-density="compact" data-cc-id="cc-1" style="cursor: crosshair; font-family: Satoshi;">
+
+<!-- TWEAKS TOGGLE -->
+<button class="btn icon tweaks-toggle" id="tweaks-toggle" title="Open Tweaks">
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sliders-horizontal" class="lucide lucide-sliders-horizontal"><line x1="21" x2="14" y1="4" y2="4"></line><line x1="10" x2="3" y1="4" y2="4"></line><line x1="21" x2="12" y1="12" y2="12"></line><line x1="8" x2="3" y1="12" y2="12"></line><line x1="21" x2="16" y1="20" y2="20"></line><line x1="12" x2="3" y1="20" y2="20"></line><line x1="14" x2="14" y1="2" y2="6"></line><line x1="8" x2="8" y1="10" y2="14"></line><line x1="16" x2="16" y1="18" y2="22"></line></svg>
+</button>
+
+<!-- TWEAKS PANEL -->
+<div class="tweaks-panel" id="tweaks-panel">
+  <h3>Tweaks <button class="close" id="tweaks-close"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="x" class="lucide lucide-x"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></h3>
+  <div class="tweaks-group">
+    <label>Layout</label>
+    <div class="btn-row" data-twk="layout">
+      <button data-v="bento">Bento</button>
+      <button data-v="desk" class="active">Trading</button>
+      <button data-v="split">Split</button>
+    </div>
+  </div>
+  <div class="tweaks-group">
+    <label>Density</label>
+    <div class="btn-row" data-twk="density">
+      <button data-v="compact" class="active">Compact</button>
+      <button data-v="cozy">Cozy</button>
+      <button data-v="roomy">Roomy</button>
+    </div>
+  </div>
+  <div class="tweaks-group">
+    <label>Accent</label>
+    <div class="btn-row" data-twk="accent">
+      <button data-v="teal">Teal</button>
+      <button data-v="indigo">Indigo</button>
+      <button data-v="amber" class="active">Amber</button>
+    </div>
+  </div>
+  <div class="tweaks-group">
+    <label>Real-time</label>
+    <div class="btn-row" data-twk="live">
+      <button data-v="on" class="active">On</button>
+      <button data-v="off">Off</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app container-fluid dashboard-enterprise dashboard-dense">
+
+  <!-- Top bar -->
+  <div class="topbar dashboard-header">
+    <div class="brand">
+      <h1>Network Operations Center</h1>
+      <div class="meta">
+        <span class="live-chip" id="connection-indicator"><span class="live-dot"></span> Live</span>
+        <span>Real-time infrastructure monitoring</span>
+        <span id="dashboardScopeSummary">· Scope: Global</span>
+      </div>
+    </div>
+    <div class="toolbar dashboard-toolbar">
+      <div class="segmented" id="time-range-container" data-value="24h">
+        <span class="pill" aria-hidden="true" style="left: 4px; width: 76.6094px;"></span>
+        <button data-value="24h" class="active">24 Hours</button>
+        <button data-value="7d">7 Days</button>
+        <button data-value="30d">30 Days</button>
+      </div>
+      <button id="btn-refresh" class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="refresh-cw" class="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg> Refresh</button>
+      <button class="btn icon" id="dash-add-device-btn" title="Add device"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="plus" class="lucide lucide-plus"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button>
+    </div>
+  </div>
+
+  <!-- Error Banner -->
+  <div id="global-error" class="initially-hidden" style="display:none"></div>
+
+  <!-- Status strip -->
+  <div id="overall-health-card" class="status-strip s-ok">
+    <div class="strip-group">
+      <div class="strip-item">
+        <span class="strip-label">Status</span>
+        <span class="dot ok overall-health-dot"></span>
+        <span class="strip-val" id="overall-health-status">All Systems Operational</span>
+      </div>
+      <div class="strip-sep"></div>
+      <div class="strip-item">
+        <span class="strip-label">Critical</span>
+        <span class="strip-val" id="strip-critical-count" style="color:var(--s-crit)">3</span>
+      </div>
+      <div class="strip-item">
+        <span class="strip-label">Offline</span>
+        <span class="strip-val" id="strip-down-count">8</span>
+      </div>
+    </div>
+    <div class="strip-group">
+      <div class="strip-item">
+        <span class="strip-label">Polling</span>
+        <span class="dot ok"></span>
+        <span class="strip-val">30s</span>
+      </div>
+      <div class="strip-sep"></div>
+      <div class="strip-item">
+        <span class="strip-label">Scheduler</span>
+        <span id="scheduler-health-dot" class="dot ok"></span>
+        <span class="strip-val" id="scheduler-health-text">OK</span>
+      </div>
+      <div class="strip-sep"></div>
+      <div class="strip-item">
+        <span class="strip-label">Last Sync</span>
+        <span class="strip-val" id="overall-health-subtext">42s ago</span>
+      </div>
+      <div class="strip-sep"></div>
+      <div class="strip-item">
+        <span class="strip-label">Updated</span>
+        <span class="strip-val" id="last-updated-text">Just now</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI GRID -->
+  <div class="kpi-grid range-fade" id="device-kpi-row">
+
+    <div class="kpi k-online device-kpi-card" id="card-devices-online">
+      <div class="kpi-label"><span class="dot" style="background:var(--s-info)"></span>Devices Online</div>
+      <div class="kpi-value" id="val-devices-online">
+        <span class="val-num anim-online val-pop">341</span><span class="val-denom">/ <span class="anim-total">358</span></span>
+      </div>
+      <div class="kpi-sub" id="sub-devices-online">
+        <span class="delta-up"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trending-up" class="lucide lucide-trending-up"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg> 0.42%</span>
+        <span>vs. previous 24h</span>
+      </div>
+      <canvas class="spark" data-spark="online" width="40" height="14"></canvas>
+    </div>
+
+    <div class="kpi k-healthy device-kpi-card" id="card-devices-healthy">
+      <div class="kpi-label"><span class="dot ok"></span>Reachable Devices</div>
+      <div class="kpi-value"><span class="val-num" id="val-devices-healthy">328</span></div>
+      <div class="kpi-sub" id="sub-devices-healthy"><span>316 Healthy · 12 Degraded</span></div>
+      <canvas class="spark" data-spark="healthy" width="40" height="14"></canvas>
+    </div>
+
+    <div class="kpi k-avail device-kpi-card" id="card-network-avail">
+      <div class="kpi-label"><span class="dot" style="background:var(--accent)"></span>Availability</div>
+      <div class="kpi-value"><span class="val-num" id="val-availability">99.62</span><span class="val-denom">%</span></div>
+      <div class="kpi-sub" id="sub-availability-trend">
+        <span class="delta-up"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trending-up" class="lucide lucide-trending-up"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg> 0.08%</span>
+        <span>SLO: 99.50%</span>
+      </div>
+      <canvas class="spark" id="chart-availability-spark" style="position:absolute; left:12px; right:12px; bottom:10px; width:auto; height:26px; opacity:0.55" width="52" height="26"></canvas>
+    </div>
+
+    <div class="kpi k-maint device-kpi-card" id="card-devices-maintenance">
+      <div class="kpi-label"><span class="dot warn"></span>Maintenance</div>
+      <div class="kpi-value"><span class="val-num" id="val-devices-maintenance">4</span></div>
+      <div class="kpi-sub"><span>Scheduled Window</span></div>
+      <canvas class="spark" data-spark="maint" width="40" height="14"></canvas>
+    </div>
+
+    <div class="kpi k-offline device-kpi-card" id="card-devices-offline">
+      <div class="kpi-label"><span class="dot bad"></span>Offline</div>
+      <div class="kpi-value"><span class="val-num" id="val-devices-offline">8</span></div>
+      <div class="kpi-sub" id="sub-devices-offline">
+        <span class="delta-down"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trending-down" class="lucide lucide-trending-down"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"></polyline><polyline points="16 17 22 17 22 11"></polyline></svg> 2</span>
+        <span>No response</span>
+      </div>
+      <canvas class="spark" data-spark="offline" width="40" height="14"></canvas>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="main-grid range-fade">
+
+    <!-- LEFT: SERVER HEALTH -->
+    <div id="server-health-detail">
+      <div class="panel fleet-table-card">
+        <div class="panel-head">
+          <div class="panel-title"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="server" class="lucide lucide-server"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg> Server Health</div>
+          <div style="display:flex; gap:var(--space-sm); align-items:center">
+            <span class="fresh-pill" id="server-last-check"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clock" class="lucide lucide-clock icon-sm"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Last Checked · 14s ago</span>
+            <button class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="external-link" class="lucide lucide-external-link icon-sm"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg> Open</button>
+          </div>
+        </div>
+
+        <div id="fleet-overview-row" class="fleet-grid">
+          <div class="mini-stat" id="card-fleet-health">
+            <div class="kpi-label"><span class="dot ok"></span>Fleet Health</div>
+            <div class="kpi-value"><span class="val-num" id="val-fleet-health-percent">100.0</span><span class="val-denom">%</span></div>
+            <div class="kpi-sub"><span id="val-fleet-health-counts">2 / 2 Servers Healthy</span></div>
+          </div>
+          <div class="mini-stat">
+            <div class="kpi-label"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="cpu" class="lucide lucide-cpu icon-sm" style="color:var(--t-muted)"><rect width="16" height="16" x="4" y="4" rx="2"></rect><rect width="6" height="6" x="9" y="9" rx="1"></rect><path d="M15 2v2"></path><path d="M15 20v2"></path><path d="M2 15h2"></path><path d="M2 9h2"></path><path d="M20 15h2"></path><path d="M20 9h2"></path><path d="M9 2v2"></path><path d="M9 20v2"></path></svg>Avg CPU</div>
+            <div class="kpi-value"><span class="val-num val-pop" id="val-fleet-avg-cpu">40</span><span class="val-denom">%</span></div>
+            <div class="kpi-sub">P95: <span id="val-fleet-p95-cpu">71</span>%</div>
+          </div>
+          <div class="mini-stat">
+            <div class="kpi-label"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="memory-stick" class="lucide lucide-memory-stick icon-sm" style="color:var(--t-muted)"><path d="M6 19v-3"></path><path d="M10 19v-3"></path><path d="M14 19v-3"></path><path d="M18 19v-3"></path><path d="M8 11V9"></path><path d="M16 11V9"></path><path d="M12 11V9"></path><path d="M2 15h20"></path><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"></path></svg>Avg Memory</div>
+            <div class="kpi-value"><span class="val-num" id="val-fleet-avg-mem">61</span><span class="val-denom">%</span></div>
+            <div class="kpi-sub">P95: <span id="val-fleet-p95-mem">84</span>%</div>
+          </div>
+          <div class="mini-stat">
+            <div class="kpi-label"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="hard-drive" class="lucide lucide-hard-drive icon-sm" style="color:var(--t-muted)"><line x1="22" x2="2" y1="12" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="10" x2="10.01" y1="16" y2="16"></line></svg>Avg Disk</div>
+            <div class="kpi-value"><span class="val-num" id="val-fleet-avg-disk">54</span><span class="val-denom">%</span></div>
+            <div class="kpi-sub"><span id="val-fleet-disk-warning">All within threshold</span></div>
+          </div>
+        </div>
+
+        <div class="panel-body flush">
+          <div class="tbl-wrap">
+            <table class="tbl" id="table-server-health">
+              <thead><tr>
+                <th>Server</th>
+                <th>Status</th>
+                <th class="num">CPU</th>
+                <th class="num">Memory</th>
+                <th class="num">Disk</th>
+                <th class="num">Ping</th>
+                <th class="num">Loss</th>
+                <th class="num">Last Seen</th>
+              </tr></thead>
+              <tbody id="table-server-health-body">
+    <tr>
+      <td class="name-cell"><strong>nms-primary-01</strong><div class="sub">10.0.1.21</div></td>
+      <td><span class="chip ok"><span class="dot ok"></span>Healthy</span></td>
+      <td class="num"><div class="usage "><span class="num">38%</span><span class="bar"><i style="width:38%"></i></span></div></td>
+      <td class="num"><div class="usage "><span class="num">62%</span><span class="bar"><i style="width:62%"></i></span></div></td>
+      <td class="num"><div class="usage "><span class="num">41%</span><span class="bar"><i style="width:41%"></i></span></div></td>
+      <td class="num">1.2 ms</td>
+      <td class="num" style="color:var(--t-muted)">0%</td>
+      <td class="num" style="color:var(--t-muted)">5s</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>nms-primary-02</strong><div class="sub">10.0.1.22</div></td>
+      <td><span class="chip ok"><span class="dot ok"></span>Healthy</span></td>
+      <td class="num"><div class="usage "><span class="num">41%</span><span class="bar"><i style="width:41%"></i></span></div></td>
+      <td class="num"><div class="usage "><span class="num">64%</span><span class="bar"><i style="width:64%"></i></span></div></td>
+      <td class="num"><div class="usage "><span class="num">42%</span><span class="bar"><i style="width:42%"></i></span></div></td>
+      <td class="num">1.3 ms</td>
+      <td class="num" style="color:var(--t-muted)">0%</td>
+      <td class="num" style="color:var(--t-muted)">7s</td>
+    </tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: var(--gap)">
+        <div class="panel-head">
+          <div class="panel-title"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="network" class="lucide lucide-network"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg> Network Segments</div>
+          <span class="fresh-pill"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="radio" class="lucide lucide-radio icon-sm"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path><circle cx="12" cy="12" r="2"></circle><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path></svg> 12 subnets · live</span>
+        </div>
+        <div class="panel-body flush">
+          <div class="tbl-wrap" style="max-height: 280px">
+            <table class="tbl" id="table-subnet-health">
+              <thead><tr>
+                <th>Subnet</th>
+                <th class="num">Total</th>
+                <th class="num">Online</th>
+                <th class="num">Offline</th>
+                <th class="num">Health</th>
+              </tr></thead>
+              <tbody id="subnet-health-body"><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.0.1.0/24</strong></td>
+      <td class="num">248</td>
+      <td class="num" style="color:var(--s-ok)">243</td>
+      <td class="num" style="color:var(--s-crit)">5</td>
+      <td class="num"><span class="chip warn">97.9%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.0.2.0/24</strong></td>
+      <td class="num">180</td>
+      <td class="num" style="color:var(--s-ok)">178</td>
+      <td class="num" style="color:var(--s-crit)">2</td>
+      <td class="num"><span class="chip ok">98.9%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.0.10.0/24</strong></td>
+      <td class="num">96</td>
+      <td class="num" style="color:var(--s-ok)">94</td>
+      <td class="num" style="color:var(--s-crit)">2</td>
+      <td class="num"><span class="chip warn">97.9%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.0.20.0/24</strong></td>
+      <td class="num">64</td>
+      <td class="num" style="color:var(--s-ok)">61</td>
+      <td class="num" style="color:var(--s-crit)">3</td>
+      <td class="num"><span class="chip warn">95.3%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.20.1.0/24</strong></td>
+      <td class="num">32</td>
+      <td class="num" style="color:var(--s-ok)">28</td>
+      <td class="num" style="color:var(--s-crit)">4</td>
+      <td class="num"><span class="chip crit">87.5%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.20.50.0/24</strong></td>
+      <td class="num">128</td>
+      <td class="num" style="color:var(--s-ok)">120</td>
+      <td class="num" style="color:var(--s-crit)">8</td>
+      <td class="num"><span class="chip warn">93.7%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">172.16.0.0/24</strong></td>
+      <td class="num">54</td>
+      <td class="num" style="color:var(--s-ok)">54</td>
+      <td class="num" style="color:var(--t-muted)">0</td>
+      <td class="num"><span class="chip ok">100.0%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">172.16.1.0/24</strong></td>
+      <td class="num">42</td>
+      <td class="num" style="color:var(--s-ok)">40</td>
+      <td class="num" style="color:var(--s-crit)">2</td>
+      <td class="num"><span class="chip warn">95.2%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">192.168.1.0/24</strong></td>
+      <td class="num">200</td>
+      <td class="num" style="color:var(--s-ok)">199</td>
+      <td class="num" style="color:var(--s-crit)">1</td>
+      <td class="num"><span class="chip ok">99.5%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">192.168.10.0/24</strong></td>
+      <td class="num">64</td>
+      <td class="num" style="color:var(--s-ok)">59</td>
+      <td class="num" style="color:var(--s-crit)">5</td>
+      <td class="num"><span class="chip crit">92.1%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">172.17.5.0/28</strong></td>
+      <td class="num">14</td>
+      <td class="num" style="color:var(--s-ok)">14</td>
+      <td class="num" style="color:var(--t-muted)">0</td>
+      <td class="num"><span class="chip ok">100.0%</span></td>
+    </tr><tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">10.99.0.0/24</strong></td>
+      <td class="num">96</td>
+      <td class="num" style="color:var(--s-ok)">92</td>
+      <td class="num" style="color:var(--s-crit)">4</td>
+      <td class="num"><span class="chip warn">95.8%</span></td>
+    </tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: INTELLIGENCE + ALERTS -->
+    <div>
+      <div class="panel" id="device-breakdown">
+        <div class="panel-head">
+          <div class="panel-title"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="activity" class="lucide lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg> Network Intelligence</div>
+          <div class="tabs">
+            <button class="active" data-target="tab-latency">Latency</button>
+            <button data-target="tab-loss">Loss</button>
+            <button data-target="tab-inventory-list">Inventory</button>
+          </div>
+        </div>
+        <div class="panel-body flush">
+          <div id="tab-latency" class="tab-content">
+            <div class="tbl-wrap" style="max-height:220px">
+              <table class="tbl">
+                <thead><tr>
+                  <th>Device</th>
+                  <th class="num">Avg / Max</th>
+                  <th class="num">Loss</th>
+                  <th class="num">Jitter</th>
+                </tr></thead>
+                <tbody id="table-top-latency-body">
+    <tr>
+      <td class="name-cell"><strong>edge-rtr-nyc-02</strong></td>
+      <td class="num">48 / <span style="color:var(--t-muted)">112 ms</span></td>
+      <td class="num" style="color:var(--s-crit)">1.2%</td>
+      <td class="num" style="color:var(--t-muted)">4.8 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>sw-core-02</strong></td>
+      <td class="num">4.2 / <span style="color:var(--t-muted)">22 ms</span></td>
+      <td class="num" style="color:var(--t-muted)">0.2%</td>
+      <td class="num" style="color:var(--t-muted)">1.1 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>app-web-01</strong></td>
+      <td class="num">2.4 / <span style="color:var(--t-muted)">8.1 ms</span></td>
+      <td class="num" style="color:var(--t-muted)">0%</td>
+      <td class="num" style="color:var(--t-muted)">0.3 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>storage-s3-gw</strong></td>
+      <td class="num">4.2 / <span style="color:var(--t-muted)">28 ms</span></td>
+      <td class="num" style="color:var(--s-crit)">1.2%</td>
+      <td class="num" style="color:var(--t-muted)">1.8 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>backup-node-01</strong></td>
+      <td class="num">3.8 / <span style="color:var(--t-muted)">19 ms</span></td>
+      <td class="num" style="color:var(--s-crit)">0.8%</td>
+      <td class="num" style="color:var(--t-muted)">1.4 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>ap-bldg-c-17</strong></td>
+      <td class="num">2.1 / <span style="color:var(--t-muted)">12 ms</span></td>
+      <td class="num" style="color:var(--t-muted)">0.4%</td>
+      <td class="num" style="color:var(--t-muted)">0.9 ms</td>
+    </tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="tab-loss" class="tab-content" style="display:none">
+            <div class="tbl-wrap" style="max-height:220px">
+              <table class="tbl">
+                <thead><tr>
+                  <th>Device</th>
+                  <th class="num">Loss Avg / Max</th>
+                  <th class="num">Latency</th>
+                  <th class="num">Jitter</th>
+                </tr></thead>
+                <tbody id="table-top-loss-body">
+    <tr>
+      <td class="name-cell"><strong>edge-rtr-nyc-02</strong></td>
+      <td class="num" style="color:var(--s-crit)">1.2% / 2.4%</td>
+      <td class="num">48 ms</td>
+      <td class="num" style="color:var(--t-muted)">4.8 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>storage-s3-gw</strong></td>
+      <td class="num" style="color:var(--s-crit)">1.2% / 2.4%</td>
+      <td class="num">4.2 ms</td>
+      <td class="num" style="color:var(--t-muted)">1.8 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>backup-node-01</strong></td>
+      <td class="num" style="color:var(--s-crit)">0.8% / 1.6%</td>
+      <td class="num">3.8 ms</td>
+      <td class="num" style="color:var(--t-muted)">1.4 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>ap-bldg-c-17</strong></td>
+      <td class="num" style="color:var(--t-muted)">0.4% / 0.8%</td>
+      <td class="num">2.1 ms</td>
+      <td class="num" style="color:var(--t-muted)">0.9 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>sw-core-02</strong></td>
+      <td class="num" style="color:var(--t-muted)">0.2% / 0.4%</td>
+      <td class="num">4.2 ms</td>
+      <td class="num" style="color:var(--t-muted)">1.1 ms</td>
+    </tr>
+    <tr>
+      <td class="name-cell"><strong>app-web-01</strong></td>
+      <td class="num" style="color:var(--t-muted)">0% / 0.0%</td>
+      <td class="num">2.4 ms</td>
+      <td class="num" style="color:var(--t-muted)">0.3 ms</td>
+    </tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="tab-inventory-list" class="tab-content" style="display:none">
+            <div class="donut-wrap">
+              <canvas id="chart-inventory" width="0" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;"></canvas>
+              <div class="donut-legend" id="inventory-legend">
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#f59e0b"></span>Routers</span>
+      <span class="lv">24 · 7%</span>
+    </div>
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#6aa6ff"></span>Switches</span>
+      <span class="lv">86 · 24%</span>
+    </div>
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#22c88a"></span>Servers</span>
+      <span class="lv">26 · 7%</span>
+    </div>
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#a855f7"></span>Access Points</span>
+      <span class="lv">148 · 41%</span>
+    </div>
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#ef4a5d"></span>Firewalls</span>
+      <span class="lv">12 · 3%</span>
+    </div>
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:#64748b"></span>Other</span>
+      <span class="lv">62 · 17%</span>
+    </div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel alerts-container" style="margin-top: var(--gap)">
+        <div class="panel-head">
+          <div class="panel-title"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bell" class="lucide lucide-bell"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg> Alerts &amp; Intelligence</div>
+          <span class="fresh-pill"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clock" class="lucide lucide-clock icon-sm"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Last Updated · <span id="alerts-last-updated">just now</span></span>
+        </div>
+
+        <div class="alerts-kpi-row">
+          <div class="alerts-kpi"><div class="kpi-label">Total</div><div class="kpi-value"><span class="val-num" id="val-alerts-total">24</span></div></div>
+          <div class="alerts-kpi crit"><div class="kpi-label">Critical</div><div class="kpi-value"><span class="val-num" id="val-alerts-critical">3</span></div></div>
+          <div class="alerts-kpi warn"><div class="kpi-label">Warning</div><div class="kpi-value"><span class="val-num" id="val-alerts-warning">13</span></div></div>
+          <div class="alerts-kpi info"><div class="kpi-label">Info</div><div class="kpi-value"><span class="val-num" id="val-alerts-info">8</span></div></div>
+        </div>
+
+        <div class="filters alerts-filters">
+          <select id="filter-severity-container">
+            <option value="all">All Severities</option>
+            <option value="Critical">Critical</option>
+            <option value="Warning">Warning</option>
+            <option value="Informational">Informational</option>
+          </select>
+          <select id="filter-scope-container">
+            <option value="all">All Types</option>
+            <option value="Network">Network</option>
+            <option value="Device">Device</option>
+            <option value="Server">Server</option>
+          </select>
+          <select id="filter-device-type-container">
+            <option value="all">All Device Types</option>
+            <option>Router</option><option>Switch</option><option>Server</option><option>AP</option>
+          </select>
+          <input id="filter-alert-device" placeholder="Search device or message…">
+        </div>
+
+        <div class="panel-body flush">
+          <div class="tbl-wrap" style="max-height: 500px">
+            <table class="tbl">
+              <thead><tr>
+                <th>Severity</th>
+                <th>Type</th>
+                <th>Device</th>
+                <th>Message</th>
+                <th class="num">Time</th>
+              </tr></thead>
+              <tbody id="table-alerts-body">
+    <tr class="alert-row crit">
+      <td><span class="chip crit">Critical</span></td>
+      <td style="color:var(--t-muted)">Server</td>
+      <td class="name-cell"><strong>storage-s3-gw</strong></td>
+      <td>Disk usage above 92% — cleanup required</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">34s</td>
+    </tr>
+    <tr class="alert-row crit">
+      <td><span class="chip crit">Critical</span></td>
+      <td style="color:var(--t-muted)">Network</td>
+      <td class="name-cell"><strong>edge-rtr-nyc-02</strong></td>
+      <td>BGP peer down · neighbor 10.255.3.1</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">1m 12s</td>
+    </tr>
+    <tr class="alert-row crit">
+      <td><span class="chip crit">Critical</span></td>
+      <td style="color:var(--t-muted)">Server</td>
+      <td class="name-cell"><strong>backup-node-01</strong></td>
+      <td>Backup job failed — 3 consecutive runs</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">4m</td>
+    </tr>
+    <tr class="alert-row warn">
+      <td><span class="chip warn">Warning</span></td>
+      <td style="color:var(--t-muted)">Server</td>
+      <td class="name-cell"><strong>app-web-01</strong></td>
+      <td>CPU sustained above 80% for 5 minutes</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">6m</td>
+    </tr>
+    <tr class="alert-row warn">
+      <td><span class="chip warn">Warning</span></td>
+      <td style="color:var(--t-muted)">Network</td>
+      <td class="name-cell"><strong>sw-core-02</strong></td>
+      <td>Interface Gi1/0/24 error rate spiking</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">11m</td>
+    </tr>
+    <tr class="alert-row warn">
+      <td><span class="chip warn">Warning</span></td>
+      <td style="color:var(--t-muted)">Device</td>
+      <td class="name-cell"><strong>cam-lobby-03</strong></td>
+      <td>Packet loss 2.4% over last 15 minutes</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">14m</td>
+    </tr>
+    <tr class="alert-row warn">
+      <td><span class="chip warn">Warning</span></td>
+      <td style="color:var(--t-muted)">Server</td>
+      <td class="name-cell"><strong>log-agg-01</strong></td>
+      <td>Memory 82% · GC pressure detected</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">22m</td>
+    </tr>
+    <tr class="alert-row info">
+      <td><span class="chip info">Info</span></td>
+      <td style="color:var(--t-muted)">Network</td>
+      <td class="name-cell"><strong>sw-dist-04</strong></td>
+      <td>Configuration change committed</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">38m</td>
+    </tr>
+    <tr class="alert-row info">
+      <td><span class="chip info">Info</span></td>
+      <td style="color:var(--t-muted)">Device</td>
+      <td class="name-cell"><strong>ap-bldg-c-17</strong></td>
+      <td>Firmware upgrade available</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">1h</td>
+    </tr>
+    <tr class="alert-row warn">
+      <td><span class="chip warn">Warning</span></td>
+      <td style="color:var(--t-muted)">Server</td>
+      <td class="name-cell"><strong>queue-kafka-01</strong></td>
+      <td>Consumer lag exceeds 10,000 messages</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">1h 12m</td>
+    </tr>
+    <tr class="alert-row info">
+      <td><span class="chip info">Info</span></td>
+      <td style="color:var(--t-muted)">Network</td>
+      <td class="name-cell"><strong>10.0.20.0/24</strong></td>
+      <td>New device discovered · fingerprint pending</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">1h 34m</td>
+    </tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="fleet-alerts-bar" style="display:none"></div>
+</div>
+
+<script>
+/* ============================================================
+   MOCK STATE
+   ============================================================ */
+const RANGES = {
+  '24h': {
+    devicesOnline: 342, devicesTotal:358, healthy:328, maint:4, offline:8,
+    availability: 99.62, critical:3, warning:13, info:8, total:24,
+    avgCpu:42, p95Cpu:71, avgMem:61, p95Mem:84, avgDisk:54,
+    fleetHealth:100.0, fleetHealthy:2, fleetTotal:2,
+  },
+  '7d': {
+    devicesOnline: 344, devicesTotal:358, healthy:331, maint:3, offline:6,
+    availability: 99.74, critical:11, warning:48, info:27, total:86,
+    avgCpu:46, p95Cpu:78, avgMem:63, p95Mem:87, avgDisk:55,
+    fleetHealth:100.0, fleetHealthy:2, fleetTotal:2,
+  },
+  '30d': {
+    devicesOnline: 340, devicesTotal:358, healthy:322, maint:5, offline:11,
+    availability: 99.41, critical:34, warning:187, info:92, total:313,
+    avgCpu:48, p95Cpu:82, avgMem:64, p95Mem:89, avgDisk:57,
+    fleetHealth:98.8, fleetHealthy:2, fleetTotal:2,
+  }
+};
+let currentRange = '24h';
+
+/* ==== tween ==== */
+function tweenNumber(el, to, opts = {}){
+  if(!el) return;
+  const duration = opts.duration ?? 900;
+  const decimals = opts.decimals ?? 0;
+  const from = parseFloat(el.textContent.replace(/,/g,'')) || 0;
+  const start = performance.now();
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  function step(now){
+    const t = Math.min(1, (now - start) / duration);
+    const v = from + (to - from) * ease(t);
+    el.textContent = decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString();
+    if(t < 1) requestAnimationFrame(step);
+    else el.textContent = decimals ? to.toFixed(decimals) : Math.round(to).toLocaleString();
+  }
+  requestAnimationFrame(step);
+  el.classList.remove('val-pop'); void el.offsetWidth; el.classList.add('val-pop');
+}
+
+/* ==== sparks ==== */
+function genSeries(n, base, variance){
+  const out = []; let v = base;
+  for(let i=0;i<n;i++){
+    v += (Math.random()-0.5) * variance;
+    out.push(Math.max(0, v));
+  }
+  return out;
+}
+function drawSpark(canvas, data, color){
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if(!w || !h) return;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = (max-min) || 1;
+  const pad = 2;
+
+  ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x = (i/(data.length-1))*w;
+    const y = pad + (1 - (v-min)/range)*(h-pad*2);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, color.replace('1)','0.22)'));
+  grad.addColorStop(1, color.replace('1)','0)'));
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x = (i/(data.length-1))*w;
+    const y = pad + (1 - (v-min)/range)*(h-pad*2);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  const lastX = w;
+  const lastY = pad + (1-(data[data.length-1]-min)/range)*(h-pad*2);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(lastX-2, lastY, 2, 0, Math.PI*2); ctx.fill();
+}
+
+const ACCENT_RGB = {
+  amber:'rgba(245,158,11,1)',
+  teal:'rgba(34,211,180,1)',
+  indigo:'rgba(129,140,248,1)',
+};
+function accentColor(){
+  const a = document.documentElement.getAttribute('data-accent') || 'amber';
+  return ACCENT_RGB[a];
+}
+
+function renderAllSparks(){
+  const defs = {
+    online:  { base: 340, var: 3, color: 'rgba(106,166,255,1)' },
+    healthy: { base: 326, var: 2, color: 'rgba(34,200,138,1)' },
+    maint:   { base: 4,   var: 0.6, color: 'rgba(245,181,60,1)' },
+    offline: { base: 9,   var: 1.3, color: 'rgba(239,74,93,1)' }
+  };
+  document.querySelectorAll('canvas.spark[data-spark]').forEach(c=>{
+    const d = defs[c.dataset.spark]; if(!d) return;
+    c.__data = genSeries(28, d.base, d.var);
+    c.__color = d.color;
+    drawSpark(c, c.__data, d.color);
+  });
+  const av = document.getElementById('chart-availability-spark');
+  if(av){
+    av.__data = genSeries(32, 99.5, 0.3).map(v=>Math.min(100,v));
+    av.__color = accentColor();
+    drawSpark(av, av.__data, av.__color);
+  }
+}
+
+/* ==== charts ==== */
+const charts = {};
+function renderInventoryDonut(){
+  const el = document.getElementById('chart-inventory');
+  if(!el) return;
+  if(charts.inv) charts.inv.destroy();
+  const data = [
+    { label:'Routers', value:24, color:'#f59e0b' },
+    { label:'Switches', value:86, color:'#6aa6ff' },
+    { label:'Servers', value:26, color:'#22c88a' },
+    { label:'Access Points', value:148, color:'#a855f7' },
+    { label:'Firewalls', value:12, color:'#ef4a5d' },
+    { label:'Other', value:62, color:'#64748b' }
+  ];
+  charts.inv = new Chart(el, {
+    type:'doughnut',
+    data:{ labels:data.map(d=>d.label), datasets:[{ data:data.map(d=>d.value), backgroundColor:data.map(d=>d.color), borderWidth:0, spacing:2 }]},
+    options:{ cutout:'72%', animation:{duration:700,easing:'easeOutCubic'}, plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false }
+  });
+  const legend = document.getElementById('inventory-legend');
+  const total = data.reduce((s,d)=>s+d.value,0);
+  legend.innerHTML = data.map(d=>`
+    <div class="li">
+      <span class="lk"><span class="sw" style="background:${d.color}"></span>${d.label}</span>
+      <span class="lv">${d.value} · ${Math.round(d.value/total*100)}%</span>
+    </div>`).join('');
+}
+
+/* ==== tables ==== */
+function usageCell(pct, warn=70, bad=85){
+  const cls = pct >= bad ? 'bad' : pct >= warn ? 'warn' : '';
+  return `<div class="usage ${cls}"><span class="num">${pct}%</span><span class="bar"><i style="width:${pct}%"></i></span></div>`;
+}
+
+function renderServerTable(){
+  const servers = [
+    { name:'nms-primary-01', ip:'10.0.1.21',  status:'ok',   cpu:38, mem:62, disk:41, ping:1.2, loss:0, seen:'5s' },
+    { name:'nms-primary-02', ip:'10.0.1.22', status:'ok',   cpu:41, mem:64, disk:42, ping:1.3, loss:0, seen:'7s' },
+  ];
+  const statusLabel = { ok:'Healthy', warn:'Warning', crit:'Critical', off:'Offline' };
+  document.getElementById('table-server-health-body').innerHTML = servers.map(s=>`
+    <tr>
+      <td class="name-cell"><strong>${s.name}</strong><div class="sub">${s.ip}</div></td>
+      <td><span class="chip ${s.status}"><span class="dot ${s.status==='ok'?'ok':s.status==='warn'?'warn':'bad'}"></span>${statusLabel[s.status]}</span></td>
+      <td class="num">${usageCell(s.cpu)}</td>
+      <td class="num">${usageCell(s.mem)}</td>
+      <td class="num">${usageCell(s.disk, 80, 92)}</td>
+      <td class="num">${s.ping} ms</td>
+      <td class="num" style="color:${s.loss>0?'var(--s-warn)':'var(--t-muted)'}">${s.loss}%</td>
+      <td class="num" style="color:var(--t-muted)">${s.seen}</td>
+    </tr>`).join('');
+}
+
+function renderSubnetTable(){
+  const subs = [
+    { cidr:'10.0.1.0/24', total:248, online:243, offline:5, health:97.9 },
+    { cidr:'10.0.2.0/24', total:180, online:178, offline:2, health:98.9 },
+    { cidr:'10.0.10.0/24', total:96, online:94, offline:2, health:97.9 },
+    { cidr:'10.0.20.0/24', total:64, online:61, offline:3, health:95.3 },
+    { cidr:'10.20.1.0/24', total:32, online:28, offline:4, health:87.5 },
+    { cidr:'10.20.50.0/24', total:128, online:120, offline:8, health:93.7 },
+    { cidr:'172.16.0.0/24', total:54, online:54, offline:0, health:100.0 },
+    { cidr:'172.16.1.0/24', total:42, online:40, offline:2, health:95.2 },
+    { cidr:'192.168.1.0/24', total:200, online:199, offline:1, health:99.5 },
+    { cidr:'192.168.10.0/24', total:64, online:59, offline:5, health:92.1 },
+    { cidr:'172.17.5.0/28', total:14, online:14, offline:0, health:100.0 },
+    { cidr:'10.99.0.0/24', total:96, online:92, offline:4, health:95.8 },
+  ];
+  document.getElementById('subnet-health-body').innerHTML = subs.map(s=>{
+    const cls = s.health >= 98 ? 'ok' : s.health >= 93 ? 'warn' : 'crit';
+    return `<tr class="subnet-row-clickable">
+      <td class="name-cell"><strong style="font-family:var(--mono); font-weight:500">${s.cidr}</strong></td>
+      <td class="num">${s.total}</td>
+      <td class="num" style="color:var(--s-ok)">${s.online}</td>
+      <td class="num" style="color:${s.offline>0?'var(--s-crit)':'var(--t-muted)'}">${s.offline}</td>
+      <td class="num"><span class="chip ${cls}">${s.health.toFixed(1)}%</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAlertsTable(){
+  const alerts = [
+    { sev:'crit', type:'Server', device:'storage-s3-gw', msg:'Disk usage above 92% — cleanup required', time:'34s' },
+    { sev:'crit', type:'Network', device:'edge-rtr-nyc-02', msg:'BGP peer down · neighbor 10.255.3.1', time:'1m 12s' },
+    { sev:'crit', type:'Server', device:'backup-node-01', msg:'Backup job failed — 3 consecutive runs', time:'4m' },
+    { sev:'warn', type:'Server', device:'app-web-01', msg:'CPU sustained above 80% for 5 minutes', time:'6m' },
+    { sev:'warn', type:'Network', device:'sw-core-02', msg:'Interface Gi1/0/24 error rate spiking', time:'11m' },
+    { sev:'warn', type:'Device', device:'cam-lobby-03', msg:'Packet loss 2.4% over last 15 minutes', time:'14m' },
+    { sev:'warn', type:'Server', device:'log-agg-01', msg:'Memory 82% · GC pressure detected', time:'22m' },
+    { sev:'info', type:'Network', device:'sw-dist-04', msg:'Configuration change committed', time:'38m' },
+    { sev:'info', type:'Device', device:'ap-bldg-c-17', msg:'Firmware upgrade available', time:'1h' },
+    { sev:'warn', type:'Server', device:'queue-kafka-01', msg:'Consumer lag exceeds 10,000 messages', time:'1h 12m' },
+    { sev:'info', type:'Network', device:'10.0.20.0/24', msg:'New device discovered · fingerprint pending', time:'1h 34m' },
+  ];
+  const label = { crit:'Critical', warn:'Warning', info:'Info' };
+  document.getElementById('table-alerts-body').innerHTML = alerts.map(a=>`
+    <tr class="alert-row ${a.sev}">
+      <td><span class="chip ${a.sev}">${label[a.sev]}</span></td>
+      <td style="color:var(--t-muted)">${a.type}</td>
+      <td class="name-cell"><strong>${a.device}</strong></td>
+      <td>${a.msg}</td>
+      <td class="num" style="color:var(--t-muted); white-space:nowrap">${a.time}</td>
+    </tr>`).join('');
+}
+
+function renderLatencyTable(){
+  const rows = [
+    { d:'edge-rtr-nyc-02', avg:48, max:112, loss:1.2, jitter:4.8 },
+    { d:'sw-core-02', avg:4.2, max:22, loss:0.2, jitter:1.1 },
+    { d:'app-web-01', avg:2.4, max:8.1, loss:0.0, jitter:0.3 },
+    { d:'storage-s3-gw', avg:4.2, max:28, loss:1.2, jitter:1.8 },
+    { d:'backup-node-01', avg:3.8, max:19, loss:0.8, jitter:1.4 },
+    { d:'ap-bldg-c-17', avg:2.1, max:12, loss:0.4, jitter:0.9 },
+  ];
+  document.getElementById('table-top-latency-body').innerHTML = rows.map(r=>`
+    <tr>
+      <td class="name-cell"><strong>${r.d}</strong></td>
+      <td class="num">${r.avg} / <span style="color:var(--t-muted)">${r.max} ms</span></td>
+      <td class="num" style="color:${r.loss>0.5?'var(--s-crit)':'var(--t-muted)'}">${r.loss}%</td>
+      <td class="num" style="color:var(--t-muted)">${r.jitter} ms</td>
+    </tr>`).join('');
+  const loss = rows.slice().sort((a,b)=>b.loss-a.loss);
+  document.getElementById('table-top-loss-body').innerHTML = loss.map(r=>`
+    <tr>
+      <td class="name-cell"><strong>${r.d}</strong></td>
+      <td class="num" style="color:${r.loss>0.5?'var(--s-crit)':'var(--t-muted)'}">${r.loss}% / ${(r.loss*2).toFixed(1)}%</td>
+      <td class="num">${r.avg} ms</td>
+      <td class="num" style="color:var(--t-muted)">${r.jitter} ms</td>
+    </tr>`).join('');
+}
+
+/* ==== range switch ==== */
+function applyRange(range){
+  currentRange = range;
+  document.body.classList.add('range-transitioning');
+  const seg = document.getElementById('time-range-container');
+  seg.dataset.value = range;
+  seg.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.value===range));
+  updateSegmentedPill();
+
+  setTimeout(()=>{
+    const d = RANGES[range];
+    tweenNumber(document.querySelector('#val-devices-online .anim-online'), d.devicesOnline);
+    tweenNumber(document.querySelector('#val-devices-online .anim-total'), d.devicesTotal);
+    tweenNumber(document.getElementById('val-devices-healthy'), d.healthy);
+    tweenNumber(document.getElementById('val-devices-maintenance'), d.maint);
+    tweenNumber(document.getElementById('val-devices-offline'), d.offline);
+    tweenNumber(document.getElementById('val-availability'), d.availability, {decimals:2});
+
+    tweenNumber(document.getElementById('val-alerts-total'), d.total);
+    tweenNumber(document.getElementById('val-alerts-critical'), d.critical);
+    tweenNumber(document.getElementById('val-alerts-warning'), d.warning);
+    tweenNumber(document.getElementById('val-alerts-info'), d.info);
+
+    tweenNumber(document.getElementById('val-fleet-avg-cpu'), d.avgCpu);
+    tweenNumber(document.getElementById('val-fleet-p95-cpu'), d.p95Cpu);
+    tweenNumber(document.getElementById('val-fleet-avg-mem'), d.avgMem);
+    tweenNumber(document.getElementById('val-fleet-p95-mem'), d.p95Mem);
+    tweenNumber(document.getElementById('val-fleet-avg-disk'), d.avgDisk);
+    tweenNumber(document.getElementById('val-fleet-health-percent'), d.fleetHealth, {decimals:1});
+    document.getElementById('val-fleet-health-counts').textContent = `${d.fleetHealthy} / ${d.fleetTotal} Servers Healthy`;
+
+    const pts = range==='24h' ? 28 : range==='7d' ? 42 : 60;
+    const defs = {
+      online:{base:d.devicesOnline,var:3, color:'rgba(106,166,255,1)'},
+      healthy:{base:d.healthy,var:2, color:'rgba(34,200,138,1)'},
+      maint:{base:d.maint,var:0.5, color:'rgba(245,181,60,1)'},
+      offline:{base:d.offline,var:1.2, color:'rgba(239,74,93,1)'}
+    };
+    document.querySelectorAll('canvas.spark[data-spark]').forEach(c=>{
+      const df = defs[c.dataset.spark]; if(!df) return;
+      c.__data = genSeries(pts, df.base, df.var);
+      c.__color = df.color;
+      drawSpark(c, c.__data, df.color);
+    });
+    const av = document.getElementById('chart-availability-spark');
+    if(av){
+      av.__data = genSeries(pts, d.availability, 0.3).map(v=>Math.min(100,v));
+      av.__color = accentColor();
+      drawSpark(av, av.__data, av.__color);
+    }
+  }, 180);
+
+  setTimeout(()=>document.body.classList.remove('range-transitioning'), 520);
+}
+
+function updateSegmentedPill(){
+  const seg = document.getElementById('time-range-container');
+  const active = seg.querySelector('button.active');
+  const pill = seg.querySelector('.pill');
+  if(!active || !pill) return;
+  const r = active.getBoundingClientRect();
+  const segR = seg.getBoundingClientRect();
+  pill.style.left = (r.left - segR.left) + 'px';
+  pill.style.width = r.width + 'px';
+}
+
+/* ==== live ==== */
+let liveInterval = null;
+function startLive(){
+  if(liveInterval) return;
+  liveInterval = setInterval(()=>{
+    document.querySelectorAll('canvas.spark[data-spark], #chart-availability-spark').forEach(c=>{
+      if(!c.__data) return;
+      const d = c.__data;
+      const last = d[d.length-1];
+      const v = c.id === 'chart-availability-spark' ? 0.08 : Math.max(0.8, last*0.02);
+      const next = last + (Math.random()-0.5)*v;
+      d.shift(); d.push(Math.max(0, c.id === 'chart-availability-spark' ? Math.min(100, next) : next));
+      drawSpark(c, d, c.__color);
+    });
+    if(Math.random()<0.25){
+      const el = document.querySelector('#val-devices-online .anim-online');
+      if(el){
+        const v = parseInt(el.textContent,10) + (Math.random()<0.5?-1:1);
+        tweenNumber(el, v, {duration:500});
+      }
+    }
+    if(Math.random()<0.15){
+      const el = document.getElementById('val-fleet-avg-cpu');
+      if(el){
+        const v = parseInt(el.textContent,10) + (Math.random()<0.5?-2:2);
+        tweenNumber(el, Math.max(5, Math.min(95, v)), {duration:500});
+      }
+    }
+    document.getElementById('last-updated-text').textContent = 'Just now';
+    document.getElementById('alerts-last-updated').textContent = 'just now';
+  }, 2000);
+}
+function stopLive(){ clearInterval(liveInterval); liveInterval = null; }
+
+/* ==== tweaks ==== */
+function initTweaks(){
+  const toggle = document.getElementById('tweaks-toggle');
+  const panel = document.getElementById('tweaks-panel');
+  const close = document.getElementById('tweaks-close');
+  toggle.addEventListener('click', ()=> panel.classList.toggle('show'));
+  close.addEventListener('click', ()=> panel.classList.remove('show'));
+  panel.querySelectorAll('[data-twk]').forEach(grp=>{
+    const key = grp.dataset.twk;
+    grp.addEventListener('click', e=>{
+      const btn = e.target.closest('button[data-v]');
+      if(!btn) return;
+      grp.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const v = btn.dataset.v;
+      if(key==='layout'){
+        document.body.dataset.layout = v;
+        requestAnimationFrame(()=>{ renderAllSparks(); updateSegmentedPill(); });
+      }
+      if(key==='density') document.body.dataset.density = v;
+      if(key==='accent'){
+        document.documentElement.setAttribute('data-accent', v);
+        renderAllSparks();
+      }
+      if(key==='live') v==='on' ? startLive() : stopLive();
+    });
+  });
+}
+
+/* ==== tabs ==== */
+function initTabs(){
+  document.querySelectorAll('.tabs button[data-target]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const root = b.closest('.panel');
+      root.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      root.querySelectorAll('.tab-content').forEach(tc=>{
+        tc.style.display = tc.id === b.dataset.target ? '' : 'none';
+      });
+    });
+  });
+}
+
+/* ==== init ==== */
+function init(){
+  renderServerTable();
+  renderSubnetTable();
+  renderAlertsTable();
+  renderLatencyTable();
+  renderInventoryDonut();
+  renderAllSparks();
+  initTweaks();
+  initTabs();
+
+  document.getElementById('time-range-container').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    applyRange(b.dataset.value);
+  });
+  requestAnimationFrame(updateSegmentedPill);
+
+  document.getElementById('btn-refresh').addEventListener('click', e=>{
+    const btn = e.currentTarget;
+    btn.classList.remove('rotating'); void btn.offsetWidth; btn.classList.add('rotating');
+    applyRange(currentRange);
+  });
+
+  startLive();
+
+  if(window.lucide){ lucide.createIcons(); }
+
+  let rsz;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(rsz);
+    rsz = setTimeout(()=>{ updateSegmentedPill(); renderAllSparks(); }, 120);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+
+
+</body></html>

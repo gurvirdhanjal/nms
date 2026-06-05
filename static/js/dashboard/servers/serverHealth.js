@@ -222,9 +222,17 @@ function renderActiveIssues(issues = []) {
     if (!container) return;
 
     if (!issues.length) {
-        container.innerHTML = '<div class="fleet-empty-state">No active server incidents.</div>';
+        const emptyHtml = '<div class="fleet-empty-state">No active server incidents.</div>';
+        if (container.dataset.renderKey !== 'empty') {
+            container.innerHTML = emptyHtml;
+            container.dataset.renderKey = 'empty';
+        }
         return;
     }
+
+    const renderKey = issues.map((i) => `${i.device_id}:${i.severity}:${i.formatted_value}`).join('|');
+    if (container.dataset.renderKey === renderKey) return;
+    container.dataset.renderKey = renderKey;
 
     container.innerHTML = issues.map((issue) => {
         const severityClass = normalizeSeverityClass(issue.severity);

@@ -91,152 +91,152 @@
         /* ── Compatibility aliases: restores removed tokens + defines missing --s-* tokens ── */
         :root {
             /* Text scale (restored) */
-            --ui-text-primary:     var(--ui-text);
-            --ui-text-secondary:   var(--ui-text-muted);
-            --ui-text-dim:         #71717A;
-            --ui-text-soft:        rgba(245, 247, 250, 0.88);
+            --ui-text-primary: var(--ui-text);
+            --ui-text-secondary: var(--ui-text-muted);
+            --ui-text-dim: #71717A;
+            --ui-text-soft: rgba(245, 247, 250, 0.88);
 
             /* Typography (restored) */
-            --ui-font-sans:        'IBM Plex Sans', system-ui, sans-serif;
-            --ui-font-mono:        'IBM Plex Mono', 'Courier New', monospace;
-            --ui-font-display:     'Rajdhani', 'IBM Plex Sans', sans-serif;
-            --ui-font-size-xs:     0.70rem;
-            --ui-font-size-sm:     0.80rem;
-            --ui-font-size-base:   0.90rem;
-            --ui-font-size-lg:     1.10rem;
+            --ui-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+            --ui-font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+            --ui-font-display: 'Rajdhani', 'IBM Plex Sans', sans-serif;
+            --ui-font-size-xs: 0.70rem;
+            --ui-font-size-sm: 0.80rem;
+            --ui-font-size-base: 0.90rem;
+            --ui-font-size-lg: 1.10rem;
 
             /* Interaction states (restored) */
-            --ui-surface-hover:    rgba(255, 255, 255, 0.05);
-            --ui-surface-active:   rgba(255, 255, 255, 0.08);
+            --ui-surface-hover: rgba(255, 255, 255, 0.05);
+            --ui-surface-active: rgba(255, 255, 255, 0.08);
             --ui-surface-elevated: var(--ui-surface-3);
-            --ui-hover:            rgba(255, 255, 255, 0.05);
-            --ui-active:           rgba(255, 255, 255, 0.08);
-            --ui-focus:            rgba(20, 184, 166, 0.20);
-            --ui-disabled:         rgba(255, 255, 255, 0.25);
-            --ui-overlay:          rgba(0, 0, 0, 0.60);
-            --ui-skeleton:         rgba(255, 255, 255, 0.06);
-            --ui-border-accent:    rgba(20, 184, 166, 0.28);
-            --ui-shadow-modal:     0 25px 50px -12px rgba(0, 0, 0, 0.70);
+            --ui-hover: rgba(255, 255, 255, 0.05);
+            --ui-active: rgba(255, 255, 255, 0.08);
+            --ui-focus: rgba(20, 184, 166, 0.20);
+            --ui-disabled: rgba(255, 255, 255, 0.25);
+            --ui-overlay: rgba(0, 0, 0, 0.60);
+            --ui-skeleton: rgba(255, 255, 255, 0.06);
+            --ui-border-accent: rgba(20, 184, 166, 0.28);
+            --ui-shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.70);
 
             /* Transitions (restored) */
-            --ui-transition-fast:  120ms ease;
-            --ui-transition-base:  180ms ease;
+            --ui-transition-fast: 120ms ease;
+            --ui-transition-base: 180ms ease;
 
             /* Status tokens — canonical (restored from git HEAD) */
-            --status-critical:     #EF4444;
-            --status-warning:      #F59E0B;
-            --status-success:      #10B981;
-            --status-offline:      #6c757d;
-            --status-degraded:     #fd7e14;
-            --status-unknown:      #adb5bd;
-            --status-critical-bg:  rgba(239, 68, 68, 0.12);
-            --status-critical-bd:  rgba(239, 68, 68, 0.30);
-            --status-warning-bg:   rgba(245, 158, 11, 0.10);
-            --status-warning-bd:   rgba(245, 158, 11, 0.28);
-            --status-success-bg:   rgba(16, 185, 129, 0.10);
-            --status-success-bd:   rgba(16, 185, 129, 0.24);
-            --status-offline-bg:   rgba(108, 117, 125, 0.12);
-            --status-offline-bd:   rgba(108, 117, 125, 0.28);
+            --status-critical: #EF4444;
+            --status-warning: #F59E0B;
+            --status-success: #10B981;
+            --status-offline: #6c757d;
+            --status-degraded: #fd7e14;
+            --status-unknown: #adb5bd;
+            --status-critical-bg: rgba(239, 68, 68, 0.12);
+            --status-critical-bd: rgba(239, 68, 68, 0.30);
+            --status-warning-bg: rgba(245, 158, 11, 0.10);
+            --status-warning-bd: rgba(245, 158, 11, 0.28);
+            --status-success-bg: rgba(16, 185, 129, 0.10);
+            --status-success-bd: rgba(16, 185, 129, 0.24);
+            --status-offline-bg: rgba(108, 117, 125, 0.12);
+            --status-offline-bd: rgba(108, 117, 125, 0.28);
 
             /* --s-* status tokens (new names, never previously defined — now defined) */
-            --s-healthy:           #10B981;
-            --s-healthy-bg:        rgba(16, 185, 129, 0.10);
-            --s-healthy-bd:        rgba(16, 185, 129, 0.24);
-            --s-critical:          #EF4444;
-            --s-critical-bg:       rgba(239, 68, 68, 0.12);
-            --s-critical-bd:       rgba(239, 68, 68, 0.30);
-            --s-warning:           #F59E0B;
-            --s-warn:              #F59E0B;
-            --s-warning-bg:        rgba(245, 158, 11, 0.10);
-            --s-warning-bd:        rgba(245, 158, 11, 0.28);
+            --s-healthy: #10B981;
+            --s-healthy-bg: rgba(16, 185, 129, 0.10);
+            --s-healthy-bd: rgba(16, 185, 129, 0.24);
+            --s-critical: #EF4444;
+            --s-critical-bg: rgba(239, 68, 68, 0.12);
+            --s-critical-bd: rgba(239, 68, 68, 0.30);
+            --s-warning: #F59E0B;
+            --s-warn: #F59E0B;
+            --s-warning-bg: rgba(245, 158, 11, 0.10);
+            --s-warning-bd: rgba(245, 158, 11, 0.28);
 
             /* Toast tokens (restored) */
-            --ui-toast-info-bg:          rgba(8, 22, 34, 0.97);
-            --ui-toast-info-bd:          rgba(56, 189, 248, 0.22);
-            --ui-toast-info-text:        #38bdf8;
-            --ui-toast-info-color:       #cdefff;
-            --ui-toast-success-bg:       rgba(8, 28, 22, 0.97);
-            --ui-toast-success-bd:       rgba(16, 185, 129, 0.22);
-            --ui-toast-success-text:     #10B981;
-            --ui-toast-success-color:    #d9fff0;
-            --ui-toast-warning-bg:       rgba(30, 22, 8, 0.97);
-            --ui-toast-warning-bd:       rgba(245, 158, 11, 0.24);
-            --ui-toast-warning-text:     #f59e0b;
-            --ui-toast-warning-color:    #fff0cc;
-            --ui-toast-danger-bg:        rgba(32, 12, 18, 0.97);
-            --ui-toast-danger-bd:        rgba(244, 63, 94, 0.24);
-            --ui-toast-danger-text:      #f43f5e;
-            --ui-toast-danger-color:     #ffd9e3;
+            --ui-toast-info-bg: rgba(8, 22, 34, 0.97);
+            --ui-toast-info-bd: rgba(56, 189, 248, 0.22);
+            --ui-toast-info-text: #38bdf8;
+            --ui-toast-info-color: #cdefff;
+            --ui-toast-success-bg: rgba(8, 28, 22, 0.97);
+            --ui-toast-success-bd: rgba(16, 185, 129, 0.22);
+            --ui-toast-success-text: #10B981;
+            --ui-toast-success-color: #d9fff0;
+            --ui-toast-warning-bg: rgba(30, 22, 8, 0.97);
+            --ui-toast-warning-bd: rgba(245, 158, 11, 0.24);
+            --ui-toast-warning-text: #f59e0b;
+            --ui-toast-warning-color: #fff0cc;
+            --ui-toast-danger-bg: rgba(32, 12, 18, 0.97);
+            --ui-toast-danger-bd: rgba(244, 63, 94, 0.24);
+            --ui-toast-danger-text: #f43f5e;
+            --ui-toast-danger-color: #ffd9e3;
 
             /* Bootstrap 5 variable bridges (restored) */
-            --bs-body-bg:                var(--ui-bg);
-            --bs-body-color:             var(--ui-text);
-            --bs-body-color-rgb:         250, 250, 250;
-            --bs-secondary-color:        var(--ui-text-secondary);
-            --bs-border-color:           #3F3F46;
+            --bs-body-bg: var(--ui-bg);
+            --bs-body-color: var(--ui-text);
+            --bs-body-color-rgb: 250, 250, 250;
+            --bs-secondary-color: var(--ui-text-secondary);
+            --bs-border-color: #3F3F46;
             --bs-border-color-translucent: rgba(63, 63, 70, 0.70);
-            --bs-card-bg:                var(--ui-surface-2);
-            --bs-card-border-color:      #3F3F46;
-            --bs-card-cap-bg:            rgba(255, 255, 255, 0.03);
-            --bs-secondary-bg:           var(--ui-surface-3);
-            --bs-tertiary-bg:            var(--ui-surface-4);
-            --bs-emphasis-color:         var(--ui-text);
-            --bs-dropdown-bg:            var(--ui-surface-3);
-            --bs-dropdown-border-color:  #3F3F46;
-            --bs-dropdown-link-color:    var(--ui-text-secondary);
+            --bs-card-bg: var(--ui-surface-2);
+            --bs-card-border-color: #3F3F46;
+            --bs-card-cap-bg: rgba(255, 255, 255, 0.03);
+            --bs-secondary-bg: var(--ui-surface-3);
+            --bs-tertiary-bg: var(--ui-surface-4);
+            --bs-emphasis-color: var(--ui-text);
+            --bs-dropdown-bg: var(--ui-surface-3);
+            --bs-dropdown-border-color: #3F3F46;
+            --bs-dropdown-link-color: var(--ui-text-secondary);
             --bs-dropdown-link-hover-bg: rgba(255, 255, 255, 0.06);
             --bs-dropdown-link-hover-color: var(--ui-text);
-            --bs-dropdown-divider-bg:    rgba(63, 63, 70, 0.60);
-            --bs-modal-bg:               var(--ui-surface-2);
-            --bs-modal-border-color:     #3F3F46;
-            --bs-modal-header-bg:        var(--ui-surface-3);
-            --bs-nav-link-color:         var(--ui-text-secondary);
-            --bs-nav-link-hover-color:   var(--ui-text);
-            --bs-navbar-color:           var(--ui-text-secondary);
-            --bs-navbar-hover-color:     var(--ui-text);
-            --bs-navbar-active-color:    var(--ui-text);
-            --bs-navbar-bg:              var(--ui-surface-1);
-            --bs-table-color:            var(--ui-text);
-            --bs-table-bg:               transparent;
-            --bs-table-border-color:     rgba(63, 63, 70, 0.50);
-            --bs-table-striped-bg:       rgba(255, 255, 255, 0.02);
-            --bs-table-hover-bg:         rgba(255, 255, 255, 0.04);
-            --bs-input-bg:               var(--ui-surface-3);
-            --bs-input-border-color:     #52525B;
-            --bs-input-color:            var(--ui-text);
+            --bs-dropdown-divider-bg: rgba(63, 63, 70, 0.60);
+            --bs-modal-bg: var(--ui-surface-2);
+            --bs-modal-border-color: #3F3F46;
+            --bs-modal-header-bg: var(--ui-surface-3);
+            --bs-nav-link-color: var(--ui-text-secondary);
+            --bs-nav-link-hover-color: var(--ui-text);
+            --bs-navbar-color: var(--ui-text-secondary);
+            --bs-navbar-hover-color: var(--ui-text);
+            --bs-navbar-active-color: var(--ui-text);
+            --bs-navbar-bg: var(--ui-surface-1);
+            --bs-table-color: var(--ui-text);
+            --bs-table-bg: transparent;
+            --bs-table-border-color: rgba(63, 63, 70, 0.50);
+            --bs-table-striped-bg: rgba(255, 255, 255, 0.02);
+            --bs-table-hover-bg: rgba(255, 255, 255, 0.04);
+            --bs-input-bg: var(--ui-surface-3);
+            --bs-input-border-color: #52525B;
+            --bs-input-color: var(--ui-text);
             --bs-input-placeholder-color: var(--ui-text-dim);
-            --bs-form-select-bg:         var(--ui-surface-3);
-            --bs-form-check-bg:          var(--ui-surface-3);
-            --bs-list-group-bg:          var(--ui-surface-2);
+            --bs-form-select-bg: var(--ui-surface-3);
+            --bs-form-check-bg: var(--ui-surface-3);
+            --bs-list-group-bg: var(--ui-surface-2);
             --bs-list-group-border-color: #3F3F46;
-            --bs-list-group-color:       var(--ui-text);
-            --bs-list-group-hover-bg:    rgba(255, 255, 255, 0.04);
-            --bs-pagination-bg:          var(--ui-surface-2);
+            --bs-list-group-color: var(--ui-text);
+            --bs-list-group-hover-bg: rgba(255, 255, 255, 0.04);
+            --bs-pagination-bg: var(--ui-surface-2);
             --bs-pagination-border-color: #3F3F46;
-            --bs-pagination-color:       var(--ui-text-secondary);
-            --bs-pagination-hover-bg:    var(--ui-surface-3);
+            --bs-pagination-color: var(--ui-text-secondary);
+            --bs-pagination-hover-bg: var(--ui-surface-3);
             --bs-pagination-hover-color: var(--ui-text);
-            --bs-pagination-active-bg:   var(--ui-accent);
+            --bs-pagination-active-bg: var(--ui-accent);
             --bs-pagination-active-border-color: var(--ui-accent);
-            --bs-badge-color:            #000000;
-            --bs-tooltip-bg:             var(--ui-surface-4);
-            --bs-tooltip-color:          var(--ui-text);
-            --bs-popover-bg:             var(--ui-surface-3);
-            --bs-popover-border-color:   #3F3F46;
-            --bs-popover-header-bg:      var(--ui-surface-4);
-            --bs-popover-body-color:     var(--ui-text-secondary);
+            --bs-badge-color: #000000;
+            --bs-tooltip-bg: var(--ui-surface-4);
+            --bs-tooltip-color: var(--ui-text);
+            --bs-popover-bg: var(--ui-surface-3);
+            --bs-popover-border-color: #3F3F46;
+            --bs-popover-header-bg: var(--ui-surface-4);
+            --bs-popover-body-color: var(--ui-text-secondary);
 
             /* Button system tokens (restored) */
-            --ui-label-color:         #A1A1AA;
-            --btn-primary-bg:         var(--ui-accent);
-            --btn-primary-text:       #000000;
-            --btn-primary-hover-bg:   var(--ui-accent-strong);
-            --btn-secondary-bg:       transparent;
-            --btn-secondary-border:   var(--ui-border);
-            --btn-secondary-text:     var(--ui-text);
+            --ui-label-color: #A1A1AA;
+            --btn-primary-bg: var(--ui-accent);
+            --btn-primary-text: #000000;
+            --btn-primary-hover-bg: var(--ui-accent-strong);
+            --btn-secondary-bg: transparent;
+            --btn-secondary-border: var(--ui-border);
+            --btn-secondary-text: var(--ui-text);
             --btn-secondary-hover-bg: rgba(255, 255, 255, 0.06);
-            --btn-destructive-bg:     var(--status-critical);
-            --btn-destructive-text:   #FFFFFF;
+            --btn-destructive-bg: var(--status-critical);
+            --btn-destructive-text: #FFFFFF;
             --btn-destructive-hover-bg: #DC2626;
         }
 
@@ -328,7 +328,7 @@
         .app-layout {
             display: grid;
             grid-template-columns: 60px minmax(0, 1fr);
-            grid-template-rows: 52px minmax(0, 1fr);
+            grid-template-rows: 42px minmax(0, 1fr);
             grid-template-areas:
                 "header header"
                 "sidebar content";
@@ -352,15 +352,15 @@
         .app-header {
             grid-area: header;
             grid-column: 1 / -1;
-            height: 52px;
-            min-height: 52px;
+            height: 42px;
+            min-height: 42px;
             background: linear-gradient(180deg, var(--ui-surface-2) 0%, var(--ui-surface-1) 100%);
             border-bottom: 1px solid var(--ui-border-strong);
             box-shadow: var(--ui-shadow);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 16px;
+            padding: 0 12px;
             position: relative;
             z-index: 100;
         }
@@ -436,18 +436,19 @@
         .header-right {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 8px;
         }
 
         .tactical-clock {
             background: var(--ui-accent-soft);
             border: 1px solid var(--ui-border-strong);
-            border-radius: 6px;
-            padding: 4px 10px;
+            border-radius: 5px;
+            height: 38px;
+            padding: 1px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            line-height: 1;
+            gap: 4px;
+            line-height: 0.5;
             font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
             letter-spacing: 0.5px;
@@ -469,9 +470,9 @@
             background: var(--ui-accent-soft);
             border: 1px solid var(--ui-border-strong);
             color: var(--ui-text);
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            border-radius: 5px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -489,11 +490,12 @@
             background: var(--ui-accent-soft);
             border: 1px solid var(--ui-border-strong);
             color: var(--ui-text);
-            padding: 4px 10px;
-            border-radius: 6px;
+            height: 28px;
+            padding: 0 9px;
+            border-radius: 5px;
             font-family: 'Rajdhani', sans-serif;
             font-weight: 600;
-            font-size: 0.8rem;
+            font-size: 0.77rem;
             letter-spacing: 0.5px;
             cursor: pointer;
             display: flex;
@@ -805,7 +807,7 @@
         .sidebar-backdrop {
             display: none;
             position: fixed;
-            top: 52px;
+            top: 42px;
             left: 0;
             right: 0;
             bottom: 0;
@@ -1761,8 +1763,8 @@
             .app-sidebar {
                 position: fixed;
                 left: -240px;
-                top: 52px;
-                height: calc(100% - 52px);
+                top: 42px;
+                height: calc(100% - 42px);
                 z-index: 1000;
                 box-shadow: var(--ui-shadow-depth);
                 transform: none;
@@ -1877,7 +1879,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 
-<body class="tactical-theme">
+<body class="tactical-theme" data-layout="desk">
     <div class="app-layout {% if not session.logged_in %}no-sidebar{% endif %}">
 
         <!-- ============================================================
@@ -1892,10 +1894,16 @@
                 {% endif %}
 
                 <a class="header-brand" href="{{ url_for('monitoring_bp.dashboard') }}">
-                    <i data-lucide="activity"></i><span>NMS</span>
+                    <i data-lucide="activity"></i>
+                    {% if request.endpoint == 'monitoring_bp.dashboard' %}
+                    <span>NMS</span><span class="header-brand-context">Network Operations Center</span>
+                    {% else %}
+                    <span>NMS</span>
+                    {% endif %}
                 </a>
             </div>
             <div class="header-right">
+                {% block header_actions %}{% endblock %}
                 <button class="theme-toggle-btn" id="theme-toggle-btn" type="button" aria-label="Toggle theme"
                     title="Switch theme">
                     <i class="fas fa-moon" id="theme-toggle-icon"></i>
@@ -1905,10 +1913,10 @@
                     <div id="clock-time"></div>
                 </div>
                 <script>
-                    (function(){
+                    (function () {
                         var d = new Date();
-                        document.getElementById('clock-date').textContent = d.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
-                        document.getElementById('clock-time').textContent = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'});
+                        document.getElementById('clock-date').textContent = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
+                        document.getElementById('clock-time').textContent = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
                     })();
                 </script>
                 {% if session.logged_in %}
@@ -2126,6 +2134,7 @@
         </div>
     </div>
 
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>

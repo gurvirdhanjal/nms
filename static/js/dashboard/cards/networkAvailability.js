@@ -36,7 +36,7 @@ export function renderNetworkAvailability(data, trendsData) {
 
         // Color
         if (valueEl) {
-            valueEl.className = `metric-value text-${severity}`;
+            valueEl.className = `stat-value metric-value text-${severity}`;
         }
 
         const breakdownVal = document.getElementById('val-availability-breakdown');

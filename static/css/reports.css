@@ -2192,3 +2192,8 @@ html[data-theme="light"] .skel-stat-card {
     .skel-exec-row.three-col,
     .skel-stat-cards { grid-template-columns: repeat(2, 1fr); }
 }
+
+@keyframes inspectorPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.35; transform: scale(0.75); }
+}
