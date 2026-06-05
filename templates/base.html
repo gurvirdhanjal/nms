@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap & Icons -->
@@ -1875,6 +1875,19 @@
             color: var(--ui-text) !important;
             border-color: var(--ui-border-strong) !important;
         }
+
+        .sidebar-badge {
+            background: #ef4444;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            border-radius: 99px;
+            padding: 1px 5px;
+            margin-left: auto;
+            min-width: 1.1rem;
+            text-align: center;
+            line-height: 1.4;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -1973,6 +1986,12 @@
                         <i data-lucide="building"></i><span class="link-text">Sites</span>
                     </a>
                     {% endif %}
+                    <a href="{{ url_for('alerts.alerts_page') }}"
+                        class="sidebar-link {% if request.endpoint and 'alerts' in request.endpoint %}active{% endif %}">
+                        <i data-lucide="bell"></i>
+                        <span class="link-text">Alerts</span>
+                        <span id="sidebar-alert-badge" class="sidebar-badge" style="display:none"></span>
+                    </a>
                     {% if rbac_context.capabilities.departments %}
                     <a href="{{ url_for('departments.departments_list_page') }}"
                         class="sidebar-link {% if request.endpoint and 'departments' in request.endpoint %}active{% endif %}">
@@ -2396,6 +2415,29 @@
     <!-- ============================================================
          HEARTBEAT REMOVED (Reverted)
          ============================================================ -->
+    <script>
+(function () {
+  function refreshAlertBadge() {
+    fetch('/api/alerts?status=active&limit=1', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var badge = document.getElementById('sidebar-alert-badge');
+        if (!badge) return;
+        var count = data.active_count || 0;
+        if (count > 0) {
+          badge.textContent = count > 99 ? '99+' : count;
+          badge.style.display = '';
+        } else {
+          badge.style.display = 'none';
+        }
+      })
+      .catch(function () {});
+    setTimeout(refreshAlertBadge, 30000);
+  }
+  document.addEventListener('DOMContentLoaded', refreshAlertBadge);
+})();
+</script>
 </body>
 
 </html>
