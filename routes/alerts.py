@@ -1,13 +1,16 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, session
 from extensions import db
 from models.dashboard import DashboardEvent
 from models.device import Device
 from models.department import Department
 from models.site import Site
-from middleware.rbac import require_login
+from middleware.rbac import require_login, create_audit_log, current_role
 from datetime import datetime
 
 alerts_bp = Blueprint('alerts', __name__)
+
+VALID_SEVERITIES = {'CRITICAL', 'WARNING', 'INFO', 'OK'}
+VALID_STATUSES = {'active', 'resolved', 'all'}
 
 
 @alerts_bp.route('/alerts')
@@ -28,7 +31,37 @@ def alerts_json():
     limit     = min(request.args.get('limit', 100, type=int), 500)
     offset    = request.args.get('offset', 0, type=int)
 
+    # Fix 3: Validate severity and status parameters
+    if severity and severity.upper() not in VALID_SEVERITIES:
+        return jsonify({"error": f"Invalid severity. Valid values: {sorted(VALID_SEVERITIES)}"}), 400
+    if status not in VALID_STATUSES:
+        return jsonify({"error": "status must be one of: active, resolved, all"}), 400
+
     q = DashboardEvent.query
+
+    # Fix 2: Scope enforcement — non-admin users see only their own site/department
+    role = current_role()
+    if role != 'admin':
+        user_site_id = session.get('site_id')
+        user_dept_id = session.get('department_id')
+        # Fallback: load from DB if session is missing scope keys
+        if user_site_id is None and user_dept_id is None:
+            user_id = session.get('user_id')
+            if user_id:
+                from models.user import User
+                user = User.query.get(user_id)
+                if user:
+                    user_site_id = getattr(user, 'site_id', None)
+                    user_dept_id = getattr(user, 'department_id', None)
+        if role == 'manager' and user_site_id is not None:
+            # Managers see all events for their site
+            q = q.filter(DashboardEvent.site_id == user_site_id)
+        elif user_dept_id is not None:
+            # Operators/viewers see only their department's events
+            q = q.filter(DashboardEvent.department_id == user_dept_id)
+        else:
+            # No scope assigned — show nothing for safety
+            q = q.filter(False)
 
     if site_id:
         q = q.filter(DashboardEvent.site_id == site_id)
@@ -95,13 +128,34 @@ def alerts_json():
 @alerts_bp.route('/api/alerts/<string:alert_id>/resolve', methods=['PATCH'])
 @require_login
 def resolve_alert(alert_id: str):
-    event = DashboardEvent.query.get_or_404(alert_id)
+    # Fix 4: Replace deprecated Query.get_or_404 with db.session.get
+    event = db.session.get(DashboardEvent, alert_id)
+    if event is None:
+        return jsonify({"error": "Alert not found"}), 404
+
     if event.resolved:
         return jsonify({"error": "Already resolved"}), 409
 
     event.resolved    = True
     event.resolved_at = datetime.utcnow()
+    # Fix 5: Match dashboard.py resolve behavior — append marker to message
+    event.message = (event.message or '') + " [MANUALLY RESOLVED]"
     db.session.commit()
+
+    # Fix 5: Audit log matching dashboard.py pattern
+    device_name = event.device_ip or 'Unknown'
+    if event.device_id:
+        device = Device.query.get(event.device_id)
+        if device:
+            device_name = device.device_name or device.device_ip
+
+    create_audit_log(
+        action='resolve',
+        entity_type='alert',
+        entity_id=None,  # Alert IDs are UUIDs, not integers
+        entity_name=f"{event.event_id[:8]} - {device_name} - {event.severity}",
+        description=f"Alert resolved: {event.message[:100]}",
+    )
 
     return jsonify({
         "alert_id":    event.event_id,
