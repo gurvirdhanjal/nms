@@ -299,16 +299,19 @@ def site_device_modal(site_id: int, device_id: int):
     device = Device.query.filter_by(device_id=device_id, site_id=site_id).first_or_404()
 
     # ── Network state (latest scan by IP) ──────────────────────────
-    latest_scan = (
-        DeviceScanHistory.query
-        .filter_by(device_ip=device.device_ip)
-        .order_by(DeviceScanHistory.scan_id.desc())
-        .first()
-    )
+    if device.device_ip is not None:
+        latest_scan = (
+            DeviceScanHistory.query
+            .filter_by(device_ip=device.device_ip)
+            .order_by(DeviceScanHistory.scan_timestamp.desc())
+            .first()
+        )
+    else:
+        latest_scan = None
 
     if latest_scan is None:
         network_state = "unknown"
-    elif latest_scan.packet_loss is not None and latest_scan.packet_loss >= 100:
+    elif getattr(latest_scan, 'status', None) == 'offline' or (latest_scan.packet_loss is not None and latest_scan.packet_loss >= 100):
         network_state = "offline"
     elif latest_scan.packet_loss is not None and latest_scan.packet_loss > 5:
         network_state = "degraded"
@@ -371,7 +374,11 @@ def site_device_modal(site_id: int, device_id: int):
     ]
 
     # ── Floor plan placement ───────────────────────────────────────
-    has_placement = bool(device.floor_plan_id is not None and device.map_x is not None)
+    has_placement = (
+        device.floor_plan_id is not None
+        and device.map_x is not None
+        and device.map_y is not None
+    )
     floor_plan_name: str | None = None
     if has_placement and hasattr(device, 'floor_plan') and device.floor_plan:
         floor_plan_name = device.floor_plan.name
@@ -382,13 +389,16 @@ def site_device_modal(site_id: int, device_id: int):
         "floor_plan_name": floor_plan_name,
     }
 
+    from models.department import Department
+    dept_obj = Department.query.get(device.department_id) if device.department_id else None
+
     return jsonify({
         "device": {
             "device_id":   device.device_id,
             "device_name": device.device_name,
             "device_type": device.device_type,
             "device_ip":   device.device_ip,
-            "dept_name":   device.department.name if device.department else None,
+            "dept_name":   dept_obj.name if dept_obj else None,
             "site_id":     site_id,
         },
         "network":              network,
