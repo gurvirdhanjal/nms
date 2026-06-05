@@ -823,6 +823,12 @@ function openDeviceBreakdown(sourceCard = null) {
     const wasActive = el.classList.contains('is-active');
     el.classList.add('is-active');
 
+    el.addEventListener('transitionend', function onExpand(e) {
+        if (e.propertyName === 'max-height' && el.classList.contains('is-active')) {
+            el.style.overflow = 'visible';
+        }
+    }, { once: true });
+
     if (sourceCard) {
         setBreakdownActiveCard(sourceCard);
     } else if (!activeBreakdownCardId) {
@@ -843,6 +849,7 @@ function openDeviceBreakdown(sourceCard = null) {
 function closeDeviceBreakdown() {
     const el = document.getElementById('device-breakdown');
     if (!el) return;
+    el.style.overflow = 'hidden';
     el.classList.remove('is-active');
     setBreakdownActiveCard(null);
 }
