@@ -7,344 +7,267 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-3 dashboard-enterprise site-dashboard-page">
-    <!-- Site Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2><i class="fas fa-building me-2"></i>{{ site.site_name }}</h2>
-            <p class="site-header-meta mb-0">
-                <i class="fas fa-map-marker-alt me-2"></i>{{ site.address or 'No address specified' }}
-                <span class="ms-3"><i class="fas fa-clock me-2"></i>{{ site.timezone }}</span>
-            </p>
-        </div>
-        <a href="/sites" class="tactical-btn tactical-btn-outline">
-            <i class="fas fa-arrow-left me-2"></i>Back to Sites
-        </a>
+<div class="container-fluid mt-3 dashboard-enterprise site-dashboard-page" data-site-id="{{ site.id }}">
+
+  {# ── Site Header ──────────────────────────────────────────────── #}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1"><i class="fas fa-building me-2"></i>{{ site.site_name }}</h2>
+      <p class="site-header-meta mb-0">
+        <i class="fas fa-map-marker-alt me-1"></i>{{ site.address or 'No address specified' }}
+        <span class="ms-3"><i class="fas fa-clock me-1"></i>{{ site.timezone }}</span>
+      </p>
     </div>
-
-    <!-- Site Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card site-kpi-card site-kpi-total">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-1">Total Devices</h6>
-                            <h3 class="mb-0" id="siteKpiTotal">{{ stats.device_count }}</h3>
-                        </div>
-                        <div class="text-primary">
-                            <i class="fas fa-server fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card site-kpi-card site-kpi-online">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-1">Online</h6>
-                            <h3 class="mb-0" id="siteKpiOnline">{{ stats.online_count }}</h3>
-                        </div>
-                        <div class="text-success">
-                            <i class="fas fa-check-circle fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card site-kpi-card site-kpi-offline">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-1">Offline</h6>
-                            <h3 class="mb-0" id="siteKpiOffline">{{ stats.offline_count }}</h3>
-                        </div>
-                        <div class="text-danger">
-                            <i class="fas fa-times-circle fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card site-kpi-card site-kpi-warning">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-1">Warnings</h6>
-                            <h3 class="mb-0" id="siteKpiWarnings">{{ stats.warning_count }}</h3>
-                        </div>
-                        <div class="text-warning">
-                            <i class="fas fa-exclamation-triangle fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="d-flex gap-2">
+      <a href="/sites/{{ site.id }}/floor-plans" class="tactical-btn tactical-btn-primary">
+        <i class="fas fa-map me-2"></i>Floor Plans
+      </a>
+      <a href="/sites" class="tactical-btn tactical-btn-outline">
+        <i class="fas fa-arrow-left me-2"></i>Back to Sites
+      </a>
     </div>
+  </div>
 
-    <!-- Recent Alerts -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-bell me-2"></i>Recent Alerts
-                </div>
-                <div class="card-body">
-                    {% if recent_alerts %}
-                    <div class="table-responsive">
-                        <table class="tactical-table table-hover site-alerts-table">
-                            <thead>
-                                <tr>
-                                    <th>Severity</th>
-                                    <th>Device</th>
-                                    <th>Metric</th>
-                                    <th>Message</th>
-                                    <th>Time</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for alert in recent_alerts %}
-                                <tr>
-                                    <td>
-                                        {% if alert.severity == 'CRITICAL' %}
-                                        <span class="ops-badge severity-critical">{{ alert.severity }}</span>
-                                        {% elif alert.severity == 'WARNING' %}
-                                        <span class="ops-badge severity-warning">{{ alert.severity }}</span>
-                                        {% else %}
-                                        <span class="ops-badge severity-info">{{ alert.severity }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <strong>{{ alert.device.device_name if alert.device else 'Unknown'
-                                            }}</strong><br>
-                                        <small class="site-meta-muted ip-pill">{{ alert.device_ip }}</small>
-                                    </td>
-                                    <td><code>{{ alert.metric_name or '-' }}</code></td>
-                                    <td><span class="alert-message-truncate" title="{{ alert.message }}">{{
-                                            alert.message }}</span></td>
-                                    <td title="{{ alert.timestamp.isoformat() if alert.timestamp else '' }}">{{
-                                        alert.timestamp.strftime('%b %d %H:%M:%S') if alert.timestamp else '-' }}</td>
-                                    <td>
-                                        {% if alert.resolved %}
-                                        <span class="ops-badge status-resolved">Resolved</span>
-                                        {% else %}
-                                        <span class="ops-badge status-active">Active</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-muted mb-0">No recent alerts for this site.</p>
-                    {% endif %}
-                </div>
+  {# ── Freshness Bar ─────────────────────────────────────────────── #}
+  <div id="dash-freshness" class="dash-freshness-bar mb-3">
+    <span class="dash-live-dot"></span>
+    <span id="dash-freshness-text">Loading live data…</span>
+  </div>
+
+  {# ── KPI Cards ─────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card site-kpi-card site-kpi-total">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">Total Devices</h6>
+              <h3 class="mb-0" id="siteKpiTotal">{{ stats.device_count }}</h3>
             </div>
+            <i class="fas fa-server fa-2x text-primary"></i>
+          </div>
         </div>
+      </div>
     </div>
-
-    <!-- Aggregate Metrics -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-chart-line me-2"></i>Aggregate Metrics
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Average CPU Usage</h6>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar {% if metrics.avg_cpu >= 80 %}bg-danger{% elif metrics.avg_cpu >= 60 %}bg-warning{% else %}bg-success{% endif %}"
-                                    role="progressbar" style="width: {{ metrics.avg_cpu or 0 }}%"
-                                    aria-valuenow="{{ metrics.avg_cpu or 0 }}" aria-valuemin="0" aria-valuemax="100">
-                                    {{ "%.1f"|format(metrics.avg_cpu or 0) }}%
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Average Memory Usage</h6>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar {% if metrics.avg_memory >= 85 %}bg-danger{% elif metrics.avg_memory >= 60 %}bg-warning{% else %}bg-success{% endif %}"
-                                    role="progressbar" style="width: {{ metrics.avg_memory or 0 }}%"
-                                    aria-valuenow="{{ metrics.avg_memory or 0 }}" aria-valuemin="0" aria-valuemax="100">
-                                    {{ "%.1f"|format(metrics.avg_memory or 0) }}%
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Average Disk Usage</h6>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar {% if metrics.avg_disk >= 90 %}bg-danger{% elif metrics.avg_disk >= 75 %}bg-warning{% else %}bg-success{% endif %}"
-                                    role="progressbar" style="width: {{ metrics.avg_disk or 0 }}%"
-                                    aria-valuenow="{{ metrics.avg_disk or 0 }}" aria-valuemin="0" aria-valuemax="100">
-                                    {{ "%.1f"|format(metrics.avg_disk or 0) }}%
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Average Latency</h6>
-                            <h4>{{ "%.1f"|format(metrics.avg_latency or 0) }} ms</h4>
-                        </div>
-
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Average Packet Loss</h6>
-                            <h4>{{ "%.1f"|format(metrics.avg_packet_loss or 0) }}%</h4>
-                        </div>
-
-                        <div class="col-md-4">
-                            <h6 class="text-muted">Total Health Logs (24h)</h6>
-                            <h4>{{ metrics.total_health_logs or 0 }}</h4>
-                        </div>
-                    </div>
-                </div>
+    <div class="col-6 col-md-3">
+      <div class="card site-kpi-card site-kpi-online">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">Online</h6>
+              <h3 class="mb-0" id="siteKpiOnline">{{ stats.online_count }}</h3>
             </div>
+            <i class="fas fa-check-circle fa-2x text-success"></i>
+          </div>
         </div>
+      </div>
     </div>
-
-    <!-- Devices Per Department -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-sitemap me-2"></i>Devices by Department
-                </div>
-                <div class="card-body">
-                    {% if dept_device_stats %}
-                    <div class="table-responsive">
-                        <table class="table tactical-table table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Department</th>
-                                    <th>Total</th>
-                                    <th>Online</th>
-                                    <th>Offline</th>
-                                    <th>Warnings</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in dept_device_stats %}
-                                <tr data-department-name="{{ row.name }}">
-                                    <td><strong>{{ row.name }}</strong></td>
-                                    <td>{{ row.device_count }}</td>
-                                    <td>{{ row.online_count }}</td>
-                                    <td>{{ row.offline_count }}</td>
-                                    <td>{{ row.warning_count }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-muted mb-0">No department data available for this site.</p>
-                    {% endif %}
-                </div>
+    <div class="col-6 col-md-3">
+      <div class="card site-kpi-card site-kpi-offline">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">Offline</h6>
+              <h3 class="mb-0" id="siteKpiOffline">{{ stats.offline_count }}</h3>
             </div>
+            <i class="fas fa-times-circle fa-2x text-danger"></i>
+          </div>
         </div>
+      </div>
     </div>
-
-    <!-- Devices List -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-list me-2"></i>Devices at This Site
-                </div>
-                <div class="card-body">
-                    {% if devices %}
-                    <div class="table-responsive">
-                        <table class="table tactical-table table-hover" id="devicesTable">
-                            <thead>
-                                <tr>
-                                    <th>Status</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>IP Address</th>
-                                    <th>Department</th>
-                                    <th>Health</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for device in devices %}
-                                <tr data-device-id="{{ device.device_id }}">
-                                    <td>
-                                        {% if device.device_id in online_device_ids %}
-                                        <span class="status-chip status-online"
-                                            data-device-status="online">Online</span>
-                                        {% else %}
-                                        <span class="status-chip status-offline"
-                                            data-device-status="offline">Offline</span>
-                                        {% endif %}
-                                    </td>
-                                    <td><strong>{{ device.device_name }}</strong></td>
-                                    <td>{{ device.device_type }}</td>
-                                    <td><span class="ip-pill">{{ device.device_ip }}</span></td>
-                                    <td>
-                                        {% if device.department %}
-                                        {{ device.department.name }}
-                                        {% else %}
-                                        <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if device.health_alert_strikes >= 2 or device.latency_strikes >= 2 or
-                                        device.packet_loss_strikes >= 2 %}
-                                        <span class="ops-badge severity-warning">Warning</span>
-                                        {% elif device.device_id in online_device_ids %}
-                                        <span class="ops-badge status-healthy">Healthy</span>
-                                        {% else %}
-                                        <span class="ops-badge status-unknown">Unknown</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <a href="/devices/{{ device.device_id }}/details"
-                                            class="tactical-btn tactical-btn-outline tactical-btn-sm"
-                                            title="View Device">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-muted mb-0">No devices assigned to this site.</p>
-                    {% endif %}
-                </div>
+    <div class="col-6 col-md-3">
+      <div class="card site-kpi-card site-kpi-warning">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">Active Alerts</h6>
+              <h3 class="mb-0" id="siteKpiAlerts">{{ stats.warning_count }}</h3>
             </div>
+            <i class="fas fa-bell fa-2x text-warning"></i>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
+
+  {# ── Active Alerts Banner (hidden when 0) ─────────────────────── #}
+  <div id="dash-alert-banner" class="dash-alert-banner mb-3" style="display:none">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <span id="dash-alert-banner-text">Active alerts detected</span>
+    <a href="/alerts?site_id={{ site.id }}" class="ms-3 tactical-btn tactical-btn-sm tactical-btn-outline">
+      View all alerts →
+    </a>
+  </div>
+
+  {# ── Department Health Score Cards ────────────────────────────── #}
+  <div class="card mb-3">
+    <div class="card-header">
+      <i class="fas fa-sitemap me-2"></i>Departments
+    </div>
+    <div class="card-body pb-2">
+      <div id="dept-score-grid" class="dept-score-grid">
+        {% if dept_device_stats %}
+          {% for row in dept_device_stats %}
+          <div class="dept-score-card" data-dept-id="{{ row.id }}"
+               data-dept-name="{{ row.name }}"
+               data-health-pct="{{ row.health_pct | default(100) }}">
+            <div class="dept-score-name">{{ row.name }}</div>
+            <div class="dept-score-pct" id="dept-pct-{{ row.id }}">{{ row.health_pct | default(100) }}%</div>
+            <div class="dept-score-counts">
+              <span class="text-success" id="dept-online-{{ row.id }}">{{ row.online_count }}</span>
+              <span class="text-muted"> / {{ row.device_count }}</span>
+              {% if row.warning_count > 0 %}
+              <span class="ms-1 ops-badge severity-warning" id="dept-alerts-{{ row.id }}">{{ row.warning_count }}!</span>
+              {% else %}
+              <span class="ms-1" id="dept-alerts-{{ row.id }}" style="display:none"></span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted mb-0">No departments assigned to this site.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Device Search ─────────────────────────────────────────────── #}
+  <div class="mb-3">
+    <div class="dash-search-wrap">
+      <i class="fas fa-search dash-search-icon"></i>
+      <input type="search" id="dashDeviceSearch" class="dash-search-input"
+             placeholder="Search devices by name, IP, or type…" autocomplete="off">
+    </div>
+  </div>
+
+  {# ── Expandable Department Panels ─────────────────────────────── #}
+  {% if dept_device_stats %}
+    {% for row in dept_device_stats %}
+    {% set is_unhealthy = (row.health_pct is defined and row.health_pct < 100) or row.warning_count > 0 or row.offline_count > 0 %}
+    <div class="dept-panel card mb-2" data-dept-panel-id="{{ row.id }}">
+      <div class="dept-panel-header" data-bs-toggle="collapse"
+           data-bs-target="#dept-panel-body-{{ row.id }}"
+           aria-expanded="{{ 'true' if is_unhealthy else 'false' }}">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-chevron-right dept-panel-chevron"></i>
+          <span class="dept-panel-name">{{ row.name }}</span>
+          {% if row.offline_count > 0 or row.warning_count > 0 %}
+          <span class="ops-badge severity-warning">{{ row.offline_count }} offline</span>
+          {% endif %}
+        </div>
+        <div class="dept-panel-summary">
+          <span class="text-success me-2">{{ row.online_count }} online</span>
+          <span class="text-muted">/ {{ row.device_count }}</span>
+        </div>
+      </div>
+      <div id="dept-panel-body-{{ row.id }}"
+           class="collapse {{ 'show' if is_unhealthy else '' }}">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table tactical-table table-hover mb-0 dept-device-table">
+              <thead>
+                <tr>
+                  <th style="width:2.5rem"></th>
+                  <th>Device</th>
+                  <th>IP</th>
+                  <th>Type</th>
+                  <th>Ping</th>
+                  <th>Loss</th>
+                  <th>Last Seen</th>
+                  <th style="width:1rem"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% set dept_devices = devices | selectattr('department_id', 'equalto', row.id) | list %}
+                {% if dept_devices %}
+                  {% for device in dept_devices | sort(attribute='device_name') %}
+                  <tr class="dept-device-row"
+                      data-device-id="{{ device.device_id }}"
+                      data-device-name="{{ device.device_name | lower }}"
+                      data-device-ip="{{ device.device_ip }}"
+                      data-device-type="{{ device.device_type | lower }}">
+                    <td>
+                      {% if online_device_ids is defined and device.device_id in online_device_ids %}
+                      <span class="dash-status-dot dot-online" data-device-status="online"></span>
+                      {% else %}
+                      <span class="dash-status-dot dot-offline" data-device-status="offline"></span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <span class="dept-device-name">{{ device.device_name }}</span>
+                      <a href="/devices/{{ device.device_id }}/details"
+                         target="_blank"
+                         class="dept-device-ext-link ms-1"
+                         title="Open device page"
+                         onclick="event.stopPropagation()">
+                        <i class="fas fa-external-link-alt fa-xs"></i>
+                      </a>
+                    </td>
+                    <td><span class="ip-pill">{{ device.device_ip }}</span></td>
+                    <td class="text-muted">{{ device.device_type }}</td>
+                    <td data-ping-cell data-device-id="{{ device.device_id }}" class="ping-unknown">—</td>
+                    <td data-loss-cell data-device-id="{{ device.device_id }}" class="text-muted">—</td>
+                    <td data-last-ping data-device-id="{{ device.device_id }}" class="ping-unknown">—</td>
+                    <td>
+                      {% set dev_has_alert = (device.health_alert_strikes is defined and device.health_alert_strikes >= 2)
+                                          or (device.latency_strikes is defined and device.latency_strikes >= 2)
+                                          or (device.packet_loss_strikes is defined and device.packet_loss_strikes >= 2) %}
+                      {% if dev_has_alert %}
+                      <span class="ops-badge severity-warning dept-alert-chip"
+                            data-alert-device-id="{{ device.device_id }}"
+                            onclick="event.stopPropagation(); openDeviceModal({{ device.device_id }}, true)">!</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                <tr>
+                  <td colspan="8" class="text-muted text-center py-3">No devices in this department.</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="card">
+    <div class="card-body text-muted text-center py-4">No departments or devices assigned to this site.</div>
+  </div>
+  {% endif %}
+
 </div>
 
-<script>
-    // Initialize DataTables if available
-    document.addEventListener('DOMContentLoaded', function () {
-        const table = document.getElementById('devicesTable');
-        if (table && typeof $.fn.dataTable !== 'undefined') {
-            $(table).DataTable({
-                pageLength: 25,
-                order: [[1, 'asc']], // Sort by name
-                language: {
-                    search: "Filter devices:"
-                }
-            });
-        }
-    });
-</script>
+{# ── Device Modal ──────────────────────────────────────────────── #}
+<div id="device-modal-overlay" class="device-modal-overlay" style="display:none" onclick="closeDeviceModal(event)">
+  <div class="device-modal-box" role="dialog" aria-modal="true">
+    <div class="device-modal-header">
+      <div class="d-flex align-items-center gap-2">
+        <span id="modal-status-dot" class="dash-status-dot"></span>
+        <span id="modal-device-name" class="device-modal-title">Loading…</span>
+        <span id="modal-state-badge" class="ops-badge"></span>
+      </div>
+      <button class="device-modal-close" onclick="closeDeviceModal()">&times;</button>
+    </div>
+    <div id="modal-device-meta" class="device-modal-meta"></div>
+    <div id="modal-body" class="device-modal-body">
+      <div class="text-muted text-center py-4">Loading device data…</div>
+    </div>
+    <div class="device-modal-actions">
+      <a id="modal-btn-device" href="#" target="_blank" class="tactical-btn tactical-btn-primary tactical-btn-sm">
+        Full device page ↗
+      </a>
+      <a id="modal-btn-floorplan" href="#" target="_blank" class="tactical-btn tactical-btn-outline tactical-btn-sm" style="display:none">
+        Open floor plan ↗
+      </a>
+      <button id="modal-btn-ping" class="tactical-btn tactical-btn-outline tactical-btn-sm" onclick="pingDeviceFromModal()">
+        Ping now
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/site_dashboard.js') }}?v={{ asset_ver }}"></script>
 {% endblock %}
