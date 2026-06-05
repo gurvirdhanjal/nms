@@ -214,3 +214,50 @@ class TestDeviceModal:
         login(client)
         rv = client.get(f'/api/sites/9999/device/{seed_data["dev3_id"]}/modal')
         assert rv.status_code == 404
+
+
+class TestAlertsAPI:
+    def test_alerts_json_returns_200(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/alerts?site_id={seed_data["site_id"]}')
+        assert rv.status_code == 200
+
+    def test_alerts_json_structure(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/alerts?site_id={seed_data["site_id"]}')
+        data = rv.get_json()
+        assert 'alerts' in data
+        assert 'total' in data
+        assert 'active_count' in data
+
+    def test_alerts_filtered_by_site(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/alerts?site_id={seed_data["site_id"]}')
+        data = rv.get_json()
+        assert data['active_count'] == 1
+
+    def test_alerts_filter_active_only(self, client, seed_data):
+        login(client)
+        rv = client.get(f'/api/alerts?site_id={seed_data["site_id"]}&status=active')
+        data = rv.get_json()
+        assert all(not a['resolved'] for a in data['alerts'])
+
+    def test_resolve_alert(self, client, seed_data):
+        login(client)
+        # Get the alert_id first
+        rv = client.get(f'/api/alerts?site_id={seed_data["site_id"]}&status=active')
+        alerts = rv.get_json()['alerts']
+        assert len(alerts) == 1
+        alert_id = alerts[0]['alert_id']
+
+        rv = client.patch(f'/api/alerts/{alert_id}/resolve')
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert data['resolved'] is True
+        assert data['resolved_at'] is not None
+
+    def test_alerts_page_returns_html(self, client):
+        login(client)
+        rv = client.get('/alerts')
+        assert rv.status_code == 200
+        assert b'alerts' in rv.data.lower()

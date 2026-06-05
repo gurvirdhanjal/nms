@@ -439,6 +439,7 @@ def create_app(test_config=None):
     from routes.config_backup import config_backup_bp
     from routes.compliance_profiles import compliance_profiles_bp
     from routes.settings import settings_bp
+    from routes.alerts import alerts_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -471,6 +472,7 @@ def create_app(test_config=None):
         config_backup_bp,
         compliance_profiles_bp,
         settings_bp,
+        alerts_bp,
     ]
 
     for bp in protected_blueprints:
