@@ -40,8 +40,15 @@
 
     .tabs {
         display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
+        gap: 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
     }
 
     .tactical-stat-card {
@@ -65,27 +72,30 @@
 
 
     .tabs button {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #8b949e;
-        padding: 4px 10px;
-        border-radius: 4px;
-        font-size: 0.7rem;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        padding: 0.32rem 0.75rem;
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        transition: border-color 130ms ease, background 130ms ease;
+        font-weight: 600;
+        color: rgba(148, 163, 184, 0.6);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: color 160ms ease, border-color 160ms ease;
     }
 
-    /* v5.0: active tabs are NEVER green */
-    .tabs button.active {
-        color: #e6edf5;
-        border-color: rgba(148, 163, 184, 0.32);
-        background: rgba(148, 163, 184, 0.18);
+    .tabs button.active,
+    .tabs button[aria-selected="true"] {
+        color: #5eead4;
+        border-bottom-color: #5eead4;
     }
 
     .tabs button:hover {
-        color: #e6edf5;
-        border-color: rgba(148, 163, 184, 0.32);
+        color: var(--e-text-primary, #e6edf5);
+        border-bottom-color: rgba(148, 163, 184, 0.35);
     }
 
     /* Global dashboard horizontal breathing space */
@@ -737,31 +747,10 @@
         color: rgba(211, 220, 230, 0.72);
     }
 
-    .dashboard-enterprise .tabs {
-        gap: 0.28rem;
-    }
-
     .dashboard-enterprise .tabs button {
         padding: 0.18rem 0.44rem;
         font-size: 0.6rem;
-        line-height: 1.2;
         letter-spacing: 0.08em;
-        border-radius: 3px;
-        color: rgba(148, 163, 184, 0.5);
-        border: 1px solid rgba(148, 163, 184, 0.10);
-        background: transparent;
-        transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
-
-    .dashboard-enterprise .tabs button.active {
-        color: var(--e-text-secondary);
-        border-color: rgba(148, 163, 184, 0.26);
-        background: rgba(148, 163, 184, 0.10);
-    }
-
-    .dashboard-enterprise .tabs button:hover {
-        color: var(--e-text-secondary);
-        border-color: rgba(148, 163, 184, 0.22);
     }
 
     .dashboard-enterprise .tactical-btn-outline,
@@ -2053,16 +2042,23 @@
         color: rgba(15, 23, 42, 0.45);
     }
 
-    html[data-theme="light"] .dashboard-enterprise .tabs button {
-        background: rgba(15, 23, 42, 0.04);
-        color: #475569;
-        border-color: rgba(15, 23, 42, 0.12);
+    html[data-theme="light"] .tabs {
+        border-bottom-color: rgba(15, 23, 42, 0.15);
     }
 
-    html[data-theme="light"] .dashboard-enterprise .tabs button.active {
-        background: rgba(15, 23, 42, 0.08);
-        color: #0f172a;
-        border-color: rgba(15, 23, 42, 0.24);
+    html[data-theme="light"] .tabs button {
+        color: rgba(51, 65, 85, 0.6);
+    }
+
+    html[data-theme="light"] .tabs button.active,
+    html[data-theme="light"] .tabs button[aria-selected="true"] {
+        color: #0d9488;
+        border-bottom-color: #0d9488;
+    }
+
+    html[data-theme="light"] .tabs button:hover {
+        color: #1e293b;
+        border-bottom-color: rgba(15, 23, 42, 0.25);
     }
 
     html[data-theme="light"] .dashboard-enterprise .text-secondary,
@@ -3880,10 +3876,6 @@
 
         #device-breakdown .enterprise-section-sub {
             font-size: 0.64rem;
-        }
-
-        #device-breakdown .tabs {
-            gap: 0.22rem;
         }
 
         #device-breakdown .tabs button {
