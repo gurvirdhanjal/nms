@@ -97,3 +97,54 @@ class TestDashboardStats:
         dept_it = next(d for d in data['dept_aggregates'] if d['dept_name'] == seed_data['dept_it_name'])
         expected_pct = round(dept_it['online'] / dept_it['total'] * 100) if dept_it['total'] > 0 else 0
         assert dept_it['health_pct'] == expected_pct
+
+    def test_dept_aggregates_empty_for_no_depts(self, admin_client, app):
+        """A site with no departments should return empty dept_aggregates."""
+        with app.app_context():
+            site_empty = Site(site_name='Empty Site', address='', timezone='UTC')
+            _db.session.add(site_empty)
+            _db.session.commit()
+            site_empty_id = site_empty.id
+
+        try:
+            rv = admin_client.get(f'/api/sites/{site_empty_id}/dashboard-stats')
+            assert rv.status_code == 200
+            data = rv.get_json()
+            assert data['dept_aggregates'] == []
+            assert data['active_alert_count'] == 0
+        finally:
+            with app.app_context():
+                site_obj = Site.query.get(site_empty_id)
+                if site_obj:
+                    _db.session.delete(site_obj)
+                    _db.session.commit()
+
+    def test_unassigned_device_excluded_from_dept_aggregates(self, admin_client, seed_data, app):
+        """Devices with department_id=None should not cause errors; they're excluded from dept_aggregates."""
+        with app.app_context():
+            site_id = seed_data['site_id']
+            dev_unassigned = Device(
+                device_name='unassigned-dev',
+                device_ip='10.99.99.99',
+                device_type='Switch',
+                site_id=site_id,
+                department_id=None,
+            )
+            _db.session.add(dev_unassigned)
+            _db.session.commit()
+            unassigned_dev_id = dev_unassigned.device_id
+
+        try:
+            rv = admin_client.get(f'/api/sites/{seed_data["site_id"]}/dashboard-stats')
+            assert rv.status_code == 200
+            data = rv.get_json()
+            # Unassigned device should not appear in any dept_aggregates entry
+            all_dept_totals = sum(d['total'] for d in data['dept_aggregates'])
+            # We seeded 3 original devices; this new one should be excluded from dept breakdown
+            assert all_dept_totals == 3  # only the 3 assigned devices
+        finally:
+            with app.app_context():
+                dev_obj = Device.query.get(unassigned_dev_id)
+                if dev_obj:
+                    _db.session.delete(dev_obj)
+                    _db.session.commit()

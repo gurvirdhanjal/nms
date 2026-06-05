@@ -229,7 +229,11 @@ def site_dashboard_stats(site_id):
         .all()
     )
     alert_by_dept = {row[0]: row[1] for row in alert_rows}
-    active_alert_count = sum(alert_by_dept.values())
+    active_alert_count = (
+        db.session.query(func.count(DashboardEvent.event_id))
+        .filter(DashboardEvent.site_id == site_id, DashboardEvent.resolved == False)  # noqa: E712
+        .scalar()
+    ) or 0
 
     # Build dept aggregate list
     dept_ids = [did for did in dept_device_map if did is not None]
