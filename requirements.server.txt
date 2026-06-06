@@ -1,0 +1,45 @@
+# Server-only requirements (no Windows-only or agent-only packages)
+# Used by the Docker image — excludes: wmi, pywin32, opencv-python, pynput
+
+Flask==2.3.3
+Flask-Compress==1.15
+Flask-SQLAlchemy==3.0.5
+Flask-Bcrypt==1.0.1
+Flask-Limiter>=3.5.0
+waitress>=2.1.2
+
+aioping==0.4.0
+mac-vendor-lookup==0.1.12
+schedule==1.2.0
+APScheduler>=3.10.4
+requests==2.31.0
+python-dotenv==1.0.0
+psutil
+cryptography
+paramiko
+
+# SNMP
+pysnmp==4.4.12
+pyasn1==0.4.8
+pyasn1_modules
+
+# Database
+psycopg2-binary==2.9.9
+
+# Redis
+redis>=5.0.0
+
+# Reporting / Export
+openpyxl>=3.1.0
+reportlab>=4.1.0
+numpy==1.26.4
+Pillow
+
+# Floor-plan PDF rasterisation (pip-only, no poppler/system dependency)
+PyMuPDF>=1.24.0
+
+# LDAP / Active Directory
+ldap3>=2.9
+
+# AI Classification
+google-generativeai>=0.8.0
