@@ -1,0 +1,59 @@
+<h2>Tab Navigation Style</h2>
+<p class="subtitle">How should the Latency / Loss / Inventory tabs look so users know more tables exist?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Pill Tabs with Row Count Badges</h3>
+      <p>Compact pill-style tabs. Each tab shows a live count badge so users immediately know how many rows are in each table without switching.</p>
+      <div style="margin-top:12px;background:rgba(10,14,22,0.8);border-radius:10px;padding:12px;border:1px solid rgba(148,163,184,0.15)">
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+          <span style="background:rgba(94,234,212,0.15);border:1px solid rgba(94,234,212,0.35);border-radius:20px;padding:3px 10px;font-size:0.72rem;color:#5eead4">Latency <span style="background:rgba(94,234,212,0.25);border-radius:10px;padding:1px 6px;margin-left:3px;font-size:0.65rem">12</span></span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:20px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Packet Loss <span style="background:rgba(148,163,184,0.15);border-radius:10px;padding:1px 6px;margin-left:3px;font-size:0.65rem">8</span></span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:20px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Inventory <span style="background:rgba(148,163,184,0.15);border-radius:10px;padding:1px 6px;margin-left:3px;font-size:0.65rem">47</span></span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:20px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Discovery</span>
+        </div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;height:60px;display:flex;align-items:center;justify-content:center;color:rgba(148,163,184,0.4);font-size:0.75rem">Table content here</div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Users see data density per tab at a glance</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Underline Tabs with Active Indicator</h3>
+      <p>Classic underline tab style with a bold teal active bar. Clean, familiar, works well when tabs are the primary navigation mechanism.</p>
+      <div style="margin-top:12px;background:rgba(10,14,22,0.8);border-radius:10px;padding:12px;border:1px solid rgba(148,163,184,0.15)">
+        <div style="display:flex;gap:0;margin-bottom:10px;border-bottom:1px solid rgba(148,163,184,0.15)">
+          <span style="padding:6px 14px;font-size:0.75rem;color:#5eead4;border-bottom:2px solid #5eead4;margin-bottom:-1px">Latency</span>
+          <span style="padding:6px 14px;font-size:0.75rem;color:rgba(148,163,184,0.6)">Packet Loss</span>
+          <span style="padding:6px 14px;font-size:0.75rem;color:rgba(148,163,184,0.6)">Inventory</span>
+          <span style="padding:6px 14px;font-size:0.75rem;color:rgba(148,163,184,0.6)">Discovery</span>
+        </div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;height:60px;display:flex;align-items:center;justify-content:center;color:rgba(148,163,184,0.4);font-size:0.75rem">Table content here</div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Simple, low visual noise, easy to scan</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Keep Current Pills + Add "N rows" Hint Below Header</h3>
+      <p>Keep the existing pill tab design but add a subtle row count line below the table header. Minimal change, low disruption, tables are still swapped via tabs.</p>
+      <div style="margin-top:12px;background:rgba(10,14,22,0.8);border-radius:10px;padding:12px;border:1px solid rgba(148,163,184,0.15)">
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <span style="background:rgba(94,234,212,0.15);border:1px solid rgba(94,234,212,0.35);border-radius:6px;padding:3px 10px;font-size:0.72rem;color:#5eead4">Latency</span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:6px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Packet Loss</span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:6px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Inventory</span>
+          <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);border-radius:6px;padding:3px 10px;font-size:0.72rem;color:rgba(148,163,184,0.7)">Discovery</span>
+        </div>
+        <div style="color:rgba(148,163,184,0.4);font-size:0.68rem;margin-bottom:8px;padding-left:2px">Showing 12 devices • sorted by avg latency</div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;height:60px;display:flex;align-items:center;justify-content:center;color:rgba(148,163,184,0.4);font-size:0.75rem">Table content here</div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Smallest change, preserves existing visual identity</div>
+    </div>
+  </div>
+</div>
