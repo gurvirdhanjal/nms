@@ -197,6 +197,10 @@ class MonitoringScheduler:
         # cache hit. Runs in a background thread so the scheduler loop is not blocked.
         schedule.every(8).minutes.do(self.prewarm_report_cache)
 
+        # Refresh the dashboard snapshot every 2 minutes so users always get
+        # fresh data without triggering inline computation under concurrent load.
+        schedule.every(2).minutes.do(self.warm_dashboard_snapshot)
+
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
@@ -362,7 +366,13 @@ class MonitoringScheduler:
                 self._monitoring_lock.release()
 
     def warm_dashboard_snapshot(self):
-        """Pre-compute and upsert DashboardSnapshot rows every 30 s.
+        """Dispatch snapshot warm to a daemon thread so the scheduler loop is not blocked."""
+        import threading
+        t = threading.Thread(target=self._warm_dashboard_snapshot_bg, daemon=True, name="snapshot-warm")
+        t.start()
+
+    def _warm_dashboard_snapshot_bg(self):
+        """Pre-compute and upsert DashboardSnapshot rows every 2 min.
 
         Mirrors dashboard_worker.py but runs inside the existing web process so
         no separate container is needed. Eliminates 'Snapshot lock busy' warnings

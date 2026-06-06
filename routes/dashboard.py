@@ -732,17 +732,32 @@ def get_full_snapshot():
             return _snapshot_response(snapshot)
 
         # If no snapshot exists yet, acquire distributed lock so only one worker rebuilds.
-        lock_acquired = acquire_stampede_lock(snapshot_lock_key, ttl_seconds=20)
+        lock_acquired = acquire_stampede_lock(snapshot_lock_key, ttl_seconds=60)
         if not lock_acquired:
-            wait_deadline = time.monotonic() + 2.5
+            wait_deadline = time.monotonic() + 3.0
             while time.monotonic() < wait_deadline:
-                time.sleep(0.1)
+                time.sleep(0.15)
                 snapshot = DashboardSnapshot.query.filter_by(cache_key=snapshot_cache_key).first()
                 if snapshot:
                     return _snapshot_response(snapshot)
 
-            # Fallback: avoid surfacing 503 to end users while another worker warms cache.
-            # We compute this request inline and return a normal payload.
+            # Lock still held after 3s — fall back to ANY stale snapshot rather than
+            # computing inline (inline computation under concurrency exhausts the DB pool).
+            any_snapshot = DashboardSnapshot.query.order_by(
+                DashboardSnapshot.updated_at.desc()
+            ).first()
+            if any_snapshot:
+                try:
+                    from flask import current_app
+                    current_app.logger.warning(
+                        "Snapshot lock busy for key=%s; serving stale snapshot",
+                        snapshot_cache_key
+                    )
+                except Exception:
+                    pass
+                return _snapshot_response(any_snapshot)
+
+            # Absolute last resort: no snapshot at all, compute inline.
             try:
                 from flask import current_app
                 current_app.logger.warning(

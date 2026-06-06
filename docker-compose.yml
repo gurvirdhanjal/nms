@@ -18,6 +18,7 @@ services:
       WEB_OPEN_BROWSER:      "0"
       WEB_HOST:              "0.0.0.0"
       WEB_PORT:              "5001"
+      WORKER_SCOPES:         "admin__global:24h:active:200,admin__global:30d:active:200"
     volumes:
       - app_instance:/app/instance   # persists SQLite fallback + uploads
 

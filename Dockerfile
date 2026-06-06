@@ -45,7 +45,7 @@ RUN mkdir -p /app/client_uploads /app/events /app/instance
 
 EXPOSE 5001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:5001/health || exit 1
+HEALTHCHECK --interval=30s --timeout=20s --start-period=180s --retries=5 \
+    CMD python -c "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:5001/health',timeout=15); sys.exit(0 if r.status==200 else 1)" || exit 1
 
 CMD ["python", "web_main.py"]

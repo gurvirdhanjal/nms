@@ -50,7 +50,8 @@ if __name__ == "__main__":
     try:
         scheduler = MonitoringScheduler(app)
         scheduler.start_scheduled_monitoring()
-        scheduler.prewarm_report_cache()  # warm reports now; don't wait 8 min
+        scheduler.prewarm_report_cache()       # warm reports now; don't wait 8 min
+        scheduler.warm_dashboard_snapshot()    # warm dashboard snapshot immediately
         print("[OK] Monitoring Scheduler started.")
     except Exception as e:
         print(f"Error starting scheduler: {e}")
