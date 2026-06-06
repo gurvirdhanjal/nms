@@ -373,12 +373,16 @@ def _query_tracking_inventory_candidates():
     inventory_devices = scoped_query(Device).order_by(Device.device_name.asc()).all()
     scanner = NetworkScanner()
 
+    _cutoff_48h = datetime.utcnow() - timedelta(hours=48)
     latest_scan_subq = (
         db.session.query(
             DeviceScanHistory.device_ip.label('device_ip'),
             db.func.max(DeviceScanHistory.scan_id).label('max_scan_id'),
         )
-        .filter(DeviceScanHistory.device_ip.in_([device.device_ip for device in inventory_devices if device.device_ip]))
+        .filter(
+            DeviceScanHistory.device_ip.in_([device.device_ip for device in inventory_devices if device.device_ip]),
+            DeviceScanHistory.scan_timestamp >= _cutoff_48h,
+        )
         .group_by(DeviceScanHistory.device_ip)
         .subquery()
     )
@@ -1985,11 +1989,13 @@ def device_to_dict(device):
 
 def _build_tracking_scan_candidates():
     """Return tracking scan candidates from known online inventory and tracked endpoints."""
+    _cutoff_48h = datetime.utcnow() - timedelta(hours=48)
     latest_scan_subq = (
         db.session.query(
             DeviceScanHistory.device_ip.label('device_ip'),
             db.func.max(DeviceScanHistory.scan_id).label('max_scan_id'),
         )
+        .filter(DeviceScanHistory.scan_timestamp >= _cutoff_48h)
         .group_by(DeviceScanHistory.device_ip)
         .subquery()
     )

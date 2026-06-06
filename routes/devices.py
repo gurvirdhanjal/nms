@@ -456,11 +456,13 @@ def _load_latest_scan_statuses(device_ips, *, DeviceScanHistory):
     if not ips:
         return {}
 
+    _cutoff_48h = datetime.utcnow() - timedelta(hours=48)
     latest_scan_subq = db.session.query(
         DeviceScanHistory.device_ip.label('device_ip'),
         func.max(DeviceScanHistory.scan_id).label('max_scan_id')
     ).filter(
-        DeviceScanHistory.device_ip.in_(ips)
+        DeviceScanHistory.device_ip.in_(ips),
+        DeviceScanHistory.scan_timestamp >= _cutoff_48h
     ).group_by(DeviceScanHistory.device_ip).subquery()
 
     latest_rows = db.session.query(
@@ -525,9 +527,12 @@ def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device
     if normalized_status == 'Maintenance':
         filtered_query = filtered_query.filter(Device.maintenance_mode.is_(True))
     elif normalized_status in ('Online', 'Offline'):
+        _cutoff_48h = datetime.utcnow() - timedelta(hours=48)
         latest_scan_subq = db.session.query(
             DeviceScanHistory.device_ip.label('device_ip'),
             func.max(DeviceScanHistory.scan_id).label('max_scan_id')
+        ).filter(
+            DeviceScanHistory.scan_timestamp >= _cutoff_48h
         ).group_by(DeviceScanHistory.device_ip).subquery()
 
         if normalized_status == 'Online':

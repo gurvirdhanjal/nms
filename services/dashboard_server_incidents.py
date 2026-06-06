@@ -142,22 +142,22 @@ def _query_latest_scan_map(device_ips: list[str]) -> dict[str, DeviceScanHistory
     if not device_ips:
         return {}
 
-    latest_scans_subq = (
-        db.session.query(
-            DeviceScanHistory.device_ip,
-            func.max(DeviceScanHistory.scan_id).label("max_scan_id"),
-        )
-        .filter(DeviceScanHistory.device_ip.in_(device_ips))
-        .group_by(DeviceScanHistory.device_ip)
-        .subquery()
-    )
-
-    latest_scans = (
-        db.session.query(DeviceScanHistory)
-        .join(latest_scans_subq, DeviceScanHistory.scan_id == latest_scans_subq.c.max_scan_id)
-        .all()
-    )
-    return {scan.device_ip: scan for scan in latest_scans}
+    from sqlalchemy import text as _text
+    _stmt = _text("""
+        SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
+               l.ping_time_ms, l.packet_loss, l.jitter, l.min_rtt, l.max_rtt
+        FROM (SELECT unnest(:ips) AS device_ip) AS t
+        CROSS JOIN LATERAL (
+            SELECT scan_id, device_ip, scan_timestamp, status,
+                   ping_time_ms, packet_loss, jitter, min_rtt, max_rtt
+            FROM device_scan_history dsh
+            WHERE dsh.device_ip = t.device_ip
+            ORDER BY dsh.scan_timestamp DESC
+            LIMIT 1
+        ) AS l
+    """)
+    rows = db.session.execute(_stmt, {"ips": list(device_ips)}).fetchall()
+    return {row.device_ip: row for row in rows if row.device_ip}
 
 
 def _hour_label(hour_value) -> str:

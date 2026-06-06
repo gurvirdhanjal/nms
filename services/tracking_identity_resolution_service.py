@@ -216,6 +216,7 @@ def _fresh_online_inventory_base_query(now_utc: datetime):
             DeviceScanHistory.device_ip.label("device_ip"),
             func.max(DeviceScanHistory.scan_id).label("max_scan_id"),
         )
+        .filter(DeviceScanHistory.scan_timestamp >= fresh_cutoff)
         .group_by(DeviceScanHistory.device_ip)
         .subquery()
     )
