@@ -326,12 +326,11 @@ class MonitoringScheduler:
                     flask_session['role'] = 'admin'
                     svc = ReportingService()
                     payload = svc.get_executive_fleet_health(start_dt, end_dt)
+                    db.session.remove()
                 redis_client.setex(redis_key, 900, json.dumps(payload, default=str))
                 logger.info('[PreWarm] Cached executive %dd in Redis', range_days)
             except Exception as exc:
                 logger.warning('[PreWarm] executive %dd failed: %s', range_days, exc)
-            finally:
-                db.session.remove()
 
     def run_monitoring_task(self):
         """Run monitoring task within application context.
