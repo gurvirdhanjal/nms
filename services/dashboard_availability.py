@@ -18,16 +18,21 @@ def _load_latest_scan_map(device_ips):
     if not normalized_ips:
         return {}
 
-    # DISTINCT ON (device_ip) with ORDER BY device_ip, scan_timestamp DESC uses the
-    # covering index idx_dsh_ip_time_covering — faster than max(scan_id) which scans
-    # all chunks without a suitable composite index.
+    # LATERAL + LIMIT 1 per IP: TimescaleDB uses per-chunk index lookup and stops after
+    # the first (newest) row for each device — orders of magnitude faster than DISTINCT ON
+    # with ANY(:ips) which loads all historical rows and sorts them in memory.
     from sqlalchemy import text as _text
     stmt = _text("""
-        SELECT DISTINCT ON (device_ip)
-            scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
-        FROM device_scan_history
-        WHERE device_ip = ANY(:ips)
-        ORDER BY device_ip, scan_timestamp DESC
+        SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
+               l.ping_time_ms, l.packet_loss, l.jitter
+        FROM unnest(:ips::text[]) AS t(device_ip)
+        CROSS JOIN LATERAL (
+            SELECT scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
+            FROM device_scan_history dsh
+            WHERE dsh.device_ip = t.device_ip
+            ORDER BY dsh.scan_timestamp DESC
+            LIMIT 1
+        ) AS l
     """)
     rows = db.session.execute(stmt, {"ips": normalized_ips}).fetchall()
     return {row.device_ip: row for row in rows if row.device_ip}

@@ -918,15 +918,20 @@ def get_top_problems():
 
         latest_scans = []
         if scoped_ips:
-            # DISTINCT ON (device_ip) ORDER BY device_ip, scan_timestamp DESC uses the
-            # covering index idx_dsh_ip_time_covering and avoids a full max(scan_id) aggregate.
+            # LATERAL + LIMIT 1 per IP: uses per-chunk index lookup in TimescaleDB
+            # and stops after the first row per device — avoids loading all historical rows.
             from sqlalchemy import text as _text
             _latest_stmt = _text("""
-                SELECT DISTINCT ON (device_ip)
-                    scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
-                FROM device_scan_history
-                WHERE device_ip = ANY(:ips)
-                ORDER BY device_ip, scan_timestamp DESC
+                SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
+                       l.ping_time_ms, l.packet_loss, l.jitter
+                FROM unnest(:ips::text[]) AS t(device_ip)
+                CROSS JOIN LATERAL (
+                    SELECT scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
+                    FROM device_scan_history dsh
+                    WHERE dsh.device_ip = t.device_ip
+                    ORDER BY dsh.scan_timestamp DESC
+                    LIMIT 1
+                ) AS l
             """)
             _raw_rows = db.session.execute(_latest_stmt, {"ips": list(scoped_ips)}).fetchall()
             latest_scans = [
