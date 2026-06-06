@@ -81,6 +81,15 @@ def _existing_columns(conn, table: str) -> set[str]:
     return {row[1] for row in rows}
 
 
+def _pg_column_exists(conn, table: str, column: str) -> bool:
+    from sqlalchemy import text
+    row = conn.execute(
+        text("SELECT 1 FROM information_schema.columns WHERE table_name=:t AND column_name=:c"),
+        {"t": table, "c": column},
+    ).fetchone()
+    return row is not None
+
+
 def _run_column_migrations(db: "SQLAlchemy", is_pg: bool) -> int:
     """Idempotently add missing columns to existing tables.  Returns error count."""
     from sqlalchemy import text
@@ -89,7 +98,12 @@ def _run_column_migrations(db: "SQLAlchemy", is_pg: bool) -> int:
     if is_pg:
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for table, column, type_sql in _COLUMNS:
-                sql = f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {type_sql}"
+                # Check via information_schema first — ALTER TABLE takes an
+                # AccessExclusiveLock even when IF NOT EXISTS is a no-op, which
+                # blocks every concurrent request and deadlocks all workers.
+                if _pg_column_exists(conn, table, column):
+                    continue
+                sql = f"ALTER TABLE {table} ADD COLUMN {column} {type_sql}"
                 try:
                     conn.execute(text(sql))
                     logger.info("[STARTUP MIGRATION] ensured column %s.%s", table, column)
