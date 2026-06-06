@@ -188,7 +188,13 @@ class ReportingServiceBase:
         Hostname branch only picks up scans whose device_ip differs from the
         current device IP (i.e. scans recorded before the device changed IP).
         UNION deduplicates any scan_id that appears in both branches.
+
+        work_mem is bumped to 512MB for this session so the UNION dedup hash
+        aggregate doesn't spill to disk (3M rows × 9 cols ≈ 300MB intermediate).
+        SET LOCAL reverts automatically at end of the enclosing transaction.
         """
+        from sqlalchemy import text as _text
+        db.session.execute(_text("SET LOCAL work_mem = '512MB'"))
         inventory_ids = self._inventory_device_ids_subquery(device_ids)
         inv_filter = Device.device_id.in_(db.session.query(inventory_ids.c.device_id))
         time_filter = and_(

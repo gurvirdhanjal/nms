@@ -40,6 +40,7 @@ from .restricted_site_policy import (
     RestrictedSiteDomainMeta,
 )
 from .audit_log import AuditLog
+from .maintenance_window import MaintenanceWindow
 from .server_health import ServerHealthLog
 from .server_metric_threshold_state import ServerMetricThresholdState
 from .server_threshold_config import ServerThresholdConfig
@@ -64,6 +65,6 @@ __all__ = [
     'AlertFanoutTask', 'TrackingSyncEnvelope', 'ReportExportJob',
     'RestrictedSitePolicy', 'TrackingAgentKeyBinding', 'RestrictedSiteEvent',
     'RestrictedSiteAlertState', 'RestrictedSiteDomainMeta',
-    'AuditLog', 'ServerHealthLog', 'ServerThresholdConfig', 'ServerMetricThresholdState',
+    'AuditLog', 'MaintenanceWindow', 'ServerHealthLog', 'ServerThresholdConfig', 'ServerMetricThresholdState',
     'ServerHealthHourlyRollup', 'ServerHealthDailyRollup', 'ServerHealthRollupState'
 ]
