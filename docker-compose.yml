@@ -2,24 +2,6 @@ version: "3.9"
 
 services:
 
-  db:
-    image: postgres:15
-    container_name: nms_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB:       monitoring_db
-      POSTGRES_USER:     monitoring_man
-      POSTGRES_PASSWORD: admin123
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monitoring_man -d monitoring_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   app:
     build:
       context: .
@@ -40,5 +22,4 @@ services:
       - app_instance:/app/instance   # persists SQLite fallback + uploads
 
 volumes:
-  pgdata:
   app_instance:
