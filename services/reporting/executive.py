@@ -68,8 +68,10 @@ class ExecutiveReportMixin:
         def _get_raw_uptime_rows():
             nonlocal _raw_uptime_rows_cache
             if _raw_uptime_rows_cache is _NOT_FETCHED:
-                _raw_uptime_rows_cache = self._raw_scan_uptime_rows(
-                    start_date=start_date, end_date=end_date
+                # Cagg is ~10-15× faster than raw for 7-30 day windows; fall back only if empty.
+                _raw_uptime_rows_cache = (
+                    self._cagg_scan_uptime_rows(start_date=start_date, end_date=end_date)
+                    or self._raw_scan_uptime_rows(start_date=start_date, end_date=end_date)
                 )
             return _raw_uptime_rows_cache
 
@@ -85,24 +87,10 @@ class ExecutiveReportMixin:
                 }
             return _raw_uptime_map_cache
 
-        raw_ping_stats = (
-            db.session.query(
-                func.avg(cast(DeviceScanHistory.ping_time_ms, db.Float)).filter(
-                    DeviceScanHistory.ping_time_ms.isnot(None),
-                    DeviceScanHistory.ping_time_ms >= 0,
-                    DeviceScanHistory.ping_time_ms < 60000,
-                ).label("avg_latency")
-            )
-            .filter(
-                DeviceScanHistory.device_ip.in_(db.session.query(inventory_ips.c.device_ip)),
-                DeviceScanHistory.scan_timestamp >= start_date,
-                DeviceScanHistory.scan_timestamp <= end_date,
-                _non_agent_scan_filter(DeviceScanHistory),
-            )
-            .first()
-        )
-        if raw_ping_stats and raw_ping_stats.avg_latency is not None:
-            avg_latency = round(raw_ping_stats.avg_latency, 2)
+        # Cagg-based fleet avg latency: reads ~175K pre-aggregated rows instead of 3M raw rows.
+        _cagg_lat = self._cagg_fleet_avg_latency(start_date=start_date, end_date=end_date)
+        if _cagg_lat is not None:
+            avg_latency = _cagg_lat
 
         if uptime_score is None:
             availability_basis = "device_scan_history"
@@ -142,7 +130,10 @@ class ExecutiveReportMixin:
             prev_uptime_score = None
 
         if prev_uptime_score is None:
-            _prev_raw = self._raw_scan_uptime_rows(start_date=prev_start, end_date=prev_end)
+            _prev_raw = (
+                self._cagg_scan_uptime_rows(start_date=prev_start, end_date=prev_end)
+                or self._raw_scan_uptime_rows(start_date=prev_start, end_date=prev_end)
+            )
             prev_total = sum(int(r.total_scans or 0) for r in _prev_raw)
             prev_online = sum(int(r.online_scans or 0) for r in _prev_raw)
             prev_uptime_score = round((prev_online / prev_total) * 100.0, 2) if prev_total else None

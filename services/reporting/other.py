@@ -251,6 +251,10 @@ class OtherReportMixin:
         uptime_basis = "daily_device_stats"
         if not uptime_summary:
             uptime_basis = "device_scan_history"
+            _scan_rows = (
+                self._cagg_scan_uptime_rows(device_ids=device_ids, start_date=start_date, end_date=end_date)
+                or self._raw_scan_uptime_rows(device_ids=device_ids, start_date=start_date, end_date=end_date)
+            )
             uptime_summary = [
                 {
                     "device_id": row.device_id,
@@ -259,11 +263,7 @@ class OtherReportMixin:
                     "avg_latency_ms": _safe_round(row.avg_latency),
                     "avg_packet_loss": _safe_round(row.avg_packet_loss),
                 }
-                for row in self._raw_scan_uptime_rows(
-                    device_ids=device_ids,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
+                for row in _scan_rows
             ]
 
         # Enrich uptime_summary with p95 latency, jitter, and timeout rate
