@@ -997,9 +997,9 @@ def get_top_problems():
         result = {
             'high_latency': [
                 {
-                    'device_name': s[0].device_name, 
-                    'ip': s[0].device_ip, 
-                    'value': s[0].ping_time_ms, 
+                    'device_name': s[1].device_name,
+                    'ip': s[0].device_ip,
+                    'value': s[0].ping_time_ms,
                     'unit': 'ms',
                     'device_id': s[1].device_id,
                     'time': iso_utc(s[0].scan_timestamp),
@@ -1009,9 +1009,9 @@ def get_top_problems():
             ],
             'high_packet_loss': [
                 {
-                    'device_name': s[0].device_name, 
-                    'ip': s[0].device_ip, 
-                    'value': s[0].packet_loss, 
+                    'device_name': s[1].device_name,
+                    'ip': s[0].device_ip,
+                    'value': s[0].packet_loss,
                     'unit': '%',
                     'device_id': s[1].device_id,
                     'time': iso_utc(s[0].scan_timestamp),
@@ -1021,8 +1021,8 @@ def get_top_problems():
             ],
             'recently_down': [
                 {
-                    'device_name': s[0].device_name, 
-                    'ip': s[0].device_ip, 
+                    'device_name': s[1].device_name,
+                    'ip': s[0].device_ip,
                     'time': iso_utc(s[0].scan_timestamp),
                     'device_id': s[1].device_id
                 }
