@@ -193,6 +193,10 @@ class MonitoringScheduler:
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
 
+        # Pre-warm expensive report queries into Redis so every user request is a
+        # cache hit. Runs in a background thread so the scheduler loop is not blocked.
+        schedule.every(8).minutes.do(self.prewarm_report_cache)
+
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
@@ -292,6 +296,38 @@ class MonitoringScheduler:
                 db.session.remove()
 
     
+    def prewarm_report_cache(self):
+        """Dispatch pre-warm to a background daemon thread so the scheduler loop is not blocked."""
+        import threading
+        t = threading.Thread(target=self._prewarm_report_cache_bg, daemon=True, name="report-prewarm")
+        t.start()
+
+    def _prewarm_report_cache_bg(self):
+        """Compute executive reports and cache them in Redis (TTL 15 min).
+
+        Runs off the scheduler thread — Redis failure or slow DB query never
+        impacts the main monitoring loop.
+        """
+        from extensions import redis_client, is_redis_available
+        if not is_redis_available():
+            return
+        import json
+        from datetime import datetime, timedelta
+        from services.reporting_service import ReportingService
+        end_dt = datetime.utcnow()
+        with self.app.app_context():
+            for range_days, redis_key in [(30, 'nms:report:executive:30d'), (7, 'nms:report:executive:7d')]:
+                start_dt = end_dt - timedelta(days=range_days)
+                try:
+                    svc = ReportingService()
+                    payload = svc.get_executive_fleet_health(start_dt, end_dt)
+                    redis_client.setex(redis_key, 900, json.dumps(payload, default=str))
+                    logger.info('[PreWarm] Cached executive %dd in Redis', range_days)
+                except Exception as exc:
+                    logger.warning('[PreWarm] executive %dd failed: %s', range_days, exc)
+                finally:
+                    db.session.remove()
+
     def run_monitoring_task(self):
         """Run monitoring task within application context.
 

@@ -22,7 +22,7 @@ from flask import (
 )
 from sqlalchemy import func, or_, text
 
-from extensions import db
+from extensions import db, redis_client, is_redis_available
 from models.restricted_site_policy import RestrictedSiteEvent
 from models.tracked_device import TrackedDevice
 from middleware.rbac import build_scope_context, require_login, require_permission, scoped_query
@@ -526,6 +526,24 @@ def _set_cached_report(cache_key, payload, ttl):
                 _report_cache.pop(key, None)
 
 
+# Redis keys for pre-warmed reports — scheduler refreshes these every 8 minutes.
+# Keyed by (report_type, approximate_range_days); route checks on L1 miss.
+_REDIS_PREWARM_KEYS = {
+    ('executive', 30): 'nms:report:executive:30d',
+    ('executive', 7):  'nms:report:executive:7d',
+    ('operational', 1): 'nms:report:operational:24h',
+}
+_REDIS_PREWARM_TTL = 900  # 15 minutes
+
+
+def _redis_prewarm_key(report_type, range_days):
+    """Return the Redis pre-warm key for this report/range, or None if not pre-warmed."""
+    for (rtype, days), key in _REDIS_PREWARM_KEYS.items():
+        if rtype == report_type and abs(range_days - days) <= 2:
+            return key
+    return None
+
+
 def _enforce_rate_limit(report_type, is_export=False):
     limit = int(
         current_app.config.get(
@@ -699,6 +717,26 @@ def _run_report(
                 'cache_key': cache_key,
             }
 
+    # L2 — Redis pre-warm check (scheduler keeps these warm; survives restarts)
+    if use_cache and cache_key and is_redis_available():
+        try:
+            range_days = max(1, int((end_date - start_date).total_seconds() / 86400))
+            rk = _redis_prewarm_key(report_type, range_days)
+            if rk:
+                rb = redis_client.get(rk)
+                if rb:
+                    payload = json.loads(rb)
+                    row_count = _count_report_rows(report_type, payload)
+                    _set_cached_report(cache_key, payload, ttl)
+                    return payload, row_count, 0.0, {
+                        'cache_hit': True, 'cache_source': 'redis',
+                        'cache_ttl_seconds': ttl,
+                        'cache_age_seconds': 0.0,
+                        'cache_key': cache_key,
+                    }
+        except Exception:
+            pass  # Redis failure → fall through to DB
+
     # Row estimation is skipped on cache hits — only run on actual DB queries.
     max_rows = _max_rows_limit(is_export=is_export)
     estimated_rows = _estimate_report_rows(report_type, start_date, end_date, device_ids)
@@ -765,6 +803,16 @@ def _run_report(
 
     if cache_key:
         _set_cached_report(cache_key, payload, ttl)
+
+    # Write-through to Redis so the next restart / TTL expiry is a cache hit
+    if cache_key and is_redis_available():
+        try:
+            range_days = max(1, int((end_date - start_date).total_seconds() / 86400))
+            rk = _redis_prewarm_key(report_type, range_days)
+            if rk:
+                redis_client.setex(rk, _REDIS_PREWARM_TTL, json.dumps(payload, default=str))
+        except Exception:
+            pass
 
     return payload, row_count, duration, {
         'cache_hit': False,
