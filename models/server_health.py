@@ -69,7 +69,7 @@ class ServerHealthLog(db.Model):
     ping_latency_ms = db.Column(db.Float, nullable=True)
     packet_loss_pct = db.Column(db.Float, nullable=True)
     
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, primary_key=True, default=datetime.utcnow)
 
     __table_args__ = (
         db.Index('idx_server_health_source_device_id_id', 'source', 'device_id', 'id'),

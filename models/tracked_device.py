@@ -320,7 +320,8 @@ class DeviceActivityLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.
+    timestamp = db.Column(db.DateTime, primary_key=True, default=datetime.utcnow)
     activity_type = db.Column(db.String(20), nullable=False)  # keyboard, mouse, scroll, idle, active
     event_count = db.Column(db.Integer, default=0)
     details = db.Column(db.Text)  # JSON details
@@ -347,7 +348,8 @@ class DeviceResourceLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.
+    timestamp = db.Column(db.DateTime, primary_key=True, default=datetime.utcnow)
     cpu_usage = db.Column(db.Float)  # percentage
     memory_usage = db.Column(db.Float)  # percentage
     disk_usage = db.Column(db.Float)  # percentage
@@ -379,7 +381,8 @@ class DeviceApplicationLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.
+    timestamp = db.Column(db.DateTime, primary_key=True, default=datetime.utcnow)
     application_name = db.Column(db.String(200), nullable=False)
     window_title = db.Column(db.String(500))
     duration = db.Column(db.Integer)  # seconds

@@ -12,7 +12,9 @@ class DeviceScanHistory(db.Model):
     status_detail = db.Column(db.String(100), nullable=True)
     packet_loss = db.Column(db.Float, default=0.0)
     jitter = db.Column(db.Float, nullable=True)
-    scan_timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    # primary_key=True matches the composite PK (scan_id, scan_timestamp) created
+    # by the hypertable migration — TimescaleDB requires the time column in every unique index.
+    scan_timestamp = db.Column(db.DateTime, primary_key=True, default=datetime.utcnow)
     scan_type = db.Column(db.String(20), default='scheduled')  # scheduled, manual
 
     __table_args__ = (
