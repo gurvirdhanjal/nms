@@ -26,17 +26,16 @@ services:
       dockerfile: Dockerfile
     container_name: nms_app
     restart: unless-stopped
+    network_mode: host
     env_file:
       - .env
     environment:
-      DATABASE_URL:          postgresql+psycopg2://monitoring_man:admin123@db:5432/monitoring_db
+      DATABASE_URL:          postgresql+psycopg2://monitoring_man:admin123@127.0.0.1:5433/monitoring_db
+      REDIS_URL:             redis://127.0.0.1:6379/0
       SESSION_COOKIE_SECURE: "False"
       WEB_OPEN_BROWSER:      "0"
-    ports:
-      - "5001:5001"
-    depends_on:
-      db:
-        condition: service_healthy
+      WEB_HOST:              "0.0.0.0"
+      WEB_PORT:              "5001"
     volumes:
       - app_instance:/app/instance   # persists SQLite fallback + uploads
 
