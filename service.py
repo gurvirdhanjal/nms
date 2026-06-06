@@ -231,6 +231,85 @@ def _build_network_signature(candidates=None):
         return ''
     return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
 
+_WIRELESS_NAME_TOKENS = ("wi-fi", "wifi", "wireless", "wlan", "wlp", "802.11")
+
+
+def _iface_for_ip(ip_address):
+    if not ip_address:
+        return None
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == socket.AF_INET and (addr.address or "").strip() == ip_address:
+                    return iface
+    except Exception:
+        pass
+    return None
+
+
+def _classify_interface(iface):
+    if not iface:
+        return "unknown"
+    system = platform.system()
+    if system == "Linux":
+        try:
+            if os.path.isdir(f"/sys/class/net/{iface}/wireless") or \
+               os.path.exists(f"/sys/class/net/{iface}/phy80211"):
+                return "wifi"
+            if os.path.isdir(f"/sys/class/net/{iface}"):
+                return "lan"
+        except Exception:
+            pass
+    name = iface.lower()
+    if system == "Windows":
+        try:
+            out = subprocess.run(
+                ["netsh", "wlan", "show", "interfaces"],
+                capture_output=True, text=True, timeout=4,
+            ).stdout.lower()
+            if iface.lower() in out:
+                return "wifi"
+            if "name" in out:
+                return "lan"
+        except Exception:
+            pass
+    if any(tok in name for tok in _WIRELESS_NAME_TOKENS):
+        return "wifi"
+    if any(tok in name for tok in ("eth", "ethernet", "lan", "enp", "eno", "ens")):
+        return "lan"
+    return "unknown"
+
+
+def detect_connection_type(ip_address=None):
+    """Classify the active link as 'wifi' | 'lan' | 'unknown'. Never raises.
+
+    ICMP cannot reveal this; the agent inspects its own active interface locally.
+    """
+    try:
+        iface = _iface_for_ip(ip_address) if ip_address else None
+        if iface:
+            cls = _classify_interface(iface)
+            if cls != "unknown":
+                return cls
+        try:
+            best = "unknown"
+            for name, st in psutil.net_if_stats().items():
+                if not getattr(st, "isup", False):
+                    continue
+                if name.lower().startswith("lo") or "loopback" in name.lower():
+                    continue
+                cls = _classify_interface(name)
+                if cls == "wifi":
+                    return "wifi"
+                if cls == "lan":
+                    best = "lan"
+            return best
+        except Exception:
+            return "unknown"
+    except Exception:
+        return "unknown"
+
+
 def get_local_ip(force_refresh=False, target_host=None):
     """Get best local IPv4 and refresh on network changes."""
     global _CACHED_IP, _CACHED_IP_TIME, _CACHED_IP_SIGNATURE, _CACHED_IP_SOURCE
@@ -563,6 +642,7 @@ def _build_monitoring_stats_payload(*, include_security=False, include_legacy_al
             "mac_address": get_mac_address(),
             "hostname": get_exact_hostname(),
             "ip": get_local_ip(),
+            "connection_type": detect_connection_type(get_local_ip()),
             "system": platform.system(),
             "os_version": platform.version(),
             "os_arch": platform.machine(),

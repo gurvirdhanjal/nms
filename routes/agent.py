@@ -279,6 +279,11 @@ def receive_metrics():
 
         # 5. Update Device Status
         device.is_active = True
+        # Agent-reported physical link type (wifi/lan/unknown). ICMP cannot see
+        # this; the agent classifies its own active interface locally.
+        conn_type = data.get('connection_type')
+        if conn_type in ('wifi', 'lan', 'unknown'):
+            device.connection_type = conn_type
         if hardware_specs:
             device.hardware_specs = hardware_specs
         # Update specific fields if they are missing

@@ -869,5 +869,31 @@ class SnmpService:
             return []
 
 
+
+def classify_connection_type_from_interfaces(ifaces: list[dict]) -> str:
+    """Derive 'wifi' | 'lan' | 'unknown' from a list of SNMP interface dicts.
+
+    Each dict is expected to have 'if_type' (int, IANAifType) and 'name' (str).
+    Priority: IANAifType 71 (ieee80211) → wifi;
+              IANAifType in {6, 117, 161, 166} (ethernet variants) → lan;
+              Fallback: interface name heuristics matching agent-side tokens.
+    Returns 'unknown' when no interface is conclusive.
+    """
+    WIFI_IANA = {71}
+    LAN_IANA = {6, 117, 161, 166}
+    WIFI_TOKENS = ("wi-fi", "wifi", "wireless", "wlan", "wlp", "802.11", "wl")
+    LAN_TOKENS = ("eth", "ethernet", "lan", "enp", "eno", "ens", "gig")
+
+    best = "unknown"
+    for iface in ifaces:
+        it = iface.get("if_type")
+        name = (iface.get("name") or "").lower()
+        if it in WIFI_IANA or any(t in name for t in WIFI_TOKENS):
+            return "wifi"
+        if it in LAN_IANA or any(t in name for t in LAN_TOKENS):
+            best = "lan"
+    return best
+
+
 # Singleton instance
 snmp_service = SnmpService()

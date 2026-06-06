@@ -64,6 +64,24 @@ class Device(db.Model):
     # Multi-Site Support (Phase 1)
     site_id = db.Column(db.Integer, db.ForeignKey('sites.id', ondelete='SET NULL'), nullable=True, index=True)
 
+    # Floor-plan geotagging — placement on an uploaded plant map.
+    # map_x / map_y are percent (0-100) of the plan image, so they are
+    # resolution-independent. NULL floor_plan_id means the device is unplaced.
+    floor_plan_id = db.Column(db.Integer, db.ForeignKey('floor_plans.id', ondelete='SET NULL'), nullable=True, index=True)
+    map_x = db.Column(db.Float, nullable=True)
+    map_y = db.Column(db.Float, nullable=True)
+    # Marker presentation metadata (no UI yet — reserved so we don't re-migrate later).
+    map_rotation = db.Column(db.Float, nullable=True)        # marker rotation in degrees
+    map_label_offset_x = db.Column(db.Float, nullable=True)  # label nudge, percent of plan width
+    map_label_offset_y = db.Column(db.Float, nullable=True)  # label nudge, percent of plan height
+    # Placement lock — when True, normal drag operations must not move this marker
+    # (core switches, server racks, main routers). Admin toggles it explicitly.
+    map_locked = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
+
+    # Connection type reported by the on-device agent: 'wifi', 'lan', or 'unknown'.
+    # ICMP cannot detect this; the agent classifies its own active interface locally.
+    connection_type = db.Column(db.String(10), nullable=True)
+
     # Department Isolation (Phase 1 RBAC)
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True, index=True)
 
@@ -176,6 +194,14 @@ class Device(db.Model):
             'site_id': self.site_id,
             'department_id': self.department_id,
             'location': self.location,
+            'floor_plan_id': self.floor_plan_id,
+            'map_x': self.map_x,
+            'map_y': self.map_y,
+            'map_rotation': self.map_rotation,
+            'map_label_offset_x': self.map_label_offset_x,
+            'map_label_offset_y': self.map_label_offset_y,
+            'map_locked': bool(self.map_locked),
+            'connection_type': self.connection_type,
             'compliance_profile_id': self.compliance_profile_id,
             # device_password_hash intentionally excluded for security
         }
