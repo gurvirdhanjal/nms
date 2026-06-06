@@ -1012,6 +1012,7 @@ def save_device():
             return redirect(url_for('devices_bp.device_management'))
         except Exception as e:
             db.session.rollback()
+            db.session.remove()
             logger.error(f"[Devices] Failed to save device: {e}")
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
@@ -1028,6 +1029,7 @@ def save_device():
 
     except Exception as e:
         db.session.rollback()
+        db.session.remove()
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'message': f'Error saving device: {str(e)}'}), 500
         from models.device import Device

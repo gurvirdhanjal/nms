@@ -97,11 +97,24 @@ def build_device_availability_snapshot(devices, *, now_utc=None):
     latencies = []
     packet_losses = []
 
+    device_scan_details: dict = {}
+
     for device in device_list:
         device_id = getattr(device, "device_id", None)
         scan = latest_scan_map.get(getattr(device, "device_ip", None))
         state = _classify_scan_state(scan)
         device_states[device_id] = state
+
+        # Per-device scan details exposed for the live-refresh API.
+        device_scan_details[device_id] = {
+            "ping_ms": getattr(scan, "ping_time_ms", None) if scan else None,
+            "packet_loss": getattr(scan, "packet_loss", None) if scan else None,
+            "last_scan_at": (
+                scan.scan_timestamp.isoformat()
+                if scan and getattr(scan, "scan_timestamp", None)
+                else None
+            ),
+        }
 
         if state == "healthy":
             healthy_count += 1
@@ -125,10 +138,18 @@ def build_device_availability_snapshot(devices, *, now_utc=None):
     total = len(device_list)
     online_total = healthy_count + degraded_count
 
+    try:
+        from services.settings_service import get_monitoring_interval
+        monitoring_interval_s = get_monitoring_interval()
+    except Exception:
+        monitoring_interval_s = 15
+
     return {
         "generated_at": now_utc,
         "device_states": device_states,
+        "device_scan_details": device_scan_details,
         "online_device_ids": online_device_ids,
+        "monitoring_interval_s": monitoring_interval_s,
         "counts": {
             "total": total,
             "healthy": healthy_count,

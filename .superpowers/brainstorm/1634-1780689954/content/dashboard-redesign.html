@@ -1,0 +1,169 @@
+<h2>Dashboard UX Refinement — Full Proposal</h2>
+<p class="subtitle">Before vs After. Review each change and confirm the direction looks right.</p>
+
+<div class="split">
+  <!-- BEFORE -->
+  <div class="mockup">
+    <div class="mockup-header">❌ Current State (Issues)</div>
+    <div class="mockup-body" style="font-size:0.74rem;padding:12px;display:flex;flex-direction:column;gap:8px">
+
+      <!-- KPI strip -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Total<br><strong>142</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Healthy<br><strong>118</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Offline<br><strong>8</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Alerts<br><strong>14</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Avail<br><strong>98.2%</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">SLA<br><strong>99.1%</strong></div>
+      </div>
+
+      <!-- Main 2-col -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px">
+
+        <!-- Left - Network Intel -->
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;padding:8px;border:1px solid rgba(220,38,38,0.4)">
+          <div style="font-size:0.68rem;color:rgba(220,38,38,0.9);margin-bottom:4px">⚠ Tabs: pill buttons, no clear active state</div>
+          <div style="display:flex;gap:4px;margin-bottom:6px">
+            <span style="background:rgba(94,234,212,0.15);border:1px solid rgba(94,234,212,0.3);border-radius:4px;padding:2px 7px;font-size:0.65rem;color:#5eead4">Latency</span>
+            <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15);border-radius:4px;padding:2px 7px;font-size:0.65rem;color:rgba(148,163,184,0.5)">Loss</span>
+            <span style="background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15);border-radius:4px;padding:2px 7px;font-size:0.65rem;color:rgba(148,163,184,0.5)">Inventory</span>
+          </div>
+          <div style="border:1px solid rgba(220,38,38,0.35);border-radius:4px;padding:4px;background:rgba(220,38,38,0.05)">
+            <div style="font-size:0.63rem;color:rgba(220,38,38,0.8);margin-bottom:3px">⚠ No scrollbar — table just flows off</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">192.168.1.1 — 42ms</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">192.168.1.5 — 78ms</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">10.0.0.12 — 105ms</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">10.0.0.14 — 122ms</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0">10.0.0.22 — 149ms</div>
+            <!-- no scroll indicator, just keeps going -->
+          </div>
+          <div style="margin-top:6px;font-size:0.63rem;color:rgba(220,38,38,0.7)">⚠ Inconsistent cell padding: 0.36–0.86rem mixed</div>
+        </div>
+
+        <!-- Right - Fleet -->
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;padding:8px;border:1px solid rgba(220,38,38,0.4)">
+          <div style="font-size:0.68rem;color:rgba(220,38,38,0.9);margin-bottom:4px">⚠ Server table clipped, no scroll</div>
+          <div style="font-size:0.65rem;font-weight:600;color:rgba(148,163,184,0.8);margin-bottom:4px">Fleet Overview</div>
+          <div style="border:1px solid rgba(220,38,38,0.35);border-radius:4px;padding:4px;background:rgba(220,38,38,0.05)">
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">srv-01 — CPU 82%</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.6);padding:3px 0;border-bottom:1px solid rgba(148,163,184,0.1)">srv-02 — CPU 45%</div>
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.4);padding:3px 0;font-style:italic">...more rows hidden</div>
+          </div>
+          <div style="margin-top:6px;font-size:0.63rem;color:rgba(220,38,38,0.7)">⚠ Subnet table also truncated</div>
+          <div style="border:1px solid rgba(220,38,38,0.35);border-radius:4px;padding:4px;background:rgba(220,38,38,0.05);margin-top:4px">
+            <div style="font-size:0.64rem;color:rgba(148,163,184,0.4);font-style:italic">subnet rows cut off...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AFTER -->
+  <div class="mockup">
+    <div class="mockup-header">✅ Proposed State (Fixes Applied)</div>
+    <div class="mockup-body" style="font-size:0.74rem;padding:12px;display:flex;flex-direction:column;gap:8px">
+
+      <!-- KPI strip (unchanged) -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Total<br><strong>142</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Healthy<br><strong>118</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Offline<br><strong>8</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Alerts<br><strong>14</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">Avail<br><strong>98.2%</strong></div>
+        <div style="background:rgba(148,163,184,0.1);border-radius:5px;padding:6px;text-align:center;font-size:0.65rem">SLA<br><strong>99.1%</strong></div>
+      </div>
+
+      <!-- Main 2-col -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px">
+
+        <!-- Left - Network Intel FIXED -->
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;padding:8px;border:1px solid rgba(94,234,212,0.2)">
+          <!-- Underline tabs -->
+          <div style="display:flex;gap:0;margin-bottom:8px;border-bottom:1px solid rgba(148,163,184,0.15)">
+            <span style="padding:4px 12px;font-size:0.68rem;color:#5eead4;border-bottom:2px solid #5eead4;margin-bottom:-1px;white-space:nowrap">Latency</span>
+            <span style="padding:4px 12px;font-size:0.68rem;color:rgba(148,163,184,0.55);white-space:nowrap">Loss</span>
+            <span style="padding:4px 12px;font-size:0.68rem;color:rgba(148,163,184,0.55);white-space:nowrap">Inventory</span>
+          </div>
+          <!-- Fixed scroll table -->
+          <div style="border:1px solid rgba(148,163,184,0.15);border-radius:6px;overflow:hidden">
+            <div style="max-height:110px;overflow-y:auto;scrollbar-width:thin">
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.63rem;color:rgba(148,163,184,0.45);padding:3px 8px;background:rgba(8,12,19,0.7);position:sticky;top:0;border-bottom:1px solid rgba(148,163,184,0.12)"><span>Device</span><span>Avg Lat</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08)"><span>192.168.1.1</span><span>42ms</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08);background:rgba(255,255,255,0.015)"><span>192.168.1.5</span><span>78ms</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08)"><span>10.0.0.12</span><span>105ms</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08);background:rgba(255,255,255,0.015)"><span>10.0.0.14</span><span>122ms</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px"><span>10.0.0.22</span><span>149ms</span></div>
+            </div>
+            <div style="text-align:center;padding:5px 8px;border-top:1px dashed rgba(148,163,184,0.15);background:rgba(8,12,19,0.4)">
+              <span style="font-size:0.65rem;color:rgba(94,234,212,0.7)">↕ Show all 12 rows</span>
+            </div>
+          </div>
+          <!-- Uniform padding note -->
+          <div style="margin-top:5px;font-size:0.63rem;color:rgba(94,234,212,0.6)">✓ Uniform 5px 8px cell padding · sticky header · scroll active</div>
+        </div>
+
+        <!-- Right - Fleet FIXED -->
+        <div style="background:rgba(148,163,184,0.06);border-radius:6px;padding:8px;border:1px solid rgba(94,234,212,0.2)">
+          <div style="font-size:0.65rem;font-weight:600;color:rgba(148,163,184,0.8);margin-bottom:6px">Fleet Overview</div>
+          <div style="border:1px solid rgba(148,163,184,0.15);border-radius:6px;overflow:hidden;margin-bottom:6px">
+            <div style="max-height:80px;overflow-y:auto;scrollbar-width:thin">
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.63rem;color:rgba(148,163,184,0.45);padding:3px 8px;background:rgba(8,12,19,0.7);position:sticky;top:0;border-bottom:1px solid rgba(148,163,184,0.12)"><span>Server</span><span>CPU</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08)"><span>srv-01</span><span style="color:#f87171">82%</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08);background:rgba(255,255,255,0.015)"><span>srv-02</span><span style="color:#4ade80">45%</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px"><span>srv-03</span><span style="color:#facc15">71%</span></div>
+            </div>
+            <div style="text-align:center;padding:4px 8px;border-top:1px dashed rgba(148,163,184,0.15);background:rgba(8,12,19,0.4)">
+              <span style="font-size:0.65rem;color:rgba(94,234,212,0.7)">↕ Show all 6 servers</span>
+            </div>
+          </div>
+          <!-- Subnet table -->
+          <div style="border:1px solid rgba(148,163,184,0.15);border-radius:6px;overflow:hidden">
+            <div style="max-height:70px;overflow-y:auto;scrollbar-width:thin">
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.63rem;color:rgba(148,163,184,0.45);padding:3px 8px;background:rgba(8,12,19,0.7);position:sticky;top:0;border-bottom:1px solid rgba(148,163,184,0.12)"><span>Subnet</span><span>Health</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;border-bottom:1px solid rgba(148,163,184,0.08)"><span>10.0.0.0/24</span><span style="color:#4ade80">98%</span></div>
+              <div style="display:grid;grid-template-columns:1fr auto;font-size:0.64rem;color:rgba(148,163,184,0.75);padding:5px 8px;background:rgba(255,255,255,0.015)"><span>192.168.1.0/24</span><span style="color:#facc15">74%</span></div>
+            </div>
+            <div style="text-align:center;padding:4px 8px;border-top:1px dashed rgba(148,163,184,0.15);background:rgba(8,12,19,0.4)">
+              <span style="font-size:0.65rem;color:rgba(94,234,212,0.7)">↕ Show all subnets</span>
+            </div>
+          </div>
+          <div style="margin-top:5px;font-size:0.63rem;color:rgba(94,234,212,0.6)">✓ Scroll active on all tables</div>
+        </div>
+      </div>
+
+      <!-- Summary of changes -->
+      <div style="background:rgba(94,234,212,0.05);border:1px solid rgba(94,234,212,0.2);border-radius:6px;padding:8px;font-size:0.68rem">
+        <div style="color:#5eead4;font-weight:600;margin-bottom:4px">Changes at a glance</div>
+        <div style="color:rgba(148,163,184,0.8);display:grid;grid-template-columns:1fr 1fr;gap:3px">
+          <span>✓ Remove dashboard-flow scroll override</span>
+          <span>✓ Underline tabs with teal active bar</span>
+          <span>✓ Fixed 280px max-height on all tables</span>
+          <span>✓ "Show all N rows" expand toggle</span>
+          <span>✓ Sticky thead on all tables</span>
+          <span>✓ Uniform padding: 5px 8px all cells</span>
+          <span>✓ Visible thin scrollbar on all tables</span>
+          <span>✓ Row count hint below tab bar</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:20px;text-align:center">
+  <div class="options" style="justify-content:center">
+    <div class="option" data-choice="approve" onclick="toggleSelect(this)" style="max-width:260px">
+      <div class="letter">✓</div>
+      <div class="content">
+        <h3>Approve this direction</h3>
+        <p>Write the spec and implementation plan</p>
+      </div>
+    </div>
+    <div class="option" data-choice="revise" onclick="toggleSelect(this)" style="max-width:260px">
+      <div class="letter">↺</div>
+      <div class="content">
+        <h3>Needs changes</h3>
+        <p>Tell me what to adjust in the terminal</p>
+      </div>
+    </div>
+  </div>
+</div>

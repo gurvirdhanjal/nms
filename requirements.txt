@@ -22,6 +22,9 @@ pywin32; platform_system=="Windows"
 pysnmp==4.4.12
 pyasn1==0.4.8
 
+# Floor-plan PDF rasterisation (pip-only wheels, no poppler/system dependency)
+PyMuPDF>=1.24.0
+
 # PostgreSQL Driver
 psycopg2-binary==2.9.9
 

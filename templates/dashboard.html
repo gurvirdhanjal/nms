@@ -40,8 +40,15 @@
 
     .tabs {
         display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
+        gap: 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
     }
 
     .tactical-stat-card {
@@ -65,27 +72,30 @@
 
 
     .tabs button {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #8b949e;
-        padding: 4px 10px;
-        border-radius: 4px;
-        font-size: 0.7rem;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        padding: 0.32rem 0.75rem;
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        transition: border-color 130ms ease, background 130ms ease;
+        font-weight: 600;
+        color: rgba(148, 163, 184, 0.6);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: color 160ms ease, border-color 160ms ease;
     }
 
-    /* v5.0: active tabs are NEVER green */
-    .tabs button.active {
-        color: #e6edf5;
-        border-color: rgba(148, 163, 184, 0.32);
-        background: rgba(148, 163, 184, 0.18);
+    .tabs button.active,
+    .tabs button[aria-selected="true"] {
+        color: #5eead4;
+        border-bottom-color: #5eead4;
     }
 
     .tabs button:hover {
-        color: #e6edf5;
-        border-color: rgba(148, 163, 184, 0.32);
+        color: var(--e-text-primary, #e6edf5);
+        border-bottom-color: rgba(148, 163, 184, 0.35);
     }
 
     /* Global dashboard horizontal breathing space */
@@ -402,7 +412,6 @@
 
     #server-health-detail .tactical-table th,
     #server-health-detail .tactical-table td {
-        padding: 0.55rem 0.75rem;
         font-size: 0.9rem;
     }
 
@@ -428,6 +437,14 @@
 
     .fleet-table-card .card-body {
         padding: 0;
+    }
+
+    .fleet-table-card .table-responsive {
+        max-height: 260px;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
     }
 
 
@@ -729,31 +746,10 @@
         color: rgba(211, 220, 230, 0.72);
     }
 
-    .dashboard-enterprise .tabs {
-        gap: 0.28rem;
-    }
-
     .dashboard-enterprise .tabs button {
         padding: 0.18rem 0.44rem;
         font-size: 0.6rem;
-        line-height: 1.2;
         letter-spacing: 0.08em;
-        border-radius: 3px;
-        color: rgba(148, 163, 184, 0.5);
-        border: 1px solid rgba(148, 163, 184, 0.10);
-        background: transparent;
-        transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
-
-    .dashboard-enterprise .tabs button.active {
-        color: var(--e-text-secondary);
-        border-color: rgba(148, 163, 184, 0.26);
-        background: rgba(148, 163, 184, 0.10);
-    }
-
-    .dashboard-enterprise .tabs button:hover {
-        color: var(--e-text-secondary);
-        border-color: rgba(148, 163, 184, 0.22);
     }
 
     .dashboard-enterprise .tactical-btn-outline,
@@ -895,11 +891,12 @@
         background: rgba(15, 18, 26, 0.96) !important;
         color: #b8c6d5;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.075em;
         font-size: 0.62rem;
         font-weight: 700;
-        padding: 0.48rem 0.56rem;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+        padding: 0.34rem 0.62rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+        white-space: nowrap;
     }
 
     .dashboard-enterprise .tactical-table tbody tr {
@@ -918,10 +915,11 @@
     }
 
     .dashboard-enterprise .tactical-table tbody td {
-        padding: 0.42rem 0.56rem;
-        line-height: 1.24;
+        padding: 0.44rem 0.62rem;
+        line-height: 1.3;
         color: var(--e-text-secondary);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.075);
+        vertical-align: middle;
     }
 
     .dashboard-enterprise .badge,
@@ -1027,7 +1025,8 @@
 
     .dashboard-enterprise .network-segments-panel .subnet-table-scroll {
         max-height: 340px;
-        overflow-y: auto;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
     }
 
@@ -2044,16 +2043,23 @@
         color: rgba(15, 23, 42, 0.45);
     }
 
-    html[data-theme="light"] .dashboard-enterprise .tabs button {
-        background: rgba(15, 23, 42, 0.04);
-        color: #475569;
-        border-color: rgba(15, 23, 42, 0.12);
+    html[data-theme="light"] .tabs {
+        border-bottom-color: rgba(15, 23, 42, 0.15);
     }
 
-    html[data-theme="light"] .dashboard-enterprise .tabs button.active {
-        background: rgba(15, 23, 42, 0.08);
-        color: #0f172a;
-        border-color: rgba(15, 23, 42, 0.24);
+    html[data-theme="light"] .tabs button {
+        color: rgba(51, 65, 85, 0.6);
+    }
+
+    html[data-theme="light"] .tabs button.active,
+    html[data-theme="light"] .tabs button[aria-selected="true"] {
+        color: #0d9488;
+        border-bottom-color: #0d9488;
+    }
+
+    html[data-theme="light"] .tabs button:hover {
+        color: #1e293b;
+        border-bottom-color: rgba(15, 23, 42, 0.25);
     }
 
     html[data-theme="light"] .dashboard-enterprise .text-secondary,
@@ -3016,6 +3022,31 @@
             grid-template-columns: 1fr;
         }
     }
+
+    #alerts-table-responsive {
+        max-height: 320px;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        transition: max-height 260ms ease;
+    }
+
+    .btn-expand-rows {
+        display: block;
+        width: 100%;
+        padding: 0.3rem;
+        background: transparent;
+        border: none;
+        border-top: 1px dashed rgba(148, 163, 184, 0.18);
+        font-size: 0.68rem;
+        color: rgba(94, 234, 212, 0.7);
+        cursor: pointer;
+        text-align: center;
+        transition: color 120ms ease;
+    }
+
+    .btn-expand-rows:hover {
+        color: #5eead4;
+    }
 </style>
 {% endblock %}
 
@@ -3378,7 +3409,7 @@
         #device-breakdown.is-active {
             max-height: 2800px;
             opacity: 1;
-            transform: translateY(0);
+            transform: none;
             margin-top: 0.65rem;
             pointer-events: auto;
         }
@@ -3873,10 +3904,6 @@
             font-size: 0.64rem;
         }
 
-        #device-breakdown .tabs {
-            gap: 0.22rem;
-        }
-
         #device-breakdown .tabs button {
             padding: 0.14rem 0.42rem;
             font-size: 0.56rem;
@@ -3890,6 +3917,7 @@
             overflow: auto;
             scrollbar-width: thin;
             scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+            -webkit-overflow-scrolling: touch;
         }
 
         #device-breakdown .table-responsive::-webkit-scrollbar {
@@ -4037,14 +4065,23 @@
                         <div class="tactical-card breakdown-subcard">
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <span><i class="fas fa-sitemap"></i>Device Breakdown</span>
-                                <div class="tabs"><button class="active"
-                                        data-target="tab-latency">Latency</button><button
-                                        data-target="tab-loss">Loss</button><button
-                                        data-target="tab-inventory-list">Inventory</button><button
-                                        data-target="tab-discovery">Discovery</button></div>
+                                <div class="tabs" role="tablist">
+                                    <button class="active" role="tab" aria-selected="true"
+                                        aria-controls="tab-latency" id="tab-btn-latency"
+                                        data-target="tab-latency">Latency</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-loss" id="tab-btn-loss"
+                                        data-target="tab-loss">Loss</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-inventory-list" id="tab-btn-inventory"
+                                        data-target="tab-inventory-list">Inventory</button>
+                                    <button role="tab" aria-selected="false"
+                                        aria-controls="tab-discovery" id="tab-btn-discovery"
+                                        data-target="tab-discovery">Discovery</button>
+                                </div>
                             </div>
                             <div class="card-body">
-                                <div id="tab-latency" class="tab-content is-active">
+                                <div id="tab-latency" class="tab-content is-active" role="tabpanel" aria-labelledby="tab-btn-latency">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -4066,7 +4103,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-loss" class="tab-content">
+                                <div id="tab-loss" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-loss">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0">
                                             <thead>
@@ -4089,7 +4126,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-inventory-list" class="tab-content">
+                                <div id="tab-inventory-list" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-inventory">
                                     <div class="table-responsive">
                                         <table class="tactical-table table-hover mb-0" id="table-inventory">
                                             <thead>
@@ -4116,7 +4153,7 @@
                                         </table>
                                     </div>
                                 </div>
-                                <div id="tab-discovery" class="tab-content">
+                                <div id="tab-discovery" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-discovery">
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-6"><label class="form-label small text-secondary">Seed
                                                 IP</label><input id="seed-ip" class="form-control tactical-input"
@@ -4519,7 +4556,7 @@
         </div>
 
         <!-- Alerts Table -->
-        <div class="table-responsive">
+        <div class="table-responsive" id="alerts-table-responsive">
             <table class="tactical-table table-hover mb-0">
                 <thead>
                     <tr>
@@ -4536,6 +4573,10 @@
                     </tr>
                 </tbody>
             </table>
+            <button type="button" class="btn-expand-rows" id="alerts-expand-btn"
+                    aria-expanded="false" aria-controls="alerts-table-responsive">
+                <i class="fas fa-chevron-down me-1"></i> Show all rows
+            </button>
         </div>
     </div>
             </div>

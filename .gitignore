@@ -34,6 +34,7 @@ yarn-error.log*
 # ===============================
 build/
 dist/
+installer/Output/
 *.spec.bak
 *.toc
 *.pkg
@@ -77,6 +78,7 @@ secure_employee_monitor.db
 .vscode/
 .artifacts/
 *.txt
+!requirements*.txt
 *.spec
 .npm-cache/
 .context/

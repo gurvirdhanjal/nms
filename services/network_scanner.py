@@ -93,8 +93,12 @@ class NetworkScanner:
         # One executor for the lifetime of the object (BIG speed improvement)
         self._executor = ThreadPoolExecutor(max_workers=self.EXECUTOR_WORKERS)
 
-        # Manufacturer cache (MAC prefix → vendor)
-        self._vendor_cache = {}
+        # Manufacturer cache (MAC prefix → vendor). Bounded to prevent unbounded
+        # memory growth over weeks of continuous scanning (each unique OUI added once,
+        # never evicted in the original code).  5 000 entries ≈ all real-world OUIs
+        # ever seen in a typical enterprise network, ~200 KB resident.
+        self._vendor_cache: dict[str, str] = {}
+        self._vendor_cache_max = 5000
 
     # ---------------------------
     # Local network detection
@@ -420,6 +424,12 @@ class NetworkScanner:
                 vendor = "Unknown"
                  
             vendor = vendor if vendor else "Unknown"
+            # Evict oldest entry when cap is reached (simple FIFO)
+            if len(self._vendor_cache) >= self._vendor_cache_max:
+                try:
+                    self._vendor_cache.pop(next(iter(self._vendor_cache)))
+                except StopIteration:
+                    pass
             self._vendor_cache[oui] = vendor
             return vendor
         except Exception:

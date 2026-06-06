@@ -2,6 +2,7 @@
 from .user import User
 from .device import Device
 from .site import Site
+from .floor_plan import FloorPlan
 from .printer import PrinterMetrics, PrintJobAudit
 from .department import Department
 from .subnet import Subnet
@@ -49,7 +50,7 @@ from .server_health_rollups import (
 )
 
 __all__ = [
-    'User', 'Device', 'Site', 'Department', 'PrinterMetrics', 'PrintJobAudit',
+    'User', 'Device', 'Site', 'FloorPlan', 'Department', 'PrinterMetrics', 'PrintJobAudit',
     'DeviceScanHistory', 'NetworkScan', 'PortScanResult',
     'DashboardEvent', 'DailyDeviceStats', 'DashboardSnapshot', 'DeviceInterface', 'InterfaceTrafficHistory',
     'DeviceSnmpConfig', 'SwitchTopology', 'TrackedDevice',

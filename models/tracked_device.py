@@ -312,7 +312,11 @@ class TrackingDailyRollup(db.Model):
 
 class DeviceActivityLog(db.Model):
     __tablename__ = 'device_activity_logs'
-    
+
+    __table_args__ = (
+        db.Index('idx_device_activity_logs_device_timestamp', 'device_id', 'timestamp'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
@@ -335,7 +339,11 @@ class DeviceActivityLog(db.Model):
 
 class DeviceResourceLog(db.Model):
     __tablename__ = 'device_resource_logs'
-    
+
+    __table_args__ = (
+        db.Index('idx_device_resource_logs_device_timestamp', 'device_id', 'timestamp'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
@@ -363,7 +371,11 @@ class DeviceResourceLog(db.Model):
 
 class DeviceApplicationLog(db.Model):
     __tablename__ = 'device_application_logs'
-    
+
+    __table_args__ = (
+        db.Index('idx_device_application_logs_device_timestamp', 'device_id', 'timestamp'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)

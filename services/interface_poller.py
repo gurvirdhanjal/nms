@@ -175,7 +175,7 @@ class InterfacePoller:
         try:
             from models.snmp_config import DeviceSnmpConfig
             from models.interfaces import DeviceInterface, InterfaceTrafficHistory
-            from services.snmp_service import snmp_service
+            from services.snmp_service import snmp_service, classify_connection_type_from_interfaces
 
             # ── 1. Credential lookup ────────────────────────────────────────
             config = DeviceSnmpConfig.query.filter_by(
@@ -328,6 +328,15 @@ class InterfacePoller:
             # ── Update config tracking ──────────────────────────────────────
             config.last_successful_poll = now
             config.last_poll_error = None
+
+            # Derive connection type from SNMP interface data for devices without an agent.
+            # Agent-reported values ('wifi'/'lan') are never overwritten.
+            if iface_list:
+                _dev = db.session.get(Device, device_id)
+                if _dev and _dev.connection_type in (None, 'unknown'):
+                    _snmp_ct = classify_connection_type_from_interfaces(iface_list)
+                    if _snmp_ct != 'unknown':
+                        _dev.connection_type = _snmp_ct
 
             db.session.flush()  # assign interface_id to new rows before history FK
 

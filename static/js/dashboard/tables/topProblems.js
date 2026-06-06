@@ -101,14 +101,23 @@ export function renderTopAffectedDevices(data) {
 
     patchKeyedTableRows(tbody, data || [], {
         getKey: (device, index) => device.device_id || device.ip || `affected-${index}`,
-        emptyColSpan: 3,
+        emptyColSpan: 4,
         emptyMessage: 'No affected devices',
         emptyClassName: 'text-center tactical-text-muted',
-        renderCells: (device) => `
-            <td>${device.device_name || device.ip}</td>
-            <td class="tactical-text-muted">${device.ip}</td>
-            <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
-        `,
+        renderCells: (device, index) => {
+            const type = device.device_type || device.type || 'Network device';
+            const impact = index === 0 ? 'Critical' : index < 3 ? 'High' : 'Elevated';
+            const impactClass = impact === 'Critical' ? 'tactical-badge-danger' : impact === 'High' ? 'tactical-badge-warning' : 'tactical-badge-info';
+            return `
+                <td>
+                    <div class="fw-semibold">${device.device_name || device.ip}</div>
+                    <div class="small tactical-text-muted">${device.ip || '-'}</div>
+                </td>
+                <td class="tactical-text-muted">${type}</td>
+                <td><span class="tactical-badge ${impactClass}">${impact}</span></td>
+                <td class="tactical-text-muted" title="${device.time ? new Date(device.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-'}">${device.time ? timeAgo(device.time) : '-'}</td>
+            `;
+        },
         applyRow: (row, device) => {
             if (device.device_id) {
                 row.style.cursor = 'pointer';

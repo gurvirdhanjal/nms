@@ -31,7 +31,12 @@ class NetworkScan(db.Model):
     scan_duration = db.Column(db.Float)  # in seconds
     initiated_by = db.Column(db.String(80), nullable=False)
     scan_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
+
+    __table_args__ = (
+        db.Index('idx_network_scan_timestamp', 'scan_timestamp'),
+        db.Index('idx_network_scan_ip_range_timestamp', 'ip_range', 'scan_timestamp'),
+    )
+
     def __repr__(self):
         return f'<NetworkScan {self.ip_range} - {self.total_devices_found} devices>'
 
@@ -44,6 +49,11 @@ class PortScanResult(db.Model):
     service_name = db.Column(db.String(50), nullable=True)
     banner = db.Column(db.Text, nullable=True)
     scan_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
+
+    __table_args__ = (
+        db.Index('idx_port_scan_result_device_ip', 'device_ip'),
+        db.Index('idx_port_scan_result_device_ip_timestamp', 'device_ip', 'scan_timestamp'),
+    )
+
     def __repr__(self):
         return f'<PortScanResult {self.device_ip}:{self.port_number} - {self.status}>'
