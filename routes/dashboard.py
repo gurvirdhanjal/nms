@@ -584,6 +584,7 @@ def get_summary():
                     _stmt, {"ips": list(scoped_device_ips), "cutoff": cutoff_24h}
                 ).fetchall()
             except Exception:
+                db.session.rollback()
                 # Cagg unavailable — fall back to raw query
                 stats_24h = db.session.query(
                     DeviceScanHistory.device_ip,
@@ -593,16 +594,16 @@ def get_summary():
                     DeviceScanHistory.scan_timestamp >= cutoff_24h,
                     DeviceScanHistory.device_ip.in_(scoped_device_ips)
                 ).group_by(DeviceScanHistory.device_ip).all()
-        
-        total_uptime_pct = 0
+
+        total_uptime_pct = 0.0
         devices_with_history = 0
-        
+
         for stat in stats_24h:
-            if stat.total > 0:
-                dev_uptime = (stat.online / stat.total) * 100
+            if (stat.total or 0) > 0:
+                dev_uptime = float(stat.online or 0) / float(stat.total) * 100
                 total_uptime_pct += dev_uptime
                 devices_with_history += 1
-        
+
         # Average of averages
         availability_24h = round(total_uptime_pct / devices_with_history, 1) if devices_with_history > 0 else 0.0
 
@@ -772,15 +773,34 @@ def get_full_snapshot():
                     pass
                 return _snapshot_response(any_snapshot)
 
-            # Absolute last resort: no snapshot at all, compute inline.
+            # Absolute last resort: no snapshot at all.
+            # Return a lightweight "initialising" placeholder rather than computing
+            # inline — inline computation by multiple concurrent Waitress threads
+            # exhausts the DB pool and kills the health endpoint.
+            # The background warm thread already owns the lock and will write a real
+            # snapshot within ~30s; the frontend will refresh automatically.
             try:
                 from flask import current_app
                 current_app.logger.warning(
-                    "Snapshot lock busy for key=%s; computing inline fallback response",
-                    snapshot_cache_key
+                    "Snapshot lock busy, no stale fallback for key=%s; returning initialising placeholder",
+                    snapshot_cache_key,
                 )
             except Exception:
                 pass
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat(),
+                'snapshot_generated_at': datetime.utcnow().isoformat(),
+                'initialising': True,
+                'stale': True,
+                'summary': None,
+                'fleetMetrics': None,
+                'topProblems': None,
+                'trends': None,
+                'inventory': None,
+                'serverHealth': None,
+                'alerts': [],
+                'meta': meta,
+            })
 
     try:
         from routes.server_metrics import get_server_health_summary, get_fleet_metrics
@@ -898,22 +918,21 @@ def get_top_problems():
 
         latest_scans = []
         if scoped_ips:
-            latest_subq = db.session.query(
-                DeviceScanHistory.device_ip,
-                func.max(DeviceScanHistory.scan_id).label('max_id')
-            ).filter(
-                DeviceScanHistory.device_ip.in_(scoped_ips)
-            ).group_by(DeviceScanHistory.device_ip).subquery()
-
-            latest_scan_rows = db.session.query(DeviceScanHistory).join(
-                latest_subq,
-                (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
-            ).all()
+            # DISTINCT ON (device_ip) ORDER BY device_ip, scan_timestamp DESC uses the
+            # covering index idx_dsh_ip_time_covering and avoids a full max(scan_id) aggregate.
+            from sqlalchemy import text as _text
+            _latest_stmt = _text("""
+                SELECT DISTINCT ON (device_ip)
+                    scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
+                FROM device_scan_history
+                WHERE device_ip = ANY(:ips)
+                ORDER BY device_ip, scan_timestamp DESC
+            """)
+            _raw_rows = db.session.execute(_latest_stmt, {"ips": list(scoped_ips)}).fetchall()
             latest_scans = [
-                (scan, device_by_ip[scan.device_ip])
-                for scan in latest_scan_rows
-                if scan.device_ip in device_by_ip
+                (row, device_by_ip[row.device_ip])
+                for row in _raw_rows
+                if row.device_ip in device_by_ip
             ]
         
         # High Latency (Top 5)

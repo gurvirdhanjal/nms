@@ -18,26 +18,19 @@ def _load_latest_scan_map(device_ips):
     if not normalized_ips:
         return {}
 
-    latest_subq = (
-        db.session.query(
-            DeviceScanHistory.device_ip,
-            func.max(DeviceScanHistory.scan_id).label("max_id"),
-        )
-        .filter(DeviceScanHistory.device_ip.in_(normalized_ips))
-        .group_by(DeviceScanHistory.device_ip)
-        .subquery()
-    )
-
-    latest_scans = (
-        db.session.query(DeviceScanHistory)
-        .join(
-            latest_subq,
-            (DeviceScanHistory.device_ip == latest_subq.c.device_ip)
-            & (DeviceScanHistory.scan_id == latest_subq.c.max_id),
-        )
-        .all()
-    )
-    return {scan.device_ip: scan for scan in latest_scans if getattr(scan, "device_ip", None)}
+    # DISTINCT ON (device_ip) with ORDER BY device_ip, scan_timestamp DESC uses the
+    # covering index idx_dsh_ip_time_covering — faster than max(scan_id) which scans
+    # all chunks without a suitable composite index.
+    from sqlalchemy import text as _text
+    stmt = _text("""
+        SELECT DISTINCT ON (device_ip)
+            scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
+        FROM device_scan_history
+        WHERE device_ip = ANY(:ips)
+        ORDER BY device_ip, scan_timestamp DESC
+    """)
+    rows = db.session.execute(stmt, {"ips": normalized_ips}).fetchall()
+    return {row.device_ip: row for row in rows if row.device_ip}
 
 
 def _classify_scan_state(scan):
