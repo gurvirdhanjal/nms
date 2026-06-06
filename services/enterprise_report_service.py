@@ -172,11 +172,101 @@ def _compute_focus_score(device_id: int, start: datetime, end: datetime) -> Opti
     return _safe_round(sum(sorted(streaks, reverse=True)[:3]) / total_minutes * 100.0, 1)
 
 
+def _bulk_compute_focus_scores(
+    device_ids: List[int],
+    start: datetime,
+    end: datetime,
+) -> Dict[int, Optional[float]]:
+    """Compute focus scores for many devices in a single DB round-trip.
+
+    Replaces the per-device _compute_focus_score() loop (N queries → 1 query).
+    Caps to 7 days and a hard row limit to bound memory.
+    """
+    import json
+    if not device_ids:
+        return {}
+
+    focus_start = max(start, end - timedelta(days=7))
+    # Safety cap: 7 days × 24h × 60min = 10,080 rows per device maximum
+    row_cap = len(device_ids) * 10080
+
+    rows = (
+        db.session.query(
+            DeviceActivityLog.device_id,
+            DeviceActivityLog.timestamp,
+            DeviceActivityLog.current_application,
+            DeviceActivityLog.details,
+        )
+        .filter(
+            DeviceActivityLog.device_id.in_(device_ids),
+            DeviceActivityLog.timestamp >= focus_start,
+            DeviceActivityLog.timestamp <= end,
+        )
+        .order_by(DeviceActivityLog.device_id, DeviceActivityLog.timestamp.asc())
+        .limit(row_cap)
+        .all()
+    )
+
+    # Group by device
+    from collections import defaultdict
+    grouped: Dict[int, list] = defaultdict(list)
+    for dev_id, ts, col_app, details_json in rows:
+        grouped[dev_id].append((ts, col_app, details_json))
+
+    results: Dict[int, Optional[float]] = {}
+    total_minutes = max(1.0, (end - start).total_seconds() / 60.0)
+
+    for dev_id in device_ids:
+        device_rows = grouped.get(dev_id)
+        if not device_rows:
+            results[dev_id] = None
+            continue
+
+        streaks: List[float] = []
+        current_app: Optional[str] = None
+        streak_start_ts: Optional[datetime] = None
+        prev_ts: Optional[datetime] = None
+
+        for ts, col_app, details_json in device_rows:
+            app = col_app or ""
+            if not app and details_json:
+                try:
+                    app = json.loads(details_json).get("current_application") or ""
+                except Exception:
+                    app = ""
+
+            if app and app == current_app:
+                prev_ts = ts
+            else:
+                if current_app and streak_start_ts and prev_ts:
+                    dur_min = (prev_ts - streak_start_ts).total_seconds() / 60.0
+                    if dur_min >= 25:
+                        streaks.append(dur_min)
+                current_app = app
+                streak_start_ts = ts
+                prev_ts = ts
+
+        if current_app and streak_start_ts and prev_ts:
+            dur_min = (prev_ts - streak_start_ts).total_seconds() / 60.0
+            if dur_min >= 25:
+                streaks.append(dur_min)
+
+        if not streaks:
+            results[dev_id] = None
+        else:
+            results[dev_id] = _safe_round(
+                sum(sorted(streaks, reverse=True)[:3]) / total_minutes * 100.0, 1
+            )
+
+    return results
+
+
 def _workstation_behavioral_metrics(
     device_id: int,
     start: datetime,
     end: datetime,
     category_cache: Optional[Dict[str, str]] = None,
+    precomputed_focus_score: Optional[float] = None,
 ) -> dict:
     """
     Aggregate behavioral KPIs for a tracked device over [start, end]:
@@ -291,7 +381,13 @@ def _workstation_behavioral_metrics(
         violation_score = (violation_count or 0) * 5 + (typed_text_count or 0) * 10
 
     # ── Focus score ───────────────────────────────────────────────────────────
-    focus_score = _compute_focus_score(device_id, start, end)
+    # Use pre-computed bulk score when the caller already fetched all devices at once
+    # (avoids N queries → 1 query).  Falls back to per-device query for standalone calls.
+    focus_score = (
+        precomputed_focus_score
+        if precomputed_focus_score is not None
+        else _compute_focus_score(device_id, start, end)
+    )
 
     days = max(1, (end.date() - start.date()).days)
     return {
@@ -935,6 +1031,8 @@ def build_enterprise_uptime_report(
         tracked_ids = [dev.id for dev in tracked_devices]
         bulk_uptime = _bulk_uptime_and_incidents(tracked_ids, start_dt, end_dt)
         _bulk_violations = get_device_violations(tracked_ids, start_dt, end_dt)
+        # Pre-compute focus scores in one DB round-trip (was N queries, one per device)
+        _bulk_focus_scores = _bulk_compute_focus_scores(tracked_ids, start_dt, end_dt)
 
         for dev in tracked_devices:
             try:
@@ -942,7 +1040,10 @@ def build_enterprise_uptime_report(
                 merged_incidents, flap_count = _merge_flapping_incidents(raw_incidents)
                 mttr, mtbf = _mttr_mtbf(merged_incidents)
                 tier = sla_tier(up)   # TrackedDevices use default SLA thresholds
-                beh = _workstation_behavioral_metrics(dev.id, start_dt, end_dt, _category_cache)
+                beh = _workstation_behavioral_metrics(
+                    dev.id, start_dt, end_dt, _category_cache,
+                    precomputed_focus_score=_bulk_focus_scores.get(dev.id),
+                )
                 viol = _bulk_violations.get(dev.id, {})
                 _obs_s = cov_meta.get("observed_seconds", 0)
                 _obs_h = _safe_round(_obs_s / 3600.0) if _obs_s else None

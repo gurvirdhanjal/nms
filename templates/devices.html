@@ -761,6 +761,29 @@
         color: #64748b;
     }
 
+    /* ── Link column ─────────────────────────────────────────────────────── */
+    .device-link-cell {
+        white-space: nowrap;
+        vertical-align: middle;
+        text-align: center;
+    }
+
+    /* ── Connection-type pill badges ─────────────────────────────────────── */
+    .badge-conn {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: .68rem;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 20px;
+        vertical-align: middle;
+        margin-left: 4px;
+        line-height: 1.6;
+    }
+    .badge-conn--wifi { background: rgba(96,165,250,.18); color: #60a5fa; }
+    .badge-conn--lan  { background: rgba(148,163,184,.18); color: #94a3b8; }
+
     .devices-page .device-status-cell {
         vertical-align: middle;
     }
@@ -1427,6 +1450,7 @@
                                         </th>
                                         <th>Name</th>
                                         <th>IP Address</th>
+                                        <th>Link</th>
                                         <th>Ping</th>
                                         <th>Type</th>
                                         <th>SNMP</th>
@@ -2206,6 +2230,15 @@
             ].join('|');
         }
 
+        function _connTypeIcon(connType) {
+            const t = String(connType || '').toLowerCase();
+            if (t === 'wifi')
+                return '<span class="badge-conn badge-conn--wifi"><i class="fas fa-wifi"></i> WiFi</span>';
+            if (t === 'lan')
+                return '<span class="badge-conn badge-conn--lan"><i class="fas fa-network-wired"></i> LAN</span>';
+            return '';
+        }
+
         function _pingCellHtml(latency, status) {
             const statusKey = normalizeDeviceStatusKey(status);
             if (statusKey !== 'online' || latency == null) {
@@ -2540,6 +2573,7 @@
                                      </div>
                                  </td>
                                 <td><code>${d.device_ip}</code></td>
+                                <td class="device-link-cell">${_connTypeIcon(d.connection_type) || '<span class="text-muted" style="font-size:.75rem;">—</span>'}</td>
                                 <td class="device-ping-cell" id="ping-cell-${d.device_id}">${_pingCellHtml(d.latency, d.status)}</td>
                                 <td>${typeSelectHtml}</td>
                                 <td>${snmpHtml}</td>

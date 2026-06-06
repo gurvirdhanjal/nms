@@ -1,0 +1,52 @@
+<h2>Dashboard Table Layout Approach</h2>
+<p class="subtitle">How should tables be contained within the dashboard panels?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Fixed-Height Scrollable Boxes</h3>
+      <p>Every table lives inside a fixed-height container (e.g. 280px). Content overflows with a visible scrollbar inside the box. The dashboard layout stays compact — panels don't grow with data.</p>
+      <div style="margin-top:10px;background:rgba(255,255,255,0.05);border-radius:8px;padding:10px;font-size:0.8rem;">
+        <div style="background:rgba(148,163,184,0.12);border-radius:4px;padding:6px 10px;margin-bottom:4px;border:1px solid rgba(148,163,184,0.2)">📋 Table header (sticky)</div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 1</div>
+        <div style="background:rgba(148,163,184,0.04);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 2</div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 3</div>
+        <div style="text-align:center;color:rgba(148,163,184,0.5);font-size:0.7rem;padding:4px;border-top:1px solid rgba(148,163,184,0.15)">▼ scroll for more rows</div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Best for: NOC/ops screens where screen space is premium</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Full Table + Collapsible Sections</h3>
+      <p>Tables render at full natural height (no max-height cap). Entire sections can be collapsed/expanded. Users see all rows without scrolling inside a box — they scroll the page.</p>
+      <div style="margin-top:10px;background:rgba(255,255,255,0.05);border-radius:8px;padding:10px;font-size:0.8rem;">
+        <div style="background:rgba(148,163,184,0.12);border-radius:4px;padding:6px 10px;margin-bottom:4px;border:1px solid rgba(148,163,184,0.2);display:flex;justify-content:space-between">📋 Network Intelligence <span style="color:rgba(148,163,184,0.6)">▲ collapse</span></div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 1</div>
+        <div style="background:rgba(148,163,184,0.04);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 2</div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:4px;padding:6px 10px;font-size:0.75rem;">Row 3 ... Row N</div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Best for: when users need to see full dataset without hunting for a scrollbar</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Adaptive: Fixed Default, Expand on Demand</h3>
+      <p>Tables start at a fixed height (compact, ~280px scroll). A "Show all" toggle expands the table to full height. Best of both: compact default + full access when needed.</p>
+      <div style="margin-top:10px;background:rgba(255,255,255,0.05);border-radius:8px;padding:10px;font-size:0.8rem;">
+        <div style="background:rgba(148,163,184,0.12);border-radius:4px;padding:6px 10px;margin-bottom:4px;border:1px solid rgba(148,163,184,0.2)">📋 Table header (sticky)</div>
+        <div style="background:rgba(148,163,184,0.06);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 1</div>
+        <div style="background:rgba(148,163,184,0.04);border-radius:4px;padding:6px 10px;margin-bottom:2px;font-size:0.75rem;">Row 2</div>
+        <div style="text-align:center;padding:6px;border-top:1px dashed rgba(148,163,184,0.2)">
+          <span style="font-size:0.72rem;color:rgba(94,234,212,0.8);cursor:pointer;border:1px solid rgba(94,234,212,0.3);border-radius:4px;padding:2px 10px">↕ Show all rows</span>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:0.75rem;color:rgba(148,163,184,0.7)">Best for: dashboards used both as quick-glance and deep-dive</div>
+    </div>
+  </div>
+</div>

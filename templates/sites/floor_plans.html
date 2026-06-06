@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}{{ site.site_name }} — Floor Plans{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sites.css') }}?v={{ asset_ver }}">
+<style>
+  .fp-wrap { display: flex; gap: 16px; align-items: flex-start; }
+  .fp-side { width: 260px; flex: 0 0 260px; }
+  .fp-main { flex: 1 1 auto; min-width: 0; }
+  .fp-card { background: var(--panel-bg, #1b2233); border: 1px solid rgba(255,255,255,.08);
+             border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+  .fp-card h6 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #9fb0c9; margin-bottom: 10px; }
+  .fp-plan-item { display:flex; justify-content:space-between; align-items:center;
+                  padding: 8px 10px; border-radius: 7px; cursor: pointer; color:#cdd6f4; }
+  .fp-plan-item:hover { background: rgba(255,255,255,.06); }
+  .fp-plan-item.active { background: rgba(137,180,250,.18); color:#fff; }
+  .fp-plan-item small { color:#7c8aa5; }
+  .fp-chip { display:flex; align-items:center; gap:8px; padding:7px 9px; margin-bottom:6px;
+             background: rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
+             border-radius:7px; font-size:.83rem; color:#cdd6f4; cursor:grab; flex-wrap:wrap; }
+  .fp-chip[draggable="true"]:active { cursor:grabbing; }
+  .fp-chip .fp-dot { width:9px; height:9px; border-radius:50%; background:#6b7280; flex:0 0 auto; }
+
+  /* Search / filter */
+  .fp-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .fp-filters input[type="text"], .fp-filters select {
+    background:#0e1320; border:1px solid rgba(255,255,255,.12); color:#cdd6f4;
+    border-radius:7px; padding:5px 9px; font-size:.83rem; }
+  .fp-filters label { color:#9fb0c9; font-size:.8rem; display:inline-flex; align-items:center; gap:5px; }
+
+  /* Stage: image auto-fits the container; markers are % positioned over it. */
+  .fp-stage-outer { position:relative; border:1px solid rgba(255,255,255,.1); border-radius:10px;
+                    background:#0e1320; overflow:auto; height:78vh; }
+  .fp-stage { position:relative; display:inline-block; min-width:100%; }
+  .fp-stage img { display:block; height:auto; user-select:none; -webkit-user-drag:none; touch-action:none; }
+  .fp-stage.panning { cursor:grabbing; }
+
+  /* Zoom toolbar */
+  .fp-zoom { position:absolute; top:10px; right:10px; z-index:6; display:flex; gap:4px;
+             background:rgba(20,26,40,.85); border:1px solid rgba(255,255,255,.12);
+             border-radius:8px; padding:4px; }
+  .fp-zoom button { background:transparent; border:0; color:#cdd6f4; width:30px; height:28px;
+                    border-radius:6px; cursor:pointer; font-size:.85rem; }
+  .fp-zoom button:hover { background:rgba(255,255,255,.1); }
+
+  /* Markers: device icon + status color. Constant pixel size regardless of zoom. */
+  .fp-marker { position:absolute; transform:translate(-50%,-50%); width:30px; height:30px;
+               border-radius:50%; display:flex; align-items:center; justify-content:center;
+               color:#0e1320; font-size:13px; border:2px solid #0e1320;
+               box-shadow:0 0 0 2px rgba(0,0,0,.35); cursor:pointer; z-index:3;
+               touch-action:none; transition:opacity .15s; }
+  .fp-marker.st-online { background:#22c55e; }
+  .fp-marker.st-offline { background:#ef4444; color:#fff; }
+  .fp-marker.st-maintenance { background:#f59e0b; }
+  .fp-marker.st-unknown { background:#6b7280; color:#fff; }
+  .fp-marker.locked { box-shadow:0 0 0 2px #fbbf24; }
+  .fp-marker.dimmed { opacity:.18; }
+  .fp-marker .fp-lock { position:absolute; top:-9px; right:-9px; font-size:10px; color:#fbbf24;
+                        background:#1b2233; border-radius:50%; padding:1px; }
+  .fp-marker .fp-conn { position:absolute; bottom:-9px; right:-9px; font-size:9px; color:#cbd5e1;
+                        background:#1b2233; border-radius:50%; padding:1px 2px; }
+  .fp-marker .fp-hoverlabel { position:absolute; top:calc(100% + 6px); left:50%;
+                        transform:translateX(-50%); white-space:nowrap; font-size:10px;
+                        color:#dbe4f3; background:rgba(0,0,0,.7); padding:1px 6px; border-radius:4px;
+                        pointer-events:none; opacity:0; transition:opacity .12s; }
+  .fp-marker:hover .fp-hoverlabel { opacity:1; }
+
+  /* Marker detail popup */
+  .fp-popup { position:absolute; z-index:20; min-width:210px; background:#1b2233;
+              border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:12px 14px;
+              box-shadow:0 10px 30px rgba(0,0,0,.5); color:#cdd6f4; font-size:.82rem; }
+  .fp-popup h6 { margin:0 0 8px; color:#e6edf7; font-size:.95rem; display:flex; align-items:center; gap:7px; }
+  .fp-popup .row { display:flex; justify-content:space-between; gap:12px; margin:3px 0; }
+  .fp-popup .row span:first-child { color:#7c8aa5; }
+  .fp-popup .fp-popup-actions { margin-top:10px; display:flex; gap:8px; }
+  .fp-popup .fp-close { position:absolute; top:8px; right:10px; cursor:pointer; color:#7c8aa5; }
+
+  .fp-empty { padding:40px; text-align:center; color:#7c8aa5; }
+  .fp-stage.dragover { outline:2px dashed #89b4fa; outline-offset:-6px; }
+  .fp-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color:#9fb0c9; margin-top:8px; }
+  .fp-legend span { display:inline-flex; align-items:center; gap:6px; }
+  .fp-legend i.dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3" id="fpRoot"
+     data-site-id="{{ site.id }}" data-is-admin="{{ 'true' if is_admin else 'false' }}">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2><i class="fas fa-map me-2"></i>{{ site.site_name }} — Floor Plans</h2>
+      <p class="text-muted mb-0">Drag devices onto the plan. Markers show live status.</p>
+    </div>
+    <div class="d-flex gap-2">
+      {% if is_admin %}
+      <button class="tactical-btn tactical-btn-primary" id="fpUploadBtn">
+        <i class="fas fa-upload me-2"></i>Upload plan
+      </button>
+      {% endif %}
+      <a href="/sites/{{ site.id }}/dashboard" class="tactical-btn tactical-btn-outline">
+        <i class="fas fa-arrow-left me-2"></i>Back to Site
+      </a>
+    </div>
+  </div>
+
+  <div class="fp-wrap">
+    <!-- LEFT: plan list -->
+    <div class="fp-side">
+      <div class="fp-card">
+        <h6>Floor Plans</h6>
+        <div id="fpPlanList"><div class="text-muted small">Loading…</div></div>
+      </div>
+      {% if is_admin %}
+      <div class="fp-card">
+        <h6>Unplaced Devices</h6>
+        <div class="text-muted small mb-2" id="fpUnplacedHint">Select a plan first.</div>
+        <div id="fpUnplaced"></div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- CENTER: stage -->
+    <div class="fp-main">
+      <div class="fp-card" id="fpStageCard">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <strong id="fpPlanTitle" style="color:#e6edf7;">No plan selected</strong>
+          <div class="d-flex gap-2" id="fpPlanActions" style="display:none !important;"></div>
+        </div>
+
+        <!-- Search / filter -->
+        <div class="fp-filters">
+          <input type="text" id="fpSearch" placeholder="Search device…" autocomplete="off">
+          <select id="fpTypeFilter"><option value="">All types</option></select>
+          <label><input type="checkbox" id="fpOfflineOnly"> Offline only</label>
+        </div>
+
+        <div class="fp-stage-outer" id="fpStageOuter">
+          <div class="fp-zoom" id="fpZoom" style="display:none;">
+            <button type="button" data-zoom="in" title="Zoom in">＋</button>
+            <button type="button" data-zoom="out" title="Zoom out">−</button>
+            <button type="button" data-zoom="fit" title="Fit to screen">Fit</button>
+          </div>
+          <div class="fp-stage" id="fpStage">
+            <div class="fp-empty" id="fpStageEmpty">Select or upload a floor plan to begin.</div>
+          </div>
+        </div>
+        <div class="fp-legend">
+          <span><i class="dot" style="background:#22c55e"></i> Online</span>
+          <span><i class="dot" style="background:#ef4444"></i> Offline</span>
+          <span><i class="dot" style="background:#f59e0b"></i> Maintenance</span>
+          <span><i class="dot" style="background:#6b7280"></i> Unknown</span>
+          <span><i class="fas fa-lock" style="color:#fbbf24"></i> Locked</span>
+          <span><i class="fas fa-wifi" style="color:#60a5fa"></i> WiFi</span>
+          <span><i class="fas fa-network-wired" style="color:#94a3b8"></i> LAN</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload panel (admin) -->
+{% if is_admin %}
+<div id="fpUploadModal" style="display:none; position:fixed; inset:0; z-index:1080;
+     background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
+  <div style="background:#1b2233; border:1px solid rgba(255,255,255,.12); border-radius:12px;
+              width:420px; max-width:92vw; padding:20px;">
+    <h5 style="color:#e6edf7;" class="mb-3"><i class="fas fa-upload me-2"></i>Upload floor plan</h5>
+    <form id="fpUploadForm">
+      <input type="hidden" name="replace_plan_id" id="fpReplacePlanId" value="">
+      <label class="form-label small text-muted">Plan name</label>
+      <input type="text" class="form-control mb-3" name="name" id="fpPlanName"
+             placeholder="e.g. Ground Floor" required>
+      <label class="form-label small text-muted">Image (PNG, JPG or PDF)</label>
+      <input type="file" class="form-control mb-1" name="file" id="fpFile"
+             accept=".png,.jpg,.jpeg,.pdf" required>
+      <div class="small text-muted mb-3">PDF: first page only. Max 25 MB.</div>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="tactical-btn tactical-btn-outline" id="fpUploadCancel">Cancel</button>
+        <button type="submit" class="tactical-btn tactical-btn-primary" id="fpUploadSubmit">Upload</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/floor_plans.js') }}?v={{ asset_ver }}"></script>
+{% endblock %}

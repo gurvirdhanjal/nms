@@ -360,22 +360,23 @@ class DeviceMonitor:
 
         cycle_start = datetime.utcnow()
 
-        devices_query = db.session.query(
-            Device.device_id,
-            Device.device_ip,
-            Device.device_name,
-            Device.maintenance_mode,
-            Device.delete_pending,
-        ).all()
-        active_devices = [
-            (d.device_id, d.device_ip, d.device_name, d.maintenance_mode)
-            for d in devices_query
-            if not getattr(d, "maintenance_mode", False)
-            and not getattr(d, "delete_pending", False)
-            and d.device_ip
-        ]
-
-        db.session.remove()
+        try:
+            devices_query = db.session.query(
+                Device.device_id,
+                Device.device_ip,
+                Device.device_name,
+                Device.maintenance_mode,
+                Device.delete_pending,
+            ).all()
+            active_devices = [
+                (d.device_id, d.device_ip, d.device_name, d.maintenance_mode)
+                for d in devices_query
+                if not getattr(d, "maintenance_mode", False)
+                and not getattr(d, "delete_pending", False)
+                and d.device_ip
+            ]
+        finally:
+            db.session.remove()
         logger.debug("Monitoring %d stored devices...", len(active_devices))
 
         async def fetch_status(device_info):

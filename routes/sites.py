@@ -40,6 +40,19 @@ def sites_list_page():
     )
 
 
+@sites_bp.route('/sites/<int:site_id>/floor-plans')
+@require_login
+def site_floor_plans_page(site_id):
+    """Render the floor-plan map page for a site (viewers read-only, admin edits)."""
+    from middleware.rbac import scoped_query, current_role
+    site = scoped_query(Site).get_or_404(site_id)
+    return render_template(
+        'sites/floor_plans.html',
+        site=site,
+        is_admin=(current_role() == 'admin'),
+    )
+
+
 @sites_bp.route('/sites/<int:site_id>/dashboard')
 @require_login
 def site_dashboard(site_id):
@@ -113,19 +126,22 @@ def site_dashboard(site_id):
     dept_stats_map = {}
     for dept in departments:
         dept_stats_map[dept.id] = {
+            'id': dept.id,
             'name': dept.name,
             'device_count': 0,
             'online_count': 0,
             'offline_count': 0,
-            'warning_count': 0
+            'warning_count': 0,
         }
 
     unassigned_bucket = {
+        'id': 0,
         'name': 'Unassigned',
         'device_count': 0,
         'online_count': 0,
         'offline_count': 0,
-        'warning_count': 0
+        'warning_count': 0,
+        'health_pct': 100,
     }
 
     for device in all_site_devices:
@@ -147,6 +163,11 @@ def site_dashboard(site_id):
         ):
             bucket['warning_count'] += 1
 
+    for row in dept_stats_map.values():
+        total  = row['device_count'] or 0
+        online = row['online_count'] or 0
+        row['health_pct'] = round(online / total * 100) if total > 0 else 0
+
     dept_device_stats = sorted(dept_stats_map.values(), key=lambda row: row['name'].lower())
     if unassigned_bucket['device_count'] > 0:
         dept_device_stats.append(unassigned_bucket)
@@ -166,6 +187,234 @@ def site_dashboard(site_id):
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
+
+@sites_bp.route('/api/sites/<int:site_id>/dashboard-stats')
+@require_login
+def site_dashboard_stats(site_id):
+    """JSON endpoint for live site dashboard polling.
+
+    Returns KPI counts, per-device state + scan freshness, dept aggregates,
+    active alert count, and the configured monitoring interval so the client
+    knows how often to re-poll.
+    """
+    from middleware.rbac import scoped_query
+
+    scoped_query(Site).get_or_404(site_id)
+
+    sites_service = SitesService()
+    devices = sites_service.get_site_devices(site_id)
+    snapshot = build_device_availability_snapshot(devices)
+    stats = sites_service.get_site_stats(site_id, devices=devices, availability_snapshot=snapshot)
+
+    scan_details = snapshot.get("device_scan_details", {})
+    device_states = snapshot.get("device_states", {})
+
+    # ── Per-device payload ──────────────────────────────────────────
+    device_payload = []
+    for d in devices:
+        did = d.device_id
+        detail = scan_details.get(did, {})
+        device_payload.append({
+            "device_id":    did,
+            "dept_id":      d.department_id,
+            "state":        device_states.get(did, "unknown"),
+            "ping_ms":      detail.get("ping_ms"),
+            "packet_loss":  detail.get("packet_loss"),
+            "last_scan_at": detail.get("last_scan_at"),
+        })
+
+    # ── Dept aggregates ────────────────────────────────────────────
+    dept_device_map: dict = {}  # {dept_id: [device, ...]}
+    for d in devices:
+        dept_id = d.department_id  # may be None
+        dept_device_map.setdefault(dept_id, []).append(d)
+
+    # Alert counts per dept for this site (single query)
+    alert_rows = (
+        db.session.query(DashboardEvent.department_id, func.count(DashboardEvent.event_id))
+        .filter(DashboardEvent.site_id == site_id, DashboardEvent.resolved == False)  # noqa: E712
+        .group_by(DashboardEvent.department_id)
+        .all()
+    )
+    alert_by_dept = {row[0]: row[1] for row in alert_rows}
+    active_alert_count = (
+        db.session.query(func.count(DashboardEvent.event_id))
+        .filter(DashboardEvent.site_id == site_id, DashboardEvent.resolved == False)  # noqa: E712
+        .scalar()
+    ) or 0
+
+    # Build dept aggregate list
+    dept_ids = [did for did in dept_device_map if did is not None]
+    dept_objs = (
+        {d.id: d for d in Department.query.filter(Department.id.in_(dept_ids)).all()}
+        if dept_ids
+        else {}
+    )
+
+    dept_aggregates = []
+    for dept_id, dept_devices in dept_device_map.items():
+        if dept_id is None:
+            continue
+        online = sum(
+            1 for dev in dept_devices
+            if device_states.get(dev.device_id, "unknown") in ("healthy", "degraded")
+        )
+        total = len(dept_devices)
+        offline = total - online
+        health_pct = round(online / total * 100) if total > 0 else 0
+        dept_obj = dept_objs.get(dept_id)
+        dept_aggregates.append({
+            "dept_id":    dept_id,
+            "dept_name":  dept_obj.name if dept_obj else f"Dept {dept_id}",
+            "total":      total,
+            "online":     online,
+            "offline":    offline,
+            "alerts":     alert_by_dept.get(dept_id, 0),
+            "health_pct": health_pct,
+        })
+
+    dept_aggregates.sort(key=lambda x: x["dept_name"])
+
+    return jsonify({
+        "stats":                 stats,
+        "dept_aggregates":       dept_aggregates,
+        "devices":               device_payload,
+        "active_alert_count":    active_alert_count,
+        "monitoring_interval_s": snapshot.get("monitoring_interval_s", 15),
+        "generated_at":          datetime.utcnow().isoformat(),
+    })
+
+
+@sites_bp.route('/api/sites/<int:site_id>/device/<int:device_id>/modal')
+@require_login
+def site_device_modal(site_id: int, device_id: int):
+    """Return a JSON snapshot for the device modal overlay on the site dashboard.
+
+    Sections returned:
+    - device: core identity fields
+    - network: latest ping scan state
+    - health: latest ServerHealthLog entry (if any)
+    - active_alerts: up to 10 unresolved DashboardEvents
+    - floor_plan_placement: whether the device is pinned on a floor plan
+    """
+    from middleware.rbac import scoped_query
+    from models.scan_history import DeviceScanHistory
+
+    # Verify site access
+    scoped_query(Site).get_or_404(site_id)
+
+    # Verify device belongs to this site
+    device = Device.query.filter_by(device_id=device_id, site_id=site_id).first_or_404()
+
+    # ── Network state (latest scan by IP) ──────────────────────────
+    if device.device_ip is not None:
+        latest_scan = (
+            DeviceScanHistory.query
+            .filter_by(device_ip=device.device_ip)
+            .order_by(DeviceScanHistory.scan_timestamp.desc())
+            .first()
+        )
+    else:
+        latest_scan = None
+
+    if latest_scan is None:
+        network_state = "unknown"
+    elif getattr(latest_scan, 'status', None) == 'offline' or (latest_scan.packet_loss is not None and latest_scan.packet_loss >= 100):
+        network_state = "offline"
+    elif latest_scan.packet_loss is not None and latest_scan.packet_loss > 5:
+        network_state = "degraded"
+    else:
+        network_state = "healthy"
+
+    network = {
+        "state":        network_state,
+        "ping_ms":      latest_scan.ping_time_ms if latest_scan else None,
+        "packet_loss":  latest_scan.packet_loss if latest_scan else None,
+        "last_scan_at": (
+            latest_scan.scan_timestamp.isoformat()
+            if latest_scan and latest_scan.scan_timestamp
+            else None
+        ),
+    }
+
+    # ── Server health (latest log by device_id) ────────────────────
+    # ServerHealthLog is imported at the top of this module
+    latest_health = (
+        ServerHealthLog.query
+        .filter_by(device_id=device_id)
+        .order_by(ServerHealthLog.id.desc())
+        .first()
+    )
+
+    if latest_health:
+        health = {
+            "available":   True,
+            "cpu_pct":     latest_health.cpu_usage,
+            "memory_pct":  latest_health.memory_usage,
+            "disk_pct":    latest_health.disk_usage,
+            "recorded_at": (
+                latest_health.timestamp.isoformat()
+                if latest_health.timestamp
+                else None
+            ),
+        }
+    else:
+        health = {"available": False}
+
+    # ── Active alerts ──────────────────────────────────────────────
+    active_alerts = (
+        DashboardEvent.query
+        .filter_by(device_id=device_id, resolved=False)
+        .order_by(DashboardEvent.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+
+    alerts_payload = [
+        {
+            "alert_id":    ev.event_id,
+            "severity":    ev.severity,
+            "message":     ev.message,
+            "metric_name": getattr(ev, 'metric_name', None),
+            "timestamp":   ev.timestamp.isoformat() if ev.timestamp else None,
+        }
+        for ev in active_alerts
+    ]
+
+    # ── Floor plan placement ───────────────────────────────────────
+    has_placement = (
+        device.floor_plan_id is not None
+        and device.map_x is not None
+        and device.map_y is not None
+    )
+    floor_plan_name: str | None = None
+    if has_placement and hasattr(device, 'floor_plan') and device.floor_plan:
+        floor_plan_name = device.floor_plan.name
+
+    floor_plan_placement = {
+        "has_placement":   has_placement,
+        "floor_plan_id":   device.floor_plan_id,
+        "floor_plan_name": floor_plan_name,
+    }
+
+    from models.department import Department
+    dept_obj = Department.query.get(device.department_id) if device.department_id else None
+
+    return jsonify({
+        "device": {
+            "device_id":   device.device_id,
+            "device_name": device.device_name,
+            "device_type": device.device_type,
+            "device_ip":   device.device_ip,
+            "dept_name":   dept_obj.name if dept_obj else None,
+            "site_id":     site_id,
+        },
+        "network":              network,
+        "health":               health,
+        "active_alerts":        alerts_payload,
+        "floor_plan_placement": floor_plan_placement,
+    })
+
 
 @sites_bp.route('/api/sites', methods=['GET'])
 @require_login

@@ -1509,81 +1509,106 @@ class MaintenanceService:
             from models.device import Device
             from models.scan_history import DeviceScanHistory
             from models.dashboard import DailyDeviceStats, DashboardEvent
-            
+
             if rebuild_existing:
                 DailyDeviceStats.query.filter_by(date=target_date).delete(synchronize_session=False)
 
-            # Get all devices for aggregation (User requested full visibility)
-            devices = Device.query.all()
-            
+            devices = Device.query.with_entities(
+                Device.device_id, Device.device_ip
+            ).all()
+
             start_dt = datetime.combine(target_date, datetime.min.time())
             end_dt = datetime.combine(target_date, datetime.max.time())
-            
-            aggregated = 0
-            
-            for device in devices:
-                # Check if stats already exist for this date
-                existing = DailyDeviceStats.query.filter_by(
-                    device_id=device.device_id,
-                    date=target_date
-                ).first()
-                
-                if existing:
-                    continue  # Skip if already aggregated
-                
-                # Get scans for this device on target date
-                scans = DeviceScanHistory.query.filter(
-                    and_(
-                        DeviceScanHistory.device_ip == device.device_ip,
-                        DeviceScanHistory.scan_timestamp >= start_dt,
-                        DeviceScanHistory.scan_timestamp <= end_dt
+
+            # Bulk-load already-aggregated device_ids to skip them (1 query, not N)
+            already_done = set(
+                r[0] for r in DailyDeviceStats.query
+                .filter_by(date=target_date)
+                .with_entities(DailyDeviceStats.device_id)
+                .all()
+            )
+
+            device_ip_to_id = {d.device_ip: d.device_id for d in devices if d.device_ip}
+            pending_ips = [
+                d.device_ip for d in devices
+                if d.device_ip and d.device_id not in already_done
+            ]
+
+            # Bulk-load scan history for all pending devices in one query
+            all_scans = (
+                DeviceScanHistory.query
+                .filter(
+                    DeviceScanHistory.device_ip.in_(pending_ips),
+                    DeviceScanHistory.scan_timestamp >= start_dt,
+                    DeviceScanHistory.scan_timestamp <= end_dt,
+                )
+                .with_entities(
+                    DeviceScanHistory.device_ip,
+                    DeviceScanHistory.status,
+                    DeviceScanHistory.ping_time_ms,
+                    DeviceScanHistory.packet_loss,
+                )
+                .all()
+            ) if pending_ips else []
+
+            # Group scans by device_ip
+            from collections import defaultdict
+            scans_by_ip: dict = defaultdict(list)
+            for scan in all_scans:
+                scans_by_ip[scan.device_ip].append(scan)
+
+            # Bulk-load alert counts for all pending device_ids in one query
+            pending_ids = [
+                d.device_id for d in devices
+                if d.device_ip and d.device_id not in already_done
+            ]
+            alert_counts: dict = {}
+            if pending_ids:
+                rows = (
+                    db.session.query(
+                        DashboardEvent.device_id,
+                        func.count(DashboardEvent.id).label('cnt'),
                     )
-                ).all()
-                
+                    .filter(
+                        DashboardEvent.device_id.in_(pending_ids),
+                        DashboardEvent.timestamp >= start_dt,
+                        DashboardEvent.timestamp <= end_dt,
+                    )
+                    .group_by(DashboardEvent.device_id)
+                    .all()
+                )
+                alert_counts = {r.device_id: r.cnt for r in rows}
+
+            aggregated = 0
+            for device in devices:
+                if device.device_id in already_done or not device.device_ip:
+                    continue
+                scans = scans_by_ip.get(device.device_ip, [])
                 if not scans:
                     continue
-                
-                # Calculate aggregates
+
                 total_scans = len(scans)
-                online_scans = len([s for s in scans if s.status == 'Online'])
+                online_scans = sum(1 for s in scans if s.status == 'Online')
                 uptime_percent = (online_scans / total_scans) * 100 if total_scans > 0 else 0
-                
                 latencies = [s.ping_time_ms for s in scans if s.ping_time_ms is not None]
                 packet_losses = [s.packet_loss for s in scans if s.packet_loss is not None]
-                
-                avg_latency = sum(latencies) / len(latencies) if latencies else None
-                max_latency = max(latencies) if latencies else None
-                min_latency = min(latencies) if latencies else None
-                avg_packet_loss = sum(packet_losses) / len(packet_losses) if packet_losses else 0
-                
-                # Count alerts for this device
-                alert_count = DashboardEvent.query.filter(
-                    and_(
-                        DashboardEvent.device_id == device.device_id,
-                        DashboardEvent.timestamp >= start_dt,
-                        DashboardEvent.timestamp <= end_dt
-                    )
-                ).count()
-                
-                # Create daily stats record
+
                 daily_stat = DailyDeviceStats(
                     device_id=device.device_id,
                     date=target_date,
                     uptime_percent=round(uptime_percent, 2),
-                    avg_latency_ms=round(avg_latency, 2) if avg_latency else None,
-                    max_latency_ms=round(max_latency, 2) if max_latency else None,
-                    min_latency_ms=round(min_latency, 2) if min_latency else None,
-                    avg_packet_loss_pct=round(avg_packet_loss, 2),
+                    avg_latency_ms=round(sum(latencies) / len(latencies), 2) if latencies else None,
+                    max_latency_ms=round(max(latencies), 2) if latencies else None,
+                    min_latency_ms=round(min(latencies), 2) if latencies else None,
+                    avg_packet_loss_pct=round(sum(packet_losses) / len(packet_losses), 2) if packet_losses else 0,
                     total_scans=total_scans,
                     online_scans=online_scans,
-                    total_alerts=alert_count
+                    total_alerts=alert_counts.get(device.device_id, 0),
                 )
-                
                 db.session.add(daily_stat)
                 aggregated += 1
-            
+
             db.session.commit()
-            
             return {
                 'success': True,
                 'target_date': target_date.isoformat(),
@@ -1591,7 +1616,7 @@ class MaintenanceService:
                 'total_devices': len(devices),
                 'rebuild_existing': bool(rebuild_existing),
             }
-            
+
         except Exception as e:
             db.session.rollback()
             return {'success': False, 'error': str(e)}

@@ -340,6 +340,8 @@ def create_app(test_config=None):
 
         if not os.environ.get('FLASK_RUN_FROM_CLI'):
             db.create_all()
+            from services.startup_migrations import run_startup_migrations_bg
+            run_startup_migrations_bg(app, db)
             ensure_hypertables(db.engine)
             ensure_server_health_columns()
             ensure_tracking_stabilization_columns()
@@ -426,6 +428,7 @@ def create_app(test_config=None):
     from routes.discovery_settings import discovery_settings_bp
     from routes.sse import sse_bp
     from routes.sites import sites_bp
+    from routes.floor_plans import floor_plans_bp
     from routes.printer import printer_bp
     from routes.departments import departments_bp
     from routes.print_jobs import print_jobs_bp
@@ -436,6 +439,7 @@ def create_app(test_config=None):
     from routes.config_backup import config_backup_bp
     from routes.compliance_profiles import compliance_profiles_bp
     from routes.settings import settings_bp
+    from routes.alerts import alerts_bp
 
     from middleware.session_middleware import setup_auth_middleware
 
@@ -457,6 +461,7 @@ def create_app(test_config=None):
         discovery_settings_bp,
         sse_bp,
         sites_bp,
+        floor_plans_bp,
         printer_bp,
         departments_bp,
         print_jobs_bp,
@@ -467,6 +472,7 @@ def create_app(test_config=None):
         config_backup_bp,
         compliance_profiles_bp,
         settings_bp,
+        alerts_bp,
     ]
 
     for bp in protected_blueprints:

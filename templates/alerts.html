@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts — Device Monitoring System{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sites.css') }}?v={{ asset_ver }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-bell me-2"></i>Alerts</h2>
+  </div>
+
+  <div class="alerts-filter-bar mb-3">
+    <select id="filterSite" class="form-select form-select-sm" style="width:auto">
+      <option value="">All Sites</option>
+      {% for s in sites %}
+      <option value="{{ s.id }}" {% if selected_site_id == s.id %}selected{% endif %}>{{ s.site_name }}</option>
+      {% endfor %}
+    </select>
+
+    <select id="filterSeverity" class="form-select form-select-sm" style="width:auto">
+      <option value="">All Severity</option>
+      <option value="CRITICAL">Critical</option>
+      <option value="WARNING">Warning</option>
+      <option value="INFO">Info</option>
+    </select>
+
+    <div class="btn-group btn-group-sm" role="group" id="filterStatus">
+      <button type="button" class="btn btn-outline-secondary active" data-status="active">Active</button>
+      <button type="button" class="btn btn-outline-secondary" data-status="resolved">Resolved</button>
+      <button type="button" class="btn btn-outline-secondary" data-status="all">All</button>
+    </div>
+
+    <input type="search" id="filterSearch" class="form-control form-control-sm"
+           placeholder="Filter by device or message…" style="width:220px">
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table tactical-table table-hover mb-0" id="alertsTable">
+          <thead>
+            <tr>
+              <th style="width:6rem">Severity</th>
+              <th>Device</th>
+              <th>Dept</th>
+              <th>Message</th>
+              <th>Metric</th>
+              <th style="width:9rem">Time</th>
+              <th style="width:6rem">Status</th>
+              <th style="width:5rem"></th>
+            </tr>
+          </thead>
+          <tbody id="alertsTableBody">
+            <tr><td colspan="8" class="text-muted text-center py-4">Loading alerts…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="alerts-empty" class="text-muted text-center py-4" style="display:none">
+    No alerts match your current filters.
+  </div>
+  <div id="alerts-error" class="text-danger text-center py-4" style="display:none">
+    Unable to load alerts. <a href="#" onclick="loadAlerts()">Retry?</a>
+  </div>
+
+</div>
+<script src="{{ url_for('static', filename='js/alerts.js') }}?v={{ asset_ver }}"></script>
+{% endblock %}

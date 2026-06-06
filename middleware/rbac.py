@@ -169,6 +169,7 @@ ENDPOINT_PERMISSIONS = {
     # Dashboard alert endpoints (require devices.edit)
     "dashboard_bp.acknowledge_alert": "devices.edit",
     "dashboard_bp.resolve_alert": "devices.edit",
+    "alerts.resolve_alert": "devices.edit",
     
     # SNMP endpoints
     "snmp_bp.save_snmp_config": "devices.edit",
