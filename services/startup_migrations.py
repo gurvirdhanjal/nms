@@ -90,6 +90,15 @@ def _pg_column_exists(conn, table: str, column: str) -> bool:
     return row is not None
 
 
+def _pg_index_exists(conn, index_name: str) -> bool:
+    from sqlalchemy import text
+    row = conn.execute(
+        text("SELECT 1 FROM pg_indexes WHERE indexname=:n"),
+        {"n": index_name},
+    ).fetchone()
+    return row is not None
+
+
 def _run_column_migrations(db: "SQLAlchemy", is_pg: bool) -> int:
     """Idempotently add missing columns to existing tables.  Returns error count."""
     from sqlalchemy import text
@@ -170,6 +179,11 @@ def run_startup_migrations(db: "SQLAlchemy") -> None:
                 logger.info("[STARTUP MIGRATION] TimescaleDB hypertables detected: %s", hypertables)
 
             for index_name, table, columns in _INDEXES:
+                # Pre-check pg_indexes — CREATE INDEX (even IF NOT EXISTS) briefly
+                # acquires a ShareLock on the table and blocks DDL; skip entirely
+                # when the index already exists to keep startup lock-free.
+                if _pg_index_exists(conn, index_name):
+                    continue
                 # TimescaleDB hypertables reject CONCURRENTLY — use standard path for them.
                 if table in hypertables:
                     sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns})"
@@ -181,7 +195,7 @@ def run_startup_migrations(db: "SQLAlchemy") -> None:
                 try:
                     conn.execute(text(sql))
                     logger.info(
-                        "[STARTUP MIGRATION] ensured index %s ON %s (%s)",
+                        "[STARTUP MIGRATION] created index %s ON %s (%s)",
                         index_name, table, columns,
                     )
                 except Exception as exc:
