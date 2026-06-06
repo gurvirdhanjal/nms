@@ -565,19 +565,34 @@ def get_summary():
         # Calculate Real 24h Availability (Average Uptime)
         # ----------------------------------------
         cutoff_24h = datetime.utcnow() - timedelta(hours=24)
-        
-        # Get uptime % for EACH monitored device over last 24h
-        # Query: device_ip, total_scans, online_scans
+
+        # Use cagg (15-min pre-aggregated buckets) — avoids 7-8s raw table GROUP BY
         stats_24h = []
         if scoped_device_ips:
-            stats_24h = db.session.query(
-                DeviceScanHistory.device_ip,
-                func.count(DeviceScanHistory.scan_id).label('total'),
-                func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
-            ).filter(
-                DeviceScanHistory.scan_timestamp >= cutoff_24h,
-                DeviceScanHistory.device_ip.in_(scoped_device_ips)
-            ).group_by(DeviceScanHistory.device_ip).all()
+            from sqlalchemy import text as _text
+            _stmt = _text("""
+                SELECT device_ip,
+                       SUM(probe_count) AS total,
+                       SUM(online_count) AS online
+                FROM device_scan_history_15m_cagg
+                WHERE device_ip = ANY(:ips)
+                  AND bucket >= :cutoff
+                GROUP BY device_ip
+            """)
+            try:
+                stats_24h = db.session.execute(
+                    _stmt, {"ips": list(scoped_device_ips), "cutoff": cutoff_24h}
+                ).fetchall()
+            except Exception:
+                # Cagg unavailable — fall back to raw query
+                stats_24h = db.session.query(
+                    DeviceScanHistory.device_ip,
+                    func.count(DeviceScanHistory.scan_id).label('total'),
+                    func.sum(case((DeviceScanHistory.status == 'Online', 1), else_=0)).label('online')
+                ).filter(
+                    DeviceScanHistory.scan_timestamp >= cutoff_24h,
+                    DeviceScanHistory.device_ip.in_(scoped_device_ips)
+                ).group_by(DeviceScanHistory.device_ip).all()
         
         total_uptime_pct = 0
         devices_with_history = 0
@@ -1242,28 +1257,57 @@ def get_trends():
                 buckets[key] = {'online': 0, 'total': 0, 'latencies': []}
             current_time_step += timedelta(minutes=bucket_minutes)
 
-        scans = []
-        if scoped_ips:
-            scans = DeviceScanHistory.query.filter(
-                DeviceScanHistory.scan_timestamp >= cutoff,
-                DeviceScanHistory.device_ip.in_(scoped_ips),
-            ).order_by(DeviceScanHistory.scan_timestamp).all()
-        
-        # Fill with actual data
-        for scan in scans:
-            if not scan.scan_timestamp:
-                continue
-            
-            ts = scan.scan_timestamp
-            bucket_time = get_bucket_key(ts, bucket_minutes)
-            key = bucket_time.isoformat()
-            
-            if key in buckets:
-                buckets[key]['total'] += 1
-                if scan.status == 'Online':
-                    buckets[key]['online'] += 1
-                    if scan.ping_time_ms:
-                        buckets[key]['latencies'].append(scan.ping_time_ms)
+        # Use cagg for ranges ≥ 24h; for 1h fall back to raw (cagg is 15-min granularity)
+        cagg_rows = []
+        use_cagg = time_range != '1h' and scoped_ips
+        if use_cagg:
+            from sqlalchemy import text as _text
+            _cagg_stmt = _text("""
+                SELECT time_bucket(:bucket_interval, bucket) AS tb,
+                       SUM(probe_count) AS total,
+                       SUM(online_count) AS online,
+                       SUM(avg_rtt * probe_count) / NULLIF(SUM(probe_count), 0) AS avg_latency
+                FROM device_scan_history_15m_cagg
+                WHERE device_ip = ANY(:ips)
+                  AND bucket >= :cutoff
+                GROUP BY 1 ORDER BY 1
+            """)
+            try:
+                cagg_rows = db.session.execute(
+                    _cagg_stmt,
+                    {"ips": list(scoped_ips), "cutoff": cutoff,
+                     "bucket_interval": f"{bucket_minutes} minutes"}
+                ).fetchall()
+            except Exception:
+                use_cagg = False
+
+        if use_cagg:
+            for row in cagg_rows:
+                key = get_bucket_key(row.tb, bucket_minutes).isoformat()
+                if key in buckets:
+                    buckets[key]['total'] += int(row.total or 0)
+                    buckets[key]['online'] += int(row.online or 0)
+                    if row.avg_latency:
+                        buckets[key]['latencies'].append(float(row.avg_latency))
+        else:
+            scans = []
+            if scoped_ips:
+                scans = DeviceScanHistory.query.filter(
+                    DeviceScanHistory.scan_timestamp >= cutoff,
+                    DeviceScanHistory.device_ip.in_(scoped_ips),
+                ).order_by(DeviceScanHistory.scan_timestamp).all()
+            for scan in scans:
+                if not scan.scan_timestamp:
+                    continue
+                ts = scan.scan_timestamp
+                bucket_time = get_bucket_key(ts, bucket_minutes)
+                key = bucket_time.isoformat()
+                if key in buckets:
+                    buckets[key]['total'] += 1
+                    if scan.status == 'Online':
+                        buckets[key]['online'] += 1
+                        if scan.ping_time_ms:
+                            buckets[key]['latencies'].append(scan.ping_time_ms)
         
         availability_trend = []
         latency_trend = []
