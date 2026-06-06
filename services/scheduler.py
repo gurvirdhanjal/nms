@@ -193,10 +193,6 @@ class MonitoringScheduler:
         # Sync maintenance windows to devices every minute
         schedule.every(1).minutes.do(self.sync_maintenance_windows)
 
-        # Dashboard snapshot warm-up — keeps DashboardSnapshot table populated so
-        # /api/dashboard/full_snapshot serves O(1) from DB instead of computing inline.
-        schedule.every(30).seconds.do(self.warm_dashboard_snapshot)
-
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
@@ -205,10 +201,6 @@ class MonitoringScheduler:
         # Run immediate scan in background so UI has data
         t_monitoring = threading.Thread(target=self.run_monitoring_task, daemon=True)
         t_monitoring.start()
-
-        # Warm dashboard snapshot immediately on startup — avoids blank dashboard on first load
-        t_snapshot = threading.Thread(target=self.warm_dashboard_snapshot, daemon=True)
-        t_snapshot.start()
 
         # Run an immediate reconciliation pass in background for tracking status freshness.
         t_recon = threading.Thread(target=self.run_tracking_reconciliation, daemon=True)
