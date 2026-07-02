@@ -485,3 +485,106 @@ class AlertManager:
         if recovery >= cls.RESOLVE_STRIKES_REQUIRED:
             cls._resolve_alert(device, metric=metric, commit=commit)
             recovery_dict.pop(key, None)
+
+    @classmethod
+    def auto_resolve_stale_alerts(cls):
+        """DB-driven sweep: resolve open STATUS/LATENCY/PACKET_LOSS alerts whose device
+        has 2+ consecutive healthy scans in device_scan_history.
+
+        Runs every 2 minutes from the scheduler and once ~60s after startup.
+        Restart-safe — does not rely on in-memory strike counters. Complements the
+        per-scan _status_recovery / _handle_icmp_recovery logic as a fallback for
+        stale alerts left by container restarts, DB hiccups, or monitoring gaps.
+        """
+        from sqlalchemy import text as _text
+        from collections import defaultdict
+
+        try:
+            open_alerts = (
+                DashboardEvent.query
+                .filter(
+                    DashboardEvent.resolved == False,
+                    DashboardEvent.metric_name.in_(["status", "latency", "packet_loss"]),
+                )
+                .all()
+            )
+            if not open_alerts:
+                return 0
+
+            device_ids = list({a.device_id for a in open_alerts})
+
+            # Fetch the 2 most-recent scan statuses per device via LATERAL index lookup.
+            stmt = _text("""
+                SELECT d.device_id, l.status, l.ping_time_ms, l.packet_loss
+                FROM (SELECT unnest(:ids) AS device_id) AS d_ids
+                JOIN device d ON d.device_id = d_ids.device_id
+                CROSS JOIN LATERAL (
+                    SELECT dsh.status, dsh.ping_time_ms, dsh.packet_loss
+                    FROM device_scan_history dsh
+                    WHERE dsh.device_ip = d.device_ip
+                    ORDER BY dsh.scan_timestamp DESC
+                    LIMIT 2
+                ) AS l
+            """)
+            rows = db.session.execute(stmt, {"ids": device_ids}).fetchall()
+
+            scans_by_device = defaultdict(list)
+            for row in rows:
+                scans_by_device[row.device_id].append(row)
+
+            now = datetime.utcnow()
+            resolved_count = 0
+
+            for alert in open_alerts:
+                scans = scans_by_device.get(alert.device_id, [])
+                if len(scans) < 2:
+                    continue
+
+                all_online = all(str(s.status or "").lower() == "online" for s in scans)
+                if not all_online:
+                    continue
+
+                should_resolve = False
+                if alert.metric_name == "status":
+                    should_resolve = True
+                elif alert.metric_name == "latency":
+                    # Resolve if latency is within the class-level default threshold.
+                    # Per-device threshold accuracy is handled by the live in-memory counter;
+                    # this sweep is a fallback for stale alerts only.
+                    should_resolve = all(
+                        s.ping_time_ms is None or s.ping_time_ms < cls.LATENCY_THRESHOLD_MS
+                        for s in scans
+                    )
+                elif alert.metric_name == "packet_loss":
+                    should_resolve = all(
+                        s.packet_loss is None or s.packet_loss < cls.PACKET_LOSS_THRESHOLD_PCT
+                        for s in scans
+                    )
+
+                if should_resolve:
+                    alert.resolved = True
+                    alert.resolved_at = now
+                    alert.message = alert.message.rstrip() + " [AUTO-RESOLVED]"
+                    resolved_count += 1
+                    if alert.metric_name == "status":
+                        with cls._lock:
+                            cls._offline_cooldown[alert.device_id] = (
+                                time.time() + cls.OFFLINE_COOLDOWN_S
+                            )
+
+            if resolved_count > 0:
+                db.session.commit()
+                logger.info(
+                    "[AlertManager] auto_resolve_stale_alerts: resolved %d alert(s)",
+                    resolved_count,
+                )
+
+            return resolved_count
+
+        except Exception as exc:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            logger.error("[AlertManager] auto_resolve_stale_alerts failed: %s", exc)
+            return 0

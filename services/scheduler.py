@@ -37,6 +37,7 @@ JOB_META: dict[str, tuple[str, int]] = {
     "purge_old_activity_logs":         ("activity_log_retention",        86400),
     "purge_old_task_queues":           ("task_queue_retention",          86400),
     "drain_alert_fanout_queue":        ("alert_fanout_drain",            10),
+    "auto_resolve_stale_alerts":       ("alert_auto_resolve",            120),
 }
 
 
@@ -201,6 +202,11 @@ class MonitoringScheduler:
         # fresh data without triggering inline computation under concurrent load.
         schedule.every(2).minutes.do(self.warm_dashboard_snapshot)
 
+        # Auto-resolve stale alerts: resolve open STATUS/LATENCY/PACKET_LOSS alerts
+        # whose device has 2+ consecutive online scans. Runs every 2 minutes as a
+        # fallback for stale alerts left by container restarts or monitoring gaps.
+        schedule.every(2).minutes.do(self.auto_resolve_stale_alerts)
+
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._run_scheduler_with_watchdog)
         self.scheduler_thread.daemon = True
@@ -246,6 +252,17 @@ class MonitoringScheduler:
 
         t_backfill = threading.Thread(target=run_startup_backfill, daemon=True, name="startup-backfill")
         t_backfill.start()
+
+        # Startup alert sweep — clear stale open alerts from the previous session.
+        # Delayed 60 s so at least 4 scan cycles complete before the sweep runs,
+        # ensuring device_scan_history has recent rows for the LATERAL check.
+        def _run_startup_resolve():
+            import time as _time
+            _time.sleep(60)
+            self.auto_resolve_stale_alerts()
+
+        t_resolve = threading.Thread(target=_run_startup_resolve, daemon=True, name="startup-alert-resolve")
+        t_resolve.start()
 
         logger.info("Scheduled monitoring started (initial scan triggered).")
     
@@ -852,6 +869,21 @@ class MonitoringScheduler:
                 db.session.rollback()
                 _record_run("alert_retention", False)
                 logger.exception("[SCHEDULER] purge_old_alerts failed")
+            finally:
+                db.session.remove()
+
+    def auto_resolve_stale_alerts(self):
+        """Resolve open STATUS/LATENCY/PACKET_LOSS alerts for devices back online."""
+        with self.app.app_context():
+            try:
+                from services.alert_manager import AlertManager
+                resolved = AlertManager.auto_resolve_stale_alerts()
+                _record_run("alert_auto_resolve", True)
+                if resolved:
+                    logger.info("[SCHEDULER] auto_resolve_stale_alerts: %d resolved", resolved)
+            except Exception as exc:
+                _record_run("alert_auto_resolve", False)
+                logger.error("[SCHEDULER] auto_resolve_stale_alerts failed: %s", exc)
             finally:
                 db.session.remove()
 
