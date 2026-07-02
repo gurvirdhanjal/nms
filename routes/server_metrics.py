@@ -362,18 +362,39 @@ def _build_connection_snapshot(last_log, *, allow_reverse_dns=False):
 def _build_server_telemetry_payload(device, time_range):
     cutoff = _time_range_cutoff(time_range)
     max_points = _max_points_for_range(time_range)
-    logs_q = (
-        ServerHealthLog.query.filter(
+
+    # Project only the 6 chart columns — avoids loading JSONB blobs
+    # (top_processes, network_top_remote_ips, alerts …) for up to 1344 rows.
+    logs = (
+        db.session.query(
+            ServerHealthLog.timestamp,
+            ServerHealthLog.cpu_usage,
+            ServerHealthLog.memory_usage,
+            ServerHealthLog.disk_usage,
+            ServerHealthLog.network_in_bps,
+            ServerHealthLog.network_out_bps,
+        )
+        .filter(
             ServerHealthLog.device_id == device.device_id,
             ServerHealthLog.timestamp >= cutoff,
             ServerHealthLog.source == "agent",
         )
         .order_by(ServerHealthLog.timestamp.desc())
+        .limit(max_points * 4)
+        .all()
     )
-
-    logs = logs_q.limit(max_points * 4).all()
     logs.reverse()
-    last_log = logs[-1] if logs else None
+    # Full ORM fetch for the latest row — needed for JSONB fields (top_processes,
+    # network_top_remote_ips, etc.) used by the metrics/health panel below.
+    last_log = (
+        ServerHealthLog.query
+        .filter(
+            ServerHealthLog.device_id == device.device_id,
+            ServerHealthLog.source == "agent",
+        )
+        .order_by(ServerHealthLog.timestamp.desc())
+        .first()
+    )
     os_family = _detect_os_family(device, last_log)
 
     hardware_specs = device.hardware_specs if isinstance(device.hardware_specs, dict) else {}
@@ -876,10 +897,13 @@ def server_snapshot(device_id):
     health_summary = summarize_health(last_log) if last_log else None
     uptime_sec = _parse_uptime_seconds(last_log.uptime if last_log else None)
 
-    # Mini CPU chart — last 1h, capped at 60 points
+    # Mini CPU chart — last 1h, capped at 60 points (timestamp + cpu_usage only)
     cutoff_1h = _utcnow_naive() - timedelta(hours=1)
     cpu_logs = (
-        ServerHealthLog.query
+        db.session.query(
+            ServerHealthLog.timestamp,
+            ServerHealthLog.cpu_usage,
+        )
         .filter(
             ServerHealthLog.device_id == device_id,
             ServerHealthLog.source == "agent",

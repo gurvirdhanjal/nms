@@ -336,6 +336,36 @@ class MonitoringScheduler:
             except Exception as exc:
                 logger.warning('[PreWarm] executive %dd failed: %s', range_days, exc)
 
+        # Enterprise-uptime report (30d, all fleets — default dashboard view)
+        start_dt_ent = end_dt - timedelta(days=30)
+        try:
+            with self.app.test_request_context():
+                flask_session['role'] = 'admin'
+                from services.enterprise_report_service import build_enterprise_uptime_report
+                payload = build_enterprise_uptime_report(start_date=start_dt_ent, end_date=end_dt)
+                db.session.remove()
+                try:
+                    from services.report_narrative_service import ReportNarrativeService
+                    svc_n = ReportNarrativeService()
+                    payload['narratives'] = {
+                        'executive':     svc_n.generate_narrative('executive', payload),
+                        'server_fleet':  svc_n.generate_narrative('server-fleet', payload),
+                        'tracked_fleet': svc_n.generate_narrative('tracked-fleet', payload),
+                    }
+                    payload['cross_report'] = None
+                except Exception:
+                    payload['narratives'] = {}
+                    payload['cross_report'] = None
+                try:
+                    from services.report_intelligence_rules import ReportIntelligenceRules
+                    payload['intelligence_annotations'] = ReportIntelligenceRules().annotate('enterprise', payload)
+                except Exception:
+                    payload['intelligence_annotations'] = []
+            redis_client.setex('nms:report:enterprise-uptime:30d', 900, json.dumps(payload, default=str))
+            logger.info('[PreWarm] Cached enterprise-uptime 30d in Redis')
+        except Exception as exc:
+            logger.warning('[PreWarm] enterprise-uptime 30d failed: %s', exc)
+
     def run_monitoring_task(self):
         """Run monitoring task within application context.
 
@@ -419,6 +449,10 @@ class MonitoringScheduler:
                             f"full_snapshot_{scope_fragment}_{time_range}"
                             f"_{alert_status}_{alert_limit}"
                         )
+                        # The test_client request may have left the session in an
+                        # aborted state if any section raised a DB exception.
+                        # Roll back before querying to get a clean transaction.
+                        db.session.rollback()
                         snapshot = DashboardSnapshot.query.filter_by(cache_key=cache_key).first()
                         if not snapshot:
                             snapshot = DashboardSnapshot(cache_key=cache_key, payload=raw_json)

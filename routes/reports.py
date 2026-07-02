@@ -532,6 +532,7 @@ _REDIS_PREWARM_KEYS = {
     ('executive', 30): 'nms:report:executive:30d',
     ('executive', 7):  'nms:report:executive:7d',
     ('operational', 1): 'nms:report:operational:24h',
+    ('enterprise-uptime', 30): 'nms:report:enterprise-uptime:30d',
 }
 _REDIS_PREWARM_TTL = 900  # 15 minutes
 
@@ -996,8 +997,18 @@ def _build_device_stats(device_ip: str, hours: int):
 
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     agent_data = {'available': False}
+    # Project only the 7 columns used below — avoids loading large JSONB blobs
+    # (top_processes, network_top_remote_ips, alerts, etc.) that can be 10-50KB/row.
     agent_logs = (
-        ServerHealthLog.query
+        db.session.query(
+            ServerHealthLog.timestamp,
+            ServerHealthLog.cpu_usage,
+            ServerHealthLog.memory_usage,
+            ServerHealthLog.disk_usage,
+            ServerHealthLog.uptime,
+            ServerHealthLog.network_in_bps,
+            ServerHealthLog.network_out_bps,
+        )
         .filter(
             ServerHealthLog.device_id == device.device_id,
             ServerHealthLog.source == 'agent',
@@ -1878,6 +1889,29 @@ def enterprise_uptime_report():
     except ReportValidationError as exc:
         return _json_error(str(exc), exc.status_code)
     try:
+        cache_key = _build_cache_key(
+            'enterprise-uptime', start_date, end_date,
+            device_ids=device_ids, extras={'fleet': fleet},
+        )
+        ttl = _cache_ttl_seconds('enterprise-uptime', start_date, end_date)
+        cached = _get_cached_report(cache_key)
+        if cached:
+            return jsonify(cached['payload'])
+
+        # L2 — Redis prewarm check (background scheduler keeps this warm)
+        if is_redis_available():
+            try:
+                range_days = max(1, int((end_date - start_date).total_seconds() / 86400))
+                rk = _redis_prewarm_key('enterprise-uptime', range_days)
+                if rk:
+                    rb = redis_client.get(rk)
+                    if rb:
+                        redis_payload = json.loads(rb)
+                        _set_cached_report(cache_key, redis_payload, ttl)
+                        return jsonify(redis_payload)
+            except Exception:
+                pass
+
         from services.enterprise_report_service import build_enterprise_uptime_report
         data = build_enterprise_uptime_report(start_date=start_date, end_date=end_date, fleet=fleet, device_ids=device_ids)
         # Add narrative + intelligence annotations (Master Spec)
@@ -1914,6 +1948,7 @@ def enterprise_uptime_report():
         except Exception as exc:
             logger.warning("[EnterpriseUptime] intelligence annotation failed: %s", exc)
             data['intelligence_annotations'] = []
+        _set_cached_report(cache_key, data, ttl)
         return jsonify(data)
     except Exception as exc:
         logger.exception("[EnterpriseUptime] JSON build failed: %s", exc)

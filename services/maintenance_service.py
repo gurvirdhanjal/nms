@@ -1567,7 +1567,7 @@ class MaintenanceService:
                 rows = (
                     db.session.query(
                         DashboardEvent.device_id,
-                        func.count(DashboardEvent.id).label('cnt'),
+                        func.count(DashboardEvent.event_id).label('cnt'),
                     )
                     .filter(
                         DashboardEvent.device_id.in_(pending_ids),
@@ -1591,7 +1591,12 @@ class MaintenanceService:
                 online_scans = sum(1 for s in scans if s.status == 'Online')
                 uptime_percent = (online_scans / total_scans) * 100 if total_scans > 0 else 0
                 latencies = [s.ping_time_ms for s in scans if s.ping_time_ms is not None]
-                packet_losses = [s.packet_loss for s in scans if s.packet_loss is not None]
+                # Only include packet_loss for online scans within [0, 100].
+                # Offline scans store packet_loss=100 by design (inflates average).
+                # Some SNMP probe scans emit corrupt values (>100) — exclude those too.
+                packet_losses = [s.packet_loss for s in scans
+                                 if s.status == 'Online' and s.packet_loss is not None
+                                 and 0.0 <= s.packet_loss <= 100.0]
 
                 daily_stat = DailyDeviceStats(
                     device_id=device.device_id,

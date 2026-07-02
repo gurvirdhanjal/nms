@@ -25,7 +25,7 @@ def _load_latest_scan_map(device_ips):
     stmt = _text("""
         SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
                l.ping_time_ms, l.packet_loss, l.jitter
-        FROM unnest(:ips::text[]) AS t(device_ip)
+        FROM (SELECT unnest(:ips) AS device_ip) AS t
         CROSS JOIN LATERAL (
             SELECT scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
             FROM device_scan_history dsh

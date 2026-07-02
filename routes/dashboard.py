@@ -187,6 +187,11 @@ def _collect_section(section_name, builder):
             return None, payload.get('error')
         return payload, None
     except Exception as exc:
+        # Roll back any aborted transaction so the next section can query the DB.
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return None, str(exc)
 
 
@@ -924,7 +929,7 @@ def get_top_problems():
             _latest_stmt = _text("""
                 SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
                        l.ping_time_ms, l.packet_loss, l.jitter
-                FROM unnest(:ips::text[]) AS t(device_ip)
+                FROM (SELECT unnest(:ips) AS device_ip) AS t
                 CROSS JOIN LATERAL (
                     SELECT scan_id, device_ip, scan_timestamp, status, ping_time_ms, packet_loss, jitter
                     FROM device_scan_history dsh
@@ -1638,16 +1643,28 @@ def get_inventory_stats():
 
         scan_pairs_by_ip = {}
         if scoped_device_ips := [d.device_ip for d in scoped_devices if getattr(d, 'device_ip', None)]:
-            ordered_scans = (
-                DeviceScanHistory.query
-                .filter(DeviceScanHistory.device_ip.in_(scoped_device_ips))
-                .order_by(DeviceScanHistory.device_ip.asc(), DeviceScanHistory.scan_timestamp.desc(), DeviceScanHistory.scan_id.desc())
-                .all()
-            )
-            for scan in ordered_scans:
-                bucket = scan_pairs_by_ip.setdefault(scan.device_ip, [])
-                if len(bucket) < 2:
-                    bucket.append(scan)
+            # LATERAL + LIMIT 2 per IP: fetches only the 2 most recent scans per device
+            # using per-chunk index lookup. The old .all() loaded all 500k+ historical rows.
+            from sqlalchemy import text as _lat_text
+            _pair_stmt = _lat_text("""
+                SELECT l.scan_id, l.device_ip, l.scan_timestamp, l.status,
+                       l.ping_time_ms, l.packet_loss, l.jitter, l.min_rtt, l.max_rtt
+                FROM (SELECT unnest(:ips) AS device_ip) AS t
+                CROSS JOIN LATERAL (
+                    SELECT scan_id, device_ip, scan_timestamp, status,
+                           ping_time_ms, packet_loss, jitter, min_rtt, max_rtt
+                    FROM device_scan_history dsh
+                    WHERE dsh.device_ip = t.device_ip
+                    ORDER BY dsh.scan_timestamp DESC
+                    LIMIT 2
+                ) AS l
+            """)
+            try:
+                _pair_rows = db.session.execute(_pair_stmt, {"ips": list(scoped_device_ips)}).fetchall()
+                for row in _pair_rows:
+                    scan_pairs_by_ip.setdefault(row.device_ip, []).append(row)
+            except Exception:
+                db.session.rollback()
 
         alert_counts = {}
         if scoped_device_ids:

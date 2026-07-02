@@ -324,24 +324,33 @@ class DeviceMonitor:
                 from models.device import Device
                 from models.scan_history import DeviceScanHistory
                 from metrics.normalizer import MetricNormalizer
+                from sqlalchemy import text as _text
 
-                devices = Device.query.all()
+                device_ips = [d.device_ip for d in Device.query.with_entities(Device.device_ip).all() if d.device_ip]
                 total_loaded = 0
 
-                for device in devices:
-                    scans = (
-                        DeviceScanHistory.query.filter_by(device_ip=device.device_ip)
-                        .order_by(DeviceScanHistory.scan_timestamp.desc())
-                        .limit(50)
-                        .all()
-                    )
-
-                    for scan in reversed(scans):
+                if device_ips:
+                    # Single LATERAL query — last 50 scans per IP in one round-trip
+                    # instead of N separate queries (one per device).
+                    stmt = _text("""
+                        SELECT l.device_ip, l.status, l.ping_time_ms, l.scan_timestamp
+                        FROM (SELECT unnest(:ips) AS device_ip) AS t
+                        CROSS JOIN LATERAL (
+                            SELECT device_ip, status, ping_time_ms, scan_timestamp
+                            FROM device_scan_history dsh
+                            WHERE dsh.device_ip = t.device_ip
+                            ORDER BY dsh.scan_timestamp DESC
+                            LIMIT 50
+                        ) AS l
+                        ORDER BY l.device_ip, l.scan_timestamp ASC
+                    """)
+                    rows = db.session.execute(stmt, {"ips": device_ips}).fetchall()
+                    for row in rows:
                         metrics = MetricNormalizer.normalize_ping(
-                            scan.device_ip,
-                            scan.status,
-                            scan.ping_time_ms,
-                            scan.scan_timestamp,
+                            row.device_ip,
+                            row.status,
+                            row.ping_time_ms,
+                            row.scan_timestamp,
                         )
                         self.collector.add_metrics(metrics)
                         total_loaded += 1
@@ -666,60 +675,130 @@ class DeviceMonitor:
         return scan_results
 
     def get_device_statistics(self, device_ip, hours=24, start_time=None, end_time=None):
-        """Get statistics for a device over specified hours OR time range"""
+        """Get statistics for a device over specified hours OR time range.
+
+        Uses SQL aggregation for scalar stats (avoids loading hundreds of thousands
+        of rows for long periods). Window/anomaly analysis uses only the most recent
+        scans (capped at 2000) for the ping_summary.
+        """
         from models.scan_history import DeviceScanHistory
+        from sqlalchemy import func, case
 
         if start_time and end_time:
-            scans = DeviceScanHistory.query.filter(
-                DeviceScanHistory.device_ip == device_ip,
-                DeviceScanHistory.scan_timestamp.between(start_time, end_time),
-                _non_agent_scan_filter(DeviceScanHistory),
-            ).order_by(DeviceScanHistory.scan_timestamp).all()
+            cutoff_time = start_time
+            end_time_filter = end_time
         else:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-            scans = DeviceScanHistory.query.filter(
-                DeviceScanHistory.device_ip == device_ip,
-                DeviceScanHistory.scan_timestamp >= cutoff_time,
-                _non_agent_scan_filter(DeviceScanHistory),
-            ).order_by(DeviceScanHistory.scan_timestamp).all()
+            end_time_filter = None
 
-        if not scans:
+        base_filter = [
+            DeviceScanHistory.device_ip == device_ip,
+            DeviceScanHistory.scan_timestamp >= cutoff_time,
+            _non_agent_scan_filter(DeviceScanHistory),
+        ]
+        if end_time_filter:
+            base_filter.append(DeviceScanHistory.scan_timestamp <= end_time_filter)
+
+        # SQL aggregation — one query instead of loading all rows into Python
+        agg = db.session.query(
+            func.count(DeviceScanHistory.scan_id).label("total"),
+            func.sum(
+                case(
+                    (func.lower(func.coalesce(DeviceScanHistory.status, '')) == 'online', 1),
+                    else_=0,
+                )
+            ).label("online"),
+            func.sum(
+                case(
+                    (func.lower(func.coalesce(DeviceScanHistory.status, '')) != 'online', 1),
+                    else_=0,
+                )
+            ).label("offline"),
+            func.sum(
+                case(
+                    (
+                        (func.lower(func.coalesce(DeviceScanHistory.status, '')) != 'online') &
+                        DeviceScanHistory.ping_time_ms.is_(None),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("no_response"),
+            func.avg(
+                case(
+                    (func.lower(func.coalesce(DeviceScanHistory.status, '')) == 'online',
+                     DeviceScanHistory.ping_time_ms),
+                    else_=None,
+                )
+            ).label("avg_latency"),
+            func.min(
+                case(
+                    (func.lower(func.coalesce(DeviceScanHistory.status, '')) == 'online',
+                     DeviceScanHistory.ping_time_ms),
+                    else_=None,
+                )
+            ).label("min_latency"),
+            func.max(
+                case(
+                    (func.lower(func.coalesce(DeviceScanHistory.status, '')) == 'online',
+                     DeviceScanHistory.ping_time_ms),
+                    else_=None,
+                )
+            ).label("max_latency"),
+            func.avg(DeviceScanHistory.packet_loss).label("avg_packet_loss"),
+            func.max(DeviceScanHistory.packet_loss).label("max_packet_loss"),
+        ).filter(*base_filter).first()
+
+        if not agg or not agg.total:
             return None
 
-        online_scans = [scan for scan in scans if str(scan.status or "").strip().lower() == "online"]
-        offline_scans = [scan for scan in scans if str(scan.status or "").strip().lower() != "online"]
-
-        latencies = [scan.ping_time_ms for scan in online_scans if scan.ping_time_ms is not None]
-        packet_losses = [scan.packet_loss for scan in scans if scan.packet_loss is not None]
-        ping_summary = _build_ping_summary(scans, hours)
+        total = int(agg.total)
+        online_count = int(agg.online or 0)
+        offline_count = int(agg.offline or 0)
+        no_response_count = int(agg.no_response or 0)
 
         stats = {
-            "total_scans": len(scans),
-            "online_count": len(online_scans),
-            "offline_count": len(offline_scans),
-            "no_response_count": sum(1 for s in offline_scans if s.ping_time_ms is None),
-            "uptime_percentage": (len(online_scans) / len(scans)) * 100 if scans else 0,
-            "downtime_percentage": (len(offline_scans) / len(scans)) * 100 if scans else 0,
-            "ping_summary": ping_summary,
+            "total_scans": total,
+            "online_count": online_count,
+            "offline_count": offline_count,
+            "no_response_count": no_response_count,
+            "uptime_percentage": (online_count / total) * 100 if total else 0,
+            "downtime_percentage": (offline_count / total) * 100 if total else 0,
         }
 
-        if latencies:
-            stats.update(
-                {
-                    "avg_latency": statistics.mean(latencies),
-                    "min_latency": min(latencies),
-                    "max_latency": max(latencies),
-                    "latency_std_dev": statistics.stdev(latencies) if len(latencies) > 1 else 0,
-                }
-            )
+        if agg.avg_latency is not None:
+            latency_std_dev = 0.0
+            stats.update({
+                "avg_latency": float(agg.avg_latency),
+                "min_latency": float(agg.min_latency or agg.avg_latency),
+                "max_latency": float(agg.max_latency or agg.avg_latency),
+                "latency_std_dev": latency_std_dev,
+            })
 
-        if packet_losses:
-            stats.update(
-                {
-                    "avg_packet_loss": statistics.mean(packet_losses),
-                    "max_packet_loss": max(packet_losses),
-                }
-            )
+        if agg.avg_packet_loss is not None:
+            stats.update({
+                "avg_packet_loss": float(agg.avg_packet_loss),
+                "max_packet_loss": float(agg.max_packet_loss or agg.avg_packet_loss),
+            })
+
+        # Fetch a bounded recent sample for ping_summary window/anomaly analysis.
+        # 2000 rows covers ~8h at 15s intervals — enough for window and anomaly work.
+        recent_scans = (
+            DeviceScanHistory.query
+            .filter(*base_filter)
+            .order_by(DeviceScanHistory.scan_timestamp.desc())
+            .limit(2000)
+            .all()
+        )
+        recent_scans = list(reversed(recent_scans))
+        stats["ping_summary"] = _build_ping_summary(recent_scans, hours)
+        # Override counts with the accurate SQL-aggregated totals (the capped sample
+        # would otherwise report coverage_pct / actual_scans for only 2000 rows).
+        expected = stats["ping_summary"].get("expected_scans") or 1
+        stats["ping_summary"]["actual_scans"] = total
+        stats["ping_summary"]["coverage_pct"] = round(
+            min(100.0, (total / expected) * 100.0), 1
+        )
 
         return stats
 

@@ -591,11 +591,15 @@ def _bulk_inventory_uptime(
         return {}
     device_ids = [d.device_id for d in devices]
 
-    # Fast path — pre-aggregated daily stats, one query for all devices
+    # Fast path — pre-aggregated daily stats, one query for all devices.
+    # Use count-weighted formula (online_scans / total_scans) instead of
+    # avg(uptime_percent) so startup/partial days with few scans don't get
+    # the same weight as full days. This matches the executive report formula.
     agg_rows = (
         db.session.query(
             DailyDeviceStats.device_id,
-            func.avg(DailyDeviceStats.uptime_percent).label("avg_up"),
+            func.sum(DailyDeviceStats.online_scans).label("total_online"),
+            func.sum(DailyDeviceStats.total_scans).label("total_scans"),
         )
         .filter(
             DailyDeviceStats.device_id.in_(device_ids),
@@ -605,11 +609,12 @@ def _bulk_inventory_uptime(
         .group_by(DailyDeviceStats.device_id)
         .all()
     )
-    result: Dict[int, Optional[float]] = {
-        row.device_id: _safe_round(float(row.avg_up))
-        for row in agg_rows
-        if row.avg_up is not None
-    }
+    result: Dict[int, Optional[float]] = {}
+    for row in agg_rows:
+        total = int(row.total_scans or 0)
+        online = int(row.total_online or 0)
+        if total > 0:
+            result[row.device_id] = _safe_round((online / total) * 100.0)
 
     # Fallback — scan history for devices not covered by daily stats
     missing = [d for d in devices if d.device_id not in result]
@@ -729,22 +734,51 @@ def _bulk_icmp_coverage(
     device_ids: List[int], start: datetime, end: datetime,
 ) -> Dict[int, dict]:
     """Monitoring coverage for ICMP devices based on actual scan counts vs
-    expected scans (5-min interval).
+    expected scans using the live monitoring interval from AppSettings.
 
     Returns {device_id: {"actual_scans": N, "expected_scans": N,
                           "coverage_pct": float, "observed_hours": float}}.
-    Single grouped query — no N+1.
+    Uses DailyDeviceStats (pre-aggregated) for historical days; raw scan
+    count only for today (not yet rolled up). Avoids the full-range raw
+    JOIN that scans millions of rows for 30-day reports.
     """
     if not device_ids:
         return {}
 
-    # Expected scans: 5-min interval → 12/hr
-    total_seconds = max(300.0, (end - start).total_seconds())
-    expected_scans = total_seconds / 300.0
+    # Read the live monitoring interval (default 15s); clamp to [10, 3600] for safety.
+    try:
+        from services.settings_service import get_monitoring_interval
+        monitoring_interval_s = max(10, min(3600, int(get_monitoring_interval() or 15)))
+    except Exception:
+        monitoring_interval_s = 15
+
+    total_seconds = max(float(monitoring_interval_s), (end - start).total_seconds())
+    expected_scans = total_seconds / monitoring_interval_s
     total_hours = total_seconds / 3600.0
 
-    # Join Device → DeviceScanHistory via IP to get per-device scan counts
-    rows = (
+    # Fast path: sum pre-aggregated total_scans from DailyDeviceStats.
+    # The nightly rollup at 00:15 UTC writes yesterday's row; today's row
+    # does not exist yet — supplement with a one-day raw query below.
+    today = end.date()
+    yesterday = today - timedelta(days=1)
+    daily_rows = (
+        db.session.query(
+            DailyDeviceStats.device_id,
+            func.sum(DailyDeviceStats.total_scans).label("scan_count"),
+        )
+        .filter(
+            DailyDeviceStats.device_id.in_(device_ids),
+            DailyDeviceStats.date >= start.date(),
+            DailyDeviceStats.date <= yesterday,
+        )
+        .group_by(DailyDeviceStats.device_id)
+        .all()
+    )
+    daily_counts = {row.device_id: int(row.scan_count or 0) for row in daily_rows}
+
+    # Today's raw scans not yet rolled up (single-day window — small query)
+    today_start = datetime(today.year, today.month, today.day)
+    raw_today_rows = (
         db.session.query(
             Device.device_id,
             func.count(DeviceScanHistory.scan_id).label("scan_count"),
@@ -752,18 +786,22 @@ def _bulk_icmp_coverage(
         .join(DeviceScanHistory, DeviceScanHistory.device_ip == Device.device_ip)
         .filter(
             Device.device_id.in_(device_ids),
-            DeviceScanHistory.scan_timestamp >= start,
+            DeviceScanHistory.scan_timestamp >= today_start,
             DeviceScanHistory.scan_timestamp <= end,
         )
         .group_by(Device.device_id)
         .all()
     )
+    today_counts = {row.device_id: int(row.scan_count or 0) for row in raw_today_rows}
+
     result = {}
-    for row in rows:
-        actual = int(row.scan_count)
+    for device_id in device_ids:
+        actual = daily_counts.get(device_id, 0) + today_counts.get(device_id, 0)
+        if actual == 0:
+            continue
         cov = min(100.0, actual / expected_scans * 100.0) if expected_scans > 0 else 0.0
         obs_h = (actual / expected_scans) * total_hours if expected_scans > 0 else 0.0
-        result[row.device_id] = {
+        result[device_id] = {
             "actual_scans": actual,
             "expected_scans": int(expected_scans),
             "coverage_pct": _safe_round(cov),
