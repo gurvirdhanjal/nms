@@ -70,17 +70,24 @@ def _safe_round(val, decimals: int = 2):
 def sla_tier(uptime_pct: Optional[float], thresholds: Optional[Dict[str, float]] = None) -> str:
     """Assign SLA tier based on uptime percentage.
 
-    If *thresholds* is provided, uses per-device SLA thresholds from
-    ComplianceProfile.rules_json (keys: sla_gold, sla_silver, sla_bronze,
-    sla_warning).  Missing keys fall back to module-level constants.
+    Priority chain (highest → lowest):
+      1. Explicit *thresholds* dict (from ComplianceProfile.rules_json or caller)
+      2. AppSettings DB keys sla_gold/silver/bronze/warning (Settings page)
+      3. Module-level constants SLA_GOLD / SLA_SILVER / SLA_BRONZE / SLA_WARNING
     """
     if uptime_pct is None:
         return "Unknown"
     t = thresholds or {}
-    gold    = t.get("sla_gold",    SLA_GOLD)
-    silver  = t.get("sla_silver",  SLA_SILVER)
-    bronze  = t.get("sla_bronze",  SLA_BRONZE)
-    warning = t.get("sla_warning", SLA_WARNING)
+    if not t:
+        try:
+            from services.settings_service import get_sla_thresholds
+            t = get_sla_thresholds()
+        except Exception:
+            pass
+    gold    = float(t.get("sla_gold",    SLA_GOLD))
+    silver  = float(t.get("sla_silver",  SLA_SILVER))
+    bronze  = float(t.get("sla_bronze",  SLA_BRONZE))
+    warning = float(t.get("sla_warning", SLA_WARNING))
     if uptime_pct >= gold:
         return "Gold"
     if uptime_pct >= silver:

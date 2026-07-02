@@ -241,6 +241,73 @@
         </div>
 
         <!-- ============================================================ -->
+        <!-- SLA Thresholds                                               -->
+        <!-- ============================================================ -->
+        <div class="settings-card ui-fade-up" id="slaCard">
+            <div class="settings-card-header">
+                <div class="settings-card-title">
+                    <i data-lucide="gauge" class="settings-card-icon"></i>
+                    SLA Tier Thresholds
+                </div>
+                <div class="settings-card-badge badge-neutral" id="slaBadge">Loading…</div>
+            </div>
+            <div class="settings-card-body">
+                <p class="settings-hint" style="margin-bottom:1rem;">
+                    Define the uptime % boundaries for each SLA tier. Devices in reports are
+                    classified as Gold, Silver, Bronze, Warning, or Critical based on these values.
+                    Per-device overrides can still be set via Compliance Profiles.
+                </p>
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label class="settings-label" for="slaGold">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b;margin-right:.4rem;vertical-align:middle;"></span>
+                            Gold — minimum uptime (%)
+                        </label>
+                        <input type="number" id="slaGold" class="settings-input"
+                               min="0" max="100" step="0.1" placeholder="99.9">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="slaSilver">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8;margin-right:.4rem;vertical-align:middle;"></span>
+                            Silver — minimum uptime (%)
+                        </label>
+                        <input type="number" id="slaSilver" class="settings-input"
+                               min="0" max="100" step="0.1" placeholder="99.5">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="slaBronze">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#92400e;margin-right:.4rem;vertical-align:middle;"></span>
+                            Bronze — minimum uptime (%)
+                        </label>
+                        <input type="number" id="slaBronze" class="settings-input"
+                               min="0" max="100" step="0.1" placeholder="99.0">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="slaWarning">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f97316;margin-right:.4rem;vertical-align:middle;"></span>
+                            Warning — minimum uptime (%)
+                        </label>
+                        <input type="number" id="slaWarning" class="settings-input"
+                               min="0" max="100" step="0.1" placeholder="95.0">
+                    </div>
+                </div>
+                <p class="settings-hint" style="margin-top:.5rem;">
+                    Anything below Warning is classified as <strong style="color:#ef4444;">Critical</strong>.
+                </p>
+                <div id="slaResult" class="settings-result" style="display:none;"></div>
+                <div class="settings-actions">
+                    <button type="button" class="settings-btn settings-btn--primary" onclick="saveSla()">
+                        <i data-lucide="save" style="width:14px;height:14px;margin-right:.3rem;"></i>
+                        Save
+                    </button>
+                    <button type="button" class="settings-btn settings-btn--ghost" onclick="resetSlaDefaults()">
+                        Reset to defaults
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
         <!-- User Management                                              -->
         <!-- ============================================================ -->
         <div class="settings-card ui-fade-up" id="userMgmtCard">
@@ -460,6 +527,57 @@ window.saveMonitoring = async function() {
     }
 };
 
+// ── SLA Thresholds ────────────────────────────────────────────────────────────
+
+const _SLA_DEFAULTS = { sla_gold: 99.9, sla_silver: 99.5, sla_bronze: 99.0, sla_warning: 95.0 };
+
+async function loadSlaThresholds() {
+    try {
+        const r = await fetch('/api/settings/sla-thresholds');
+        const d = await r.json();
+        if (d.ok && d.sla) {
+            document.getElementById('slaGold').value    = d.sla.sla_gold    ?? 99.9;
+            document.getElementById('slaSilver').value  = d.sla.sla_silver  ?? 99.5;
+            document.getElementById('slaBronze').value  = d.sla.sla_bronze  ?? 99.0;
+            document.getElementById('slaWarning').value = d.sla.sla_warning ?? 95.0;
+            const badge = document.getElementById('slaBadge');
+            if (badge) { badge.textContent = 'Configured'; badge.className = 'settings-card-badge badge-ok'; }
+        }
+    } catch (e) {}
+}
+
+window.saveSla = async function() {
+    const btn = document.querySelector('#slaCard .settings-btn--primary');
+    setLoading(btn, true);
+    const payload = {
+        sla_gold:    parseFloat(document.getElementById('slaGold')?.value    || 99.9),
+        sla_silver:  parseFloat(document.getElementById('slaSilver')?.value  || 99.5),
+        sla_bronze:  parseFloat(document.getElementById('slaBronze')?.value  || 99.0),
+        sla_warning: parseFloat(document.getElementById('slaWarning')?.value || 95.0),
+    };
+    try {
+        const data = await apiPost('/api/settings/sla-thresholds', payload);
+        showResult('slaResult', data.ok, data.message);
+        if (data.ok) {
+            const badge = document.getElementById('slaBadge');
+            if (badge) { badge.textContent = 'Saved'; badge.className = 'settings-card-badge badge-ok'; }
+        }
+    } catch (e) {
+        showResult('slaResult', false, 'Could not save — check your connection.');
+    } finally {
+        setLoading(btn, false);
+        lucide.createIcons();
+    }
+};
+
+window.resetSlaDefaults = async function() {
+    document.getElementById('slaGold').value    = _SLA_DEFAULTS.sla_gold;
+    document.getElementById('slaSilver').value  = _SLA_DEFAULTS.sla_silver;
+    document.getElementById('slaBronze').value  = _SLA_DEFAULTS.sla_bronze;
+    document.getElementById('slaWarning').value = _SLA_DEFAULTS.sla_warning;
+    await window.saveSla();
+};
+
 // ── Alert Channels ────────────────────────────────────────────────────────────
 
 const TYPE_LABELS = { email: 'Email', slack: 'Slack', teams: 'Teams' };
@@ -633,6 +751,7 @@ window.testChannel = async function(id) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 loadChannels();
+loadSlaThresholds();
 
 (async function loadComplianceCounts() {
     try {

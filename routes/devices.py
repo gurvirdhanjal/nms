@@ -451,32 +451,32 @@ def _normalize_device_status(raw_status):
 
 
 def _load_latest_scan_statuses(device_ips, *, DeviceScanHistory):
-    """Return latest normalized status keyed by device_ip."""
+    """Return latest normalized status keyed by device_ip.
+
+    Uses LATERAL + LIMIT 1 per IP so each device gets a single index seek
+    rather than a GROUP BY over the full 48h scan window.
+    """
     ips = sorted({ip for ip in device_ips if ip})
     if not ips:
         return {}
 
-    _cutoff_48h = datetime.utcnow() - timedelta(hours=48)
-    latest_scan_subq = db.session.query(
-        DeviceScanHistory.device_ip.label('device_ip'),
-        func.max(DeviceScanHistory.scan_id).label('max_scan_id')
-    ).filter(
-        DeviceScanHistory.device_ip.in_(ips),
-        DeviceScanHistory.scan_timestamp >= _cutoff_48h
-    ).group_by(DeviceScanHistory.device_ip).subquery()
-
-    latest_rows = db.session.query(
-        DeviceScanHistory.device_ip,
-        DeviceScanHistory.status
-    ).join(
-        latest_scan_subq,
-        (DeviceScanHistory.device_ip == latest_scan_subq.c.device_ip)
-        & (DeviceScanHistory.scan_id == latest_scan_subq.c.max_scan_id)
-    ).all()
-
+    from sqlalchemy import text as _text
+    stmt = _text("""
+        SELECT t.device_ip, l.status
+        FROM (SELECT unnest(:ips) AS device_ip) AS t
+        LEFT JOIN LATERAL (
+            SELECT dsh.status
+            FROM device_scan_history dsh
+            WHERE dsh.device_ip = t.device_ip
+            ORDER BY dsh.scan_timestamp DESC
+            LIMIT 1
+        ) AS l ON true
+    """)
+    rows = db.session.execute(stmt, {"ips": ips}).fetchall()
     return {
         row.device_ip: _normalize_device_status(row.status)
-        for row in latest_rows
+        for row in rows
+        if row.status is not None
     }
 
 
@@ -1124,7 +1124,7 @@ def api_devices():
             'total_pages': total_pages,
             'page': page,
             'per_page': per_page,
-            'global_device_count': Device.query.count()
+            'global_device_count': base_q.count(),
         })
     else:
         devices = query.all()

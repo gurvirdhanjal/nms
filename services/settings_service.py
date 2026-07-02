@@ -223,6 +223,63 @@ def set_monitoring_interval(seconds: int, actor_id=None) -> None:
 # Retention (read-only display — configured via env only)             #
 # ------------------------------------------------------------------ #
 
+# ------------------------------------------------------------------ #
+# SLA thresholds                                                      #
+# ------------------------------------------------------------------ #
+
+_SLA_KEYS: dict = {
+    'sla_gold':    ('SLA_THRESHOLD_GOLD',    '99.9'),
+    'sla_silver':  ('SLA_THRESHOLD_SILVER',  '99.5'),
+    'sla_bronze':  ('SLA_THRESHOLD_BRONZE',  '99.0'),
+    'sla_warning': ('SLA_THRESHOLD_WARNING', '95.0'),
+}
+
+
+def get_sla_thresholds() -> dict:
+    """Return SLA tier thresholds as floats. DB-first, env fallback."""
+    from models.app_settings import AppSettings
+    result: dict = {}
+    for key, (env_var, default) in _SLA_KEYS.items():
+        db_val = AppSettings.get(key)
+        if db_val is not None:
+            try:
+                result[key] = float(db_val)
+                continue
+            except (TypeError, ValueError):
+                pass
+        env_val = os.environ.get(env_var)
+        if env_val is not None:
+            try:
+                result[key] = float(env_val)
+                continue
+            except (TypeError, ValueError):
+                pass
+        result[key] = float(default)
+    return result
+
+
+def set_sla_thresholds(data: dict, actor_id=None) -> None:
+    """Validate and persist SLA threshold settings.
+
+    Each value must be a float between 0.0 and 100.0.
+    """
+    from models.app_settings import AppSettings
+    for key in _SLA_KEYS:
+        if key not in data:
+            continue
+        try:
+            val = float(data[key])
+        except (TypeError, ValueError):
+            raise ValueError(f'Invalid value for {key}: must be a number')
+        if not (0.0 <= val <= 100.0):
+            raise ValueError(f'{key} must be between 0 and 100')
+        AppSettings.set(key, str(round(val, 4)), actor_id=actor_id)
+
+
+# ------------------------------------------------------------------ #
+# Retention (read-only display — configured via env only)             #
+# ------------------------------------------------------------------ #
+
 def get_retention_info() -> dict:
     """Return retention policy values from environment (display only)."""
     return {

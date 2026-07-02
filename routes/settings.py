@@ -141,6 +141,29 @@ def api_save_monitoring():
 # Retention (read-only)                                               #
 # ------------------------------------------------------------------ #
 
+@settings_bp.route('/api/settings/sla-thresholds', methods=['GET'])
+@require_role('admin')
+def api_get_sla_thresholds():
+    from services.settings_service import get_sla_thresholds
+    return jsonify({'ok': True, 'sla': get_sla_thresholds()})
+
+
+@settings_bp.route('/api/settings/sla-thresholds', methods=['POST'])
+@require_role('admin')
+def api_save_sla_thresholds():
+    data = request.get_json(silent=True) or {}
+    actor_id = session.get('user_id')
+    try:
+        from services.settings_service import set_sla_thresholds
+        set_sla_thresholds(data, actor_id=actor_id)
+        return jsonify({'ok': True, 'message': 'SLA thresholds saved.'})
+    except ValueError as exc:
+        return jsonify({'ok': False, 'message': str(exc)}), 400
+    except Exception as exc:
+        logger.exception("[settings] Failed to save SLA thresholds")
+        return jsonify({'ok': False, 'message': f'Save failed: {exc}'}), 500
+
+
 @settings_bp.route('/api/settings/retention', methods=['GET'])
 @require_role('admin')
 def api_get_retention():
