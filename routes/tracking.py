@@ -3671,12 +3671,19 @@ def api_location_config_status(device_id):
     """Return whether on-site / off-site classification is configured."""
     get_scoped_tracked_device_or_404(device_id, include_archived=True)
     from config import Config
+    from models.subnet import Subnet
     has_sigs    = bool(getattr(Config, 'PLANT_NETWORK_SIGNATURES', None))
     has_subnets = bool(getattr(Config, 'PLANT_NETWORK_SUBNET_PREFIXES', None))
+    has_db_subnets = False
+    if not has_sigs and not has_subnets:
+        try:
+            has_db_subnets = db.session.query(Subnet.id).limit(1).count() > 0
+        except Exception:
+            pass
     return jsonify({
-        'on_site_detection': has_sigs or has_subnets,
+        'on_site_detection': has_sigs or has_subnets or has_db_subnets,
         'has_signatures':    has_sigs,
-        'has_subnets':       has_subnets,
+        'has_subnets':       has_subnets or has_db_subnets,
     })
 
 
