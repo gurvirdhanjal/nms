@@ -27,7 +27,11 @@
             applications: [],
             integrity: [],
             policy: [],
+            domains: [],
+            location: [],
+            patches: [],
         },
+        patchesPendingOnly: false,
         dashboard: null,
     };
 
@@ -53,6 +57,14 @@
         bindLoadMore('resourcesLoadMore', () => loadResources(true));
         bindLoadMore('applicationsLoadMore', () => loadApplications(true));
         bindLoadMore('integrityLoadMore', () => loadIntegrity(true));
+
+        const pendingOnlyChk = document.getElementById('patchesPendingOnly');
+        if (pendingOnlyChk) {
+            pendingOnlyChk.addEventListener('change', () => {
+                state.patchesPendingOnly = pendingOnlyChk.checked;
+                loadPatches();
+            });
+        }
 
         bindClick('historyRefreshBtn', refreshAll);
         bindClick('historyRetryBtn', refreshAll);
@@ -105,12 +117,16 @@
         state.datasets.applications = [];
         state.datasets.integrity = [];
         state.datasets.policy = [];
+        state.datasets.domains = [];
+        state.datasets.location = [];
+        state.datasets.patches = [];
         state.dashboard = null;
         clearTables();
     }
 
     function clearTables() {
-        ['activityBody', 'resourcesBody', 'applicationsBody', 'integrityBody', 'policyBody'].forEach((id) => {
+        ['activityBody', 'resourcesBody', 'applicationsBody', 'integrityBody', 'policyBody',
+         'domainsBody', 'locationBody', 'patchesBody'].forEach((id) => {
             const body = document.getElementById(id);
             if (body) {
                 body.innerHTML = '';
@@ -129,6 +145,9 @@
                 loadApplications(false),
                 loadIntegrity(false),
                 loadPolicy(),
+                loadDomains(),
+                loadLocation(),
+                loadPatches(),
             ]);
             renderInsights();
         } catch (error) {
@@ -237,6 +256,129 @@
         const rows = Array.isArray(payload.alerts) ? payload.alerts : [];
         state.datasets.policy = rows;
         renderPolicyRows(rows);
+    }
+
+    async function loadDomains() {
+        const params = buildWindowQuery();
+        params.set('limit', '200');
+        try {
+            const payload = await requestJson(`/api/tracking/history/${deviceId}/domains?${params.toString()}`);
+            const rows = Array.isArray(payload.data) ? payload.data : [];
+            state.datasets.domains = rows;
+            renderDomainRows(rows);
+        } catch (_) {
+            // domains tab is non-critical — show empty state on error
+            renderDomainRows([]);
+        }
+    }
+
+    async function loadLocation() {
+        const params = buildWindowQuery();
+        params.set('limit', '100');
+        try {
+            const payload = await requestJson(`/api/tracking/history/${deviceId}/location?${params.toString()}`);
+            const rows = Array.isArray(payload.data) ? payload.data : [];
+            state.datasets.location = rows;
+            renderLocationRows(rows);
+        } catch (_) {
+            renderLocationRows([]);
+        }
+    }
+
+    async function loadPatches() {
+        const params = new URLSearchParams();
+        if (state.patchesPendingOnly) {
+            params.set('pending_only', 'true');
+        }
+        try {
+            const payload = await requestJson(`/api/tracking/history/${deviceId}/patches?${params.toString()}`);
+            const rows = Array.isArray(payload.data) ? payload.data : [];
+            state.datasets.patches = rows;
+            renderPatchRows(rows, payload.pending_count || 0);
+        } catch (_) {
+            renderPatchRows([], 0);
+        }
+    }
+
+    function renderDomainRows(rows) {
+        const tbody = document.getElementById('domainsBody');
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center history-meta py-3">No domain history in this window.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((r) => {
+            const blocked = r.is_blocked
+                ? '<span class="badge bg-danger">Blocked</span>'
+                : '<span class="badge bg-secondary">Allowed</span>';
+            return `<tr>
+                <td><code>${escHtml(r.domain)}</code></td>
+                <td class="metric">${r.visit_count || 1}</td>
+                <td>${escHtml(r.category || '—')}</td>
+                <td>${fmtTs(r.first_seen_at)}</td>
+                <td>${fmtTs(r.last_seen_at)}</td>
+                <td>${blocked}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderLocationRows(rows) {
+        const tbody = document.getElementById('locationBody');
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center history-meta py-3">No location data in this window.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((r) => `<tr>
+            <td>${fmtTs(r.recorded_at)}</td>
+            <td class="metric">${r.latitude != null ? r.latitude.toFixed(6) : '—'}</td>
+            <td class="metric">${r.longitude != null ? r.longitude.toFixed(6) : '—'}</td>
+            <td class="metric">${r.accuracy_meters != null ? r.accuracy_meters.toFixed(1) : '—'}</td>
+            <td>${escHtml(r.source || '—')}</td>
+        </tr>`).join('');
+    }
+
+    function renderPatchRows(rows, pendingCount) {
+        const tbody = document.getElementById('patchesBody');
+        if (!tbody) return;
+
+        const insightEl = document.getElementById('patchesInsights');
+        if (insightEl && pendingCount > 0) {
+            insightEl.innerHTML = `<div class="col-auto"><span class="badge bg-warning text-dark fs-6">${pendingCount} pending update${pendingCount !== 1 ? 's' : ''}</span></div>`;
+        } else if (insightEl) {
+            insightEl.innerHTML = '<div class="col-auto"><span class="badge bg-success fs-6">All packages up to date</span></div>';
+        }
+
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center history-meta py-3">No patch data reported yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((r) => {
+            const statusBadge = r.is_pending_update
+                ? '<span class="badge bg-warning text-dark">Update available</span>'
+                : '<span class="badge bg-success">Up to date</span>';
+            return `<tr>
+                <td>${escHtml(r.package_name)}</td>
+                <td><span class="badge bg-secondary">${escHtml(r.package_manager || '?')}</span></td>
+                <td><code>${escHtml(r.installed_version || '—')}</code></td>
+                <td><code>${r.available_version ? escHtml(r.available_version) : '—'}</code></td>
+                <td>${statusBadge}</td>
+                <td>${fmtTs(r.last_checked_at)}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function fmtTs(iso) {
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleString();
+        } catch (_) {
+            return iso;
+        }
     }
 
     async function archiveDevice() {

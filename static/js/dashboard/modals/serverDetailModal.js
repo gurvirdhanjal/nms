@@ -165,6 +165,25 @@ function initMiniCpuChart(labels, data) {
 // ── Render snapshot payload ───────────────────────────────────────────────────
 
 function renderSnapshot(data) {
+    // Awaiting first sync — device registered but agent hasn't checked in yet
+    if (data.state === 'awaiting_first_sync') {
+        const nameEl = qs('#server-modal-device-name');
+        const ipEl   = qs('#server-modal-device-ip');
+        if (nameEl) nameEl.textContent = data.device_name || '—';
+        if (ipEl)   ipEl.textContent   = data.ip || '—';
+        const loadEl = qs('#snap-loading');
+        if (loadEl) {
+            loadEl.innerHTML = `<div style="text-align:center;padding:32px 0;color:var(--text-muted)">
+                <i class="fas fa-satellite-dish fa-2x mb-3" style="opacity:0.4"></i><br>
+                <strong style="color:var(--text-primary)">Awaiting first check-in</strong><br>
+                <span style="font-size:12px">The agent has been registered but hasn't reported metrics yet.<br>
+                Check back in a minute.</span></div>`;
+            loadEl.classList.remove('d-none');
+        }
+        qs('#snap-content')?.classList.add('d-none');
+        return;
+    }
+
     // Header
     const nameEl = qs('#server-modal-device-name');
     const ipEl   = qs('#server-modal-device-ip');

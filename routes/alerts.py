@@ -18,7 +18,8 @@ VALID_STATUSES = {'active', 'resolved', 'all'}
 def alerts_page():
     site_id = request.args.get('site_id', type=int)
     sites = Site.query.order_by(Site.site_name).all()
-    return render_template('alerts.html', sites=sites, selected_site_id=site_id)
+    is_admin = current_role() == 'admin'
+    return render_template('alerts.html', sites=sites, selected_site_id=site_id, is_admin=is_admin)
 
 
 @alerts_bp.route('/api/alerts')
@@ -161,4 +162,54 @@ def resolve_alert(alert_id: str):
         "alert_id":    event.event_id,
         "resolved":    event.resolved,
         "resolved_at": event.resolved_at.isoformat(),
+    })
+
+
+@alerts_bp.route('/api/alerts/device/<int:device_id>')
+@require_login
+def device_alert_history(device_id: int):
+    """Alert history for a single device (used by the history modal)."""
+    limit  = min(request.args.get('limit', 50, type=int), 200)
+    offset = request.args.get('offset', 0, type=int)
+
+    device = Device.query.get(device_id)
+    if device is None:
+        return jsonify({"error": "Device not found"}), 404
+
+    # Scope enforcement — non-admins can only see their site/dept devices
+    role = current_role()
+    if role != 'admin':
+        user_site_id = session.get('site_id')
+        user_dept_id = session.get('department_id')
+        if role == 'manager' and user_site_id is not None:
+            if getattr(device, 'site_id', None) != user_site_id:
+                return jsonify({"error": "Not found"}), 404
+        elif user_dept_id is not None:
+            if getattr(device, 'department_id', None) != user_dept_id:
+                return jsonify({"error": "Not found"}), 404
+        else:
+            return jsonify({"error": "Not found"}), 404
+
+    q = DashboardEvent.query.filter(DashboardEvent.device_id == device_id)
+    total = q.count()
+    events = q.order_by(DashboardEvent.timestamp.desc()).offset(offset).limit(limit).all()
+
+    return jsonify({
+        "device_id":   device_id,
+        "device_name": device.device_name,
+        "device_ip":   device.device_ip,
+        "total":       total,
+        "alerts": [
+            {
+                "alert_id":    ev.event_id,
+                "severity":    ev.severity,
+                "event_type":  ev.event_type,
+                "metric_name": ev.metric_name,
+                "message":     ev.message,
+                "timestamp":   ev.timestamp.isoformat() if ev.timestamp else None,
+                "resolved":    ev.resolved,
+                "resolved_at": ev.resolved_at.isoformat() if ev.resolved_at else None,
+            }
+            for ev in events
+        ],
     })

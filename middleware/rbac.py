@@ -767,7 +767,34 @@ def _resolve_agent_device_for_shared_bootstrap(payload):
         candidates = Device.query.filter(Device.device_ip == payload_ip).all()
 
     if not candidates:
-        return None
+        # Auto-register: create a Device row for this server agent on first bootstrap.
+        # Safe — caller already verified the shared API key before reaching here.
+        if not hostname and not payload_ip:
+            return None
+        try:
+            from models.device import Device as _Device
+            new_device = _Device(
+                device_name=hostname or payload_ip,
+                device_type='server',
+                device_ip=payload_ip,
+                hostname=hostname,
+                is_monitored=True,
+                monitoring_mode='agent',
+            )
+            db.session.add(new_device)
+            db.session.commit()
+            current_app.logger.info(
+                "Auto-registered agent device: hostname=%s ip=%s device_id=%s",
+                hostname, payload_ip, new_device.device_id,
+            )
+            return new_device
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Failed to auto-register agent device hostname=%s ip=%s",
+                hostname, payload_ip,
+            )
+            return None
 
     if payload_ip:
         ip_matches = [device for device in candidates if (device.device_ip or '').strip() == payload_ip]

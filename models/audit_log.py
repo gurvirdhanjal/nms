@@ -24,6 +24,10 @@ class AuditLog(db.Model):
     ip_address = db.Column(db.String(50), nullable=True)  # Client IP
     user_agent = db.Column(db.String(200), nullable=True)  # Browser/client info
     
+    # Outcome
+    success = db.Column(db.Boolean, nullable=True)       # True=ok, False=failed, None=not applicable
+    error_detail = db.Column(db.Text, nullable=True)     # exception message or failure reason
+
     # When it happened
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     
@@ -45,6 +49,8 @@ class AuditLog(db.Model):
             'ip_address': self.ip_address,
             'user_agent': self.user_agent,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'success': self.success,
+            'error_detail': self.error_detail,
         }
     
     def __repr__(self):

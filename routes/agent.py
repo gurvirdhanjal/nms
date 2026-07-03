@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -9,6 +10,12 @@ from models.device import Device
 from models.server_health import ServerHealthLog
 
 agent_bp = Blueprint('agent_bp', __name__)
+
+# Per-device IP change cooldown: don't update device_ip more than once every
+# 5 minutes. Prevents churn when an agent machine is multi-homed (VPN + LAN +
+# WiFi) and each request arrives on a different interface.
+_IP_CHANGE_COOLDOWN_SECS = 300
+_last_ip_change: dict[int, float] = {}  # device_id → monotonic timestamp
 
 _ALLOWED_HARDWARE_SPEC_KEYS = {
     'cpu_model',
@@ -224,6 +231,11 @@ def receive_metrics():
 
         hardware_specs = _extract_hardware_specs(data)
 
+        cpu_detail = data.get('cpu_detail', {}) if isinstance(data.get('cpu_detail', {}), dict) else {}
+        cpu_per_core = cpu_detail.get('per_core')
+        if not isinstance(cpu_per_core, list):
+            cpu_per_core = None
+
         disk_data = data.get('disk', {}) if isinstance(data.get('disk', {}), dict) else {}
         log = ServerHealthLog(
             device_id=device.device_id,
@@ -273,6 +285,7 @@ def receive_metrics():
             top_processes=top_processes,
             top_processes_cpu=top_processes_cpu,
             alerts=alerts,
+            cpu_per_core=cpu_per_core,
             timestamp=datetime.utcnow()
         )
         db.session.add(log)
@@ -297,25 +310,42 @@ def receive_metrics():
             new_ip = new_ip.strip()
         if new_ip and not new_ip.startswith('127.') and not new_ip.startswith('169.254.') \
                 and new_ip != device.device_ip:
-            from services.device_identity import _propagate_ip_change, compute_subnet_cidr
-            collision = (
-                Device.query.filter(
-                    db.func.lower(Device.device_ip) == new_ip.lower(),
-                    Device.device_id != device.device_id,
-                )
-                .first()
-            )
-            if collision is not None:
-                print(
-                    f"[Agent] Device {device.device_id} IP update skipped: "
-                    f"{new_ip} already belongs to device_id={collision.device_id}"
-                )
+            now_mono = time.monotonic()
+            last_change = _last_ip_change.get(device.device_id, 0.0)
+            if now_mono - last_change < _IP_CHANGE_COOLDOWN_SECS:
+                pass  # within cooldown window — skip to prevent VPN/multi-NIC churn
             else:
-                old_ip = device.device_ip
-                device.device_ip = new_ip
-                device.subnet_cidr = compute_subnet_cidr(new_ip)
-                _propagate_ip_change(device.device_id, old_ip, new_ip)
-                print(f"[Agent] Device {device.device_id} IP updated: {old_ip} -> {new_ip}")
+                from services.device_identity import _propagate_ip_change, compute_subnet_cidr
+                collision = (
+                    Device.query.filter(
+                        db.func.lower(Device.device_ip) == new_ip.lower(),
+                        Device.device_id != device.device_id,
+                    )
+                    .first()
+                )
+                if collision is not None:
+                    print(
+                        f"[Agent] Device {device.device_id} IP update skipped: "
+                        f"{new_ip} already belongs to device_id={collision.device_id}"
+                    )
+                else:
+                    old_ip = device.device_ip
+                    device.device_ip = new_ip
+                    device.subnet_cidr = compute_subnet_cidr(new_ip)
+                    _propagate_ip_change(device.device_id, old_ip, new_ip)
+                    _last_ip_change[device.device_id] = now_mono
+                    print(f"[Agent] Device {device.device_id} IP updated: {old_ip} -> {new_ip}")
+
+        # 4. Evaluate Server Health Alerts (strikes-based) BEFORE committing.
+        # server_health_logs has a composite PK (id, timestamp) — SQLAlchemy doesn't
+        # retrieve the autoincrement id for composite PKs, so post-commit the ORM
+        # object has id=None and any attribute access raises ObjectDeletedError.
+        # Running the check while the log is still live in the session avoids this.
+        try:
+            from services.alert_manager import AlertManager
+            AlertManager.check_server_health(device, log, commit=False)
+        except Exception as alert_err:
+            print(f"[Agent] Alert check failed for {device.device_ip}: {alert_err}")
 
         try:
             db.session.commit()
@@ -333,13 +363,6 @@ def receive_metrics():
             if _is_missing_device_error(commit_err):
                 return jsonify({'error': f'Device no longer exists. {commit_err}'}), 409
             raise
-
-        # 4. Evaluate Server Health Alerts (strikes-based)
-        try:
-            from services.alert_manager import AlertManager
-            AlertManager.check_server_health(device, log, commit=True)
-        except Exception as alert_err:
-            print(f"[Agent] Alert check failed for {device.device_ip}: {alert_err}")
 
         print(f"[Agent] Metrics saved for device_id={device.device_id} ip={device.device_ip}")
 

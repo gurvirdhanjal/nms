@@ -4,7 +4,7 @@ from datetime import datetime
 class ServerHealthLog(db.Model):
     __tablename__ = 'server_health_logs'
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_id = db.Column(db.Integer, db.ForeignKey('device.device_id', ondelete='CASCADE'), nullable=False)
     cpu_usage = db.Column(db.Float, nullable=True)
     cpu_iowait_percent = db.Column(db.Float, nullable=True)
@@ -64,6 +64,7 @@ class ServerHealthLog(db.Model):
     top_processes_cpu = db.Column(db.JSON, nullable=True)  # Top 5 processes by CPU
     network_top_remote_ips = db.Column(db.JSON, nullable=True) # Top 20 connected remote IPs
     alerts = db.Column(db.JSON, nullable=True)  # Active system alerts
+    cpu_per_core = db.Column(db.JSON, nullable=True)  # Per-core CPU percent array
     
     # ICMP metrics (populated when source='icmp')
     ping_latency_ms = db.Column(db.Float, nullable=True)

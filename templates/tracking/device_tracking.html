@@ -103,7 +103,7 @@
                     <i data-lucide="arrow-right" class="kpi-click-hint"></i>
                 </div>
                 <div class="stat-value" id="trackingKpiOffline">{{ offline_count|default(0) }}</div>
-                <div class="metric-sub">{% if offline_count|default(0) > 0 %}Action required{% else %}Everything is up{% endif %}</div>
+                <div class="metric-sub">{% if offline_count|default(0) > 0 %}Action required{% else %}All devices reachable{% endif %}</div>
                 <div class="kpi-trend" id="trackingKpiOfflineTrend"></div>
             </div>
         </div>

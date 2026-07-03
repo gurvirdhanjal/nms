@@ -325,6 +325,9 @@ def create_app(test_config=None):
         from models.alert_channel import AlertChannel
         from models.device_classification_cache import DeviceClassificationCache
         from models.discovery_config import DiscoveryConfig
+        from models.device_domain_log import DeviceDomainLog
+        from models.device_location_log import DeviceLocationLog
+        from models.device_patch_log import DevicePatchLog
         from utils.db_migrations import (
             ensure_server_health_columns,
             ensure_tracking_stabilization_columns,
@@ -332,6 +335,7 @@ def create_app(test_config=None):
             ensure_device_icmp_threshold_columns,
             ensure_device_scan_history_columns,
             ensure_alert_channels_table,
+            ensure_domain_location_patch_tables,
         )
 
         from services.discovery_service import get_discovery_service
@@ -349,6 +353,7 @@ def create_app(test_config=None):
             ensure_device_icmp_threshold_columns()
             ensure_device_scan_history_columns()
             ensure_alert_channels_table()
+            ensure_domain_location_patch_tables()
 
             # Seed AppSettings from environment variables (non-destructive).
             _smtp_seeds = [

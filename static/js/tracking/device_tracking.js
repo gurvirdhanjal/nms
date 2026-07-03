@@ -404,19 +404,23 @@
         const activeAgentCheckins = Number(summaryResponse.active_agent_checkins || 0);
         setElementText('trackingKpiActive24h', activeAgentCheckins);
 
+        const isFirstLoad = !kpiBaseline;
         if (!kpiBaseline) {
             kpiBaseline = { total, reachable, offline, activeAgentCheckins };
         }
 
-        updateKpiTrend('trackingKpiTotalTrend', total - Number(kpiBaseline.total || 0), '');
-        updateKpiTrend('trackingKpiReachableTrend', reachable - Number(kpiBaseline.reachable || 0), '');
-        updateKpiTrend('trackingKpiOfflineTrend', offline - Number(kpiBaseline.offline || 0), '');
-        const syncWindow = Number(summaryResponse.agent_sync_window_seconds || 180);
-        updateKpiTrend(
-            'trackingKpiActive24hTrend',
-            activeAgentCheckins - Number(kpiBaseline.activeAgentCheckins || 0),
-            `in ${Math.round(syncWindow / 60)}m window`
-        );
+        // Suppress trend indicators on first load — there's no comparison period yet
+        if (!isFirstLoad) {
+            updateKpiTrend('trackingKpiTotalTrend', total - Number(kpiBaseline.total || 0), '');
+            updateKpiTrend('trackingKpiReachableTrend', reachable - Number(kpiBaseline.reachable || 0), '');
+            updateKpiTrend('trackingKpiOfflineTrend', offline - Number(kpiBaseline.offline || 0), '');
+            const syncWindow = Number(summaryResponse.agent_sync_window_seconds || 180);
+            updateKpiTrend(
+                'trackingKpiActive24hTrend',
+                activeAgentCheckins - Number(kpiBaseline.activeAgentCheckins || 0),
+                `in ${Math.round(syncWindow / 60)}m window`
+            );
+        }
 
         const offlineCard = document.getElementById('trackingKpiOffline')?.closest('.ops-kpi-card');
         if (offlineCard) {
@@ -443,7 +447,7 @@
             return;
         }
         trendElement.classList.add('stable');
-        trendElement.textContent = suffix ? suffix : 'No change';
+        trendElement.textContent = suffix ? suffix : 'No comparison data';
     }
 
     function applyStoredStatusToRow(row, device) {
@@ -534,7 +538,7 @@
     }
 
     function getIdentitySourceLabel(source) {
-        return source === 'scanner_inventory' ? 'Scanner Confirmed' : 'Legacy Confirmed';
+        return source === 'scanner_inventory' ? 'Scanner Confirmed' : 'Manually Confirmed';
     }
 
     function getIdentityBadgeClass(source) {
@@ -1116,6 +1120,7 @@
                 <div class="ops-assignee device-mac">${escapeHtml(device.employee_name || 'Unassigned')}</div>
                 <div class="tracking-identity-meta">
                     <span class="${getIdentityBadgeClass(identitySource)}">${escapeHtml(getIdentitySourceLabel(identitySource))}</span>
+                    ${!device.last_agent_sync_at ? '<span class="mo-badge badge-never-seen ms-1">Never Seen</span>' : ''}
                 </div>
             </td>
             <td class="tracking-status-cell">

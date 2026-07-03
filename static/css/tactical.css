@@ -836,6 +836,12 @@ body.tactical-theme {
     animation: pulse-mo 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+.badge-never-seen {
+    background: color-mix(in srgb, var(--mo-muted) 12%, transparent);
+    color: var(--mo-muted);
+    border-color: color-mix(in srgb, var(--mo-muted) 25%, transparent);
+}
+
 @keyframes pulse-mo {
 
     0%,

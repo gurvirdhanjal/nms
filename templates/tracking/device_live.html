@@ -30,6 +30,7 @@
                                             'gt', 0)|list|length) ~ ')' if policy_status == 'violating' else 'COMPLIANT'
                                             }}
                                         </span>
+                                        <span id="headerFreshnessBadge" class="mo-badge d-none" style="font-size:10px;letter-spacing:0.06em"></span>
                                     </div>
                                 </div>
                                 <div class="d-flex gap-3 text-uppercase font-monospace mo-header-subtitle">
@@ -209,6 +210,20 @@
                         <i class="fas fa-scroll" aria-hidden="true"></i>
                         <span class="device-tab-label">History</span>
                     </button>
+                    <button class="device-tab-btn" data-tab="location">
+                        <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
+                        <span class="device-tab-label">Location</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="domains">
+                        <i class="fas fa-globe" aria-hidden="true"></i>
+                        <span class="device-tab-label">Domains</span>
+                        <span id="tabCountDomains" class="tab-counter tab-counter-danger d-none">0</span>
+                    </button>
+                    <button class="device-tab-btn" data-tab="patches">
+                        <i class="fas fa-box-archive" aria-hidden="true"></i>
+                        <span class="device-tab-label">Patches</span>
+                        <span id="tabCountPatches" class="tab-counter tab-counter-policy d-none">0</span>
+                    </button>
                 </div>
             </div>
             <div class="telemetry-status-indicator" role="status" aria-live="polite">
@@ -311,6 +326,27 @@
                         </div>
                     </div>
                 </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-12">
+                        <div class="device-info-card">
+                            <h6>Data Freshness</h6>
+                            <div class="row g-0">
+                                <div class="col-md-3 col-6">
+                                    <div class="device-info-row"><span>Last Sync</span><strong id="freshnessLastSync">—</strong></div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="device-info-row"><span>Last Telemetry</span><strong id="freshnessLastTelemetry">—</strong></div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="device-info-row"><span>Agent Version</span><strong id="freshnessAgentVersion">—</strong></div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="device-info-row"><span>Ingestion</span><strong id="freshnessIngestionStatus">—</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section class="device-tab-panel" data-panel="performance">
@@ -337,6 +373,45 @@
                             <svg id="chartNetwork" class="device-sparkline" viewBox="0 0 240 60"
                                 preserveAspectRatio="none"></svg>
                             <div class="device-chart-meta" id="chartNetworkMeta">Awaiting telemetry</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1" id="perfEnrichRow">
+                    <div class="col-lg-3" id="perfHardwareCard" style="display:none">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Hardware</h6>
+                            <div id="perfHardwareBody" class="small"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3" id="perfCoresCard" style="display:none">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Per-Core CPU</h6>
+                            <div id="perfCoresBody"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3" id="perfDiskIoCard" style="display:none">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Disk I/O</h6>
+                            <div id="perfDiskIoBody" class="small"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3" id="perfNetIfaceCard" style="display:none">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Network Interfaces</h6>
+                            <div id="perfNetIfaceBody" class="small"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1" id="perfPartitionsRow" style="display:none">
+                    <div class="col-12">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Disk Partitions</h6>
+                            <div class="table-responsive">
+                                <table class="tactical-table">
+                                    <thead><tr><th>Mount</th><th>Device</th><th>FS</th><th class="metric">Used</th><th class="metric">Free</th><th class="metric">Total</th><th class="metric">Usage</th></tr></thead>
+                                    <tbody id="perfPartitionsBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -377,16 +452,26 @@
                     <!-- Productivity & Focus score KPI cards -->
                     <div class="col-6 col-lg-3">
                         <div class="device-info-card text-center">
-                            <h6 class="text-muted small mb-1">Productivity Score</h6>
+                            <h6 class="text-muted small mb-1"
+                                title="Active app time ÷ total session time × 100. Higher = less idle."
+                                style="cursor:help;border-bottom:1px dashed rgba(255,255,255,0.2);display:inline-block">
+                                Productivity Score <i class="fas fa-circle-info" style="font-size:10px;opacity:0.5"></i>
+                            </h6>
                             <div id="prodScoreValue" class="fs-2 fw-bold">--</div>
                             <div class="small text-muted">/ 100 (today)</div>
+                            <div id="prodScoreConfidence" class="small mt-1" style="color:var(--text-muted,#888)"></div>
                         </div>
                     </div>
                     <div class="col-6 col-lg-3">
                         <div class="device-info-card text-center">
-                            <h6 class="text-muted small mb-1">Focus Score</h6>
+                            <h6 class="text-muted small mb-1"
+                                title="Time in a single focused window ÷ total active time × 100. Higher = fewer app switches."
+                                style="cursor:help;border-bottom:1px dashed rgba(255,255,255,0.2);display:inline-block">
+                                Focus Score <i class="fas fa-circle-info" style="font-size:10px;opacity:0.5"></i>
+                            </h6>
                             <div id="focusScoreValue" class="fs-2 fw-bold">--</div>
                             <div class="small text-muted">/ 100 (today)</div>
+                            <div id="focusScoreConfidence" class="small mt-1" style="color:var(--text-muted,#888)"></div>
                         </div>
                     </div>
                     <!-- Hourly activity chart -->
@@ -838,6 +923,90 @@
                     </div>
                 </div>
             </section>
+
+            <section class="device-tab-panel" data-panel="location">
+                <div id="locationConfigWarning" class="d-none mb-3 px-3 py-2 small" role="alert"
+                     style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:6px;color:#f59e0b">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>On-site detection disabled.</strong>
+                    Set <code>PLANT_NETWORK_SIGNATURES</code> or <code>PLANT_NETWORK_SUBNET_PREFIXES</code> in
+                    <code>config.py</code> to enable On-site / Off-site classification.
+                </div>
+                <div class="row g-3">
+                    <div class="col-lg-8">
+                        <div class="device-info-card p-0 overflow-hidden">
+                            <div id="deviceLocationMap" style="height:420px;width:100%;background:#12141f;"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="device-info-card">
+                            <h6 class="panel-eyebrow">Last Known Position</h6>
+                            <div class="device-info-row"><span>Latitude</span><strong id="locLat">--</strong></div>
+                            <div class="device-info-row"><span>Longitude</span><strong id="locLng">--</strong></div>
+                            <div class="device-info-row"><span>Last Seen</span><strong id="locLastSeen">--</strong></div>
+                            <div class="device-info-row"><span>Source</span><strong id="locSource">--</strong></div>
+                            <div class="mt-3">
+                                <span id="locOnSiteBadge" class="mo-badge mo-badge-online d-none">ON-SITE</span>
+                                <span id="locOffSiteBadge" class="mo-badge mo-badge-risk d-none">OFF-SITE</span>
+                                <span id="locNoBadge" class="mo-badge mo-badge-unknown">NO DATA</span>
+                            </div>
+                        </div>
+                        <div class="device-info-card mt-2">
+                            <h6 class="panel-eyebrow">Trail (last 100 points)</h6>
+                            <div id="locTrailList" class="device-list-plain text-muted small device-list-scroll" style="max-height:180px">No trail data.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="domains">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="panel-eyebrow m-0">Domain Visit History</h6>
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="d-flex align-items-center gap-1 small text-muted" style="cursor:pointer">
+                            <input type="checkbox" id="domainsBlockedOnly" class="form-check-input m-0"> Blocked only
+                        </label>
+                        <input type="text" id="domainsSearch" class="form-control form-control-sm" style="width:180px" placeholder="Search domain…">
+                    </div>
+                </div>
+                <div class="table-responsive device-table-scroll">
+                    <table class="tactical-table" id="domainsTable">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Category</th>
+                                <th class="metric">Visits</th>
+                                <th class="metric">Status</th>
+                                <th class="metric">Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="domainsTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="domainsEmptyState" class="text-muted small mt-2 d-none">No domain data available.</div>
+                <div class="d-flex align-items-center justify-content-between mt-2">
+                    <span id="domainsPagingInfo" class="small text-muted"></span>
+                    <div class="d-flex gap-1">
+                        <button id="domainsPrevBtn" class="mo-btn mo-btn-ghost mo-btn-sm" disabled><i class="fas fa-chevron-left"></i></button>
+                        <button id="domainsNextBtn" class="mo-btn mo-btn-ghost mo-btn-sm" disabled><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="device-tab-panel" data-panel="patches">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="panel-eyebrow m-0">Software &amp; Patches</h6>
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="d-flex align-items-center gap-1 small text-muted" style="cursor:pointer">
+                            <input type="checkbox" id="patchesPendingOnly" class="form-check-input m-0"> Pending only
+                        </label>
+                        <input type="text" id="patchesSearch" class="form-control form-control-sm" style="width:180px" placeholder="Search package…">
+                    </div>
+                </div>
+                <div id="patchesGroupContainer"></div>
+                <div id="patchesEmptyState" class="text-muted small mt-2 d-none">No patch data available.</div>
+            </section>
+
         </div>
     </div>
 
@@ -1051,9 +1220,15 @@
         deviceType: {{ (device_type_label or 'Workstation') | tojson }},
         policyStatus: {{ (policy_status or 'compliant') | tojson }},
         policyDomain: {{ (policy_domain or '') | tojson }},
-        initialDailyUptime: {{ (initial_daily_uptime or {}) | tojson }}
+        initialDailyUptime: {{ (initial_daily_uptime or {}) | tojson }},
+        deviceName: {{ (device.device_name or '') | tojson }},
+        lastLat: {{ device.last_lat | tojson }},
+        lastLng: {{ device.last_lng | tojson }},
+        lastLocationSeenAt: {{ (device.last_location_seen_at.isoformat() if device.last_location_seen_at else None) | tojson }}
     };
 </script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="{{ url_for('static', filename='js/tracking/console/stateMachine.js') }}?v={{ asset_ver }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/console/risk.js') }}?v={{ asset_ver }}"></script>
 <script src="{{ url_for('static', filename='js/tracking/console/telemetryState.js') }}?v={{ asset_ver }}"></script>

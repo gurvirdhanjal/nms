@@ -1893,3 +1893,68 @@ def ensure_tracking_stabilization_columns():
 def ensure_device_scan_history_columns():
     """Public entry point: add auxiliary scan-history columns."""
     _ensure_device_scan_history_columns()
+
+
+def ensure_domain_location_patch_tables():
+    """Create device_domain_logs, device_location_logs, device_patch_logs tables and
+    add domain lane + location cache columns to existing tables."""
+    try:
+        inspector = inspect(db.engine)
+        existing_tables = set(inspector.get_table_names())
+
+        # Create new tables via ORM (checkfirst=True = no-op if already exists)
+        from models.device_domain_log import DeviceDomainLog
+        from models.device_location_log import DeviceLocationLog
+        from models.device_patch_log import DevicePatchLog
+        DeviceDomainLog.__table__.create(bind=db.engine, checkfirst=True)
+        DeviceLocationLog.__table__.create(bind=db.engine, checkfirst=True)
+        DevicePatchLog.__table__.create(bind=db.engine, checkfirst=True)
+        db.session.commit()
+
+        # Add domain lane columns to tracking_sync_envelopes
+        if 'tracking_sync_envelopes' in existing_tables:
+            envelope_cols = {col['name'] for col in inspector.get_columns('tracking_sync_envelopes')}
+            envelope_stmts = []
+            _dt = _portable_datetime_type()
+            if 'domain_status' not in envelope_cols:
+                envelope_stmts.append("ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_status VARCHAR(20) NOT NULL DEFAULT 'skipped'")
+            if 'domain_retry_count' not in envelope_cols:
+                envelope_stmts.append("ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_retry_count INTEGER NOT NULL DEFAULT 0")
+            if 'domain_next_run_at' not in envelope_cols:
+                envelope_stmts.append(f"ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_next_run_at {_dt}")
+            if 'domain_started_at' not in envelope_cols:
+                envelope_stmts.append(f"ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_started_at {_dt}")
+            if 'domain_finished_at' not in envelope_cols:
+                envelope_stmts.append(f"ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_finished_at {_dt}")
+            if 'domain_error_code' not in envelope_cols:
+                envelope_stmts.append("ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_error_code VARCHAR(64)")
+            if 'domain_claim_token' not in envelope_cols:
+                envelope_stmts.append("ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_claim_token VARCHAR(64)")
+            if 'domain_claim_expires_at' not in envelope_cols:
+                envelope_stmts.append(f"ALTER TABLE tracking_sync_envelopes ADD COLUMN IF NOT EXISTS domain_claim_expires_at {_dt}")
+            for stmt in envelope_stmts:
+                db.session.execute(text(stmt))
+            if envelope_stmts:
+                db.session.commit()
+                print(f"[DB] Added {len(envelope_stmts)} domain lane columns to tracking_sync_envelopes.")
+
+        # Add location cache columns to tracked_devices
+        if 'tracked_devices' in existing_tables:
+            td_cols = {col['name'] for col in inspector.get_columns('tracked_devices')}
+            _dt = _portable_datetime_type()
+            td_stmts = []
+            if 'last_lat' not in td_cols:
+                td_stmts.append("ALTER TABLE tracked_devices ADD COLUMN IF NOT EXISTS last_lat DOUBLE PRECISION")
+            if 'last_lng' not in td_cols:
+                td_stmts.append("ALTER TABLE tracked_devices ADD COLUMN IF NOT EXISTS last_lng DOUBLE PRECISION")
+            if 'last_location_seen_at' not in td_cols:
+                td_stmts.append(f"ALTER TABLE tracked_devices ADD COLUMN IF NOT EXISTS last_location_seen_at {_dt}")
+            for stmt in td_stmts:
+                db.session.execute(text(stmt))
+            if td_stmts:
+                db.session.commit()
+                print(f"[DB] Added {len(td_stmts)} location cache columns to tracked_devices.")
+
+    except Exception as exc:
+        db.session.rollback()
+        print(f"[DB] Migration warning (domain/location/patch tables): {exc}")

@@ -1063,6 +1063,126 @@ def _ingest_typed_text_alerts(device_id, alerts):
             )
 
 
+def _ingest_location_samples(tracked_device_id, samples):
+    """Inline-persist GPS/location samples and cache latest on TrackedDevice."""
+    from models.device_location_log import DeviceLocationLog
+    from models.tracked_device import TrackedDevice
+    latest_recorded = None
+    latest_entry = None
+    for sample in samples:
+        try:
+            lat = float(sample.get('latitude') or 0)
+            lng = float(sample.get('longitude') or 0)
+        except (TypeError, ValueError):
+            continue
+        if lat == 0 and lng == 0:
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
+            continue
+        recorded_raw = sample.get('recorded_at')
+        try:
+            from dateutil.parser import parse as _parse_dt
+            recorded_at = _parse_dt(recorded_raw) if recorded_raw else None
+        except Exception:
+            recorded_at = None
+        acc = sample.get('accuracy_meters')
+        try:
+            acc = float(acc) if acc is not None else None
+        except (TypeError, ValueError):
+            acc = None
+        if acc is not None and acc <= 0:
+            acc = None
+        entry = DeviceLocationLog(
+            tracked_device_id=tracked_device_id,
+            latitude=lat,
+            longitude=lng,
+            accuracy_meters=acc,
+            source=sample.get('source'),
+            recorded_at=recorded_at,
+        )
+        db.session.add(entry)
+        if recorded_at and (latest_recorded is None or recorded_at > latest_recorded):
+            latest_recorded = recorded_at
+            latest_entry = entry
+
+    if latest_entry:
+        device = TrackedDevice.query.get(tracked_device_id)
+        if device:
+            device.last_lat = latest_entry.latitude
+            device.last_lng = latest_entry.longitude
+            device.last_location_seen_at = latest_entry.recorded_at
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.debug("_ingest_location_samples rollback for device %s", tracked_device_id)
+
+
+def _ingest_patch_status(tracked_device_id, patches):
+    """Replace patch records per package-manager.
+
+    Managers like Winget/Homebrew/apt only report packages that need updates,
+    not their full installed inventory. A pure upsert would leave stale
+    'pending' rows forever once a package is patched. The fix: group by manager,
+    delete all rows for that (device, manager) pair, then insert fresh. This
+    means a patch disappearing from the list (i.e. it was applied) is correctly
+    reflected as gone from the DB.
+    """
+    from sqlalchemy import text as _text
+    from collections import defaultdict
+
+    # Group patches by manager so we can replace per-manager atomically
+    by_manager = defaultdict(list)
+    for patch in patches:
+        pkg_name = (patch.get('package_name') or '').strip()
+        if not pkg_name:
+            continue
+        pkg_mgr = (patch.get('package_manager') or '').strip().lower() or None
+        by_manager[pkg_mgr].append(patch)
+
+    for pkg_mgr, manager_patches in by_manager.items():
+        try:
+            # Delete all existing rows for this device+manager pair
+            db.session.execute(
+                _text("""
+                    DELETE FROM device_patch_logs
+                    WHERE tracked_device_id = :device_id
+                      AND (package_manager = :pkg_mgr OR (:pkg_mgr IS NULL AND package_manager IS NULL))
+                """),
+                {'device_id': tracked_device_id, 'pkg_mgr': pkg_mgr},
+            )
+            # Insert fresh snapshot
+            for patch in manager_patches:
+                pkg_name = (patch.get('package_name') or '').strip()
+                db.session.execute(
+                    _text("""
+                        INSERT INTO device_patch_logs
+                            (tracked_device_id, package_manager, package_name,
+                             installed_version, available_version, is_pending_update,
+                             last_checked_at, created_at, updated_at)
+                        VALUES
+                            (:device_id, :pkg_mgr, :pkg_name,
+                             :installed, :available, :pending,
+                             :checked_at, NOW(), NOW())
+                    """),
+                    {
+                        'device_id': tracked_device_id,
+                        'pkg_mgr': pkg_mgr,
+                        'pkg_name': pkg_name,
+                        'installed': patch.get('installed_version'),
+                        'available': patch.get('available_version'),
+                        'pending': bool(patch.get('is_pending_update', True)),
+                        'checked_at': patch.get('last_checked_at'),
+                    },
+                )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.debug(
+                "_ingest_patch_status rollback device=%s manager=%s", tracked_device_id, pkg_mgr
+            )
+
+
 def _maybe_uplift_confidence(device_id, domain, source, observed_at):
     return service_maybe_uplift_confidence(device_id, domain, source, observed_at)
 
@@ -1984,6 +2104,11 @@ def device_to_dict(device):
         'status': check_device_status(device),
         'identity_confirmed': True,
         'identity_source': identity_source,
+        'last_lat': getattr(device, 'last_lat', None),
+        'last_lng': getattr(device, 'last_lng', None),
+        'last_location_seen_at': device.last_location_seen_at.isoformat() if getattr(device, 'last_location_seen_at', None) else None,
+        'agent_version': getattr(device, 'agent_version', None),
+        'last_policy_sync_at': device.last_policy_sync_at.isoformat() if getattr(device, 'last_policy_sync_at', None) else None,
     }
 
 
@@ -3412,6 +3537,147 @@ def api_history_dashboard(device_id):
             'Failed to load history dashboard.',
             e,
         )
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/domains')
+@require_permission('tracking.history.view')
+def api_history_domains(device_id):
+    """Return domain visit history for a tracked device."""
+    try:
+        from models.device_domain_log import DeviceDomainLog
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        limit = max(1, min(limit, 500))
+        rows = (
+            DeviceDomainLog.query
+            .filter(
+                DeviceDomainLog.tracked_device_id == device_id,
+                DeviceDomainLog.last_seen_at >= start_date,
+                DeviceDomainLog.last_seen_at <= end_date,
+            )
+            .order_by(DeviceDomainLog.last_seen_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return jsonify({
+            'success': True,
+            'data': [r.to_dict() for r in rows],
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception('HISTORY_DOMAINS_FAILED', 'Failed to load domain history.', e)
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/location')
+@require_permission('tracking.history.view')
+def api_history_location(device_id):
+    """Return GPS/location log for a tracked device."""
+    try:
+        from models.device_location_log import DeviceLocationLog
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        start_date, end_date = _history_window_from_request(default_days=7, max_days=30)
+        limit = request.args.get('limit', 100, type=int)
+        limit = max(1, min(limit, 500))
+        rows = (
+            DeviceLocationLog.query
+            .filter(
+                DeviceLocationLog.tracked_device_id == device_id,
+                DeviceLocationLog.recorded_at >= start_date,
+                DeviceLocationLog.recorded_at <= end_date,
+            )
+            .order_by(DeviceLocationLog.recorded_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return jsonify({
+            'success': True,
+            'data': [r.to_dict() for r in rows],
+            'from': start_date.isoformat(),
+            'to': end_date.isoformat(),
+        })
+    except HTTPException:
+        raise
+    except ValueError as window_error:
+        return _json_error('INVALID_TIME_RANGE', str(window_error), 400)
+    except Exception as e:
+        return _json_exception('HISTORY_LOCATION_FAILED', 'Failed to load location history.', e)
+
+
+@tracking_bp.route('/api/tracking/history/<int:device_id>/patches')
+@require_permission('tracking.history.view')
+def api_history_patches(device_id):
+    """Return current patch/software inventory for a tracked device."""
+    try:
+        from models.device_patch_log import DevicePatchLog
+        get_scoped_tracked_device_or_404(device_id, include_archived=True)
+        only_pending = request.args.get('pending_only', 'false').lower() == 'true'
+        q = DevicePatchLog.query.filter(DevicePatchLog.tracked_device_id == device_id)
+        if only_pending:
+            q = q.filter(DevicePatchLog.is_pending_update.is_(True))
+        rows = q.order_by(
+            DevicePatchLog.is_pending_update.desc(),
+            DevicePatchLog.package_manager,
+            DevicePatchLog.package_name,
+        ).all()
+        pending_count = sum(1 for r in rows if r.is_pending_update)
+        return jsonify({
+            'success': True,
+            'data': [r.to_dict() for r in rows],
+            'pending_count': pending_count,
+            'total_count': len(rows),
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception('HISTORY_PATCHES_FAILED', 'Failed to load patch status.', e)
+
+
+@tracking_bp.route('/api/tracking/<int:device_id>/log-action', methods=['POST'])
+@require_permission('tracking.view')
+def api_log_device_action(device_id):
+    """Record a client-initiated sensitive action for the audit trail."""
+    device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    body = request.get_json(silent=True) or {}
+    action = str(body.get('action') or '').strip().lower()
+    _ALLOWED_ACTIONS = {
+        'force_sync', 'remote_view', 'isolate', 'restart_agent',
+        'capture_snapshot', 'start_surveillance', 'stop_surveillance',
+    }
+    if action not in _ALLOWED_ACTIONS:
+        return jsonify({'error': 'Unknown action'}), 400
+    _changes = {'success': body.get('success', True)}
+    if body.get('error_detail'):
+        _changes['error_detail'] = body['error_detail']
+    create_audit_log(
+        action=action,
+        entity_type='tracked_device',
+        entity_id=device.id,
+        entity_name=device.device_name,
+        description=body.get('description') or f'{action} on {device.device_name}',
+        changes=_changes,
+    )
+    return jsonify({'success': True})
+
+
+@tracking_bp.route('/api/tracking/<int:device_id>/location-config-status')
+@require_permission('tracking.view')
+def api_location_config_status(device_id):
+    """Return whether on-site / off-site classification is configured."""
+    get_scoped_tracked_device_or_404(device_id, include_archived=True)
+    from config import Config
+    has_sigs    = bool(getattr(Config, 'PLANT_NETWORK_SIGNATURES', None))
+    has_subnets = bool(getattr(Config, 'PLANT_NETWORK_SUBNET_PREFIXES', None))
+    return jsonify({
+        'on_site_detection': has_sigs or has_subnets,
+        'has_signatures':    has_sigs,
+        'has_subnets':       has_subnets,
+    })
 
 
 @tracking_bp.route('/api/tracking/history/<int:device_id>/run-integrity', methods=['POST'])
@@ -5283,6 +5549,15 @@ def api_tracking_sync():
                     merged_specs.update(hardware_specs)
                     inventory_device.hardware_specs = merged_specs
 
+                # Capture agent_version from payload meta block
+                _agent_ver = None
+                if current_stats_valid and isinstance(current_stats, dict):
+                    _meta_block = current_stats.get('meta') or {}
+                    if isinstance(_meta_block, dict):
+                        _agent_ver = str(_meta_block.get('agent_version') or '').strip() or None
+                if _agent_ver and device is not None:
+                    device.agent_version = _agent_ver
+
                 if current_stats is not None and not current_stats_valid:
                     integrity_error_code = 'INTEGRITY_PAYLOAD_INVALID'
                     device.availability_status = 'degraded'
@@ -5410,6 +5685,16 @@ def api_tracking_sync():
                 if isinstance(typed_text_alerts, list) and typed_text_alerts and device:
                     _ingest_typed_text_alerts(device.id, typed_text_alerts)
 
+                # Ingest GPS/location samples inline (lightweight — no worker needed)
+                location_samples = payload.get('location_samples')
+                if isinstance(location_samples, list) and location_samples and device:
+                    _ingest_location_samples(device.id, location_samples)
+
+                # Ingest patch status inline (upsert — idempotent)
+                patch_status = payload.get('patch_status')
+                if isinstance(patch_status, list) and patch_status and device:
+                    _ingest_patch_status(device.id, patch_status)
+
                 if issued_binding_secret and binding:
                     response_payload['agent_binding'] = {
                         'key_id': binding.key_id,
@@ -5421,6 +5706,16 @@ def api_tracking_sync():
             if resolution.envelope is not None:
                 response_payload['queue_accepted'] = True
                 response_payload['sync_envelope_id'] = resolution.envelope.id
+                # Mark domain lane pending only when there is data (avoids no-op worker runs)
+                domain_history = payload.get('domain_history')
+                if isinstance(domain_history, list) and domain_history:
+                    if resolution.envelope.domain_status not in ('pending', 'running'):
+                        resolution.envelope.domain_status = 'pending'
+                        resolution.envelope.domain_retry_count = 0
+                else:
+                    # No domain data — skip worker entirely
+                    if resolution.envelope.domain_status not in ('running',):
+                        resolution.envelope.domain_status = 'skipped'
 
         return jsonify(response_payload)
     except TrackedDeviceIpSyncError as e:
@@ -5507,6 +5802,14 @@ def api_live_sync():
 @require_permission('tracking.history.view')
 def tracked_device_live(device_id):
     """Canonical full-page live telemetry view for a tracked workstation."""
+    # Dispatcher: if this device_id belongs to an inventory server (agent/snmp/wmi)
+    # and there is no matching TrackedDevice row, redirect to server monitoring.
+    _inv = Device.query.filter_by(device_id=device_id).first()
+    if _inv is not None and str(getattr(_inv, 'monitoring_mode', '') or '').lower() in ('agent', 'snmp', 'wmi'):
+        _td = TrackedDevice.query.get(device_id)
+        if _td is None:
+            return redirect(url_for('server_metrics_bp.server_monitoring_page', device_id=device_id))
+
     device = get_scoped_tracked_device_or_404(device_id, include_archived=True)
     active_inventory_link = (
         DeviceIdentityLink.query
@@ -6009,7 +6312,11 @@ def api_live_summary():
             )
             summary_data.append(device_data)
         active_agent_checkins = len([d for d in summary_data if d.get('agent_sync_recent')])
-        
+        never_seen_count = len([d for d in summary_data if not d.get('last_agent_sync_at')])
+        policy_violations_count = sum(
+            int(d.get('active_violation_count') or 0) for d in summary_data
+        )
+
         return jsonify({
             'success': True,
             'total': total_devices,
@@ -6019,6 +6326,8 @@ def api_live_summary():
             'degraded_devices': len([d for d in summary_data if d['status'] == 'degraded']),
             'reachable_devices': len([d for d in summary_data if d['status'] in ('online', 'degraded')]),
             'offline_devices': len([d for d in summary_data if d['status'] == 'offline']),
+            'never_seen_count': never_seen_count,
+            'policy_violations_count': policy_violations_count,
             'active_agent_checkins': active_agent_checkins,
             'agent_sync_window_seconds': checkin_window_seconds,
             'devices': summary_data

@@ -860,6 +860,18 @@ def server_snapshot(device_id):
     online_ct = sum(1 for s in scans if (s.status or "").lower() == "online")
     availability_pct = round(online_ct / total * 100, 1) if total > 0 else None
 
+    # Return early awaiting-first-sync state when no data at all
+    if total == 0 and last_log is None:
+        return jsonify({
+            "device_id": device_id,
+            "device_name": device.device_name,
+            "ip": device.device_ip,
+            "hostname": device.hostname,
+            "monitoring_mode": getattr(device, "monitoring_mode", "ping"),
+            "state": "awaiting_first_sync",
+            "status": "unknown",
+        })
+
     # Downtime from consecutive offline spans
     downtime_secs = 0.0
     for i, scan in enumerate(scans):

@@ -4,6 +4,111 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/sites.css') }}?v={{ asset_ver }}">
+<style>
+  /* ── Offcanvas dark shell ───────────────────────────────────── */
+  #notifPanel {
+    width: 420px;
+    background: #12141f;
+    color: #e2e8f0;
+    border-left: 1px solid rgba(255,255,255,.08);
+  }
+  #notifPanel .offcanvas-header { background: #0e1018; border-bottom-color: rgba(255,255,255,.08) !important; }
+  #notifPanel .offcanvas-title  { color: #e2e8f0; }
+  #notifPanel .btn-close        { filter: invert(1) grayscale(1) brightness(1.4); }
+  #notifPanel hr                { border-color: rgba(255,255,255,.08); }
+
+  /* ── Form controls inside panel ───────────────────────────── */
+  #notifPanel .form-control,
+  #notifPanel .form-select {
+    background: #1a1d2e;
+    color: #e2e8f0;
+    border-color: rgba(255,255,255,.12);
+  }
+  #notifPanel .form-control::placeholder { color: #6b7280; }
+  #notifPanel .form-control:focus,
+  #notifPanel .form-select:focus {
+    background: #1e2235;
+    border-color: #6366f1;
+    color: #e2e8f0;
+    box-shadow: 0 0 0 2px rgba(99,102,241,.25);
+  }
+  #notifPanel .form-check-input {
+    background-color: #1a1d2e;
+    border-color: rgba(255,255,255,.2);
+  }
+  #notifPanel .form-check-input:checked { background-color: #6366f1; border-color: #6366f1; }
+  #notifPanel .form-check-label,
+  #notifPanel .form-label { color: #cbd5e1; }
+  #notifPanel .input-group .tactical-btn { background: #1a1d2e; border-color: rgba(255,255,255,.12); color: #cbd5e1; }
+  #notifPanel small.text-muted { color: #6b7280 !important; }
+
+  /* ── Channel modal dark shell ───────────────────────────────── */
+  #channelModal .modal-content {
+    background: #12141f;
+    color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,.1);
+  }
+  #channelModal .modal-header,
+  #channelModal .modal-footer { border-color: rgba(255,255,255,.08) !important; }
+  #channelModal .modal-title  { color: #e2e8f0; }
+  #channelModal .btn-close    { filter: invert(1) grayscale(1) brightness(1.4); }
+  #channelModal .form-control,
+  #channelModal .form-select  {
+    background: #1a1d2e; color: #e2e8f0; border-color: rgba(255,255,255,.12);
+  }
+  #channelModal .form-control:focus,
+  #channelModal .form-select:focus {
+    background: #1e2235; border-color: #6366f1; color: #e2e8f0;
+    box-shadow: 0 0 0 2px rgba(99,102,241,.25);
+  }
+  #channelModal .form-check-input { background-color: #1a1d2e; border-color: rgba(255,255,255,.2); }
+  #channelModal .form-check-input:checked { background-color: #6366f1; border-color: #6366f1; }
+  #channelModal .form-check-label,
+  #channelModal .form-label { color: #cbd5e1; }
+
+  /* ── Channel list rows ──────────────────────────────────────── */
+  .channel-row { border-bottom: 1px solid rgba(255,255,255,.06); padding: .6rem 0; }
+  .channel-row:last-child { border-bottom: none; }
+  .channel-icon { font-size: .75rem; padding: .15rem .45rem; border-radius: 4px;
+                  background: rgba(99,102,241,.18); color: #a5b4fc; font-family: monospace; }
+
+  /* ── Toggle pill ────────────────────────────────────────────── */
+  .toggle-pill { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
+  .toggle-pill input { opacity: 0; width: 0; height: 0; }
+  .toggle-track { position: absolute; inset: 0; border-radius: 20px; background: rgba(255,255,255,.12);
+                  transition: background .2s; }
+  .toggle-pill input:checked + .toggle-track { background: #6366f1; }
+  .toggle-track::after { content:''; position:absolute; left:3px; top:3px; width:14px; height:14px;
+                          border-radius: 50%; background: #fff; transition: transform .2s; }
+  .toggle-pill input:checked + .toggle-track::after { transform: translateX(16px); }
+
+  /* ── Severity chips ─────────────────────────────────────────── */
+  .sev-chip { font-size:.7rem; padding:.15rem .5rem; border-radius:10px; cursor:pointer;
+              border: 1px solid transparent; user-select: none; }
+  .sev-chip.crit     { border-color: rgba(239,68,68,.4);  color:#fca5a5; }
+  .sev-chip.crit.on  { background: rgba(239,68,68,.25); }
+  .sev-chip.warn     { border-color: rgba(245,158,11,.4); color:#fcd34d; }
+  .sev-chip.warn.on  { background: rgba(245,158,11,.25); }
+
+  /* ── Section heading ────────────────────────────────────────── */
+  .notif-section-head { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+                         color: #6b7280; margin-bottom:.5rem; margin-top:1.1rem; }
+
+  /* ── Device history modal ───────────────────────────────────── */
+  #deviceHistoryModal .modal-dialog { max-width: 760px; }
+  #deviceHistoryModal .modal-content { background: var(--card-bg,#1e2130); color: inherit; }
+  .hist-sev-badge { font-size:.7rem; padding:.15rem .45rem; border-radius:4px; font-weight:600; }
+  .hist-sev-CRITICAL { background:rgba(239,68,68,.2);  color:#fca5a5; }
+  .hist-sev-WARNING  { background:rgba(245,158,11,.2); color:#fcd34d; }
+  .hist-sev-INFO     { background:rgba(99,102,241,.2); color:#a5b4fc; }
+  .hist-sev-OK       { background:rgba(34,197,94,.2);  color:#86efac; }
+  #deviceHistTable td { font-size:.82rem; vertical-align:middle; }
+
+  /* ── Clickable device name ──────────────────────────────────── */
+  .dev-link { cursor:pointer; text-decoration:underline; text-decoration-style:dotted;
+              text-underline-offset:2px; }
+  .dev-link:hover { color: #818cf8; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -11,6 +116,12 @@
 
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="fas fa-bell me-2"></i>Alerts</h2>
+    {% if is_admin %}
+    <button class="tactical-btn tactical-btn-sm tactical-btn-outline"
+            type="button" data-bs-toggle="offcanvas" data-bs-target="#notifPanel">
+      <i class="fas fa-sliders-h me-1"></i>Notification Settings
+    </button>
+    {% endif %}
   </div>
 
   <div class="alerts-filter-bar mb-3">
@@ -70,5 +181,154 @@
   </div>
 
 </div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     NOTIFICATION SETTINGS OFFCANVAS (admin only)
+═══════════════════════════════════════════════════════════════ -->
+{% if is_admin %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="notifPanel">
+  <div class="offcanvas-header border-bottom border-secondary">
+    <h6 class="offcanvas-title mb-0"><i class="fas fa-bell me-2"></i>Notification Settings</h6>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" style="overflow-y:auto">
+
+    <!-- Alert Channels -->
+    <div class="notif-section-head"><i class="fas fa-paper-plane me-1"></i>Alert Channels</div>
+    <div id="channelList">
+      <div class="text-muted" style="font-size:.82rem">Loading…</div>
+    </div>
+    <button class="tactical-btn tactical-btn-sm tactical-btn-outline mt-3 w-100"
+            onclick="openNewChannelModal()">
+      <i class="fas fa-plus me-1"></i>Add Channel
+    </button>
+
+    <hr class="border-secondary my-3">
+
+    <!-- SMTP / Email Config -->
+    <div class="notif-section-head"><i class="fas fa-envelope me-1"></i>Email (SMTP) Configuration</div>
+    <div id="smtpForm">
+      <div class="text-muted" style="font-size:.82rem">Loading…</div>
+    </div>
+
+  </div><!-- /offcanvas-body -->
+</div><!-- /offcanvas -->
+
+
+<!-- ── New/Edit Channel Modal ───────────────────────────────── -->
+<div class="modal fade" id="channelModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card-bg,#1e2130)">
+      <div class="modal-header border-secondary">
+        <h6 class="modal-title mb-0" id="channelModalTitle">New Alert Channel</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editChannelId">
+        <div class="mb-3">
+          <label class="form-label" style="font-size:.82rem">Channel Name</label>
+          <input type="text" class="form-control form-control-sm" id="chName" placeholder="e.g. Ops Team Email">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" style="font-size:.82rem">Delivery Method</label>
+          <select class="form-select form-select-sm" id="chType" onchange="updateChannelFields()">
+            <option value="email">Email</option>
+            <option value="slack">Slack Webhook</option>
+            <option value="teams">Teams Webhook</option>
+          </select>
+        </div>
+        <div id="chEmailFields">
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem">Recipients (comma-separated)</label>
+            <input type="text" class="form-control form-control-sm" id="chRecipients"
+                   placeholder="ops@company.com, alerts@company.com">
+          </div>
+        </div>
+        <div id="chWebhookFields" style="display:none">
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem">Webhook URL</label>
+            <input type="text" class="form-control form-control-sm" id="chWebhook"
+                   placeholder="https://hooks.slack.com/…">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-block" style="font-size:.82rem">Notify On</label>
+          <div class="d-flex gap-2">
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="chCritical" checked>
+              <label class="form-check-label" style="font-size:.82rem">Critical</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="chWarning">
+              <label class="form-check-label" style="font-size:.82rem">Warning</label>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="chEnabled" checked>
+            <label class="form-check-label" style="font-size:.82rem">Enabled</label>
+          </div>
+        </div>
+        <div id="channelModalError" class="text-danger" style="font-size:.8rem;display:none"></div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="tactical-btn tactical-btn-sm tactical-btn-outline"
+                data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="tactical-btn tactical-btn-sm" id="saveChannelBtn"
+                onclick="saveChannel()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     DEVICE ALERT HISTORY MODAL
+═══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="deviceHistoryModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" id="deviceHistoryModal">
+    <div class="modal-content">
+      <div class="modal-header border-secondary">
+        <div>
+          <h6 class="modal-title mb-0" id="deviceHistTitle">Alert History</h6>
+          <small class="text-muted" id="deviceHistSubtitle"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="deviceHistLoading" class="text-muted text-center py-4" style="font-size:.85rem">
+          <i class="fas fa-spinner fa-spin me-2"></i>Loading history…
+        </div>
+        <div id="deviceHistError" class="text-danger text-center py-4" style="display:none;font-size:.85rem">
+          Failed to load history.
+        </div>
+        <table class="table tactical-table mb-0" id="deviceHistTable" style="display:none">
+          <thead>
+            <tr>
+              <th style="width:5.5rem">Severity</th>
+              <th style="width:5.5rem">Type</th>
+              <th>Message</th>
+              <th style="width:5.5rem">Metric</th>
+              <th style="width:9rem">Time</th>
+              <th style="width:5.5rem">Status</th>
+            </tr>
+          </thead>
+          <tbody id="deviceHistBody"></tbody>
+        </table>
+        <div id="deviceHistEmpty" class="text-muted text-center py-4" style="display:none;font-size:.85rem">
+          No alert history for this device.
+        </div>
+      </div>
+      <div class="modal-footer border-secondary" id="deviceHistFooter" style="display:none">
+        <small class="text-muted" id="deviceHistCount"></small>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <script src="{{ url_for('static', filename='js/alerts.js') }}?v={{ asset_ver }}"></script>
 {% endblock %}

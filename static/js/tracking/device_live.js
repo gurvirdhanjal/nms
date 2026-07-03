@@ -70,6 +70,9 @@
             websitePolicy: false,
             alerts: false,
             behavioral: false,
+            location: false,
+            domains: false,
+            patches: false,
         },
         tabCounters: {
             processes: 0,
@@ -285,7 +288,10 @@
             button.addEventListener('click', () => switchTab(button.dataset.openTab));
         });
 
-        dom.forcePollBtn?.addEventListener('click', () => refreshLiveData(true));
+        dom.forcePollBtn?.addEventListener('click', () => {
+            void logDeviceAction('force_sync');
+            refreshLiveData(true);
+        });
         dom.isolateBtn?.addEventListener('click', handleIsolateAction);
         dom.restartBtn?.addEventListener('click', handleRestartAction);
         dom.messageBtn?.addEventListener('click', handleMessageAction);
@@ -580,15 +586,22 @@
         const telemetryState = String(data.telemetryState || data.telemetry_state || state.pageState || '').toLowerCase();
         if (!dom.telemetryBanner) return;
 
+        const ageSecs = isNaN(data.agentSyncAgeSeconds) ? null : Number(data.agentSyncAgeSeconds);
+        const ageStr  = ageSecs != null ? _fmtAgeSecs(ageSecs) : null;
+
         let title = '';
         if (telemetryState === 'initial-loading') {
             title = 'Waiting for first telemetry sample...';
         } else if (telemetryState === 'request-error') {
             title = 'Live telemetry request timed out. Retrying.';
         } else if (telemetryState === 'stale') {
-            title = 'Agent reachable, metrics incomplete. Showing last persisted telemetry.';
+            title = ageStr
+                ? `Agent not responding — showing last known values from ${ageStr} ago.`
+                : 'Agent reachable, metrics incomplete. Showing last persisted telemetry.';
         } else if (telemetryState === 'offline-fallback') {
-            title = 'Agent unavailable. Showing last persisted telemetry.';
+            title = ageStr
+                ? `Agent unavailable — showing last known values from ${ageStr} ago.`
+                : 'Agent unavailable. Showing last persisted telemetry.';
         } else if (telemetryState === 'offline-empty') {
             title = 'Agent unavailable. No persisted telemetry is available.';
         }
@@ -609,6 +622,69 @@
         if (dom.telemetryPoll) {
             dom.telemetryPoll.textContent = `Polling every ${Math.round(state.pollMs / 1000)}s`;
         }
+    }
+
+    function _fmtAgeSecs(secs) {
+        if (secs == null || isNaN(secs)) return null;
+        const s = Math.max(0, Math.round(Number(secs)));
+        if (s < 60)   return `${s}s`;
+        if (s < 3600) return `${Math.floor(s / 60)}m`;
+        return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+    }
+
+    function _updateHeaderFreshnessBadge(freshness) {
+        const badge = document.getElementById('headerFreshnessBadge');
+        if (!badge) return;
+        const ts = String((freshness && freshness.telemetryState) || '').toLowerCase();
+        const ageSecs = freshness && !isNaN(freshness.agentSyncAgeSeconds) ? Number(freshness.agentSyncAgeSeconds) : null;
+
+        let label = '', color = '', bg = '';
+        if (ts === 'live') {
+            label = 'LIVE'; color = '#00bcd4'; bg = 'rgba(0,188,212,0.12)';
+        } else if (ts === 'degraded') {
+            label = 'RECENT'; color = '#00bcd4'; bg = 'rgba(0,188,212,0.07)';
+        } else if (ts === 'stale' || ts === 'offline-fallback') {
+            const age = ageSecs != null ? ` · ${_fmtAgeSecs(ageSecs)} ago` : '';
+            label = `STALE${age}`; color = '#f59e0b'; bg = 'rgba(245,158,11,0.1)';
+        } else if (ts === 'offline-empty' || ts === 'request-error') {
+            label = 'OFFLINE'; color = '#ef4444'; bg = 'rgba(239,68,68,0.1)';
+        } else if (!ts || ts === 'initial-loading') {
+            label = ''; // hide until first data
+        }
+
+        if (!label) { badge.classList.add('d-none'); return; }
+        badge.classList.remove('d-none');
+        badge.textContent = label;
+        badge.style.color = color;
+        badge.style.background = bg;
+        badge.style.borderColor = color;
+    }
+
+    function _renderFreshnessRow(snapshot, freshness, agentVersion) {
+        const di = snapshot.deviceInfo || {};
+        const syncIso = di.last_agent_sync_at || null;
+        const telIso = di.last_seen || syncIso || null;
+        const ts = String((freshness && freshness.telemetryState) || '').toLowerCase();
+
+        const _fmtIso = (iso) => {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            if (isNaN(d)) return '—';
+            return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false,
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+
+        setText('freshnessLastSync', syncIso ? _fmtIso(syncIso) : 'Never');
+        setText('freshnessLastTelemetry', telIso ? _fmtIso(telIso) : 'Never');
+        setText('freshnessAgentVersion', agentVersion && agentVersion !== 'N/A' ? agentVersion : '—');
+
+        let ingestionLabel = '—';
+        if (ts === 'live') ingestionLabel = 'Live';
+        else if (ts === 'degraded') ingestionLabel = 'Recent';
+        else if (ts === 'stale' || ts === 'offline-fallback') ingestionLabel = 'Stale';
+        else if (ts === 'offline-empty' || ts === 'request-error') ingestionLabel = 'Offline';
+        else if (!syncIso) ingestionLabel = 'Never seen';
+        setText('freshnessIngestionStatus', ingestionLabel);
     }
 
     function applyLiveControls(controls) {
@@ -960,6 +1036,7 @@
         updateSurveillanceReadiness(state.lastKnownStatus);
         applyLiveControls(controls);
         renderFreshnessBanner(freshness);
+        _updateHeaderFreshnessBadge(freshness);
         if (previousStatus !== state.lastKnownStatus) {
             eventFeedStore?.push?.({
                 id: `status:${Date.now()}`,
@@ -989,6 +1066,7 @@
         setText('metaLatency', `${Math.round(toNumber(state.lastPollDurationMs, 0))} ms`);
         setText('metaAgentHealth', agentHealth);
         setAgentAwaitingVisibility(awaitingFirstTelemetry);
+        _renderFreshnessRow(snapshot, freshness, agentVersion);
 
         const telemetrySignal = {
             state: mapFreshnessToTelemetrySignal(freshness.telemetryState),
@@ -1075,7 +1153,17 @@
         setText('activityFocusedApp', activeApp || 'N/A');
         setText('activityFocusedWindow', activeWindow || 'N/A');
         setText('activityFocusChanged', formatTimestamp(snapshot.timestampIso));
-        setText('activityConfidence', snapshot.metricsAvailable ? 'High' : 'Low');
+        const _syncAge = isNaN(freshness.agentSyncAgeSeconds) ? null : Number(freshness.agentSyncAgeSeconds);
+        const _confLabel = snapshot.metricsAvailable
+            ? (_syncAge != null && _syncAge <= 30 ? 'High' : (_syncAge != null && _syncAge <= 300 ? 'Medium' : 'Low'))
+            : 'Low';
+        const _confColor = _confLabel === 'High' ? 'var(--ui-accent,#00bcd4)' : _confLabel === 'Medium' ? '#f59e0b' : '#ef4444';
+        setText('activityConfidence', _confLabel);
+        const _confSub = `Confidence: ${_confLabel}${_syncAge != null ? ` · sync ${_fmtAgeSecs(_syncAge)} ago` : ''}`;
+        const _pConf = document.getElementById('prodScoreConfidence');
+        const _fConf = document.getElementById('focusScoreConfidence');
+        if (_pConf) { _pConf.textContent = _confSub; _pConf.style.color = _confColor; }
+        if (_fConf) { _fConf.textContent = _confSub; _fConf.style.color = _confColor; }
 
         setText('networkUpload', formatSpeed(network.uploadKbps));
         setText('networkDownload', formatSpeed(network.downloadKbps));
@@ -1083,21 +1171,34 @@
         setText('networkDownloadTotal', `${toFixed(network.downloadMb, 2)} MB`);
         renderNetworkConsumers(systemMetrics);
         renderProcesses(systemMetrics);
+        renderEnrichment(systemMetrics, tracking);
         setTabCounter('processes', getSuspiciousProcessCount(systemMetrics));
 
         pushSeriesValue('cpu', cpu);
         pushSeriesValue('ram', ram);
         pushSeriesValue('network', network.uploadKbps + network.downloadKbps);
         const palette = getChartPalette();
-        renderSparkline('chartCpu', state.series.cpu, palette.healthy);
-        renderSparkline('chartRam', state.series.ram, palette.info);
-        renderSparkline('chartNetwork', state.series.network, palette.warning);
+        const _MIN_CHART_SAMPLES = 3;
+        if (state.series.cpu.length >= _MIN_CHART_SAMPLES) {
+            renderSparkline('chartCpu', state.series.cpu, palette.healthy);
+            setText('chartCpuMeta', `Last: ${Math.round(cpu)}%`);
+        } else {
+            setText('chartCpuMeta', `Not enough samples yet · ${state.series.cpu.length}/${_MIN_CHART_SAMPLES} collected`);
+        }
+        if (state.series.ram.length >= _MIN_CHART_SAMPLES) {
+            renderSparkline('chartRam', state.series.ram, palette.info);
+            setText('chartRamMeta', `Last: ${Math.round(ram)}%`);
+        } else {
+            setText('chartRamMeta', `Not enough samples yet · ${state.series.ram.length}/${_MIN_CHART_SAMPLES} collected`);
+        }
+        if (state.series.network.length >= _MIN_CHART_SAMPLES) {
+            renderSparkline('chartNetwork', state.series.network, palette.warning);
+            setText('chartNetworkMeta', `Last: ${formatSpeed(network.uploadKbps + network.downloadKbps)}`);
+        } else {
+            setText('chartNetworkMeta', `Not enough samples yet · ${state.series.network.length}/${_MIN_CHART_SAMPLES} collected`);
+        }
         renderSparkline('overviewCpuSpark', state.series.cpu, palette.healthy, 80, 18);
         renderSparkline('overviewRamSpark', state.series.ram, palette.info, 80, 18);
-
-        setText('chartCpuMeta', `Last: ${Math.round(cpu)}%`);
-        setText('chartRamMeta', `Last: ${Math.round(ram)}%`);
-        setText('chartNetworkMeta', `Last: ${formatSpeed(network.uploadKbps + network.downloadKbps)}`);
         setTrendIndicator('overviewCpuTrend', state.series.cpu);
         setTrendIndicator('overviewRamTrend', state.series.ram);
         setThresholdClass('overviewCpu', cpu);
@@ -1201,6 +1302,117 @@
                 row.innerHTML = `<span>${name}</span><strong>UP ${toFixed(up, 1)} / DOWN ${toFixed(down, 1)} KB/s</strong>`;
             }
         );
+    }
+
+    function _fmtCpuModel(specs) {
+        if (!specs || !specs.cpu_model) return null;
+        let cpu = String(specs.cpu_model)
+            .replace(/\(R\)/gi, '')
+            .replace(/\(TM\)/gi, '')
+            .replace(/\s*CPU\s*@\s*/i, ' · ')
+            .replace(/\s+Processor\b/i, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        const pc = specs.cpu_physical_cores;
+        const lc = specs.cpu_logical_cores;
+        if (pc && lc && pc !== lc)      cpu += ` · ${pc}C / ${lc}T`;
+        else if (pc)                    cpu += ` · ${pc} cores`;
+        return cpu;
+    }
+
+    function renderEnrichment(systemMetrics, tracking) {
+        // Hardware spec card
+        const specs = (tracking && typeof tracking.hardware_specs === 'object' && tracking.hardware_specs)
+            || (typeof systemMetrics.hardware_specs === 'object' && systemMetrics.hardware_specs)
+            || null;
+        const hwCard = document.getElementById('perfHardwareCard');
+        const hwBody = document.getElementById('perfHardwareBody');
+        if (hwCard && hwBody && specs) {
+            const rows = [];
+            const cpuLabel = _fmtCpuModel(specs);
+            if (cpuLabel) rows.push(`<div class="device-info-row"><span>CPU</span><strong>${escapeHtml(cpuLabel)}</strong></div>`);
+            if (specs.memory_total_gb) rows.push(`<div class="device-info-row"><span>RAM</span><strong>${Number(specs.memory_total_gb).toFixed(1)} GB</strong></div>`);
+            if (specs.disk_total_gb)   rows.push(`<div class="device-info-row"><span>Disk</span><strong>${Number(specs.disk_total_gb).toFixed(0)} GB</strong></div>`);
+            if (specs.architecture)    rows.push(`<div class="device-info-row"><span>Architecture</span><strong>${escapeHtml(String(specs.architecture))}</strong></div>`);
+            if (rows.length) { hwBody.innerHTML = rows.join(''); hwCard.style.removeProperty('display'); }
+        }
+
+        // Per-core CPU bars
+        const perCore = Array.isArray(systemMetrics.per_core_percent) ? systemMetrics.per_core_percent
+            : Array.isArray(systemMetrics.cpu_cores) ? systemMetrics.cpu_cores : null;
+        const coreCard = document.getElementById('perfCoresCard');
+        const coreBody = document.getElementById('perfCoresBody');
+        if (coreCard && coreBody && perCore && perCore.length) {
+            coreBody.innerHTML = perCore.slice(0, 16).map((pct, i) => {
+                const val = Math.min(100, Math.max(0, Number(pct) || 0));
+                const color = val >= 90 ? 'var(--danger,#ef4444)' : val >= 70 ? 'var(--amber,#f59e0b)' : 'var(--ui-accent,#6366f1)';
+                return `<div class="d-flex align-items-center gap-1 mb-1">
+                    <span class="small text-muted" style="width:28px;flex-shrink:0">C${i}</span>
+                    <div style="flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:3px">
+                        <div style="width:${val}%;height:100%;background:${color};border-radius:3px"></div>
+                    </div>
+                    <span class="small" style="width:34px;text-align:right;color:${color}">${val.toFixed(0)}%</span>
+                </div>`;
+            }).join('');
+            coreCard.style.removeProperty('display');
+        }
+
+        // Disk I/O card
+        const diskIo = (typeof systemMetrics.disk_io === 'object' && systemMetrics.disk_io)
+            || (typeof systemMetrics.disk_stats === 'object' && systemMetrics.disk_stats)
+            || null;
+        const diskIoCard = document.getElementById('perfDiskIoCard');
+        const diskIoBody = document.getElementById('perfDiskIoBody');
+        if (diskIoCard && diskIoBody && diskIo) {
+            const rows = [];
+            if (diskIo.read_bytes_per_sec != null || diskIo.read_mb_s != null) rows.push(`<div class="device-info-row"><span>Read Rate</span><strong>${(diskIo.read_mb_s ?? (diskIo.read_bytes_per_sec / 1048576)).toFixed(2)} MB/s</strong></div>`);
+            if (diskIo.write_bytes_per_sec != null || diskIo.write_mb_s != null) rows.push(`<div class="device-info-row"><span>Write Rate</span><strong>${(diskIo.write_mb_s ?? (diskIo.write_bytes_per_sec / 1048576)).toFixed(2)} MB/s</strong></div>`);
+            if (diskIo.read_latency_ms != null) rows.push(`<div class="device-info-row"><span>Read Latency</span><strong>${Number(diskIo.read_latency_ms).toFixed(1)} ms</strong></div>`);
+            if (diskIo.write_latency_ms != null) rows.push(`<div class="device-info-row"><span>Write Latency</span><strong>${Number(diskIo.write_latency_ms).toFixed(1)} ms</strong></div>`);
+            if (diskIo.busy_percent != null) rows.push(`<div class="device-info-row"><span>Busy</span><strong>${Number(diskIo.busy_percent).toFixed(1)}%</strong></div>`);
+            if (rows.length) { diskIoBody.innerHTML = rows.join(''); diskIoCard.style.removeProperty('display'); }
+        }
+
+        // Per-interface network card
+        const ifaces = Array.isArray(systemMetrics.network_interfaces) ? systemMetrics.network_interfaces
+            : Array.isArray(systemMetrics.per_interface) ? systemMetrics.per_interface
+            : (Array.isArray(tracking && tracking.network_per_interface) ? tracking.network_per_interface : null);
+        const ifaceCard = document.getElementById('perfNetIfaceCard');
+        const ifaceBody = document.getElementById('perfNetIfaceBody');
+        if (ifaceCard && ifaceBody && ifaces && ifaces.length) {
+            ifaceBody.innerHTML = ifaces.slice(0, 8).map(ifc => {
+                const name = escapeHtml(String(ifc.name || ifc.interface || '?'));
+                const rx = toNumber(ifc.recv_kbps ?? ifc.rx_kbps ?? ifc.download_kbps, 0);
+                const tx = toNumber(ifc.sent_kbps ?? ifc.tx_kbps ?? ifc.upload_kbps, 0);
+                return `<div class="device-info-row"><span class="font-monospace">${name}</span><strong>↑${toFixed(tx,1)} ↓${toFixed(rx,1)} KB/s</strong></div>`;
+            }).join('');
+            ifaceCard.style.removeProperty('display');
+        }
+
+        // Disk partitions table
+        const partitions = Array.isArray(systemMetrics.disk_partitions) ? systemMetrics.disk_partitions
+            : Array.isArray(systemMetrics.partitions) ? systemMetrics.partitions : null;
+        const partRow = document.getElementById('perfPartitionsRow');
+        const partBody = document.getElementById('perfPartitionsBody');
+        if (partRow && partBody && partitions && partitions.length) {
+            partBody.innerHTML = partitions.map(p => {
+                const usedGb = p.used_gb ?? (p.used_bytes ? p.used_bytes / 1073741824 : null);
+                const freeGb = p.free_gb ?? (p.free_bytes ? p.free_bytes / 1073741824 : null);
+                const totalGb = p.total_gb ?? (p.total_bytes ? p.total_bytes / 1073741824 : null);
+                const pct = p.percent ?? p.usage_percent ?? (usedGb && totalGb ? (usedGb / totalGb * 100) : null);
+                const color = pct != null ? (pct >= 90 ? 'var(--danger,#ef4444)' : pct >= 75 ? 'var(--amber,#f59e0b)' : 'var(--ui-accent,#6366f1)') : '';
+                return `<tr>
+                    <td class="font-monospace small">${escapeHtml(String(p.mountpoint || p.mount || '/'))}</td>
+                    <td class="small text-muted">${escapeHtml(String(p.device || p.dev || ''))}</td>
+                    <td class="small text-muted">${escapeHtml(String(p.fstype || p.fs || ''))}</td>
+                    <td class="metric">${usedGb != null ? `${Number(usedGb).toFixed(1)}G` : '--'}</td>
+                    <td class="metric">${freeGb != null ? `${Number(freeGb).toFixed(1)}G` : '--'}</td>
+                    <td class="metric">${totalGb != null ? `${Number(totalGb).toFixed(1)}G` : '--'}</td>
+                    <td class="metric" style="color:${color}">${pct != null ? `${Number(pct).toFixed(1)}%` : '--'}</td>
+                </tr>`;
+            }).join('');
+            partRow.style.removeProperty('display');
+        }
     }
 
     function renderAlerts(status, cpu, ram, disk, idleSeconds, probeErrorCode) {
@@ -1830,6 +2042,18 @@
             await _loadBehavioralSummary();
             state.lazyLoaded.behavioral = true;
         }
+        if (normalized === 'location' && !state.lazyLoaded.location) {
+            await _loadLocationTab();
+            state.lazyLoaded.location = true;
+        }
+        if (normalized === 'domains' && !state.lazyLoaded.domains) {
+            await _loadDomainsTab();
+            state.lazyLoaded.domains = true;
+        }
+        if (normalized === 'patches' && !state.lazyLoaded.patches) {
+            await _loadPatchesTab();
+            state.lazyLoaded.patches = true;
+        }
     }
 
     // ── Behavioral summary (hourly chart + app donut + violations) ─────────────
@@ -1996,9 +2220,20 @@
     }
 
     async function openRemoteViewModal() {
+        void logDeviceAction('remote_view');
         if (!showModal('remoteView')) {
             window.open(`/api/tracking/stream/screenshot/${encodeURIComponent(macAddress)}`, '_blank', 'noopener,noreferrer');
         }
+    }
+
+    async function logDeviceAction(action, description) {
+        try {
+            await fetch(`/api/tracking/${deviceId}/log-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, description: description || null, success: true }),
+            });
+        } catch (_) { /* fire-and-forget, non-blocking */ }
     }
 
     function getFilesApiUrl(suffix) {
@@ -4915,6 +5150,300 @@
                 </div>
             </div>
             <p class="text-muted small mb-0">Policy status: <strong class="text-white">${escapeHtml(policy)}</strong>. Open the Website Policy tab for full details.</p>`;
+    }
+
+    // ── Location Tab ──────────────────────────────────────────────────────
+
+    let _leafletMap = null;
+    let _leafletMarker = null;
+    let _leafletCircle = null;
+    let _leafletTrailLayer = null;
+
+    async function _loadLocationTab() {
+        const mapEl = document.getElementById('deviceLocationMap');
+        if (!mapEl) return;
+
+        const lat = config.lastLat || null;
+        const lng = config.lastLng || null;
+        const lastAt = config.lastLocationSeenAt || null;
+
+        // Init map if not yet created
+        if (!_leafletMap && typeof L !== 'undefined') {
+            const centerLat = lat || 0;
+            const centerLng = lng || 0;
+            const zoom = (lat && lng) ? 13 : 2;
+            _leafletMap = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView([centerLat, centerLng], zoom);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19,
+            }).addTo(_leafletMap);
+        }
+
+        _updateLocationInfo(lat, lng, lastAt, null);
+
+        // Fetch trail and config status in parallel
+        const [trailResp, cfgResp] = await Promise.allSettled([
+            fetch(`/api/tracking/history/${deviceId}/location?limit=100`, { credentials: 'same-origin' }),
+            fetch(`/api/tracking/${deviceId}/location-config-status`, { credentials: 'same-origin' }),
+        ]);
+
+        if (trailResp.status === 'fulfilled' && trailResp.value.ok) {
+            try {
+                const data = await trailResp.value.json();
+                if (data.success && data.data && data.data.length) {
+                    _renderLocationTrail(data.data);
+                }
+            } catch (_) {}
+        }
+
+        if (cfgResp.status === 'fulfilled' && cfgResp.value.ok) {
+            try {
+                const cfg = await cfgResp.value.json();
+                const warnEl = document.getElementById('locationConfigWarning');
+                if (warnEl) warnEl.classList.toggle('d-none', Boolean(cfg.on_site_detection));
+            } catch (_) {}
+        }
+
+        // Force map resize after tab becomes visible
+        requestAnimationFrame(() => {
+            if (_leafletMap) _leafletMap.invalidateSize();
+        });
+    }
+
+    function _updateLocationInfo(lat, lng, lastAt, source) {
+        const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '--'; };
+        setEl('locLat', lat != null ? lat.toFixed(6) : null);
+        setEl('locLng', lng != null ? lng.toFixed(6) : null);
+        setEl('locSource', source || (lat != null ? 'agent' : null));
+        if (lastAt) {
+            try { setEl('locLastSeen', new Date(lastAt).toLocaleString()); } catch (_) { setEl('locLastSeen', lastAt); }
+        }
+        const hasFix = lat != null && lng != null;
+        const noBadge = document.getElementById('locNoBadge');
+        const onBadge = document.getElementById('locOnSiteBadge');
+        const offBadge = document.getElementById('locOffSiteBadge');
+        if (noBadge) noBadge.classList.toggle('d-none', hasFix);
+        if (onBadge) onBadge.classList.toggle('d-none', !hasFix);
+        if (offBadge) offBadge.classList.add('d-none');
+    }
+
+    function _renderLocationTrail(points) {
+        if (!_leafletMap || typeof L === 'undefined') return;
+
+        // Remove old trail layer
+        if (_leafletTrailLayer) { _leafletMap.removeLayer(_leafletTrailLayer); _leafletTrailLayer = null; }
+        if (_leafletMarker) { _leafletMap.removeLayer(_leafletMarker); _leafletMarker = null; }
+        if (_leafletCircle) { _leafletMap.removeLayer(_leafletCircle); _leafletCircle = null; }
+
+        const latlngs = [];
+        const trailList = document.getElementById('locTrailList');
+        const items = [];
+
+        for (const pt of points) {
+            const pLat = pt.latitude ?? pt.lat;
+            const pLng = pt.longitude ?? pt.lng;
+            if (pLat == null || pLng == null) continue;
+            latlngs.push([pLat, pLng]);
+            const ts = pt.recorded_at || pt.timestamp || '';
+            try { items.push(`${new Date(ts).toLocaleString()} — ${Number(pLat).toFixed(5)}, ${Number(pLng).toFixed(5)}`); } catch (_) {}
+        }
+
+        if (!latlngs.length) return;
+
+        // Trail polyline
+        _leafletTrailLayer = L.polyline(latlngs, { color: '#6366f1', weight: 2, opacity: 0.6 }).addTo(_leafletMap);
+
+        // Current position marker
+        const [curLat, curLng] = latlngs[0];
+        _leafletMarker = L.circleMarker([curLat, curLng], {
+            radius: 8, color: '#6366f1', fillColor: '#818cf8', fillOpacity: 1, weight: 2,
+        }).addTo(_leafletMap).bindPopup(`<b>${escapeHtml(config.deviceName || 'Device')}</b><br>${Number(curLat).toFixed(6)}, ${Number(curLng).toFixed(6)}`);
+
+        _leafletMap.fitBounds(_leafletTrailLayer.getBounds(), { padding: [20, 20] });
+
+        if (trailList) {
+            if (items.length) {
+                trailList.innerHTML = items.map(i => `<div class="small">${escapeHtml(i)}</div>`).join('');
+            } else {
+                trailList.textContent = 'No trail points.';
+            }
+        }
+
+        // Update info panel with most recent point
+        const first = points[0];
+        if (first) {
+            _updateLocationInfo(first.latitude ?? first.lat, first.longitude ?? first.lng, first.recorded_at, first.source);
+        }
+    }
+
+    // ── Domains Tab ───────────────────────────────────────────────────────
+
+    const _domainsState = { all: [], filtered: [], page: 0, pageSize: 25 };
+
+    async function _loadDomainsTab() {
+        try {
+            const resp = await fetch(`/api/tracking/history/${deviceId}/domains?limit=500`, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.success) return;
+            _domainsState.all = data.data || [];
+            _setupDomainsEvents();
+            _renderDomains();
+        } catch (_) {}
+    }
+
+    function _setupDomainsEvents() {
+        const search = document.getElementById('domainsSearch');
+        const blockedOnly = document.getElementById('domainsBlockedOnly');
+        const prev = document.getElementById('domainsPrevBtn');
+        const next = document.getElementById('domainsNextBtn');
+        if (search) search.addEventListener('input', () => { _domainsState.page = 0; _renderDomains(); });
+        if (blockedOnly) blockedOnly.addEventListener('change', () => { _domainsState.page = 0; _renderDomains(); });
+        if (prev) prev.addEventListener('click', () => { if (_domainsState.page > 0) { _domainsState.page--; _renderDomains(); } });
+        if (next) next.addEventListener('click', () => {
+            const maxPage = Math.ceil(_domainsState.filtered.length / _domainsState.pageSize) - 1;
+            if (_domainsState.page < maxPage) { _domainsState.page++; _renderDomains(); }
+        });
+    }
+
+    function _renderDomains() {
+        const tbody = document.getElementById('domainsTableBody');
+        const emptyEl = document.getElementById('domainsEmptyState');
+        const pagingInfo = document.getElementById('domainsPagingInfo');
+        const prevBtn = document.getElementById('domainsPrevBtn');
+        const nextBtn = document.getElementById('domainsNextBtn');
+        const blockedOnly = document.getElementById('domainsBlockedOnly');
+        const search = (document.getElementById('domainsSearch') || {}).value || '';
+        const onlyBlocked = blockedOnly && blockedOnly.checked;
+
+        const q = search.toLowerCase();
+        _domainsState.filtered = _domainsState.all.filter(d => {
+            if (onlyBlocked && !d.is_blocked) return false;
+            if (q && !((d.domain || '').toLowerCase().includes(q))) return false;
+            return true;
+        });
+
+        // Update blocked count badge
+        const blockedCount = _domainsState.all.filter(d => d.is_blocked).length;
+        const badgeEl = document.getElementById('tabCountDomains');
+        if (badgeEl) {
+            if (blockedCount > 0) { badgeEl.textContent = blockedCount; badgeEl.classList.remove('d-none'); }
+            else badgeEl.classList.add('d-none');
+        }
+
+        const total = _domainsState.filtered.length;
+        if (!tbody) return;
+        if (!total) {
+            tbody.innerHTML = '';
+            if (emptyEl) emptyEl.classList.remove('d-none');
+            if (pagingInfo) pagingInfo.textContent = '';
+            return;
+        }
+        if (emptyEl) emptyEl.classList.add('d-none');
+
+        const start = _domainsState.page * _domainsState.pageSize;
+        const slice = _domainsState.filtered.slice(start, start + _domainsState.pageSize);
+        tbody.innerHTML = slice.map(d => {
+            const blocked = d.is_blocked
+                ? '<span class="mo-badge mo-badge-risk" style="font-size:10px">BLOCKED</span>'
+                : '<span class="mo-badge mo-badge-online" style="font-size:10px">OK</span>';
+            const lastSeen = d.last_seen_at ? (() => { try { return new Date(d.last_seen_at).toLocaleString(); } catch (_) { return d.last_seen_at; } })() : '--';
+            return `<tr>
+                <td class="font-monospace small">${escapeHtml(d.domain || '')}</td>
+                <td class="small text-muted">${escapeHtml(d.category || '')}</td>
+                <td class="metric">${d.visit_count ?? '--'}</td>
+                <td class="metric">${blocked}</td>
+                <td class="metric small">${escapeHtml(lastSeen)}</td>
+            </tr>`;
+        }).join('');
+
+        const maxPage = Math.ceil(total / _domainsState.pageSize);
+        if (pagingInfo) pagingInfo.textContent = `${start + 1}–${Math.min(start + _domainsState.pageSize, total)} of ${total}`;
+        if (prevBtn) prevBtn.disabled = _domainsState.page === 0;
+        if (nextBtn) nextBtn.disabled = _domainsState.page >= maxPage - 1;
+    }
+
+    // ── Patches Tab ───────────────────────────────────────────────────────
+
+    const _patchesState = { all: [], filtered: [] };
+
+    async function _loadPatchesTab() {
+        try {
+            const resp = await fetch(`/api/tracking/history/${deviceId}/patches`, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.success) return;
+            _patchesState.all = data.data || [];
+            _setupPatchesEvents();
+            _renderPatches();
+        } catch (_) {}
+    }
+
+    function _setupPatchesEvents() {
+        const pendingOnly = document.getElementById('patchesPendingOnly');
+        const search = document.getElementById('patchesSearch');
+        if (pendingOnly) pendingOnly.addEventListener('change', _renderPatches);
+        if (search) search.addEventListener('input', _renderPatches);
+    }
+
+    function _renderPatches() {
+        const container = document.getElementById('patchesGroupContainer');
+        const emptyEl = document.getElementById('patchesEmptyState');
+        const pendingOnly = document.getElementById('patchesPendingOnly');
+        const search = (document.getElementById('patchesSearch') || {}).value || '';
+        const onlyPending = pendingOnly && pendingOnly.checked;
+        const q = search.toLowerCase();
+
+        _patchesState.filtered = _patchesState.all.filter(p => {
+            if (onlyPending && !p.is_pending_update) return false;
+            if (q && !((p.package_name || '').toLowerCase().includes(q))) return false;
+            return true;
+        });
+
+        // Update pending badge
+        const pendingCount = _patchesState.all.filter(p => p.is_pending_update).length;
+        const badgeEl = document.getElementById('tabCountPatches');
+        if (badgeEl) {
+            if (pendingCount > 0) { badgeEl.textContent = pendingCount; badgeEl.classList.remove('d-none'); }
+            else badgeEl.classList.add('d-none');
+        }
+
+        if (!container) return;
+        if (!_patchesState.filtered.length) {
+            container.innerHTML = '';
+            if (emptyEl) emptyEl.classList.remove('d-none');
+            return;
+        }
+        if (emptyEl) emptyEl.classList.add('d-none');
+
+        // Group by package_manager
+        const groups = {};
+        for (const p of _patchesState.filtered) {
+            const mgr = p.package_manager || 'unknown';
+            if (!groups[mgr]) groups[mgr] = [];
+            groups[mgr].push(p);
+        }
+
+        container.innerHTML = Object.entries(groups).map(([mgr, pkgs]) => {
+            const rows = pkgs.map(p => {
+                const pendingBadge = p.is_pending_update
+                    ? '<span class="mo-badge mo-badge-policy" style="font-size:10px">PENDING</span>'
+                    : '';
+                return `<tr>
+                    <td class="font-monospace small">${escapeHtml(p.package_name || '')}</td>
+                    <td class="small">${escapeHtml(p.current_version || '--')}</td>
+                    <td class="small">${escapeHtml(p.available_version || '--')}</td>
+                    <td class="metric">${pendingBadge}</td>
+                </tr>`;
+            }).join('');
+            return `<div class="device-info-card mb-2">
+                <h6 class="panel-eyebrow">${escapeHtml(mgr.toUpperCase())} <span class="text-muted small">(${pkgs.length})</span></h6>
+                <div class="table-responsive"><table class="tactical-table">
+                    <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th class="metric">Status</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>
+            </div>`;
+        }).join('');
     }
 
     // ── Run Integrity from MORE dropdown ──────────────────────────────────

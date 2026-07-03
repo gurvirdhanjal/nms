@@ -152,6 +152,9 @@
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#applicationsTab" type="button" role="tab">Applications</button></li>
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#integrityTab" type="button" role="tab">Integrity</button></li>
                     <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#policyTab" type="button" role="tab">Policy</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#domainsTab" type="button" role="tab">Domains</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#locationTab" type="button" role="tab">Location</button></li>
+                    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#patchesTab" type="button" role="tab">Patches</button></li>
                     {% if linked_device_id %}<li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#configTab" type="button" role="tab">Config</button></li>{% endif %}
                 </ul>
             </div>
@@ -217,6 +220,44 @@
                     <div class="tab-pane fade" id="policyTab" role="tabpanel">
                         <div id="policyBody" class="history-policy-list">
                             <div class="history-policy-empty">No policy events yet.</div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="domainsTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="domainsInsights"></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead>
+                                    <tr><th>Domain</th><th class="metric">Visits</th><th>Category</th><th>First Seen</th><th>Last Seen</th><th>Blocked</th></tr>
+                                </thead>
+                                <tbody id="domainsBody"></tbody>
+                            </table>
+                        </div>
+                        <button id="domainsLoadMore" class="tactical-btn-outline history-inline-btn d-none">Load More</button>
+                    </div>
+                    <div class="tab-pane fade" id="locationTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="locationInsights"></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead>
+                                    <tr><th>Recorded At</th><th class="metric">Latitude</th><th class="metric">Longitude</th><th class="metric">Accuracy (m)</th><th>Source</th></tr>
+                                </thead>
+                                <tbody id="locationBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="patchesTab" role="tabpanel">
+                        <div class="row g-2 mb-2" id="patchesInsights"></div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <label class="form-check-label history-meta" for="patchesPendingOnly">Pending updates only</label>
+                            <input class="form-check-input" type="checkbox" id="patchesPendingOnly">
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm tactical-table history-table">
+                                <thead>
+                                    <tr><th>Package</th><th>Manager</th><th>Installed</th><th>Available</th><th>Status</th><th>Checked</th></tr>
+                                </thead>
+                                <tbody id="patchesBody"></tbody>
+                            </table>
                         </div>
                     </div>
                     {% if linked_device_id %}<div class="tab-pane fade" id="configTab" role="tabpanel">

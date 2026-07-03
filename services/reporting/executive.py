@@ -20,7 +20,11 @@ class ExecutiveReportMixin:
     def get_executive_fleet_health(self, start_date=None, end_date=None):
         end_date = end_date or _utcnow_naive()
         start_date = start_date or (end_date - timedelta(days=30))
-        inventory_ids = self._inventory_device_ids_subquery()
+
+        # Materialize device IDs once — avoids 4+ correlated subquery re-executions.
+        # _inventory_device_id_list() caches on flask.g so concurrent calls in the
+        # same request are free.
+        device_id_list = self._inventory_device_id_list()
         inventory_ips = self._inventory_device_ips_subquery()
 
         uptime_stats = (
@@ -44,7 +48,7 @@ class ExecutiveReportMixin:
                 ).label("avg_packet_loss"),
             )
             .filter(
-                DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                DailyDeviceStats.device_id.in_(device_id_list),
                 DailyDeviceStats.date >= start_date.date(),
                 DailyDeviceStats.date <= end_date.date(),
             )
@@ -116,7 +120,7 @@ class ExecutiveReportMixin:
                 ).label("avg_uptime"),
             )
             .filter(
-                DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                DailyDeviceStats.device_id.in_(device_id_list),
                 DailyDeviceStats.date >= prev_start.date(),
                 DailyDeviceStats.date <= prev_end.date(),
             )
@@ -139,24 +143,19 @@ class ExecutiveReportMixin:
             prev_uptime_score = round((prev_online / prev_total) * 100.0, 2) if prev_total else None
 
         # --- Data health fields ---
-        oldest_scan = (
-            db.session.query(func.min(DeviceScanHistory.scan_timestamp))
-            .filter(
-                DeviceScanHistory.device_ip.in_(db.session.query(inventory_ips.c.device_ip)),
-                _non_agent_scan_filter(DeviceScanHistory),
-            )
+        # Use DailyDeviceStats min date instead of scanning the raw scan history hypertable.
+        # The cagg is indexed on (device_id, date) so this is a fast index scan.
+        oldest_daily = (
+            db.session.query(func.min(DailyDeviceStats.date))
+            .filter(DailyDeviceStats.device_id.in_(device_id_list))
             .scalar()
         )
-        if oldest_scan:
-            delta = end_date.replace(tzinfo=None) - oldest_scan.replace(tzinfo=None)
-            scan_history_days = max(0, int(delta.total_seconds() / 86400))
-        else:
-            scan_history_days = 0
+        scan_history_days = (end_date.date() - oldest_daily).days if oldest_daily else 0
 
         daily_stats_coverage = (
             db.session.query(func.count(func.distinct(DailyDeviceStats.date)))
             .filter(
-                DailyDeviceStats.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                DailyDeviceStats.device_id.in_(device_id_list),
                 DailyDeviceStats.date >= start_date.date(),
                 DailyDeviceStats.date <= end_date.date(),
             )
@@ -244,7 +243,7 @@ class ExecutiveReportMixin:
             )
             .join(DailyDeviceStats, DailyDeviceStats.device_id == Device.device_id)
             .filter(
-                Device.device_id.in_(db.session.query(inventory_ids.c.device_id)),
+                Device.device_id.in_(device_id_list),
                 DailyDeviceStats.date >= start_date.date(),
                 DailyDeviceStats.date <= end_date.date(),
             )
@@ -459,6 +458,6 @@ class ExecutiveReportMixin:
                 for row in problematic_devices
             ],
             "chronically_offline": chronically_offline,
-            "total_devices": int(self._inventory_devices_query().count()),
+            "total_devices": len(device_id_list),
             "_confidence": _confidence,
         }

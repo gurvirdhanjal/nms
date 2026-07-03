@@ -37,6 +37,7 @@ JOB_META: dict[str, tuple[str, int]] = {
     "purge_old_activity_logs":         ("activity_log_retention",        86400),
     "purge_old_task_queues":           ("task_queue_retention",          86400),
     "drain_alert_fanout_queue":        ("alert_fanout_drain",            10),
+    "drain_domain_ingest_queue":       ("domain_ingest_drain",           10),
     "auto_resolve_stale_alerts":       ("alert_auto_resolve",            120),
 }
 
@@ -187,6 +188,10 @@ class MonitoringScheduler:
         # up in the DB as pending forever and the dashboard never gets push updates.
         schedule.every(10).seconds.do(self.drain_alert_fanout_queue)
 
+        # Domain ingest drain — claims pending domain_status envelopes and upserts
+        # domain visit history into device_domain_logs.
+        schedule.every(10).seconds.do(self.drain_domain_ingest_queue)
+
         # SQLite WAL checkpoint — WAL file grows indefinitely without periodic checkpointing.
         # No-op on PostgreSQL deployments.
         schedule.every().week.do(self.run_sqlite_maintenance)
@@ -263,6 +268,16 @@ class MonitoringScheduler:
 
         t_resolve = threading.Thread(target=_run_startup_resolve, daemon=True, name="startup-alert-resolve")
         t_resolve.start()
+
+        # Startup report pre-warm — fill Redis cache so the first request isn't cold.
+        # 30 s delay: wait for monitoring to produce at least one scan before reading data.
+        def _run_startup_prewarm():
+            import time as _time
+            _time.sleep(30)
+            self.prewarm_report_cache()
+
+        t_prewarm = threading.Thread(target=_run_startup_prewarm, daemon=True, name="startup-report-prewarm")
+        t_prewarm.start()
 
         logger.info("Scheduled monitoring started (initial scan triggered).")
     
@@ -794,31 +809,58 @@ class MonitoringScheduler:
     def purge_old_scan_history(self):
         """Delete device_scan_history rows older than SCAN_HISTORY_RETENTION_DAYS (default 30).
 
-        At 5-min intervals × 239 devices this table accumulates ~70 K rows/day and
-        ~2 M rows/month with no cleanup. The DELETE is bounded and batched to avoid
-        long-running transactions that could spike lock contention.
+        Uses TimescaleDB drop_chunks() first — drops whole chunk files in milliseconds.
+        Falls back to a batched raw DELETE with statement_timeout suppressed so long
+        maintenance deletes are never cancelled by the DB-level timeout.
         """
         with self.app.app_context():
             try:
-                from models.scan_history import DeviceScanHistory
+                from sqlalchemy import text as _text
                 retention_days = int(self.app.config.get('SCAN_HISTORY_RETENTION_DAYS', 30))
                 cutoff = datetime.utcnow() - timedelta(days=retention_days)
-                # Batch delete to avoid a single enormous transaction
+
+                # Try TimescaleDB native drop_chunks first — near-instant for hypertables
+                try:
+                    result = db.session.execute(
+                        _text("SELECT drop_chunks('device_scan_history', older_than => :cutoff::timestamptz)"),
+                        {'cutoff': cutoff.isoformat()},
+                    )
+                    chunks_dropped = result.rowcount
+                    db.session.commit()
+                    logger.info(
+                        "[SCHEDULER] purge_old_scan_history: dropped %d chunk(s) older than %d days (drop_chunks)",
+                        chunks_dropped, retention_days,
+                    )
+                    return
+                except Exception as ts_exc:
+                    db.session.rollback()
+                    logger.debug("[SCHEDULER] drop_chunks unavailable (%s), falling back to batched DELETE", ts_exc)
+
+                # Fallback: raw batched DELETE with statement_timeout disabled.
+                # Direct time-range WHERE lets TimescaleDB use chunk exclusion; no subquery.
                 total_deleted = 0
+                batch = 5000
                 while True:
-                    # Use a subquery + LIMIT to bound each DELETE to 10,000 rows
-                    subq = db.session.query(DeviceScanHistory.scan_id).filter(
-                        DeviceScanHistory.scan_timestamp < cutoff
-                    ).limit(10000).subquery()
-                    deleted = DeviceScanHistory.query.filter(
-                        DeviceScanHistory.scan_id.in_(subq)
-                    ).delete(synchronize_session=False)
+                    db.session.execute(_text("SET LOCAL statement_timeout = 0"))
+                    result = db.session.execute(
+                        _text("""
+                            WITH batch AS (
+                                SELECT scan_id FROM device_scan_history
+                                WHERE scan_timestamp < :cutoff
+                                LIMIT :batch
+                            )
+                            DELETE FROM device_scan_history
+                            WHERE scan_id IN (SELECT scan_id FROM batch)
+                        """),
+                        {'cutoff': cutoff, 'batch': batch},
+                    )
+                    deleted = result.rowcount
                     db.session.commit()
                     total_deleted += deleted
-                    if deleted < 10000:
-                        break  # No more rows to delete
+                    if deleted < batch:
+                        break
                 logger.info(
-                    "[SCHEDULER] purge_old_scan_history: deleted %d rows older than %d days",
+                    "[SCHEDULER] purge_old_scan_history: deleted %d rows older than %d days (batched DELETE)",
                     total_deleted, retention_days,
                 )
             except Exception:
@@ -851,6 +893,25 @@ class MonitoringScheduler:
             except Exception as exc:
                 _record_run("alert_fanout_drain", False)
                 logger.warning("[SCHEDULER] drain_alert_fanout_queue error: %s", exc)
+
+    def drain_domain_ingest_queue(self):
+        """Claim and process pending domain_status envelopes (domain visit history)."""
+        _DOMAIN_BATCH_MAX = 50
+        with self.app.app_context():
+            try:
+                from workers.domain_ingest_worker import run_once as _domain_run_once
+                processed = 0
+                for _ in range(_DOMAIN_BATCH_MAX):
+                    envelope = _domain_run_once()
+                    if envelope is None:
+                        break
+                    processed += 1
+                if processed:
+                    logger.info("[SCHEDULER] drain_domain_ingest_queue: processed %d envelope(s)", processed)
+                _record_run("domain_ingest_drain", True)
+            except Exception as exc:
+                _record_run("domain_ingest_drain", False)
+                logger.warning("[SCHEDULER] drain_domain_ingest_queue error: %s", exc)
 
     def purge_old_alerts(self):
         """Delete resolved dashboard_events older than 90 days."""

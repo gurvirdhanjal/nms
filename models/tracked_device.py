@@ -37,11 +37,22 @@ class TrackedDevice(db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Last known location (cached from DeviceLocationLog)
+    last_lat = db.Column(db.Float)
+    last_lng = db.Column(db.Float)
+    last_location_seen_at = db.Column(db.DateTime)
+
+    # Agent metadata
+    agent_version = db.Column(db.String(32), nullable=True)
     
     # Relationships
     activity_logs = db.relationship('DeviceActivityLog', backref='device', lazy=True, cascade='all, delete-orphan')
     resource_logs = db.relationship('DeviceResourceLog', backref='device', lazy=True, cascade='all, delete-orphan')
     application_logs = db.relationship('DeviceApplicationLog', backref='device', lazy=True, cascade='all, delete-orphan')
+    domain_logs = db.relationship('DeviceDomainLog', backref='device', lazy=True, cascade='all, delete-orphan')
+    location_logs = db.relationship('DeviceLocationLog', backref='device', lazy=True, cascade='all, delete-orphan')
+    patch_logs = db.relationship('DevicePatchLog', backref='device', lazy=True, cascade='all, delete-orphan')
     tracking_samples = db.relationship('TrackingSample', backref='device', lazy=True, cascade='all, delete-orphan')
     availability_events = db.relationship(
         'TrackedDeviceAvailabilityEvent',
@@ -317,7 +328,7 @@ class DeviceActivityLog(db.Model):
         db.Index('idx_device_activity_logs_device_timestamp', 'device_id', 'timestamp'),
     )
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
     # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.
@@ -345,7 +356,7 @@ class DeviceResourceLog(db.Model):
         db.Index('idx_device_resource_logs_device_timestamp', 'device_id', 'timestamp'),
     )
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
     # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.
@@ -378,7 +389,7 @@ class DeviceApplicationLog(db.Model):
         db.Index('idx_device_application_logs_device_timestamp', 'device_id', 'timestamp'),
     )
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     device_id = db.Column(db.Integer, db.ForeignKey('tracked_devices.id'), nullable=False)
     sample_id = db.Column(db.Integer, db.ForeignKey('tracking_samples.id'), index=True)
     # primary_key=True matches composite PK (id, timestamp) required by TimescaleDB hypertable.

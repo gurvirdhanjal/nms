@@ -67,8 +67,10 @@ def queue_sync_envelope(payload: dict, normalized_mac: str, unique_client_id: st
         shadow_status='pending',
         core_status='pending',
         violation_status='pending',
+        domain_status='skipped',
         core_next_run_at=datetime.utcnow(),
         violation_next_run_at=datetime.utcnow(),
+        domain_next_run_at=datetime.utcnow(),
         dedupe_key=plan.dedupe_key,
     )
     db.session.add(envelope)
@@ -111,8 +113,10 @@ def upsert_sync_envelope(
             shadow_status='pending',
             core_status='pending',
             violation_status='pending',
+            domain_status='skipped',
             core_next_run_at=now_utc,
             violation_next_run_at=now_utc,
+            domain_next_run_at=now_utc,
             dedupe_key=dedupe_key,
         )
         db.session.add(envelope)
@@ -134,6 +138,7 @@ def upsert_sync_envelope(
     if envelope.violation_status not in {"pending", "running"}:
         envelope.violation_status = "pending"
         envelope.violation_retry_count = 0
+    # domain_status is set by the route after checking payload content
     db.session.flush()
     return envelope
 
