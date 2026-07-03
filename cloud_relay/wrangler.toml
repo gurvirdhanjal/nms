@@ -1,0 +1,17 @@
+name = "nms-location-relay"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Cron: purge acked rows older than 48h once a day
+[triggers]
+crons = ["0 3 * * *"]
+
+# D1 database — fill in database_id after running:
+#   npx wrangler d1 create nms-location-relay
+[[d1_databases]]
+binding = "DB"
+database_name = "nms-location-relay"
+database_id = "a92313e8-92ad-4ab4-90e4-df0181473e41"
+
+# Secrets (set via: npx wrangler secret put INGEST_TOKEN  /  npx wrangler secret put BACKEND_TOKEN)
+# Do NOT put actual token values in this file.
