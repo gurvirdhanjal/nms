@@ -15,6 +15,11 @@ class DeviceLocationLog(db.Model):
         nullable=False,
         index=True,
     )
+    # Stable per-sample UUID set by the agent — used as idempotency key so
+    # relay redeliveries (visibility-timeout expiry before ack) never produce
+    # duplicate rows.  NULL for samples delivered via the normal LAN path that
+    # pre-dates the relay (those have no uuid).
+    sample_uuid = db.Column(db.String(36), nullable=True, unique=True, index=True)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
     accuracy_meters = db.Column(db.Float)
@@ -26,6 +31,7 @@ class DeviceLocationLog(db.Model):
         return {
             'id': self.id,
             'tracked_device_id': self.tracked_device_id,
+            'sample_uuid': self.sample_uuid,
             'latitude': self.latitude,
             'longitude': self.longitude,
             'accuracy_meters': self.accuracy_meters,

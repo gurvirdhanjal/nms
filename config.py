@@ -258,6 +258,15 @@ class Config:
     TRACKING_REPORT_MAX_DAYS = int(os.environ.get('TRACKING_REPORT_MAX_DAYS', 90))
     TRACKING_REPORT_PAGE_MAX_LIMIT = int(os.environ.get('TRACKING_REPORT_PAGE_MAX_LIMIT', 200))
 
+    # Cloud location relay (Option C off-network GPS delivery).
+    # Disabled by default — set both vars to activate the drain poller.
+    RELAY_URL = os.environ.get('RELAY_URL', '').rstrip('/')
+    RELAY_BACKEND_TOKEN = os.environ.get('RELAY_BACKEND_TOKEN', '')
+    RELAY_POLL_INTERVAL_SECONDS = _env_int('RELAY_POLL_INTERVAL_SECONDS', 120, minimum=30)
+    RELAY_DRAIN_BATCH_MAX = _env_int('RELAY_DRAIN_BATCH_MAX', 200, minimum=1)
+    RELAY_DRAIN_TIMEOUT_SECONDS = _env_int('RELAY_DRAIN_TIMEOUT_SECONDS', 15, minimum=5)
+    RELAY_VISIBILITY_TIMEOUT_MS = _env_int('RELAY_VISIBILITY_TIMEOUT_MS', 60000, minimum=5000)
+
     # API Key for mobile/external clients
     MOBILE_API_KEY = os.environ.get('MOBILE_API_KEY')
 

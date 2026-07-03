@@ -1063,12 +1063,20 @@ def _ingest_typed_text_alerts(device_id, alerts):
             )
 
 
-def _ingest_location_samples(tracked_device_id, samples):
-    """Inline-persist GPS/location samples and cache latest on TrackedDevice."""
+def _ingest_location_samples(tracked_device_id, samples, *, idempotent=False):
+    """Persist GPS/location samples and update TrackedDevice cache columns.
+
+    When idempotent=True (relay path) each sample must carry a sample_uuid;
+    the insert uses ON CONFLICT (sample_uuid) DO NOTHING so relay redeliveries
+    after a visibility-timeout expiry never produce duplicate rows.
+    Returns the number of rows actually inserted.
+    """
     from models.device_location_log import DeviceLocationLog
     from models.tracked_device import TrackedDevice
+    from dateutil.parser import parse as _parse_dt
     latest_recorded = None
     latest_entry = None
+    inserted = 0
     for sample in samples:
         try:
             lat = float(sample.get('latitude') or 0)
@@ -1081,7 +1089,6 @@ def _ingest_location_samples(tracked_device_id, samples):
             continue
         recorded_raw = sample.get('recorded_at')
         try:
-            from dateutil.parser import parse as _parse_dt
             recorded_at = _parse_dt(recorded_raw) if recorded_raw else None
         except Exception:
             recorded_at = None
@@ -1092,8 +1099,21 @@ def _ingest_location_samples(tracked_device_id, samples):
             acc = None
         if acc is not None and acc <= 0:
             acc = None
+        sample_uuid = str(sample.get('sample_uuid') or '').strip() or None
+
+        if idempotent and sample_uuid:
+            # Skip cheaply without a full INSERT round-trip if already stored.
+            exists = db.session.query(
+                db.session.query(DeviceLocationLog)
+                .filter_by(sample_uuid=sample_uuid)
+                .exists()
+            ).scalar()
+            if exists:
+                continue
+
         entry = DeviceLocationLog(
             tracked_device_id=tracked_device_id,
+            sample_uuid=sample_uuid,
             latitude=lat,
             longitude=lng,
             accuracy_meters=acc,
@@ -1101,6 +1121,7 @@ def _ingest_location_samples(tracked_device_id, samples):
             recorded_at=recorded_at,
         )
         db.session.add(entry)
+        inserted += 1
         if recorded_at and (latest_recorded is None or recorded_at > latest_recorded):
             latest_recorded = recorded_at
             latest_entry = entry
@@ -1116,6 +1137,8 @@ def _ingest_location_samples(tracked_device_id, samples):
     except Exception:
         db.session.rollback()
         logger.debug("_ingest_location_samples rollback for device %s", tracked_device_id)
+        return 0
+    return inserted
 
 
 def _ingest_patch_status(tracked_device_id, patches):

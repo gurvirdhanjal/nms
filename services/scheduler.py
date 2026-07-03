@@ -21,6 +21,7 @@ _JOB_REGISTRY_LOCK = threading.Lock()
 # Maps job method name → (display_name, interval_seconds)
 # Used for "status" classification in the health endpoint.
 JOB_META: dict[str, tuple[str, int]] = {
+    "drain_location_relay":            ("location_relay_drain",           120),
     "run_server_health_hourly_rollup": ("server_health_hourly_rollup",  3600),
     "run_tracking_hourly_rollup":      ("tracking_hourly_rollup",        3600),
     "run_daily_device_stats_rollup":   ("daily_device_stats_rollup",    86400),
@@ -191,6 +192,12 @@ class MonitoringScheduler:
         # Domain ingest drain — claims pending domain_status envelopes and upserts
         # domain visit history into device_domain_logs.
         schedule.every(10).seconds.do(self.drain_domain_ingest_queue)
+
+        # Cloud location relay drain — pulls queued off-network GPS samples from
+        # the Cloudflare relay and ingests them via the same path as LAN samples.
+        # No-op unless RELAY_URL + RELAY_BACKEND_TOKEN are both configured.
+        _relay_interval = self.app.config.get('RELAY_POLL_INTERVAL_SECONDS', 120)
+        schedule.every(_relay_interval).seconds.do(self.drain_location_relay)
 
         # SQLite WAL checkpoint — WAL file grows indefinitely without periodic checkpointing.
         # No-op on PostgreSQL deployments.
@@ -1161,3 +1168,117 @@ class MonitoringScheduler:
             finally:
                 db.session.remove()
                 self._snmp_lock.release()
+
+    def drain_location_relay(self):
+        """Poll the cloud location relay for off-network GPS samples and ingest them.
+
+        Protocol (per the relay API contract):
+          POST /v1/location/drain  → { messages: [{lease_id, sample: {device_id, samples: [...]}}], backlog }
+          POST /v1/location/ack    → { acks: [lease_id, ...] }
+
+        Commit to DB first, ack only after commit — never the other way around.
+        Relay redelivers un-acked messages (visibility timeout), and the idempotent
+        insert in _ingest_location_samples(idempotent=True) absorbs duplicates safely.
+
+        Disabled (no-op) unless both RELAY_URL and RELAY_BACKEND_TOKEN are set.
+        """
+        relay_url   = self.app.config.get('RELAY_URL', '').strip()
+        relay_token = self.app.config.get('RELAY_BACKEND_TOKEN', '').strip()
+        if not relay_url or not relay_token:
+            return
+
+        batch_max        = self.app.config.get('RELAY_DRAIN_BATCH_MAX', 200)
+        timeout_s        = self.app.config.get('RELAY_DRAIN_TIMEOUT_SECONDS', 15)
+        visibility_ms    = self.app.config.get('RELAY_VISIBILITY_TIMEOUT_MS', 60000)
+        headers          = {'Authorization': f'Bearer {relay_token}', 'Content-Type': 'application/json'}
+
+        import requests as _requests
+        import json as _json
+
+        total_ingested = 0
+        total_acked    = 0
+
+        with self.app.app_context():
+            try:
+                remaining = batch_max
+                while remaining > 0:
+                    try:
+                        resp = _requests.post(
+                            f'{relay_url}/v1/location/drain',
+                            json={'max': min(remaining, 50), 'visibility_timeout_ms': visibility_ms},
+                            headers=headers,
+                            timeout=timeout_s,
+                        )
+                        resp.raise_for_status()
+                        payload = resp.json()
+                    except Exception as exc:
+                        logger.warning('[RELAY] drain request failed: %s', exc)
+                        break
+
+                    messages = payload.get('messages') or []
+                    if not messages:
+                        break
+
+                    acked_lease_ids = []
+                    for msg in messages:
+                        lease_id = msg.get('lease_id')
+                        sample_envelope = msg.get('sample') or {}
+                        device_key = str(sample_envelope.get('device_id') or '').strip()
+                        raw_samples = sample_envelope.get('samples') or []
+                        if not device_key or not raw_samples or not lease_id:
+                            # Malformed message — ack it so it doesn't block the queue.
+                            if lease_id:
+                                acked_lease_ids.append(lease_id)
+                            continue
+
+                        # Resolve tracked_device_id from key_id / unique_client_id / mac.
+                        from models.tracked_device import TrackedDevice
+                        device = (
+                            TrackedDevice.query.filter_by(unique_client_id=device_key).first()
+                            or TrackedDevice.query.filter_by(mac_address=device_key).first()
+                        )
+                        if not device:
+                            logger.debug('[RELAY] unknown device_id=%s — skipping', device_key)
+                            if lease_id:
+                                acked_lease_ids.append(lease_id)
+                            continue
+
+                        from routes.tracking import _ingest_location_samples
+                        try:
+                            n = _ingest_location_samples(device.id, raw_samples, idempotent=True)
+                            total_ingested += n
+                            # Commit succeeded (or was a no-op) — safe to ack.
+                            acked_lease_ids.append(lease_id)
+                        except Exception as exc:
+                            logger.warning('[RELAY] ingest failed for device %s: %s', device.id, exc)
+                            # Don't ack — relay will redeliver after visibility timeout.
+
+                    if acked_lease_ids:
+                        try:
+                            ack_resp = _requests.post(
+                                f'{relay_url}/v1/location/ack',
+                                json={'acks': acked_lease_ids, 'retries': []},
+                                headers=headers,
+                                timeout=timeout_s,
+                            )
+                            ack_resp.raise_for_status()
+                            total_acked += len(acked_lease_ids)
+                        except Exception as exc:
+                            logger.warning('[RELAY] ack request failed: %s', exc)
+
+                    remaining -= len(messages)
+                    if not payload.get('backlog'):
+                        break
+
+                if total_ingested or total_acked:
+                    logger.info(
+                        '[RELAY] drain complete: %d samples ingested, %d messages acked',
+                        total_ingested, total_acked,
+                    )
+                _record_run('drain_location_relay', True)
+
+            except Exception as exc:
+                _record_run('drain_location_relay', False)
+                logger.exception('[RELAY] drain_location_relay unexpected error: %s', exc)
+            finally:
+                db.session.remove()
