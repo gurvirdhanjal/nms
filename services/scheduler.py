@@ -22,6 +22,7 @@ _JOB_REGISTRY_LOCK = threading.Lock()
 # Used for "status" classification in the health endpoint.
 JOB_META: dict[str, tuple[str, int]] = {
     "drain_location_relay":            ("location_relay_drain",           120),
+    "check_device_ports":              ("device_port_monitor",           1800),
     "run_server_health_hourly_rollup": ("server_health_hourly_rollup",  3600),
     "run_tracking_hourly_rollup":      ("tracking_hourly_rollup",        3600),
     "run_daily_device_stats_rollup":   ("daily_device_stats_rollup",    86400),
@@ -198,6 +199,10 @@ class MonitoringScheduler:
         # No-op unless RELAY_URL + RELAY_BACKEND_TOKEN are both configured.
         _relay_interval = self.app.config.get('RELAY_POLL_INTERVAL_SECONDS', 120)
         schedule.every(_relay_interval).seconds.do(self.drain_location_relay)
+
+        # Port status health-check — re-scans open ports on monitored devices every 30 min.
+        # Updates PortScanResult rows so the Devices tab always reflects current port state.
+        schedule.every(30).minutes.do(self.check_device_ports)
 
         # SQLite WAL checkpoint — WAL file grows indefinitely without periodic checkpointing.
         # No-op on PostgreSQL deployments.
@@ -1280,5 +1285,97 @@ class MonitoringScheduler:
             except Exception as exc:
                 _record_run('drain_location_relay', False)
                 logger.exception('[RELAY] drain_location_relay unexpected error: %s', exc)
+            finally:
+                db.session.remove()
+
+    def check_device_ports(self):
+        """Scan ports for all stored devices and keep PortScanResult up to date.
+
+        On first run (empty PortScanResult): scans every active monitored device.
+        On subsequent runs: re-scans IPs whose data is older than 25 minutes.
+        """
+        import asyncio as _asyncio
+        from datetime import datetime as _dt, timedelta as _td
+
+        with self.app.app_context():
+            try:
+                from models.scan_history import PortScanResult
+                from models.device import Device
+
+                cutoff = _dt.utcnow() - _td(minutes=25)
+
+                # IPs with stale port data
+                stale_ips = {
+                    row[0]
+                    for row in db.session.query(PortScanResult.device_ip)
+                    .filter(PortScanResult.scan_timestamp < cutoff)
+                    .distinct()
+                    .all()
+                }
+
+                # IPs of active monitored devices that have NO port data at all
+                scanned_ips = {
+                    row[0]
+                    for row in db.session.query(PortScanResult.device_ip).distinct().all()
+                }
+                unscanned_ips = {
+                    d.device_ip
+                    for d in Device.query.filter_by(is_monitored=True, is_active=True).all()
+                    if d.device_ip and d.device_ip not in scanned_ips
+                }
+
+                target_ips = list(stale_ips | unscanned_ips)
+
+                if not target_ips:
+                    _record_run('check_device_ports', True)
+                    return
+
+                from services.network_scanner import NetworkScanner
+                scanner = NetworkScanner()
+
+                service_map = {
+                    21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+                    80: 'HTTP', 110: 'POP3', 443: 'HTTPS', 993: 'IMAPS', 995: 'POP3S',
+                    3389: 'RDP', 5002: 'Tactical Agent', 161: 'SNMP', 179: 'BGP',
+                    520: 'RIP', 8080: 'HTTP-Alt', 8443: 'HTTPS-Alt', 554: 'RTSP',
+                    3306: 'MySQL', 5432: 'PostgreSQL', 27017: 'MongoDB',
+                    6379: 'Redis', 1433: 'MSSQL', 445: 'SMB', 139: 'NetBIOS-SSN',
+                    9100: 'JetDirect', 631: 'IPP', 515: 'LPD',
+                }
+
+                updated = 0
+                for ip in target_ips:
+                    try:
+                        loop = _asyncio.new_event_loop()
+                        open_ports = loop.run_until_complete(scanner.scan_ports(ip))
+                        loop.close()
+
+                        now = _dt.utcnow()
+                        db.session.query(PortScanResult).filter_by(device_ip=ip).delete()
+                        for p in open_ports:
+                            port_num = int(p.get('port') or 0)
+                            if not port_num:
+                                continue
+                            svc = p.get('service') or service_map.get(port_num, 'Unknown')
+                            db.session.add(PortScanResult(
+                                device_ip=ip,
+                                port_number=port_num,
+                                protocol='TCP',
+                                status='open',
+                                service_name=svc,
+                                scan_timestamp=now,
+                            ))
+                        db.session.commit()
+                        updated += 1
+                    except Exception as ip_err:
+                        db.session.rollback()
+                        logger.warning('[PortMonitor] Failed to re-scan %s: %s', ip, ip_err)
+
+                logger.info('[PortMonitor] Port check complete: %d IPs re-scanned', updated)
+                _record_run('check_device_ports', True)
+
+            except Exception as exc:
+                _record_run('check_device_ports', False)
+                logger.exception('[PortMonitor] check_device_ports unexpected error: %s', exc)
             finally:
                 db.session.remove()

@@ -327,8 +327,8 @@ class NetworkScanner:
                     name_bytes = data[offset:offset+15]
                     try:
                         name = name_bytes.decode('utf-8', errors='ignore').strip()
-                        # Return the first readable name that isn't the workgroup/MAC
-                        if name and name.isalnum(): 
+                        # Accept hostnames with hyphens/underscores (e.g. DESKTOP-PC1, PC_FLOOR2)
+                        if name and name.replace('-', '').replace('_', '').replace('.', '').isalnum():
                             return name
                     except Exception:
                         pass
@@ -400,6 +400,72 @@ class NetworkScanner:
         except Exception:
             pass
         return None
+
+    def _nmap_available(self) -> bool:
+        try:
+            subprocess.run(['nmap', '--version'], capture_output=True, timeout=3)
+            return True
+        except Exception:
+            return False
+
+    def _nmap_quick_host(self, ip: str) -> dict:
+        """
+        Runs 'nmap -sn' to get hostname (PTR/rDNS) and MAC (if running as root via ARP).
+        Returns a dict with keys 'mac' and/or 'hostname', empty dict on failure.
+        """
+        try:
+            result = subprocess.run(
+                ['nmap', '-sn', '--host-timeout', '5s', ip],
+                capture_output=True, text=True, timeout=8
+            )
+            output = result.stdout
+
+            import re as _re
+            mac_m = _re.search(r'MAC Address:\s*([0-9A-Fa-f:]{17})\s*\(([^)]+)\)', output)
+            # "Nmap scan report for hostname (ip)" or "Nmap scan report for ip"
+            host_m = _re.search(r'Nmap scan report for (.+?) \(', output)
+
+            info = {}
+            if mac_m:
+                info['mac'] = mac_m.group(1).upper()
+                info['manufacturer'] = mac_m.group(2).strip()
+            if host_m:
+                candidate = host_m.group(1).strip()
+                # Only use if it's an actual hostname, not an IP string
+                if not _re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
+                    info['hostname'] = candidate
+            return info
+        except Exception:
+            return {}
+
+    def _nmap_port_scan(self, ip: str, ports: list) -> list:
+        """
+        Runs nmap TCP connect scan (-sT) on the given ports.
+        Returns list of {port, status, service, protocol} dicts, including 'closed' entries.
+        Falls back gracefully if nmap is unavailable.
+        """
+        if not ports:
+            return []
+        try:
+            port_spec = ','.join(str(p) for p in ports)
+            result = subprocess.run(
+                ['nmap', '-sT', '-p', port_spec, '--host-timeout', '10s', '--open', ip],
+                capture_output=True, text=True, timeout=15
+            )
+            import re as _re
+            entries = []
+            for line in result.stdout.splitlines():
+                m = _re.match(r'^(\d+)/(tcp|udp)\s+(open|closed|filtered)\s+(\S+)', line.strip())
+                if m:
+                    entries.append({
+                        'port': int(m.group(1)),
+                        'protocol': m.group(2).upper(),
+                        'status': m.group(3),
+                        'service': m.group(4) if m.group(4) != 'unknown' else self.get_service_name(int(m.group(1))),
+                    })
+            return entries
+        except Exception:
+            return []
 
     async def get_manufacturer(self, mac_address: str) -> str:
         """Get manufacturer from MAC address (cached)."""
@@ -829,13 +895,21 @@ class NetworkScanner:
             # HEAVY MODE: Full enrichment
             loop = asyncio.get_running_loop()
 
-            # Run blocking lookups concurrently in the shared executor
-            mac_f = loop.run_in_executor(self._executor, self.get_mac_address, ip)
-            host_f = loop.run_in_executor(self._executor, self.get_hostname, ip)
+            # Run ARP/DNS lookups and optional nmap enrichment concurrently
+            mac_f    = loop.run_in_executor(self._executor, self.get_mac_address, ip)
+            host_f   = loop.run_in_executor(self._executor, self.get_hostname, ip)
+            nmap_f   = loop.run_in_executor(self._executor, self._nmap_quick_host, ip)
 
-            mac_address, hostname = await asyncio.gather(mac_f, host_f)
+            mac_address, hostname, nmap_info = await asyncio.gather(mac_f, host_f, nmap_f)
 
-            manufacturer = await self.get_manufacturer(mac_address)
+            # nmap enrichment: prefer nmap hostname (PTR/rDNS) when our probes returned Unknown
+            if nmap_info.get('hostname') and hostname in ('Unknown', None, ''):
+                hostname = nmap_info['hostname']
+            # nmap gets MAC via ARP when running as root; use it when ARP cache is empty
+            if nmap_info.get('mac') and (not mac_address or mac_address == 'N/A'):
+                mac_address = nmap_info['mac']
+
+            manufacturer = nmap_info.get('manufacturer') or await self.get_manufacturer(mac_address)
 
             device_info.update({
                 "hostname": hostname or "Unknown",

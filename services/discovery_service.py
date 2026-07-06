@@ -344,6 +344,42 @@ class DiscoveryService:
             from services.device_classifier import DeviceClassifier
             from models.discovery_config import get_config
             from models.subnet import Subnet
+            from models.scan_history import PortScanResult
+            from datetime import datetime as _dt
+
+            def _save_port_results(_db, _ip, _ports):
+                """Replace open-port snapshot for this IP with current scan results."""
+                try:
+                    _db.session.query(PortScanResult).filter_by(device_ip=_ip).delete()
+                    service_map = {
+                        21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+                        80: 'HTTP', 110: 'POP3', 443: 'HTTPS', 993: 'IMAPS', 995: 'POP3S',
+                        3389: 'RDP', 5002: 'Tactical Agent', 161: 'SNMP', 179: 'BGP',
+                        520: 'RIP', 8080: 'HTTP-Alt', 8443: 'HTTPS-Alt', 554: 'RTSP',
+                        3306: 'MySQL', 5432: 'PostgreSQL', 27017: 'MongoDB',
+                        6379: 'Redis', 1433: 'MSSQL', 445: 'SMB', 139: 'NetBIOS-SSN',
+                        9100: 'JetDirect', 631: 'IPP', 515: 'LPD',
+                    }
+                    now = _dt.utcnow()
+                    for p in _ports:
+                        port_num = int(p.get('port') or p.get('port_number') or 0)
+                        if not port_num:
+                            continue
+                        svc = (p.get('service') or p.get('service_name')
+                               or service_map.get(port_num, 'Unknown'))
+                        proto = (p.get('protocol') or 'TCP').upper()
+                        status = (p.get('status') or 'open').lower()
+                        _db.session.add(PortScanResult(
+                            device_ip=_ip,
+                            port_number=port_num,
+                            protocol=proto,
+                            status=status,
+                            service_name=svc,
+                            banner=p.get('banner'),
+                            scan_timestamp=now,
+                        ))
+                except Exception as pe:
+                    logger.warning("[Discovery] Port save failed for %s: %s", _ip, pe)
 
             cfg = get_config()
             approval_mode = (cfg.auto_add_policy or 'auto') == 'approval'
@@ -416,6 +452,12 @@ class DiscoveryService:
                         count_added += 1
                     elif action == "updated":
                         count_updated += 1
+
+                    # Persist port scan results for this IP
+                    open_ports = device_data.get('open_ports') or []
+                    if open_ports and ip:
+                        _save_port_results(db, ip, open_ports)
+
                 except Exception as e:
                     db.session.rollback()
 
