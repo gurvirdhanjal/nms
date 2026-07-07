@@ -1399,9 +1399,59 @@
     }
 
     .dashboard-enterprise .sparkline-wrap {
-        height: 30px;
+        height: 80px;
         position: relative;
-        margin-top: 0.25rem;
+        margin-top: 0.35rem;
+    }
+
+    #card-network-avail { cursor: pointer; }
+    #card-network-avail:hover {
+        border-color: rgba(230,237,245,0.28);
+        box-shadow: 0 0 0 1px rgba(230,237,245,0.12);
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+    }
+    #chart-availability-spark .apexcharts-canvas { background: transparent !important; }
+    #chart-availability-spark .apexcharts-tooltip {
+        background: rgba(16,19,27,0.96) !important;
+        border: 1px solid rgba(230,237,245,0.14) !important;
+        border-radius: 6px !important;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+        font-family: 'IBM Plex Mono', monospace !important;
+        font-size: 0.7rem !important;
+    }
+    #chart-availability-spark .apexcharts-tooltip-title {
+        background: rgba(255,255,255,0.04) !important;
+        border-bottom: 1px solid rgba(230,237,245,0.1) !important;
+        font-size: 0.65rem !important;
+        color: #8a97a6 !important;
+        padding: 4px 8px !important;
+    }
+    #chart-availability-spark .apexcharts-tooltip-series-group { padding: 4px 8px !important; }
+    #chart-availability-spark .apexcharts-tooltip-text-y-value { color: #e6edf5 !important; }
+
+    @keyframes shimmer {
+        from { transform: translateX(-100%); }
+        to   { transform: translateX(100%);  }
+    }
+    [data-loading] .tactical-table tbody,
+    [data-loading] .stat-value,
+    [data-loading] .sparkline-wrap {
+        position: relative;
+        overflow: hidden;
+    }
+    [data-loading] .tactical-table tbody::after,
+    [data-loading] .stat-value::after,
+    [data-loading] .sparkline-wrap::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+        animation: shimmer 1s ease-in-out infinite;
+        pointer-events: none;
+    }
+    .range-transitioning .desk-main-grid {
+        opacity: 0.85;
+        transition: opacity 120ms ease;
     }
 
     .dashboard-enterprise .chart-wrap-90,

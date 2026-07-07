@@ -166,52 +166,80 @@ function renderAvailabilityTrendSummary(currentPercent, trendsData, freshness = 
 }
 
 function renderSparkline(trendData) {
-    const canvas = document.getElementById('chart-availability-spark');
-    if (!canvas) return;
+    const container = document.getElementById('chart-availability-spark');
+    if (!container) return;
 
-    const ctx = canvas.getContext('2d');
-    const labels = trendData.map(d => d.time);
-    const values = trendData.map(d => d.value);
+    const accent = getThemeAccentColor();
+    const seriesData = trendData.map(d => ({
+        x: new Date(d.time).getTime(),
+        y: Number(d.value)
+    }));
 
-    // Destroy previous instance if needed
     if (chartInstance) {
-        chartInstance.data.labels = labels;
-        chartInstance.data.datasets[0].data = values;
-        chartInstance.update('none'); // Update without full animation
+        chartInstance.updateSeries([{ data: seriesData }], true);
         return;
     }
 
-    // Destroy any stale instance on the canvas
     // @ts-ignore
-    Chart.getChart(canvas)?.destroy();
-    // Create new Chart
-    // @ts-ignore
-    const accent = getThemeAccentColor();
-    chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: values,
-                borderColor: accent,
-                borderWidth: 2,
-                backgroundColor: 'rgba(42, 143, 147, 0.12)',
-                fill: true,
-                pointRadius: 0,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { enabled: false } },
-            scales: {
-                x: { display: false },
-                y: { display: false, min: 0, max: 100 }
+    chartInstance = new ApexCharts(container, {
+        series: [{ name: 'Availability', data: seriesData }],
+        chart: {
+            type: 'area',
+            height: 80,
+            sparkline: { enabled: true },
+            background: 'transparent',
+            animations: {
+                enabled: true,
+                easing: 'easeinout',
+                speed: 500,
+                animateGradually: { enabled: true, delay: 80 }
             },
-            animation: false
-        }
+            toolbar: { show: false },
+            zoom: { enabled: false }
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2,
+            colors: [accent]
+        },
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shade: 'dark',
+                type: 'vertical',
+                shadeIntensity: 0.5,
+                gradientToColors: ['transparent'],
+                opacityFrom: 0.55,
+                opacityTo: 0.02,
+                stops: [0, 90, 100]
+            }
+        },
+        colors: [accent],
+        markers: { size: 0, hover: { size: 4, sizeOffset: 2 } },
+        tooltip: {
+            theme: 'dark',
+            fixed: { enabled: false },
+            x: {
+                show: true,
+                formatter: (val) => new Date(val).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+            },
+            y: {
+                formatter: (val) => val !== null ? `${Number(val).toFixed(2)}%` : '-'
+            },
+            marker: { show: false }
+        },
+        xaxis: {
+            type: 'datetime',
+            labels: { show: false },
+            axisBorder: { show: false },
+            axisTicks: { show: false },
+            crosshairs: { show: true, stroke: { color: 'rgba(230,237,245,0.18)', width: 1, dashArray: 3 } }
+        },
+        yaxis: { min: 0, max: 100, labels: { show: false } },
+        grid: { show: false, padding: { left: 0, right: 0, top: 2, bottom: 0 } },
+        theme: { mode: 'dark' }
     });
+    chartInstance.render();
 }
 
 function renderBreakdownTrend(trendData) {

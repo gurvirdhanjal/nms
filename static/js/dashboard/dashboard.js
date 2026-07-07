@@ -241,13 +241,17 @@ function initDashboard() {
                 'time-range-container',
                 (newValue) => {
                     localStorage.setItem('tactical_dashboard_range', newValue);
-                    // Clear stale range data immediately so UI doesn't show wrong-range data
                     updateStateBatch({ summary: null, trends: null });
-                    // Premium smooth transition: fade data sections during range switch
                     const dashRoot = document.querySelector('.dashboard-enterprise');
+                    const loadingEls = ['device-kpi-row', 'server-health-detail', 'device-breakdown']
+                        .map(id => document.getElementById(id)).filter(Boolean);
+                    loadingEls.forEach(el => el.setAttribute('data-loading', '1'));
                     dashRoot?.classList.add('range-transitioning');
                     refreshAll().finally(() => {
-                        setTimeout(() => dashRoot?.classList.remove('range-transitioning'), 120);
+                        setTimeout(() => {
+                            dashRoot?.classList.remove('range-transitioning');
+                            loadingEls.forEach(el => el.removeAttribute('data-loading'));
+                        }, 120);
                     });
                 },
                 [
@@ -604,22 +608,12 @@ function renderSecondary(state) {
             safeRender('Alert Center', () => renderAlertCenter(state.alerts));
         }
 
-        // 7. Inventory (Table + Chart)
-        if (state.inventory) {
-            if (isTabVisible('tab-inventory-list')) {
-                safeRender('Inventory List', () => renderInventoryTable(state.inventory.devices));
-            }
-            if (typeof Chart !== 'undefined') {
-                safeRender('Inventory Chart', () => renderInventoryChart(state.inventory));
-            }
+        // 7. Inventory Chart
+        if (state.inventory && typeof Chart !== 'undefined') {
+            safeRender('Inventory Chart', () => renderInventoryChart(state.inventory));
         }
 
         // 8. Timestamps
-        const timeEl = document.getElementById('last-updated-text');
-        if (timeEl && state.lastUpdated) timeEl.textContent = state.lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-        const timeStripEl = document.getElementById('last-updated-text-strip');
-        if (timeStripEl && state.lastUpdated) timeStripEl.textContent = state.lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-
         const breakdownUpdated = document.getElementById('device-breakdown-updated');
         if (breakdownUpdated && state.lastUpdated) breakdownUpdated.textContent = state.lastUpdated.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 

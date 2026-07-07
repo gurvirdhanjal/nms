@@ -364,8 +364,45 @@
     .server-health-row.row-critical > td { background: rgba(220,53,69,0.06) !important; }
     .server-health-row.row-warning > td:first-child { border-left: 2px solid rgba(255,193,7,0.75); }
     .server-health-row.row-critical > td:first-child { border-left: 2px solid rgba(220,53,69,0.9); }
-    .server-action-group { display: flex; gap: 0.3rem; align-items: center; }
+    .server-action-menu { position: relative; display: inline-block; }
+    .server-action-toggle {
+        background: none; border: 1px solid rgba(230,237,245,0.12);
+        color: var(--e-text-muted, #8a97a6); border-radius: 4px;
+        padding: 0.18rem 0.42rem; font-size: 0.78rem; cursor: pointer;
+        transition: background 130ms ease, border-color 130ms ease;
+        line-height: 1;
+    }
+    .server-action-toggle:hover { background: rgba(230,237,245,0.08); color: #e6edf5; }
+    .server-action-popover {
+        position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
+        min-width: 140px; display: none; flex-direction: column;
+        background: rgba(16,19,27,0.96); border: 1px solid rgba(230,237,245,0.14);
+        border-radius: 6px; padding: 4px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    }
+    .server-action-menu.is-open .server-action-popover { display: flex; }
+    .server-action-item {
+        text-align: left; background: none; border: 0;
+        color: var(--e-text-secondary, #8a97a6); font-size: 0.72rem;
+        padding: 0.3rem 0.5rem; border-radius: 4px; cursor: pointer;
+        transition: background 130ms ease; text-decoration: none; display: block;
+        white-space: nowrap;
+    }
+    .server-action-item:hover:not([disabled]) { background: rgba(230,237,245,0.1); color: #e6edf5; }
+    .server-action-item[disabled] { opacity: 0.4; cursor: not-allowed; }
     .fleet-filter-group .btn.active { background: rgba(148,163,184,0.18); border-color: rgba(148,163,184,0.36); }
+    .server-issue-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .server-issue-pill {
+        font-size: 0.68rem; padding: 0.15rem 0.55rem; border-radius: 999px;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(230,237,245,0.14);
+        color: var(--e-text-secondary, #8a97a6); cursor: pointer;
+        transition: background 130ms ease, border-color 130ms ease;
+    }
+    .server-issue-pill:hover,
+    .server-issue-pill.is-active {
+        background: rgba(230,237,245,0.12); color: #e6edf5;
+        border-color: rgba(230,237,245,0.28);
+    }
 
     /* ── Responsive ── */
     @media (max-width: 1199.98px) {

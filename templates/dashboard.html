@@ -349,6 +349,19 @@
         cursor: pointer;
     }
 
+    /* ── Fleet overview: server issue pills (server_dashboard.css not loaded here) ── */
+    .server-issue-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .server-issue-pill {
+        font-size: 0.68rem; padding: 0.15rem 0.55rem; border-radius: 999px;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.18);
+        color: var(--e-text-muted, #8a97a6); cursor: pointer;
+        transition: background 130ms ease, border-color 130ms ease;
+    }
+    .server-issue-pill:hover, .server-issue-pill.is-active {
+        background: rgba(148,163,184,0.14); color: var(--e-text-primary, #e6edf5);
+        border-color: rgba(148,163,184,0.32);
+    }
+
     .chart-empty {
         display: none;
         text-align: center;
@@ -3061,11 +3074,6 @@
     </ul>
 </div>
 <button id="btn-refresh" class="btn tactical-btn-outline btn-sm" title="Refresh data"><i class="fas fa-sync-alt"></i></button>
-<button type="button" class="dash-alert-button" id="dashboard-alerts-button" data-bs-toggle="modal"
-    data-bs-target="#alerts-modal" title="Open alerts">
-    <i class="fas fa-bell"></i>
-    <span id="dashboard-alert-count">0</span>
-</button>
 <button class="dash-config-btn" id="dash-add-device-btn" title="Add / configure device">
     <i class="fas fa-plus"></i>
 </button>
@@ -3109,10 +3117,6 @@
                 <span class="strip-label">Sync</span>
                 <span id="overall-health-subtext">-</span>
             </div>
-            <div class="enterprise-strip-item">
-                <span class="strip-label">Updated</span>
-                <span id="last-updated-text">Just now</span>
-            </div>
         </div>
     </div>
     <div class="desk-command-grid" aria-label="Operations summary">
@@ -3140,7 +3144,7 @@
             <div class="desk-command-sub" id="cmd-server-context">Server estate</div>
             <div class="desk-command-foot" id="cmd-server-breakdown">No telemetry yet</div>
         </article>
-        <article class="desk-command-card state-warning">
+        <article class="desk-command-card state-warning" role="button" style="cursor:pointer;" data-bs-toggle="modal" data-bs-target="#alerts-modal" title="View alerts">
             <div class="desk-command-label">Active Alerts</div>
             <div class="desk-command-value" id="cmd-active-alerts">0</div>
             <div class="desk-command-sub" id="cmd-alert-context">Critical / Warning</div>
@@ -3234,7 +3238,7 @@
                     <div class="desk-kpi-trend" id="trend-availability">--</div>
                 </div>
                 <div class="metric-sub" id="sub-availability-trend"><span class="text-secondary">Loading...</span></div>
-                <div class="sparkline-wrap"><canvas id="chart-availability-spark"></canvas></div>
+                <div class="sparkline-wrap"><div id="chart-availability-spark"></div></div>
             </div>
         </div>
 
@@ -4044,7 +4048,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <div>
                         <h5 class="enterprise-section-title mb-0">Network Intelligence</h5>
-                        <div class="enterprise-section-sub">Latency, loss, alerts, inventory, discovery</div>
+                        <div class="enterprise-section-sub">Latency, loss, discovery</div>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <div class="enterprise-section-sub">Updated: <span id="device-breakdown-updated">-</span></div>
@@ -4072,9 +4076,6 @@
                                     <button role="tab" aria-selected="false"
                                         aria-controls="tab-loss" id="tab-btn-loss"
                                         data-target="tab-loss">Loss</button>
-                                    <button role="tab" aria-selected="false"
-                                        aria-controls="tab-inventory-list" id="tab-btn-inventory"
-                                        data-target="tab-inventory-list">Inventory</button>
                                     <button role="tab" aria-selected="false"
                                         aria-controls="tab-discovery" id="tab-btn-discovery"
                                         data-target="tab-discovery">Discovery</button>
@@ -4118,33 +4119,6 @@
                                                 </tr>
                                             </thead>
                                             <tbody id="table-top-loss-body">
-                                                <tr>
-                                                    <td colspan="6" class="text-center text-secondary p-3">
-                                                        Loading...</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                <div id="tab-inventory-list" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-inventory">
-                                    <div class="table-responsive">
-                                        <table class="tactical-table table-hover mb-0" id="table-inventory">
-                                            <thead>
-                                                <tr>
-                                                    <th>
-                                                        <div class="form-check d-flex justify-content-center">
-                                                            <input class="form-check-input" type="checkbox"
-                                                                id="inventory-select-all">
-                                                        </div>
-                                                    </th>
-                                                    <th>Device</th>
-                                                    <th>Brand</th>
-                                                    <th>Tier</th>
-                                                    <th>IP</th>
-                                                    <th>Save</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="table-inventory-body">
                                                 <tr>
                                                     <td colspan="6" class="text-center text-secondary p-3">
                                                         Loading...</td>
@@ -4266,13 +4240,14 @@
                                     <thead>
                                         <tr>
                                             <th>Device</th>
-                                            <th>IP</th>
+                                            <th>Type</th>
+                                            <th>Impact</th>
                                             <th>Last Seen</th>
                                         </tr>
                                     </thead>
                                     <tbody id="table-top-affected-body">
                                         <tr>
-                                            <td colspan="3" class="text-center text-secondary p-3">
+                                            <td colspan="4" class="text-center text-secondary p-3">
                                                 Loading...</td>
                                         </tr>
                                     </tbody>
@@ -4317,62 +4292,9 @@
             </div>
         </div>
 
-        <!-- ✅ FIXED GRID -->
-        <div class="row g-4 row-cols-1 row-cols-md-2 row-cols-lg-4" id="fleet-overview-row">
-
-            <div class="col">
-                <div class="tactical-stat-card h-100" id="card-fleet-health">
-                    <div class="desk-mini-head">
-                        <div class="stat-label">Fleet Health</div>
-                        <span class="soc-kpi-status status-nodata" id="val-fleet-health-state">-</span>
-                    </div>
-                    <div class="stat-value" id="val-fleet-health-percent">-</div>
-                    <div class="metric-sub">
-                        <span id="val-fleet-health-counts">-/- Servers Healthy</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col">
-                <div class="tactical-stat-card h-100" id="fleet-card-cpu">
-                    <div class="desk-mini-head">
-                        <div class="stat-label">Avg CPU Usage</div>
-                        <span class="soc-kpi-status status-nodata" id="val-fleet-cpu-state">-</span>
-                    </div>
-                    <div class="stat-value" id="val-fleet-avg-cpu">-</div>
-                    <div class="metric-sub"><span id="val-fleet-p95-cpu">Peak: -</span></div>
-                    <div class="metric-sub" id="val-fleet-cpu-impact">0 servers impacted</div>
-                </div>
-            </div>
-
-            <div class="col">
-                <div class="tactical-stat-card h-100" id="fleet-card-memory">
-                    <div class="desk-mini-head">
-                        <div class="stat-label">Avg Memory Usage</div>
-                        <span class="soc-kpi-status status-nodata" id="val-fleet-memory-state">-</span>
-                    </div>
-                    <div class="stat-value" id="val-fleet-avg-mem">-</div>
-                    <div class="metric-sub"><span id="val-fleet-p95-mem">Peak: -</span></div>
-                    <div class="metric-sub" id="val-fleet-memory-impact">0 servers impacted</div>
-                </div>
-            </div>
-
-            <div class="col">
-                <div class="tactical-stat-card h-100" id="fleet-card-disk">
-                    <div class="desk-mini-head">
-                        <div class="stat-label">Avg Disk Usage</div>
-                        <span class="soc-kpi-status status-nodata" id="val-fleet-disk-state">-</span>
-                    </div>
-                    <div class="stat-value" id="val-fleet-avg-disk">-</div>
-                    <div class="metric-sub" id="val-fleet-disk-warning">0 Servers &gt; 90%</div>
-                    <div class="metric-sub" id="val-fleet-disk-impact">0 servers impacted</div>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Server Table -->
-        <div class="row g-4 mt-3" id="server-health-detail">
+        <!-- Server Issue Pills + Table -->
+        <div id="server-issue-pills" class="server-issue-pills mb-2"></div>
+        <div class="row g-4" id="server-health-detail">
             <div class="col-12">
                 <div class="tactical-card fleet-table-card">
                     <div class="card-body p-0">
@@ -4389,12 +4311,11 @@
                                         <th class="d-none d-xl-table-cell">Loss %</th>
                                         <th class="d-none d-xl-table-cell">Jitter</th>
                                         <th>Last Seen</th>
-                                        <th class="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="table-server-health-body">
                                     <tr>
-                                        <td colspan="10" class="text-center text-secondary p-3">
+                                        <td colspan="9" class="text-center text-secondary p-3">
                                             Loading...
                                         </td>
                                     </tr>

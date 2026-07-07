@@ -29,8 +29,8 @@
     <script>
         (function () {
             const storageKey = 'nms-ui-theme';
-            const saved = localStorage.getItem(storageKey);
-            const theme = saved || 'dark';
+            localStorage.removeItem(storageKey);
+            const theme = 'dark';
             document.documentElement.setAttribute('data-theme', theme);
         })();
     </script>
@@ -1917,10 +1917,7 @@
             </div>
             <div class="header-right">
                 {% block header_actions %}{% endblock %}
-                <button class="theme-toggle-btn" id="theme-toggle-btn" type="button" aria-label="Toggle theme"
-                    title="Switch theme">
-                    <i class="fas fa-moon" id="theme-toggle-icon"></i>
-                </button>
+
                 <div class="tactical-clock">
                     <div id="clock-date"></div>
                     <div id="clock-time"></div>
@@ -2156,6 +2153,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     {% if session.logged_in %}
     <script src="{{ url_for('static', filename='js/session_manager.js') }}?v={{ asset_ver }}"></script>

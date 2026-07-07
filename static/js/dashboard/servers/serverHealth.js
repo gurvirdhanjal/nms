@@ -5,6 +5,15 @@ import { patchKeyedTableRows } from '../domPatch.js';
 let currentFilter = 'all';
 let activeRange = '24h';
 const chartRegistry = new Map();
+let _lastPayload = null;
+let _issueMetricFilter = null;
+
+if (!window.__serverMenuDismissAttached) {
+    window.__serverMenuDismissAttached = true;
+    document.addEventListener('click', () =>
+        document.querySelectorAll('.server-action-menu.is-open').forEach(m => m.classList.remove('is-open'))
+    );
+}
 
 const STATE_TO_BADGE = {
     Healthy: 'tactical-badge-success',
@@ -740,15 +749,47 @@ export function renderFleetOverview(data) {
     updateFilterButtonLabels(data.filters || {});
 }
 
+function renderIssuePills(servers) {
+    const container = document.getElementById('server-issue-pills');
+    if (!container) return;
+    const counts = {};
+    (servers || []).forEach(s => {
+        const m = s.primary_issue?.metric_label;
+        if (m) counts[m] = (counts[m] || 0) + 1;
+    });
+    const pills = Object.entries(counts)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+    if (!pills.length) { container.innerHTML = ''; return; }
+    container.innerHTML = pills.map(([label, n]) =>
+        `<button class="server-issue-pill${_issueMetricFilter === label ? ' is-active' : ''}" data-metric="${escapeHtml(label)}">${n}× ${escapeHtml(label)}</button>`
+    ).join('');
+    container.querySelectorAll('.server-issue-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const m = btn.dataset.metric;
+            _issueMetricFilter = (_issueMetricFilter === m) ? null : m;
+            if (_lastPayload) renderEnhancedServerTable(_lastPayload);
+        });
+    });
+}
+
 export function renderServerHealthTable(payload) {
     renderEnhancedServerTable(payload);
 }
 
 export function renderEnhancedServerTable(payload) {
+    _lastPayload = payload;
+    renderIssuePills(payload?.servers || []);
+
     const tableBody = document.getElementById('table-server-health-body');
     if (!tableBody) return;
 
-    const servers = filteredServers(payload);
+    const allServers = (payload?.servers || []).filter(s =>
+        !_issueMetricFilter || s.primary_issue?.metric_label === _issueMetricFilter
+    );
+    const patchedPayload = { ...payload, servers: allServers };
+    const servers = filteredServers(patchedPayload);
     if (!servers.length) {
         patchKeyedTableRows(tableBody, [], {
             emptyColSpan: 10,
@@ -795,19 +836,6 @@ export function renderEnhancedServerTable(payload) {
                 <td>
                     <div class="fw-semibold text-nowrap">${escapeHtml(lastSeenLabel)}</div>
                     <div class="small text-secondary text-nowrap">${escapeHtml(lastSeenExact)}</div>
-                </td>
-                <td class="text-end">
-                    <div class="server-action-group">
-                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2 server-modal-btn" data-device-id="${escapeHtml(server.device_id)}" title="Investigate">
-                            <i class="fas fa-chart-line"></i>
-                        </button>
-                        <a href="/devices/${encodeURIComponent(server.device_id)}/server-monitoring" class="btn btn-sm btn-dark border-secondary px-2" title="Open Details">
-                            <i class="fas fa-search"></i>
-                        </a>
-                        <button type="button" class="btn btn-sm btn-dark border-secondary px-2" title="Restart unavailable" disabled>
-                            <i class="fas fa-power-off"></i>
-                        </button>
-                    </div>
                 </td>
             `;
         },
