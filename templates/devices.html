@@ -3513,6 +3513,22 @@
             bindDeviceTableNavigation();
             bindSortHeaders();
 
+            // Allow device action dropdowns to escape the table's overflow clip.
+            // On show: lift overflow; on hide: restore it.
+            const tableShellEl = document.querySelector('.devices-table-shell');
+            if (tableShellEl) {
+                tableShellEl.addEventListener('show.bs.dropdown', (e) => {
+                    if (e.target.classList.contains('device-action-toggle')) {
+                        tableShellEl.style.overflow = 'visible';
+                    }
+                });
+                tableShellEl.addEventListener('hide.bs.dropdown', (e) => {
+                    if (e.target.classList.contains('device-action-toggle')) {
+                        tableShellEl.style.overflow = '';
+                    }
+                });
+            }
+
             // Bulk Selection Logic
             const selectAll = document.getElementById('selectAllCheckbox');
             if (selectAll) {
