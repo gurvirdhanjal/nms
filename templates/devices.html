@@ -9,6 +9,8 @@
         --d-border-soft: rgba(148, 163, 184, 0.14);
         --d-text-main: #e6edf5;
         --d-text-muted: #8a97a6;
+        --d-row-bg: #10131b;
+        --d-row-bg-hover: #1a1f2b;
     }
 
     .devices-page .lucide {
@@ -140,6 +142,25 @@
         color: #b8c6d5;
         white-space: nowrap;
     }
+    .devices-page .devices-table thead th.sort-header { transition: color 130ms ease; }
+    .devices-page .devices-table thead th.sort-header:hover { color: #e6edf5; }
+    .devices-page .devices-table thead th.sort-active {
+        color: #e6edf5;
+        border-bottom: 2px solid rgba(148,163,184,0.45);
+    }
+    .devices-page .devices-table .sort-caret {
+        font-size: 0.65em;
+        margin-left: 3px;
+        transition: opacity 130ms ease;
+    }
+
+    /* All rows share one explicit background so sticky and non-sticky cells match */
+    .devices-page .devices-table tbody td {
+        background-color: var(--d-row-bg);
+    }
+    .devices-page .devices-table tbody tr:hover td {
+        background-color: var(--d-row-bg-hover);
+    }
 
     /* Sticky Actions column — always visible even when table scrolls horizontally */
     .devices-page .devices-table thead th:last-child {
@@ -152,12 +173,12 @@
     .devices-page .devices-table tbody td:last-child {
         position: sticky;
         right: 0;
-        background-color: #10131b;
+        background-color: var(--d-row-bg);
         z-index: 2;
         box-shadow: -3px 0 6px rgba(0,0,0,.25);
     }
     .devices-page .devices-table tbody tr:hover td:last-child {
-        background-color: #1a1f2b;
+        background-color: var(--d-row-bg-hover);
     }
     /* Ensure dropdown menus escape overflow containers */
     .devices-page .device-actions-menu .dropdown-menu {
@@ -3225,12 +3246,22 @@
                 const field = th.dataset.sort;
                 const caret = document.getElementById(`sort-caret-${field}`);
                 if (!caret) return;
-                if (field === currentSort) {
-                    caret.textContent = currentSortDir === 'asc' ? '↑' : '↓';
-                    th.setAttribute('aria-sort', currentSortDir === 'asc' ? 'ascending' : 'descending');
+                const isActive = field === currentSort;
+                if (isActive) {
+                    const isAsc = currentSortDir === 'asc';
+                    caret.textContent = isAsc ? '↑' : '↓';
+                    caret.style.opacity = '1';
+                    th.setAttribute('aria-sort', isAsc ? 'ascending' : 'descending');
+                    th.title = isAsc
+                        ? `Sorted A → Z — click to sort Z → A`
+                        : `Sorted Z → A — click to sort A → Z`;
+                    th.classList.add('sort-active');
                 } else {
                     caret.textContent = '↕';
+                    caret.style.opacity = '0.35';
                     th.removeAttribute('aria-sort');
+                    th.title = `Click to sort by ${field}`;
+                    th.classList.remove('sort-active');
                 }
             });
         }
