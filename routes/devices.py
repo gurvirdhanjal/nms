@@ -486,7 +486,7 @@ def _resolve_device_status(device, latest_status_by_ip):
     return latest_status_by_ip.get(device.device_ip, 'Offline')
 
 
-def _device_inventory_payload(device, *, latest_status_by_ip=None, snmp_config=None):
+def _device_inventory_payload(device, *, latest_status_by_ip=None, snmp_config=None, open_ports=None):
     payload = device.to_dict()
     cfg = snmp_config if snmp_config is not None else getattr(device, 'snmp_config', None)
     payload['monitoring_mode'] = (device.monitoring_mode or 'ping')
@@ -495,7 +495,51 @@ def _device_inventory_payload(device, *, latest_status_by_ip=None, snmp_config=N
     payload['snmp_last_poll'] = _iso_utc(cfg.last_successful_poll) if cfg and cfg.last_successful_poll else None
     if latest_status_by_ip is not None:
         payload['status'] = _resolve_device_status(device, latest_status_by_ip)
+    payload['open_ports'] = open_ports if open_ports is not None else []
     return payload
+
+
+def _load_open_ports_by_ip(device_ips):
+    """Bulk-load the latest open PortScanResult rows for a list of IPs.
+
+    Returns a dict keyed by device_ip, each value is a list of
+    {'port_number': int, 'service_name': str|None} sorted by port number.
+    Only the most-recent scan timestamp per IP is included.
+    """
+    ips = sorted({ip for ip in device_ips if ip})
+    if not ips:
+        return {}
+
+    from models.scan_history import PortScanResult
+    from sqlalchemy import text as _text
+
+    # Find the latest scan_timestamp per IP, then fetch all open ports from that scan.
+    stmt = _text("""
+        SELECT psr.device_ip, psr.port_number, psr.service_name
+        FROM port_scan_result psr
+        INNER JOIN (
+            SELECT device_ip, MAX(scan_timestamp) AS latest_ts
+            FROM port_scan_result
+            WHERE device_ip = ANY(:ips)
+              AND status = 'open'
+            GROUP BY device_ip
+        ) latest ON psr.device_ip = latest.device_ip
+               AND psr.scan_timestamp = latest.latest_ts
+        WHERE psr.status = 'open'
+        ORDER BY psr.device_ip, psr.port_number
+    """)
+    try:
+        rows = db.session.execute(stmt, {"ips": ips}).fetchall()
+    except Exception:
+        return {}
+
+    result = {}
+    for row in rows:
+        result.setdefault(row.device_ip, []).append({
+            'port_number': row.port_number,
+            'service_name': row.service_name or None,
+        })
+    return result
 
 
 def _apply_device_filters(query, *, Device, DeviceScanHistory, search='', device_type='', subnet='', status=''):
@@ -1080,7 +1124,11 @@ def api_devices():
         subnet=subnet,
         status=status,
     )
-    query = query.order_by(Device.device_ip.asc())
+    _SORT_COLS = {'ip': Device.device_ip, 'hostname': Device.hostname}
+    sort_col = _SORT_COLS.get(request.args.get('sort', 'ip'), Device.device_ip)
+    sort_dir = request.args.get('dir', 'asc')
+    order_expr = sort_col.asc().nullslast() if sort_dir == 'asc' else sort_col.desc().nullslast()
+    query = query.order_by(order_expr)
     
     if request.args.get('page') or request.args.get('paginate') == 'true':
         page = request.args.get('page', default=1, type=int)
@@ -1104,10 +1152,12 @@ def api_devices():
             snmp_by_device_id = {cfg.device_id: cfg for cfg in configs}
             
         result = []
+        device_ips = [d.device_ip for d in devices]
         latest_status_by_ip = _load_latest_scan_statuses(
-            [d.device_ip for d in devices],
+            device_ips,
             DeviceScanHistory=DeviceScanHistory,
         )
+        ports_by_ip = _load_open_ports_by_ip(device_ips)
         for d in devices:
             cfg = snmp_by_device_id.get(d.device_id)
             result.append(
@@ -1115,9 +1165,10 @@ def api_devices():
                     d,
                     latest_status_by_ip=latest_status_by_ip,
                     snmp_config=cfg,
+                    open_ports=ports_by_ip.get(d.device_ip, []),
                 )
             )
-            
+
         return jsonify({
             'devices': result,
             'total_devices': total_devices,
@@ -1128,13 +1179,19 @@ def api_devices():
         })
     else:
         devices = query.all()
+        device_ips = [d.device_ip for d in devices]
         latest_status_by_ip = _load_latest_scan_statuses(
-            [d.device_ip for d in devices],
+            device_ips,
             DeviceScanHistory=DeviceScanHistory,
         )
+        ports_by_ip = _load_open_ports_by_ip(device_ips)
         device_dicts = []
         for d in devices:
-            device_dicts.append(_device_inventory_payload(d, latest_status_by_ip=latest_status_by_ip))
+            device_dicts.append(_device_inventory_payload(
+                d,
+                latest_status_by_ip=latest_status_by_ip,
+                open_ports=ports_by_ip.get(d.device_ip, []),
+            ))
         return jsonify(device_dicts)
 @devices_bp.route('/api/devices/filter_ids')
 def api_filtered_device_ids():
@@ -2875,6 +2932,52 @@ def bulk_set_compliance_profile():
         profile_id, updated, session.get('user_id')
     )
     return jsonify({'status': 'ok', 'compliance_profile_id': profile_id, 'updated_count': updated})
+
+
+@devices_bp.route('/api/devices/bulk-department', methods=['PATCH'])
+@require_login
+def bulk_set_department():
+    """Assign or unassign a department on multiple devices at once.
+
+    Body: { "device_ids": [1, 2, 3], "department_id": 4 }
+    Pass null for department_id to unassign.
+    """
+    from models.device import Device
+    from models.department import Department
+
+    data = request.get_json(silent=True) or {}
+    device_ids = data.get('device_ids')
+    department_id = data.get('department_id')
+
+    if not device_ids or not isinstance(device_ids, list):
+        return jsonify({'error': 'device_ids must be a non-empty list'}), 400
+
+    device_ids = [int(d) for d in device_ids if str(d).isdigit()]
+    if not device_ids:
+        return jsonify({'error': 'No valid device IDs provided'}), 400
+
+    if department_id is not None:
+        if not Department.query.get(int(department_id)):
+            return jsonify({'error': 'Department not found'}), 404
+        department_id = int(department_id)
+
+    try:
+        updated = (
+            Device.query
+            .filter(Device.device_id.in_(device_ids))
+            .update({'department_id': department_id}, synchronize_session=False)
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('[devices] Bulk department assign failed: %s', exc)
+        return jsonify({'error': 'Database error'}), 500
+
+    logger.info(
+        '[devices] Bulk department set dept=%s on %s devices by user=%s',
+        department_id, updated, session.get('user_id')
+    )
+    return jsonify({'status': 'ok', 'department_id': department_id, 'updated_count': updated})
 
 
 @devices_bp.route('/api/devices/<int:device_id>/live-snapshot', methods=['GET'])

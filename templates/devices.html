@@ -153,11 +153,15 @@
         position: sticky;
         right: 0;
         background-color: #10131b;
-        z-index: 1;
+        z-index: 2;
         box-shadow: -3px 0 6px rgba(0,0,0,.25);
     }
     .devices-page .devices-table tbody tr:hover td:last-child {
         background-color: #1a1f2b;
+    }
+    /* Ensure dropdown menus escape overflow containers */
+    .devices-page .device-actions-menu .dropdown-menu {
+        z-index: 1080;
     }
 
     .devices-page .devices-table tbody td {
@@ -195,6 +199,11 @@
         color: var(--d-text-muted);
         text-transform: uppercase;
         letter-spacing: 0.06em;
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: 'IBM Plex Mono', monospace;
     }
 
     .devices-page .devices-table code {
@@ -344,13 +353,86 @@
     }
 
     .devices-page .device-action-toggle {
-        width: 2.05rem;
-        height: 2.05rem;
+        width: 1.8rem;
+        height: 1.8rem;
         padding: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 5px;
+        border-color: transparent !important;
+        background: transparent !important;
+        color: rgba(148,163,184,0.5) !important;
+        transition: color 0.14s ease, background 0.14s ease;
+    }
+    .devices-page .device-action-toggle:hover,
+    .devices-page .devices-table tr:hover .device-action-toggle {
+        color: #cbd5e1 !important;
+        background: rgba(148,163,184,0.12) !important;
+        border-color: rgba(148,163,184,0.2) !important;
+    }
+
+    .device-modal-dialog {
+        max-width: 600px;
+    }
+
+    /* ── Device modal: app-theme dark styling ── */
+    #deviceModal .modal-content,
+    #deviceChooserModal .modal-content {
+        background: rgba(12, 16, 24, 0.98) !important;
+        border: 1px solid rgba(148, 163, 184, 0.18) !important;
+        border-radius: 10px !important;
+        overflow: hidden;
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55) !important;
+        color: #e6edf5 !important;
+    }
+    #deviceModal .modal-header,
+    #deviceChooserModal .modal-header {
+        background: rgba(15, 19, 28, 0.95);
+        border-bottom-color: rgba(148, 163, 184, 0.14) !important;
+        padding: 0.72rem 1rem;
+    }
+    #deviceModal .modal-title,
+    #deviceChooserModal .modal-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #e6edf5;
+    }
+    #deviceModal .modal-body { background: rgba(12, 16, 24, 0.98); }
+    #deviceModal .modal-footer {
+        background: rgba(10, 14, 21, 0.98);
+        border-top-color: rgba(148, 163, 184, 0.12) !important;
+    }
+    #deviceModal .form-control,
+    #deviceModal .form-select {
+        background: rgba(9, 13, 19, 0.88) !important;
+        border-color: rgba(148, 163, 184, 0.22) !important;
+        color: #e6edf5 !important;
+        border-radius: 6px !important;
+    }
+    #deviceModal .form-control:focus,
+    #deviceModal .form-select:focus {
+        border-color: rgba(0, 212, 170, 0.42) !important;
+        box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.12) !important;
+    }
+    #deviceModal .nav-tabs { border-bottom-color: rgba(148, 163, 184, 0.16) !important; }
+    #deviceModal .nav-link { color: rgba(148, 163, 184, 0.72) !important; border-color: transparent !important; }
+    #deviceModal .nav-link.active {
+        color: #e6edf5 !important;
+        background: transparent !important;
+        border-bottom-color: rgba(0, 212, 170, 0.7) !important;
+    }
+    #deviceModal .form-label { color: #c3cfdb; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; }
+    #deviceModal .credential-divider { border-color: rgba(148, 163, 184, 0.12) !important; }
+    #deviceModal .credential-section-label { font-size: 0.7rem; color: #8a97a6; }
+
+    .devices-page .device-type-label {
+        font-size: 0.71rem;
+        color: #94a3b8;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
     }
 
     .devices-page .device-actions-menu .dropdown-menu {
@@ -395,57 +477,119 @@
         overflow-anchor: none;
         overscroll-behavior: contain;
         scrollbar-gutter: stable both-edges;
-        contain: layout paint;
-        isolation: isolate;
-        transform: translateZ(0);
-        backface-visibility: hidden;
-        will-change: scroll-position;
     }
 
     .devices-page .devices-table {
         width: 100%;
-        min-width: 1000px;
+        min-width: 1100px;
         table-layout: fixed;
     }
 
+    /* col 1: checkbox */
     .devices-page .devices-table th:nth-child(1),
     .devices-page .devices-table td:nth-child(1) {
         width: 44px;
     }
 
+    /* col 2: hostname (includes MAC sub-line) */
     .devices-page .devices-table th:nth-child(2),
     .devices-page .devices-table td:nth-child(2) {
-        width: 25%;
+        width: 22%;
     }
 
+    /* col 3: ip */
     .devices-page .devices-table th:nth-child(3),
     .devices-page .devices-table td:nth-child(3) {
-        width: 16%;
+        width: 11%;
     }
 
+    /* col 4: ports */
     .devices-page .devices-table th:nth-child(4),
     .devices-page .devices-table td:nth-child(4) {
-        width: 14%;
+        width: 130px;
     }
 
+    /* col 5: ping */
     .devices-page .devices-table th:nth-child(5),
     .devices-page .devices-table td:nth-child(5) {
-        width: 15%;
+        width: 80px;
     }
 
+    /* col 6: status */
     .devices-page .devices-table th:nth-child(6),
     .devices-page .devices-table td:nth-child(6) {
+        width: 55px;
+    }
+
+    /* col 7: link */
+    .devices-page .devices-table th:nth-child(7),
+    .devices-page .devices-table td:nth-child(7) {
+        width: 70px;
+    }
+
+    /* col 8: type */
+    .devices-page .devices-table th:nth-child(8),
+    .devices-page .devices-table td:nth-child(8) {
         width: 12%;
     }
 
-    .devices-page .devices-table th:nth-child(7),
-    .devices-page .devices-table td:nth-child(7) {
-        width: 90px;
+    /* col 9: snmp */
+    .devices-page .devices-table th:nth-child(9),
+    .devices-page .devices-table td:nth-child(9) {
+        width: 80px;
     }
 
-    .devices-page .devices-table th:nth-child(8),
-    .devices-page .devices-table td:nth-child(8) {
-        width: 80px;
+    /* col 10: actions */
+    .devices-page .devices-table th:nth-child(10),
+    .devices-page .devices-table td:nth-child(10) {
+        width: 56px;
+    }
+
+    /* Port badges */
+    .devices-page .port-badges-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        align-items: center;
+    }
+
+    .devices-page .port-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.5;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(30, 41, 59, 0.7);
+        color: #94a3b8;
+        white-space: nowrap;
+        cursor: default;
+    }
+
+    .devices-page .port-badge-web {
+        border-color: rgba(56, 189, 248, 0.28);
+        background: rgba(14, 116, 144, 0.18);
+        color: #7dd3fc;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .devices-page .port-badge-web:hover {
+        border-color: rgba(56, 189, 248, 0.55);
+        background: rgba(14, 116, 144, 0.3);
+        color: #bae6fd;
+        text-decoration: none;
+    }
+
+    .devices-page .port-badge-more {
+        border-color: rgba(148, 163, 184, 0.14);
+        background: rgba(15, 23, 42, 0.5);
+        color: #64748b;
+        cursor: help;
     }
 
     .devices-page .device-name-cell,
@@ -809,10 +953,10 @@
 
     .snmp-config-modal .modal-content {
         border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 14px;
+        border-radius: 10px;
         overflow: hidden;
-        background: #111827;
-        box-shadow: 0 24px 56px rgba(2, 6, 23, 0.34);
+        background: rgba(12, 16, 24, 0.98);
+        box-shadow: 0 20px 48px rgba(2, 6, 23, 0.55);
     }
 
     .snmp-config-modal .snmp-config-header {
@@ -865,6 +1009,8 @@
     .snmp-config-modal .snmp-config-body {
         padding: 1rem 1.05rem 1.1rem;
         background: #111827;
+        max-height: calc(100vh - 220px);
+        overflow-y: auto;
     }
 
     .snmp-config-modal .snmp-config-lead {
@@ -884,7 +1030,7 @@
     .snmp-config-modal .snmp-summary-card {
         padding: 0.78rem 0.82rem;
         border: 1px solid rgba(148, 163, 184, 0.12);
-        border-radius: 10px;
+        border-radius: 7px;
         background: rgba(15, 23, 42, 0.58);
         min-width: 0;
     }
@@ -953,7 +1099,7 @@
     .snmp-config-modal .snmp-config-panel {
         padding: 0.95rem;
         border: 1px solid rgba(148, 163, 184, 0.14);
-        border-radius: 10px;
+        border-radius: 7px;
         background: rgba(15, 23, 42, 0.46);
     }
 
@@ -989,8 +1135,8 @@
 
     .snmp-config-modal .form-control:focus,
     .snmp-config-modal .form-select:focus {
-        border-color: rgba(96, 165, 250, 0.55);
-        box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.14);
+        border-color: rgba(0, 212, 170, 0.45);
+        box-shadow: 0 0 0 0.16rem rgba(0, 212, 170, 0.12);
     }
 
     .snmp-config-modal .form-check-input {
@@ -999,8 +1145,8 @@
     }
 
     .snmp-config-modal .form-check-input:checked {
-        background-color: #2563eb;
-        border-color: #2563eb;
+        background-color: var(--ui-accent, #00d4aa);
+        border-color: var(--ui-accent, #00d4aa);
     }
 
     .snmp-config-modal .form-check-label {
@@ -1331,22 +1477,26 @@
                                 id="typeFilter" name="type" onchange="submitServerFilters()">
                                 <option value="" {% if not active_type %}selected{% endif %}>All Types</option>
                                 <option value="switch" {% if active_type=='switch' %}selected{% endif %}>Switch</option>
-                                <option value="access_point" {% if active_type=='access_point' %}selected{% endif %}>
-                                    Access Point
-                                </option>
+                                <option value="access_point" {% if active_type=='access_point' %}selected{% endif %}>Access Point</option>
                                 <option value="router" {% if active_type=='router' %}selected{% endif %}>Router</option>
-                                <option value="firewall" {% if active_type=='firewall' %}selected{% endif %}>Firewall
-                                </option>
+                                <option value="firewall" {% if active_type=='firewall' %}selected{% endif %}>Firewall</option>
                                 <option value="server" {% if active_type=='server' %}selected{% endif %}>Server</option>
-                                <option value="workstation" {% if active_type=='workstation' %}selected{% endif %}>
-                                    Workstation
-                                </option>
-                                <option value="camera" {% if active_type in ['camera', 'camera/iot' , 'camera_iot' ]
-                                    %}selected{% endif %}>Camera/IoT</option>
-                                <option value="printer" {% if active_type=='printer' %}selected{% endif %}>Printer
-                                </option>
+                                <option value="workstation" {% if active_type=='workstation' %}selected{% endif %}>Workstation</option>
+                                <option value="camera" {% if active_type in ['camera', 'camera/iot', 'camera_iot'] %}selected{% endif %}>Camera</option>
+                                <option value="nvr" {% if active_type=='nvr' %}selected{% endif %}>NVR</option>
+                                <option value="dvr" {% if active_type=='dvr' %}selected{% endif %}>DVR</option>
+                                <option value="printer" {% if active_type=='printer' %}selected{% endif %}>Printer</option>
                                 <option value="mobile" {% if active_type=='mobile' %}selected{% endif %}>Mobile</option>
+                                <option value="iphone" {% if active_type=='iphone' %}selected{% endif %}>iPhone</option>
+                                <option value="android" {% if active_type=='android' %}selected{% endif %}>Android</option>
+                                <option value="tv" {% if active_type=='tv' %}selected{% endif %}>TV</option>
                                 <option value="iot" {% if active_type=='iot' %}selected{% endif %}>IoT</option>
+                                <option value="ipbx" {% if active_type=='ipbx' %}selected{% endif %}>IPBX</option>
+                                <option value="virtual_server" {% if active_type=='virtual_server' %}selected{% endif %}>Virtual Server</option>
+                                <option value="virtual_device" {% if active_type=='virtual_device' %}selected{% endif %}>Virtual Device</option>
+                                <option value="vlan_ip" {% if active_type=='vlan_ip' %}selected{% endif %}>VLAN IP</option>
+                                <option value="vlan_device" {% if active_type=='vlan_device' %}selected{% endif %}>VLAN Device</option>
+                                <option value="unknown" {% if active_type=='unknown' %}selected{% endif %}>Unknown</option>
                             </select>
 
                             <select
@@ -1400,6 +1550,11 @@
                             <div class="bulk-actions-controls">
                                 <button class="btn btn-outline-secondary btn-sm" onclick="clearAllSelections()">
                                     <i data-lucide="x-circle"></i> Clear
+                                </button>
+                                <!-- Bulk assign department -->
+                                <button class="btn btn-outline-secondary btn-sm" type="button"
+                                    onclick="openBulkDeptModal()">
+                                    <i data-lucide="building-2"></i> Assign Dept
                                 </button>
                                 <!-- Bulk assign compliance profile -->
                                 <div class="dropdown">
@@ -1467,13 +1622,14 @@
                                                 <input class="form-check-input" type="checkbox" id="selectAllCheckbox">
                                             </div>
                                         </th>
-                                        <th>Name</th>
-                                        <th>IP Address</th>
-                                        <th>Link</th>
+                                        <th class="sort-header" data-sort="hostname" title="Click to sort by hostname" style="cursor:pointer;user-select:none;">Hostname <span class="sort-caret" id="sort-caret-hostname">↕</span></th>
+                                        <th class="sort-header" data-sort="ip" title="Click to sort by IP" style="cursor:pointer;user-select:none;">IP <span class="sort-caret" id="sort-caret-ip">↑</span></th>
+                                        <th>Ports</th>
                                         <th>Ping</th>
+                                        <th>Status</th>
+                                        <th>Link</th>
                                         <th>Type</th>
                                         <th>SNMP</th>
-                                        <th>Status</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -1517,12 +1673,32 @@
             </div>
         </div>
 
+        <!-- Device Chooser Modal -->
+        <div class="modal fade" id="deviceChooserModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content bg-dark text-white border-secondary">
+                    <div class="modal-header border-secondary py-2">
+                        <h6 class="modal-title mb-0" id="deviceChooserName">Open Device</h6>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body d-grid gap-2 py-3">
+                        <a id="deviceChooserInternal" href="#" class="btn btn-outline-info btn-sm">
+                            <i data-lucide="layout-dashboard"></i> Open Detailed Page
+                        </a>
+                        <a id="deviceChooserExternal" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">
+                            <i data-lucide="external-link"></i> Open Device Web UI
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Device Modal -->
         <div class="modal fade" id="deviceModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-            <div class="modal-dialog modal-lg">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable device-modal-dialog">
                 <div class="modal-content bg-dark text-white border-secondary">
-                    <div class="modal-header border-secondary">
-                        <h5 class="modal-title"><i data-lucide="circle-plus"></i> Add / Edit Device</h5>
+                    <div class="modal-header border-secondary py-2">
+                        <h6 class="modal-title"><i data-lucide="circle-plus"></i> Add / Edit Device</h6>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
                             aria-label="Close"></button>
                     </div>
@@ -1530,24 +1706,17 @@
                         <form id="deviceForm" action="{{ url_for('devices_bp.save_device') }}" method="POST">
                             <input type="hidden" name="device_id" id="device_id">
 
-                            <!-- Navbar Tabs -->
+                            <!-- Tabs: Identity | Settings -->
                             <ul class="nav nav-tabs border-secondary mb-3" id="deviceTabs" role="tablist">
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link active text-light" id="tab-identity-btn"
-                                        data-bs-toggle="tab" data-bs-target="#tab-identity" type="button" role="tab"><i
-                                            data-lucide="id-card"></i>
-                                        Identity</button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link text-light" id="tab-monitoring-btn" data-bs-toggle="tab"
-                                        data-bs-target="#tab-monitoring" type="button" role="tab"><i
-                                            data-lucide="activity"></i> Monitoring</button>
+                                        data-bs-toggle="tab" data-bs-target="#tab-identity" type="button" role="tab">
+                                        <i data-lucide="id-card"></i> Identity</button>
                                 </li>
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link text-light" id="tab-ops-btn" data-bs-toggle="tab"
-                                        data-bs-target="#tab-ops" type="button" role="tab"><i
-                                            data-lucide="settings"></i>
-                                        Operations</button>
+                                        data-bs-target="#tab-ops" type="button" role="tab">
+                                        <i data-lucide="settings"></i> Settings</button>
                                 </li>
                             </ul>
 
@@ -1555,311 +1724,134 @@
 
                                 <!-- IDENTITY TAB -->
                                 <div class="tab-pane fade show active" id="tab-identity" role="tabpanel">
-                                    <div class="row g-3">
+                                    <div class="row g-2">
                                         <div class="col-md-6">
-                                            <label class="form-label">Device Name <span
-                                                    class="text-danger">*</span></label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                                name="device_name" id="device_name" required
-                                                placeholder="e.g. APP-SERVER-01">
+                                            <label class="form-label">Device Name <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                                name="device_name" id="device_name" required placeholder="e.g. AP-FLOOR2">
                                         </div>
                                         <div class="col-md-6">
-                                            <label class="form-label">IP Address <span
-                                                    class="text-danger">*</span></label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                                name="device_ip" id="device_ip" required placeholder="e.g. 192.168.1.5">
+                                            <label class="form-label">IP Address <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                                name="device_ip" id="device_ip" required placeholder="192.168.1.5">
                                         </div>
-
                                         <div class="col-md-6">
-                                            <label class="form-label">Device Type <span
-                                                    class="text-danger">*</span></label>
-                                            <select class="form-select bg-dark text-light border-secondary"
+                                            <label class="form-label">Device Type <span class="text-danger">*</span></label>
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                                 name="device_type" id="device_type" required>
                                                 <option value="server">Server</option>
                                                 <option value="switch">Switch</option>
+                                                <option value="access_point">Access Point</option>
                                                 <option value="router">Router</option>
                                                 <option value="firewall">Firewall</option>
                                                 <option value="workstation">Workstation</option>
-                                                <option value="camera">Camera/IoT</option>
+                                                <option value="camera">Camera</option>
+                                                <option value="nvr">NVR</option>
+                                                <option value="dvr">DVR</option>
                                                 <option value="printer">Printer</option>
+                                                <option value="mobile">Mobile</option>
+                                                <option value="iphone">iPhone</option>
+                                                <option value="android">Android</option>
+                                                <option value="tv">TV</option>
                                                 <option value="iot">IoT</option>
+                                                <option value="ipbx">IPBX</option>
+                                                <option value="virtual_server">Virtual Server</option>
+                                                <option value="virtual_device">Virtual Device</option>
+                                                <option value="vlan_ip">VLAN IP</option>
+                                                <option value="vlan_device">VLAN Device</option>
                                                 <option value="unknown">Unknown</option>
                                             </select>
                                         </div>
-
                                         <div class="col-md-6">
                                             <label class="form-label">Hostname</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                                 name="hostname" id="hostname" placeholder="Optional">
                                         </div>
-
                                         <div class="col-md-6">
                                             <label class="form-label">MAC Address</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                                 name="macaddress" id="macaddress" placeholder="00:11:22:33:44:55">
                                         </div>
-
                                         <div class="col-md-6">
                                             <label class="form-label">Manufacturer</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                                 name="manufacturer" id="manufacturer" placeholder="Optional">
                                         </div>
-
-                                        <div class="col-md-12">
+                                        <div class="col-12">
                                             <label class="form-label">Location</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                                name="location" id="location"
-                                                placeholder="e.g. Data Center / Rack 2 / U5">
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                                name="location" id="location" placeholder="e.g. Rack 2 / Floor 3">
                                         </div>
-
-                                        <div class="col-md-12">
+                                        <div class="col-12">
                                             <label class="form-label">Description</label>
-                                            <textarea class="form-control bg-dark text-light border-secondary"
-                                                name="description" id="description" rows="2"
-                                                placeholder="Optional notes..."></textarea>
+                                            <textarea class="form-control form-control-sm bg-dark text-light border-secondary"
+                                                name="description" id="description" rows="2" placeholder="Optional notes..."></textarea>
                                         </div>
 
-                                        <!-- Site & Department Assignment -->
-                                        <div class="col-12 mt-2">
-                                            <hr class="my-2 credential-divider">
-                                            <h6 class="credential-section-label mb-1">
+                                        <!-- Site & Department -->
+                                        <div class="col-12 mt-1">
+                                            <hr class="my-1 credential-divider">
+                                            <h6 class="credential-section-label mb-2 mt-2">
                                                 <i data-lucide="building-2"></i> Site &amp; Department
                                             </h6>
-                                            <p class="text-muted small mb-2">
-                                                Assign this device to a site and department for organizational scoping.
-                                            </p>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Site</label>
-                                            <select class="form-select bg-dark text-light border-secondary"
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                                 name="site_id" id="device_site_id" onchange="onDeviceSiteChange()">
                                                 <option value="">-- No Site --</option>
                                             </select>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Department</label>
-                                            <select class="form-select bg-dark text-light border-secondary"
-                                                name="department_id" id="device_department_id"
-                                                onchange="onDeviceDepartmentChange()">
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                                name="department_id" id="device_department_id" onchange="onDeviceDepartmentChange()">
                                                 <option value="">-- No Department --</option>
                                             </select>
                                         </div>
 
                                         <!-- Device Credentials -->
-                                        <div class="col-12 mt-2">
-                                            <hr class="my-2 credential-divider">
-                                            <h6 class="credential-section-label mb-1">
-                                                <i data-lucide="key-round"></i> Device Credentials
+                                        <div class="col-12 mt-1">
+                                            <hr class="my-1 credential-divider">
+                                            <h6 class="credential-section-label mb-2 mt-2">
+                                                <i data-lucide="key-round"></i> Credentials
                                             </h6>
-                                            <p class="text-muted small mb-2">
-                                                Used for SSH, SNMP, or API authentication. Password is stored securely
-                                                (hashed).
-                                            </p>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Username</label>
-                                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                                 name="device_username" id="device_username"
                                                 placeholder="admin, root, etc." autocomplete="off">
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Password</label>
-                                            <input type="password"
-                                                class="form-control bg-dark text-light border-secondary"
+                                            <input type="password" class="form-control form-control-sm bg-dark text-light border-secondary"
                                                 name="device_password" id="device_password" placeholder="Enter password"
                                                 autocomplete="new-password">
-                                            <div class="form-text text-muted">Leave blank when editing to keep current
-                                                password.
+                                            <div class="form-text" style="font-size:.65rem;color:#6b7f94;">Leave blank to keep existing password.</div>
+                                        </div>
+
+                                        <!-- Monitoring toggles -->
+                                        <div class="col-12 mt-1">
+                                            <hr class="my-1 credential-divider">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" name="is_monitored" id="is_monitored" checked>
+                                                <label class="form-check-label" for="is_monitored" style="font-size:.75rem;">Monitoring Enabled</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" name="maintenance_mode" id="maintenance_mode">
+                                                <label class="form-check-label" for="maintenance_mode" style="font-size:.75rem;">Maintenance Mode</label>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- MONITORING TAB -->
-                                <div class="tab-pane fade" id="tab-monitoring" role="tabpanel">
-                                    <div class="mb-3">
-                                        <label class="form-label">Monitoring Mode</label>
-                                        <div class="btn-group w-100" role="group">
-                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_ping"
-                                                value="ping" checked onchange="toggleMonitoringFields()">
-                                            <label class="btn btn-outline-secondary" for="mode_ping">Ping Only</label>
-
-                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_snmp"
-                                                value="snmp" onchange="toggleMonitoringFields()">
-                                            <label class="btn btn-outline-secondary" for="mode_snmp">SNMP</label>
-
-                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_agent"
-                                                value="agent" onchange="toggleMonitoringFields()">
-                                            <label class="btn btn-outline-secondary" for="mode_agent">Agent</label>
-
-                                            <input type="radio" class="btn-check" name="monitoring_mode" id="mode_wmi"
-                                                value="wmi" onchange="toggleMonitoringFields()">
-                                            <label class="btn btn-outline-secondary" for="mode_wmi">WMI</label>
-                                        </div>
-                                    </div>
-
-                                    <!-- SNMP Fields -->
-                                    <div id="snmpFields"
-                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                        <h6 class="text-info mb-3">SNMP Configuration</h6>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Version</label>
-                                                <select class="form-select bg-dark text-light border-secondary"
-                                                    name="snmp_version" id="snmp_version"
-                                                    onchange="toggleSnmpVersion()">
-                                                    <option value="v2c">v2c</option>
-                                                    <option value="v3">v3</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Port</label>
-                                                <input type="number"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="snmp_port" id="snmp_port" value="161">
-                                            </div>
-
-                                            <!-- v2c Community -->
-                                            <div class="col-md-12" id="snmp_v2_fields">
-                                                <label class="form-label">Community String</label>
-                                                <input type="text"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="snmp_community" id="snmp_community" value="public">
-                                            </div>
-
-                                            <!-- v3 Fields -->
-                                            <div class="col-md-12 monitoring-fields-hidden" id="snmp_v3_fields">
-                                                <div class="row g-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Username</label>
-                                                        <input type="text"
-                                                            class="form-control bg-dark text-light border-secondary"
-                                                            name="snmp_username" id="snmp_username">
-                                                    </div>
-                                                    <div class="col-md-6"></div>
-
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Auth Protocol</label>
-                                                        <select class="form-select bg-dark text-light border-secondary"
-                                                            name="snmp_auth_proto" id="snmp_auth_proto">
-                                                            <option value="">None</option>
-                                                            <option value="MD5">MD5</option>
-                                                            <option value="SHA">SHA</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Auth Password</label>
-                                                        <input type="password"
-                                                            class="form-control bg-dark text-light border-secondary"
-                                                            name="snmp_auth_password" id="snmp_auth_password">
-                                                    </div>
-
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Priv Protocol</label>
-                                                        <select class="form-select bg-dark text-light border-secondary"
-                                                            name="snmp_priv_proto" id="snmp_priv_proto">
-                                                            <option value="">None</option>
-                                                            <option value="DES">DES</option>
-                                                            <option value="AES">AES</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Priv Password</label>
-                                                        <input type="password"
-                                                            class="form-control bg-dark text-light border-secondary"
-                                                            name="snmp_priv_password" id="snmp_priv_password">
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Agent Fields -->
-                                    <div id="agentFields"
-                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                        <h6 class="text-info mb-3">Agent Configuration</h6>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Token / Key</label>
-                                                <input type="text"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="agent_token" id="agent_token">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">OS Type</label>
-                                                <select class="form-select bg-dark text-light border-secondary"
-                                                    name="agent_os_type" id="agent_os_type">
-                                                    <option value="windows">Windows</option>
-                                                    <option value="linux">Linux</option>
-                                                    <option value="macos">macOS</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Check-in Interval (sec)</label>
-                                                <input type="number"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="agent_interval" id="agent_interval" value="300">
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- WMI Fields -->
-                                    <div id="wmiFields"
-                                        class="border border-secondary rounded p-3 mb-3 bg-secondary bg-opacity-10 monitoring-fields-hidden">
-                                        <h6 class="text-info mb-3">WMI Configuration</h6>
-                                        <div class="alert alert-warning py-1 small"><i data-lucide="triangle-alert"></i>
-                                            Not recommended for long-term monitoring.</div>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Domain</label>
-                                                <input type="text"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="wmi_domain" id="wmi_domain">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Username</label>
-                                                <input type="text"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="wmi_username" id="wmi_username">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Password</label>
-                                                <input type="password"
-                                                    class="form-control bg-dark text-light border-secondary"
-                                                    name="wmi_password" id="wmi_password">
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Connectivity Test -->
-                                    <div class="d-grid gap-2">
-                                        <button type="button" class="btn btn-outline-info" id="testConnectBtn"
-                                            onclick="testConnectivity()">
-                                            <i data-lucide="plug-zap"></i> Test Connectivity
-                                        </button>
-                                        <div id="testResult" class="mt-2"></div>
-                                    </div>
-                                </div>
-
-                                <!-- OPERATIONS TAB -->
+                                <!-- SETTINGS TAB -->
                                 <div class="tab-pane fade" id="tab-ops" role="tabpanel">
-                                    <div class="form-check form-switch mb-3">
-                                        <input class="form-check-input" type="checkbox" name="is_monitored"
-                                            id="is_monitored" checked>
-                                        <label class="form-check-label" for="is_monitored">Monitoring Enabled</label>
-                                        <div class="form-text text-muted">Identify if the system should actively poll
-                                            this
-                                            device.</div>
-                                    </div>
-
-                                    <div class="form-check form-switch mb-3">
-                                        <input class="form-check-input" type="checkbox" name="maintenance_mode"
-                                            id="maintenance_mode">
-                                        <label class="form-check-label" for="maintenance_mode">Maintenance Mode</label>
-                                        <div class="form-text text-muted">Suppress alerts for this device. Maintenance
-                                            mode takes precedence over any compliance profile.</div>
-                                    </div>
-
                                     <div class="operations-panel-card">
                                         <div
                                             class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
@@ -1880,7 +1872,7 @@
                                         </div>
 
                                         <label class="form-label" for="compliance_profile_id">Assigned Profile</label>
-                                        <select class="form-select bg-dark text-light border-secondary"
+                                        <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                             name="compliance_profile_id" id="compliance_profile_id">
                                             <option value="">Global defaults</option>
                                             {% for profile in (compliance_profiles if compliance_profiles is defined
@@ -1920,12 +1912,28 @@
                                 </div>
 
                             </div>
+
+                            <!-- Hidden monitoring fields — values preserved when editing via editDevice() -->
+                            <input type="hidden" name="monitoring_mode" id="monitoring_mode" value="ping">
+                            <input type="hidden" name="snmp_version" id="snmp_version" value="v2c">
+                            <input type="hidden" name="snmp_port" id="snmp_port" value="161">
+                            <input type="hidden" name="snmp_community" id="snmp_community" value="public">
+                            <input type="hidden" name="snmp_username" id="snmp_username" value="">
+                            <input type="hidden" name="snmp_auth_proto" id="snmp_auth_proto" value="">
+                            <input type="hidden" name="snmp_auth_password" id="snmp_auth_password" value="">
+                            <input type="hidden" name="snmp_priv_proto" id="snmp_priv_proto" value="">
+                            <input type="hidden" name="snmp_priv_password" id="snmp_priv_password" value="">
+                            <input type="hidden" name="agent_token" id="agent_token" value="">
+                            <input type="hidden" name="agent_os_type" id="agent_os_type" value="windows">
+                            <input type="hidden" name="agent_interval" id="agent_interval" value="300">
+                            <input type="hidden" name="wmi_domain" id="wmi_domain" value="">
+                            <input type="hidden" name="wmi_username" id="wmi_username" value="">
+                            <input type="hidden" name="wmi_password" id="wmi_password" value="">
                         </form>
                     </div>
-                    <div class="modal-footer border-secondary">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" form="deviceForm" class="btn btn-primary" id="deviceFormSubmitBtn">Save
-                            Device</button>
+                    <div class="modal-footer border-secondary py-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" form="deviceForm" class="btn btn-primary btn-sm" id="deviceFormSubmitBtn">Save Device</button>
                     </div>
                 </div>
             </div>
@@ -1933,7 +1941,7 @@
 
         <div class="modal fade snmp-config-modal" id="snmpConfigModal" tabindex="-1" aria-hidden="true"
             data-bs-backdrop="static">
-            <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
                 <div class="modal-content text-white">
                     <div class="snmp-config-header">
                         <div class="snmp-config-identity">
@@ -2069,6 +2077,35 @@
             </div>
         </div>
 
+    <!-- Bulk Assign Department Modal -->
+    <div class="modal fade" id="bulkDeptModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
+            <div class="modal-content" style="background:rgba(12,16,24,0.98);border:1px solid rgba(148,163,184,0.18);border-radius:10px;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,0.55);color:#e6edf5;">
+                <div class="modal-header" style="background:rgba(15,19,28,0.95);border-bottom-color:rgba(148,163,184,0.14);padding:0.72rem 1rem;">
+                    <h6 class="modal-title" style="font-size:0.82rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#e6edf5;">
+                        <i data-lucide="building-2" style="width:15px;height:15px;vertical-align:text-bottom;margin-right:0.4rem;"></i>Assign Department
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding:1rem;background:rgba(12,16,24,0.98);">
+                    <p style="font-size:0.76rem;color:#8a97a6;margin-bottom:0.75rem;">
+                        Assign <strong id="bulkDeptCount" style="color:#e6edf5;">0</strong> selected devices to a department.
+                    </p>
+                    <label style="display:block;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#c3cfdb;margin-bottom:0.3rem;">Department</label>
+                    <select id="bulkDeptSelect" style="width:100%;background:rgba(9,13,19,0.88);border:1px solid rgba(148,163,184,0.22);border-radius:6px;color:#e6edf5;padding:0.4rem 0.6rem;font-size:0.8rem;">
+                        <option value="">— Unassign (no department) —</option>
+                    </select>
+                </div>
+                <div class="modal-footer" style="background:rgba(10,14,21,0.98);border-top-color:rgba(148,163,184,0.12);padding:0.62rem 1rem;display:flex;justify-content:flex-end;gap:0.5rem;">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm" id="bulkDeptSaveBtn"
+                        style="background:var(--ui-accent,#00d4aa);color:#07100f;border:1px solid var(--ui-accent,#00d4aa);font-weight:700;"
+                        onclick="saveBulkDepartment()">Save Assignment</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     </div>
 
     <script>
@@ -2106,10 +2143,20 @@
             { value: 'firewall', label: 'Firewall' },
             { value: 'server', label: 'Server' },
             { value: 'workstation', label: 'Workstation' },
-            { value: 'camera', label: 'Camera/IoT' },
+            { value: 'camera', label: 'Camera' },
+            { value: 'nvr', label: 'NVR' },
+            { value: 'dvr', label: 'DVR' },
             { value: 'printer', label: 'Printer' },
             { value: 'mobile', label: 'Mobile' },
-            { value: 'iot', label: 'IoT' }
+            { value: 'iphone', label: 'iPhone' },
+            { value: 'android', label: 'Android' },
+            { value: 'tv', label: 'TV' },
+            { value: 'iot', label: 'IoT' },
+            { value: 'ipbx', label: 'IPBX' },
+            { value: 'virtual_server', label: 'Virtual Server' },
+            { value: 'virtual_device', label: 'Virtual Device' },
+            { value: 'vlan_ip', label: 'VLAN IP' },
+            { value: 'vlan_device', label: 'VLAN Device' }
         ]);
         const DEVICE_TYPE_OPTIONS_HTML = DEVICE_TYPE_OPTIONS
             .map(({ value, label }) => `<option value="${value}">${label}</option>`)
@@ -2194,6 +2241,8 @@
 
         let currentPage = 1;
         let currentPerPage = 100;
+        let currentSort = 'ip';
+        let currentSortDir = 'asc';
         let devicesFetchController = null;
         let devicesFetchToken = 0;
         let snmpModalInstance = null;
@@ -2234,19 +2283,67 @@
             `;
         }
 
+        const _TYPE_SHORT = {
+            server:'Server', switch:'Switch', access_point:'AP', router:'Router',
+            firewall:'Firewall', workstation:'Station', camera:'Camera', nvr:'NVR',
+            dvr:'DVR', printer:'Printer', mobile:'Mobile', iphone:'iPhone',
+            android:'Android', tv:'TV', iot:'IoT', ipbx:'IPBX',
+            virtual_server:'vServer', virtual_device:'vDevice',
+            vlan_ip:'VLAN IP', vlan_device:'VLAN Dev', unknown:'—'
+        };
+        function _deviceTypeLabel(rawType) {
+            const type = normalizeSelectableDeviceType(rawType);
+            const label = _TYPE_SHORT[type] || type || '—';
+            return `<span class="device-type-label" title="${escapeHtml(type)}">${escapeHtml(label)}</span>`;
+        }
+
         function buildDeviceRowRenderKey(device) {
             const selected = globalFilteredSelectionIds.has(device.device_id) ? '1' : '0';
+            const portsKey = (device.open_ports || []).map(p => p.port_number).join(',');
             return [
                 device.device_name,
+                device.hostname || '',
                 device.device_ip,
                 normalizeSelectableDeviceType(device.device_type),
-                device.macaddress,
+                device.macaddress || '',
+                portsKey,
                 device.status,
                 device.subnet_cidr,
                 device.snmp_enabled ? '1' : '0',
                 device.snmp_last_error || '',
                 selected
             ].join('|');
+        }
+
+        const _PORT_WEB = new Set([80, 443, 8080, 8443, 3000, 8888, 4443]);
+
+        function _renderPortBadges(ports, deviceIp) {
+            if (!ports || !ports.length) {
+                return '<span class="text-muted" style="font-size:.7rem;">—</span>';
+            }
+            const MAX_VISIBLE = 3;
+            const visible = ports.slice(0, MAX_VISIBLE);
+            const hidden = ports.slice(MAX_VISIBLE);
+
+            let html = visible.map(p => {
+                const portNum = p.port_number;
+                const svc = p.service_name || '';
+                const titleText = svc ? `${portNum} (${svc})` : String(portNum);
+                if (_PORT_WEB.has(portNum) && deviceIp) {
+                    const scheme = (portNum === 443 || portNum === 8443 || portNum === 4443) ? 'https' : 'http';
+                    const defaultPort = scheme === 'https' ? 443 : 80;
+                    const portSuffix = portNum !== defaultPort ? `:${portNum}` : '';
+                    return `<a href="${scheme}://${deviceIp}${portSuffix}" target="_blank" rel="noopener noreferrer" class="port-badge port-badge-web" data-no-row-nav="true" onclick="event.stopPropagation()" title="Open ${titleText}">${portNum}</a>`;
+                }
+                return `<span class="port-badge" title="${titleText}">${portNum}</span>`;
+            }).join('');
+
+            if (hidden.length) {
+                const moreTitle = hidden.map(p => p.service_name ? `${p.port_number} (${p.service_name})` : String(p.port_number)).join(', ');
+                html += `<span class="port-badge port-badge-more" title="${moreTitle}">+${hidden.length}</span>`;
+            }
+
+            return `<div class="port-badges-wrap">${html}</div>`;
         }
 
         function _connTypeIcon(connType) {
@@ -2423,7 +2520,9 @@
                 search: filters.search,
                 type: filters.type,
                 subnet: filters.subnet,
-                status: filters.status
+                status: filters.status,
+                sort: currentSort,
+                dir: currentSortDir
             });
 
             const fetchUrl = `/api/devices?${params.toString()}`;
@@ -2476,12 +2575,15 @@
                         window.patchKeyedTableRows(tbody, devices, {
                             getKey: (d) => d.device_id,
                             getRenderKey: (d) => buildDeviceRowRenderKey(d),
-                            emptyColSpan: 8,
+                            emptyColSpan: 10,
                             emptyMessage: '<div class="p-4 text-muted"><i data-lucide="search-x"></i> No devices match your filters.</div>',
                             emptyClassName: 'text-center',
                             applyRow: (row, d) => {
                                 row.dataset.deviceId = d.device_id;
                                 row.dataset.deviceIp = d.device_ip;
+                                row.dataset.deviceType = d.device_type || '';
+                                row.dataset.port = d.port || '';
+                                row.dataset.deviceName = d.hostname || d.device_name || '';
                                 row.dataset.subnet = d.subnet_cidr || '';
                                 row.dataset.liveStatus = normalizeDeviceStatusKey(d.status);
                                 row.dataset.href = getDeviceDetailsHref(d);
@@ -2501,7 +2603,7 @@
                                 refreshDeviceRowCacheEntry(row);
                             },
                             renderCells: (d) => {
-                                const typeSelectHtml = renderDeviceTypeSelect(d.device_id);
+                                const typeSelectHtml = _deviceTypeLabel(d.device_type);
 
                                 const snmpStateClass = d.snmp_last_error
                                     ? 'has-error'
@@ -2576,6 +2678,11 @@
                                     </div>
                                 `;
 
+                                const macSub = d.macaddress && d.macaddress !== 'N/A'
+                                    ? `<div class="device-mac">${escapeHtml(d.macaddress)}</div>`
+                                    : '';
+                                const portsHtml = _renderPortBadges(d.open_ports || [], d.device_ip);
+
                                 return `
                                  <td>
                                      <div class="form-check" data-no-row-nav="true" onclick="event.stopPropagation()">
@@ -2583,23 +2690,21 @@
                                      </div>
                                  </td>
                                  <td class="device-name-cell">
-                                     <a href="${deviceHref}" class="text-decoration-none">
-                                         <strong>${d.device_name}</strong>
+                                     <a href="${deviceHref}" class="text-decoration-none" data-no-row-nav="true" onclick="event.stopPropagation()">
+                                         <strong>${escapeHtml(d.hostname || d.device_name)}</strong>
                                      </a>
-                                     <div class="device-mac">
-                                         <span class="me-1">MAC</span>
-                                         <code>${d.macaddress || 'N/A'}</code>
-                                     </div>
+                                     ${macSub}
                                  </td>
-                                <td><code>${d.device_ip}</code></td>
-                                <td class="device-link-cell">${_connTypeIcon(d.connection_type) || '<span class="text-muted" style="font-size:.75rem;">—</span>'}</td>
+                                <td><code>${escapeHtml(d.device_ip)}</code></td>
+                                <td>${portsHtml}</td>
                                 <td class="device-ping-cell" id="ping-cell-${d.device_id}">${_pingCellHtml(d.latency, d.status)}</td>
-                                <td>${typeSelectHtml}</td>
-                                <td>${snmpHtml}</td>
                                 <td class="device-status-cell">
                                     <span id="status-${d.device_id}" class="status-indicator ${statusClass}" title="${statusText}" aria-hidden="true"></span>
                                     <span class="visually-hidden">${statusText}</span>
                                 </td>
+                                <td class="device-link-cell">${_connTypeIcon(d.connection_type) || '<span class="text-muted" style="font-size:.75rem;">—</span>'}</td>
+                                <td>${typeSelectHtml}</td>
+                                <td>${snmpHtml}</td>
                                 <td>
                                     ${actionMenuHtml}
                                 </td>
@@ -2615,6 +2720,20 @@
                     }
                     bindDeviceTableNavigation();
                     if (typeof updateBulkUI === 'function') updateBulkUI();
+                    // Initialize action dropdowns with Popper fixed strategy so they
+                    // escape the table container's overflow clipping.
+                    if (tbody && typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+                        tbody.querySelectorAll('.device-action-toggle[data-bs-toggle="dropdown"]').forEach(btn => {
+                            if (!btn.__dropdownFixed) {
+                                try {
+                                    bootstrap.Dropdown.getOrCreateInstance(btn, {
+                                        popperConfig: { strategy: 'fixed' }
+                                    });
+                                    btn.__dropdownFixed = true;
+                                } catch (e) { /* ignore */ }
+                            }
+                        });
+                    }
 
                     // Now that DOM is rebuilt, fire a status fetch so the grey dots become colored!
                     if (typeof fetchAllStatuses === 'function') fetchAllStatuses({ force: true });
@@ -3043,9 +3162,29 @@
 
         function navigateToDeviceRow(row) {
             const href = row?.dataset?.href;
-            if (href) {
+            const ip = row?.dataset?.deviceIp || '';
+            const port = row?.dataset?.port || '';
+            const name = row?.dataset?.deviceName || ip || 'Device';
+            if (!href) return;
+
+            const scheme = ['443', '8443'].includes(port) ? 'https' : 'http';
+            const portSuffix = port && !['80', '443', ''].includes(port) ? `:${port}` : '';
+            const externalUrl = ip ? `${scheme}://${ip}${portSuffix}/` : '';
+
+            const chooser = document.getElementById('deviceChooserModal');
+            if (!chooser) {
                 window.location.assign(href);
+                return;
             }
+            document.getElementById('deviceChooserName').textContent = name;
+            document.getElementById('deviceChooserInternal').href = href;
+            const extLink = document.getElementById('deviceChooserExternal');
+            extLink.href = externalUrl || '#';
+            extLink.style.opacity = externalUrl ? '' : '0.4';
+            extLink.style.pointerEvents = externalUrl ? '' : 'none';
+
+            bootstrap.Modal.getOrCreateInstance(chooser).show();
+            if (typeof hydrateLucideIcons === 'function') hydrateLucideIcons(chooser);
         }
 
         function bindDeviceTableNavigation() {
@@ -3079,6 +3218,41 @@
                 event.preventDefault();
                 navigateToDeviceRow(row);
             });
+        }
+
+        function _updateSortCarets() {
+            document.querySelectorAll('th.sort-header').forEach(th => {
+                const field = th.dataset.sort;
+                const caret = document.getElementById(`sort-caret-${field}`);
+                if (!caret) return;
+                if (field === currentSort) {
+                    caret.textContent = currentSortDir === 'asc' ? '↑' : '↓';
+                    th.setAttribute('aria-sort', currentSortDir === 'asc' ? 'ascending' : 'descending');
+                } else {
+                    caret.textContent = '↕';
+                    th.removeAttribute('aria-sort');
+                }
+            });
+        }
+
+        function bindSortHeaders() {
+            if (document.querySelector('th.sort-header[data-sort-bound]')) return;
+            document.querySelectorAll('th.sort-header').forEach(th => {
+                th.setAttribute('data-sort-bound', '1');
+                th.addEventListener('click', () => {
+                    const field = th.dataset.sort;
+                    if (!field) return;
+                    if (currentSort === field) {
+                        currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort = field;
+                        currentSortDir = 'asc';
+                    }
+                    _updateSortCarets();
+                    if (typeof scheduleFetchDevices === 'function') scheduleFetchDevices();
+                });
+            });
+            _updateSortCarets();
         }
 
         function setFilteredSelectionProgress(visible, message = '') {
@@ -3337,6 +3511,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             hydrateLucideIcons();
             bindDeviceTableNavigation();
+            bindSortHeaders();
 
             // Bulk Selection Logic
             const selectAll = document.getElementById('selectAllCheckbox');
@@ -3395,15 +3570,7 @@
         });
 
         function toggleMonitoringFields() {
-            const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
-
-            const snmpFields = document.getElementById('snmpFields');
-            const agentFields = document.getElementById('agentFields');
-            const wmiFields = document.getElementById('wmiFields');
-
-            if (snmpFields) snmpFields.classList.toggle('monitoring-fields-hidden', mode !== 'snmp');
-            if (agentFields) agentFields.classList.toggle('monitoring-fields-hidden', mode !== 'agent');
-            if (wmiFields) wmiFields.classList.toggle('monitoring-fields-hidden', mode !== 'wmi');
+            // Monitoring tab removed — fields are now hidden inputs; this is a no-op.
         }
 
         function thresholdNumber(value) {
@@ -3758,10 +3925,10 @@
                             complianceSelect.value = d.compliance_profile_id ? String(d.compliance_profile_id) : '';
                         }
 
-                        // Monitoring mode
+                        // Monitoring mode — set the hidden input (Monitoring tab removed)
                         const monMode = d.monitoring_mode || 'ping';
-                        const modeInputs = document.querySelectorAll('input[name="monitoring_mode"]');
-                        modeInputs.forEach(inp => { inp.checked = (inp.value === monMode); });
+                        const monModeInput = document.getElementById('monitoring_mode');
+                        if (monModeInput) monModeInput.value = monMode;
 
                         const config = d.snmp_config || {};
 
@@ -3800,22 +3967,13 @@
         }
 
         function toggleSnmpVersion() {
-            const version = document.getElementById('snmp_version').value;
-            const v2Fields = document.getElementById('snmp_v2_fields');
-            const v3Fields = document.getElementById('snmp_v3_fields');
-
-            if (version === 'v2c') {
-                v2Fields.classList.remove('monitoring-fields-hidden');
-                v3Fields.classList.add('monitoring-fields-hidden');
-            } else {
-                v2Fields.classList.add('monitoring-fields-hidden');
-                v3Fields.classList.remove('monitoring-fields-hidden');
-            }
+            // Monitoring tab removed — no visible SNMP fields to toggle.
         }
 
         function testConnectivity() {
             const btn = document.getElementById('testConnectBtn');
             const resultDiv = document.getElementById('testResult');
+            if (!btn || !resultDiv) return;
             const originalText = btn.innerHTML;
 
             // Gather data
@@ -3825,7 +3983,8 @@
                 return;
             }
 
-            const mode = document.querySelector('input[name="monitoring_mode"]:checked').value;
+            const modeEl = document.getElementById('monitoring_mode');
+            const mode = modeEl ? modeEl.value : 'ping';
             const formData = {
                 ip: ip,
                 mode: mode,
@@ -4228,6 +4387,61 @@
                     }
                 })
                 .catch(() => showDevicesNotification('Error assigning compliance profile.', 'danger'));
+        }
+
+        function _collectSelectedDeviceIds() {
+            const selectedIds = new Set();
+            getAllDeviceCheckboxes().forEach(cb => {
+                if (cb && cb.checked) {
+                    const id = parseInt(cb.value, 10);
+                    if (Number.isInteger(id) && id > 0) selectedIds.add(id);
+                }
+            });
+            globalFilteredSelectionIds.forEach(id => selectedIds.add(id));
+            return Array.from(selectedIds);
+        }
+
+        function openBulkDeptModal() {
+            const ids = _collectSelectedDeviceIds();
+            if (!ids.length) { showDevicesNotification('Select at least one device.', 'warning'); return; }
+            document.getElementById('bulkDeptCount').textContent = ids.length;
+            const sel = document.getElementById('bulkDeptSelect');
+            sel.innerHTML = '<option value="">— Unassign (no department) —</option>';
+            (_allDepartments || []).forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.name;
+                sel.appendChild(opt);
+            });
+            if (window.lucide) window.lucide.createIcons();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkDeptModal')).show();
+        }
+
+        function saveBulkDepartment() {
+            const ids = _collectSelectedDeviceIds();
+            const deptId = document.getElementById('bulkDeptSelect').value;
+            if (!ids.length) return;
+            const btn = document.getElementById('bulkDeptSaveBtn');
+            btn.disabled = true;
+            fetch('/api/devices/bulk-department', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: ids, department_id: deptId ? parseInt(deptId) : null }),
+            })
+                .then(r => r.json())
+                .then(d => {
+                    bootstrap.Modal.getInstance(document.getElementById('bulkDeptModal'))?.hide();
+                    if (d.status === 'ok') {
+                        showDevicesNotification(`Department updated on ${d.updated_count} device(s).`, 'success');
+                        clearCrossPageSelection();
+                        updateBulkUI();
+                        scheduleFilterTable();
+                    } else {
+                        showDevicesNotification(`Failed: ${d.error || 'Unknown error'}`, 'danger');
+                    }
+                })
+                .catch(() => showDevicesNotification('Error assigning department.', 'danger'))
+                .finally(() => { btn.disabled = false; });
         }
 
         function updateDeviceType(deviceId, newType, selectIdx) {

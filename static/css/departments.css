@@ -47,6 +47,16 @@
         padding: 0.58rem 0.88rem !important;
         border-radius: 0.7rem !important;
         font-size: 0.82rem !important;
+        background: var(--ui-accent) !important;
+        color: #07100f !important;
+        border: 1px solid var(--ui-accent) !important;
+        font-weight: 700 !important;
+    }
+
+    .departments-primary-btn:hover {
+        background: var(--ui-accent-strong) !important;
+        border-color: var(--ui-accent-strong) !important;
+        color: #07100f !important;
     }
 
     .departments-secondary-btn {
@@ -60,6 +70,41 @@
         border-color: rgba(255, 255, 255, 0.18) !important;
         color: var(--ui-text-primary) !important;
     }
+
+    /* ── Tailwind blue → app accent overrides ── */
+    .departments-page .bg-blue-500,
+    .departments-page [class*="bg-blue-"] {
+        background-color: var(--ui-accent) !important;
+        color: #07100f !important;
+    }
+    .departments-page .hover\:bg-blue-400:hover {
+        background-color: var(--ui-accent-strong) !important;
+    }
+    .departments-page .text-blue-400,
+    .departments-page .text-blue-100,
+    .departments-page .text-blue-200,
+    .departments-page [class*="text-blue-"] {
+        color: var(--ui-accent-strong) !important;
+    }
+    .departments-page .hover\:text-blue-400:hover {
+        color: var(--ui-accent-strong) !important;
+    }
+    .departments-page input:focus,
+    .departments-page select:focus,
+    .departments-page textarea:focus {
+        --tw-ring-color: var(--ui-accent) !important;
+        border-color: rgba(0,212,170,0.45) !important;
+        outline: none !important;
+    }
+    .departments-page .text-blue-600 { color: var(--ui-accent-strong) !important; }
+    .departments-page input[type="checkbox"] { accent-color: var(--ui-accent); }
+    .departments-page .ring-blue-500,
+    .departments-page [class*="ring-blue-"] { --tw-ring-color: var(--ui-accent) !important; }
+    .departments-page .bg-blue-500\/10 { background: rgba(0,212,170,0.08) !important; }
+    .departments-page .ring-blue-500\/20 { --tw-ring-color: rgba(0,212,170,0.2) !important; }
+    .departments-page .bg-blue-500\/10,
+    .departments-page [class*="bg-blue-"][class*="\/"] { background: rgba(0,212,170,0.08) !important; }
+    .departments-page .cursor-pointer.bg-blue-500\/10 { background: rgba(0,212,170,0.10) !important; }
 
     /* KPI Summary Strip */
     .enterprise-kpi-row {
