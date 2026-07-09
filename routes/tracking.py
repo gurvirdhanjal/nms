@@ -1073,7 +1073,12 @@ def _ingest_location_samples(tracked_device_id, samples, *, idempotent=False):
     """
     from models.device_location_log import DeviceLocationLog
     from models.tracked_device import TrackedDevice
-    from dateutil.parser import parse as _parse_dt
+    from datetime import datetime as _dt
+
+    def _parse_dt(s):
+        if not s:
+            return None
+        return _dt.fromisoformat(str(s).strip().replace('Z', '+00:00'))
     latest_recorded = None
     latest_entry = None
     inserted = 0
@@ -4177,12 +4182,12 @@ def api_stream_screenshot(mac_address):
                 yield generate_placeholder_image("Stream Error")
                 time.sleep(2)
         
-        # Max errors reached, stop streaming
         yield generate_placeholder_image("Stream Stopped")
-    
+
     return Response(
-        generate(),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
+        stream_with_context(generate()),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+        headers={'Cache-Control': 'no-store, max-age=0', 'X-Accel-Buffering': 'no'},
     )
 
 
@@ -4190,24 +4195,19 @@ def api_stream_screenshot(mac_address):
 @require_login
 def api_stream_camera(mac_address):
     """Stream real-time camera feed"""
-    # Auth handled by middleware
-
-    
     device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
     if not device or not device.ip_address:
         return Response(
             generate_placeholder_image("Device Not Found"),
             mimetype='multipart/x-mixed-replace; boundary=frame'
         )
-    
+
     def generate():
         consecutive_errors = 0
         max_errors = 5
-        
+
         while consecutive_errors < max_errors:
             try:
-                # Use start_camera endpoint which returns a stream
-                # Use context manager to ensure connection is closed
                 with _tracked_agent_request(
                     device,
                     'GET',
@@ -4216,11 +4216,8 @@ def api_stream_camera(mac_address):
                     headers={'X-API-Key': SHARED_API_KEY},
                     stream=True,
                 ) as response:
-                
                     if response.status_code == 200:
-                        consecutive_errors = 0  # Reset error counter
-                        
-                        # Forward camera stream chunks
+                        consecutive_errors = 0
                         for chunk in response.iter_content(chunk_size=4096):
                             if chunk:
                                 yield chunk
@@ -4234,19 +4231,18 @@ def api_stream_camera(mac_address):
                 logger.error("Camera stream agent error for %s: %s", device.ip_address, e.code)
                 yield generate_placeholder_image(e.code)
                 time.sleep(2)
-                
             except Exception as e:
                 consecutive_errors += 1
                 logger.error("Camera stream error for %s: %s", device.ip_address, e)
                 yield generate_placeholder_image("Camera Error")
                 time.sleep(2)
-                
-        # Max errors reached, stop streaming
+
         yield generate_placeholder_image("Camera Stopped")
-    
+
     return Response(
-        generate(),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
+        stream_with_context(generate()),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+        headers={'Cache-Control': 'no-store, max-age=0', 'X-Accel-Buffering': 'no'},
     )
 
 
@@ -4310,8 +4306,11 @@ def api_stream_audio(mac_address):
             logger.error("Audio stream error for %s: %s", device.ip_address, e)
             return
 
-    # Return audio stream (WAV container for browser compatibility)
-    return Response(generate(), mimetype='audio/wav')
+    return Response(
+        stream_with_context(generate()),
+        mimetype='audio/wav',
+        headers={'Cache-Control': 'no-store, max-age=0', 'X-Accel-Buffering': 'no'},
+    )
 
 
 @tracking_bp.route('/api/tracking/toggle-mic/<mac_address>', methods=['POST', 'PATCH'])
@@ -4359,53 +4358,6 @@ def api_toggle_mic(mac_address):
             'Failed to toggle microphone state.',
             e,
         )
-
-
-@tracking_bp.route('/api/tracking/stream/camera/<mac_address>')
-@require_login
-def proxy_camera_stream(mac_address):
-    """Proxy camera stream from device"""
-    device = TrackedDevice.query.filter_by(mac_address=mac_address).first()
-    if not device or not device.ip_address:
-        return Response("Device not found or offline", 404)
-        
-    def generate():
-        try:
-            # Connect to the service's /start_camera stream
-            # Note: stream=True is crucial for MJPEG
-            resp = _tracked_agent_request(
-                device,
-                'GET',
-                '/start_camera',
-                timeout=5, # Connection timeout
-                headers={'X-API-Key': SHARED_API_KEY},
-                stream=True,
-            )
-            
-            if resp.status_code != 200:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + 
-                       generate_placeholder_image(f"Error: {resp.status_code}") + 
-                       b'\r\n')
-                return
-
-            # Stream the content
-            for chunk in resp.iter_content(chunk_size=4096):
-                yield chunk
-        except AgentHttpError as e:
-            logger.error("Camera proxy agent error for %s: %s", mac_address, e.code)
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + 
-                   generate_placeholder_image(e.code) + 
-                   b'\r\n')
-        except Exception as e:
-            logger.error("Camera proxy error for %s: %s", mac_address, e)
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + 
-                   generate_placeholder_image("Connection Lost") + 
-                   b'\r\n')
-
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @tracking_bp.route('/api/tracking/toggle-camera/<mac_address>', methods=['POST', 'PATCH'])
