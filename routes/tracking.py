@@ -3826,6 +3826,73 @@ def api_patch_command_result():
         return _json_exception('PATCH_RESULT_FAILED', 'Failed to record patch result.', e)
 
 
+# ── Location request channel ──────────────────────────────────────────────────
+
+@tracking_bp.route('/api/tracking/location-requests/result', methods=['POST'])
+def api_location_request_result():
+    """Agent delivers a GPS sample collected in response to a server-pushed location request.
+
+    Auth: shared API key.
+    Body: { request_id, sample_uuid, latitude, longitude,
+            accuracy_meters (opt), source (opt), recorded_at (opt) }
+    The sample is ingested via the existing _ingest_location_samples() path,
+    which handles idempotency via sample_uuid.
+    """
+    try:
+        auth_err = _require_tracking_api_key()
+        if auth_err:
+            return auth_err
+
+        body = request.get_json(silent=True) or {}
+        mac = str(body.get('mac_address') or '').strip()
+        if not mac:
+            return _json_error('MISSING_MAC', 'mac_address is required.', 400)
+
+        from models.tracked_device import TrackedDevice
+        device = TrackedDevice.query.filter_by(mac_address=mac).first()
+        if not device:
+            return _json_error('DEVICE_NOT_FOUND', 'Device not found.', 404)
+
+        sample = {
+            'sample_uuid': str(body.get('sample_uuid') or '').strip() or None,
+            'latitude': body.get('latitude'),
+            'longitude': body.get('longitude'),
+            'accuracy_meters': body.get('accuracy_meters'),
+            'source': body.get('source') or 'agent-request',
+            'recorded_at': body.get('recorded_at'),
+        }
+        inserted = _ingest_location_samples(device.id, [sample], idempotent=True)
+        return jsonify({'success': True, 'inserted': inserted})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('LOCATION_RESULT_FAILED', 'Failed to record location sample.', e)
+
+
+@tracking_bp.route('/api/tracking/<int:device_id>/request-location', methods=['POST'])
+@require_role('admin')
+def api_request_device_location(device_id):
+    """Admin triggers an urgent location fix on the device's next sync.
+
+    Sets location_force_until for 5 minutes so the next sync response
+    includes urgent=True in pending_location_requests, bypassing the agent's
+    local minimum-interval gate.
+    """
+    try:
+        from models.tracked_device import TrackedDevice
+        device = get_scoped_tracked_device_or_404(device_id)
+        device.location_force_until = datetime.utcnow() + timedelta(minutes=5)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Location request queued for next sync.'})
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('REQUEST_LOCATION_FAILED', 'Failed to queue location request.', e)
+
+
 @tracking_bp.route('/api/tracking/<int:device_id>/log-action', methods=['POST'])
 @require_permission('tracking.view')
 def api_log_device_action(device_id):

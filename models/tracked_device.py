@@ -43,6 +43,10 @@ class TrackedDevice(db.Model):
     last_lng = db.Column(db.Float)
     last_location_seen_at = db.Column(db.DateTime)
 
+    # Set by admin to request an urgent location fix on the next sync.
+    # Cleared by the server after delivering the request to the agent.
+    location_force_until = db.Column(db.DateTime, nullable=True)
+
     # Agent metadata
     agent_version = db.Column(db.String(32), nullable=True)
     

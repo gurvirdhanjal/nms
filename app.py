@@ -328,6 +328,7 @@ def create_app(test_config=None):
         from models.device_domain_log import DeviceDomainLog
         from models.device_location_log import DeviceLocationLog
         from models.device_patch_log import DevicePatchLog
+        from models.patch_command import PatchCommand
         from utils.db_migrations import (
             ensure_server_health_columns,
             ensure_tracking_stabilization_columns,

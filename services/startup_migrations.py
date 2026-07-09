@@ -65,6 +65,8 @@ _COLUMNS: list[tuple[str, str, str]] = [
     ("device", "map_locked", "BOOLEAN NOT NULL DEFAULT false"),
     # Agent-reported connection type: 'wifi' | 'lan' | 'unknown'.
     ("device", "connection_type", "VARCHAR(10)"),
+    # On-demand location fix: admin sets this to request an urgent GPS sample.
+    ("tracked_devices", "location_force_until", "TIMESTAMP"),
 ]
 
 # SQLite spells some types/literals differently; normalise per dialect.

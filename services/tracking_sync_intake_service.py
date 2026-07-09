@@ -160,6 +160,26 @@ def build_sync_policy_payload(tracked_device_id: int, client_policy_version: str
             'policy_version': policy_payload['effective_policy_version'],
         }
 
+    # Push a location sample request on every sync.
+    # The agent gates execution via LOCATION_MIN_INTERVAL_SECONDS (~12 h by default)
+    # so this doesn't cause high-frequency polling.  An admin-triggered force request
+    # includes urgent=True, which tells the agent to bypass its local interval gate.
+    try:
+        import uuid as _uuid
+        from models.tracked_device import TrackedDevice as _TD
+        from extensions import db as _db
+        from datetime import datetime as _dt
+
+        _req = {'request_id': str(_uuid.uuid4())}
+        _dev = _TD.query.get(tracked_device_id)
+        if _dev and _dev.location_force_until and _dev.location_force_until > _dt.utcnow():
+            _req['urgent'] = True
+            _dev.location_force_until = None
+            _db.session.commit()
+        response['pending_location_requests'] = [_req]
+    except Exception:
+        pass
+
     # Deliver queued patch commands and mark them sent
     try:
         from models.patch_command import PatchCommand
