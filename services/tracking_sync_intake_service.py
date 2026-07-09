@@ -159,4 +159,34 @@ def build_sync_policy_payload(tracked_device_id: int, client_policy_version: str
             'dns_seen_ttl_seconds': int(policy.dns_seen_ttl_seconds or 1800),
             'policy_version': policy_payload['effective_policy_version'],
         }
+
+    # Deliver queued patch commands and mark them sent
+    try:
+        from models.patch_command import PatchCommand
+        from extensions import db
+        from datetime import datetime
+        queued = (
+            PatchCommand.query
+            .filter_by(tracked_device_id=tracked_device_id, status='queued')
+            .order_by(PatchCommand.created_at)
+            .limit(10)
+            .all()
+        )
+        if queued:
+            now = datetime.utcnow()
+            cmds = []
+            for cmd in queued:
+                cmds.append({
+                    'command_id': cmd.id,
+                    'package_manager': cmd.package_manager,
+                    'package_name': cmd.package_name,
+                    'target_version': cmd.target_version,
+                })
+                cmd.status = 'sent'
+                cmd.sent_at = now
+            db.session.commit()
+            response['pending_patch_commands'] = cmds
+    except Exception:
+        pass  # never let command delivery break the sync response
+
     return response

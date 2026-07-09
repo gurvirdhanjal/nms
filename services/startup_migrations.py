@@ -42,6 +42,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("idx_device_application_logs_device_timestamp", "device_application_logs", "device_id, timestamp"),
     # device — floor-plan placement lookups ("which devices are on this plan")
     ("idx_device_floor_plan_id",                     "device",                  "floor_plan_id"),
+    # patch_commands — per-device status lookup (sync payload injection + admin list)
+    ("ix_patch_commands_device_status",              "patch_commands",          "tracked_device_id, status"),
 ]
 
 # Columns added to existing tables after the initial deploy.  db.create_all()

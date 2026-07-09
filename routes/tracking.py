@@ -3666,6 +3666,166 @@ def api_history_patches(device_id):
         return _json_exception('HISTORY_PATCHES_FAILED', 'Failed to load patch status.', e)
 
 
+# ── Patch commands (server → agent update dispatch) ───────────────────────────
+
+@tracking_bp.route('/api/tracking/<int:device_id>/patch-commands', methods=['GET'])
+@require_permission('tracking.history.view')
+def api_list_patch_commands(device_id):
+    """List patch commands for a device."""
+    try:
+        from models.patch_command import PatchCommand
+        get_scoped_tracked_device_or_404(device_id)
+        status_filter = request.args.get('status', '').strip().lower() or None
+        q = PatchCommand.query.filter_by(tracked_device_id=device_id)
+        if status_filter:
+            q = q.filter_by(status=status_filter)
+        rows = q.order_by(PatchCommand.created_at.desc()).limit(200).all()
+        return jsonify({'success': True, 'data': [r.to_dict() for r in rows]})
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _json_exception('LIST_PATCH_COMMANDS_FAILED', 'Failed to list patch commands.', e)
+
+
+@tracking_bp.route('/api/tracking/<int:device_id>/patch-commands', methods=['POST'])
+@require_role('admin')
+def api_queue_patch_command(device_id):
+    """Queue an update command to be delivered to the agent on next sync."""
+    try:
+        from models.patch_command import PatchCommand, ALLOWED_MANAGERS
+        from models.device_patch_log import DevicePatchLog
+        from flask_login import current_user
+
+        device = get_scoped_tracked_device_or_404(device_id)
+        body = request.get_json(silent=True) or {}
+        pkg_mgr = str(body.get('package_manager') or '').strip().lower()
+        pkg_name = str(body.get('package_name') or '').strip()
+        target_ver = str(body.get('target_version') or '').strip() or None
+
+        if not pkg_mgr or not pkg_name:
+            return _json_error('MISSING_FIELDS', 'package_manager and package_name are required.', 400)
+        if pkg_mgr not in ALLOWED_MANAGERS:
+            return _json_error('INVALID_MANAGER', f'Unsupported package manager: {pkg_mgr}', 400)
+
+        # Verify the package exists in patch_status for this device
+        known = DevicePatchLog.query.filter_by(
+            tracked_device_id=device_id,
+            package_manager=pkg_mgr,
+            package_name=pkg_name,
+        ).first()
+        if not known:
+            return _json_error(
+                'PACKAGE_NOT_FOUND',
+                'Package not found in this device\'s patch inventory. '
+                'Wait for the next agent sync before queuing an update.',
+                404,
+            )
+
+        # Only one queued/sent command per package at a time
+        existing = PatchCommand.query.filter(
+            PatchCommand.tracked_device_id == device_id,
+            PatchCommand.package_manager == pkg_mgr,
+            PatchCommand.package_name == pkg_name,
+            PatchCommand.status.in_(['queued', 'sent']),
+        ).first()
+        if existing:
+            return _json_error(
+                'ALREADY_QUEUED',
+                f'A command for {pkg_name} is already {existing.status}.',
+                409,
+            )
+
+        cmd = PatchCommand(
+            tracked_device_id=device_id,
+            package_manager=pkg_mgr,
+            package_name=pkg_name,
+            target_version=target_ver or known.available_version,
+            status='queued',
+            created_by=getattr(current_user, 'username', None),
+        )
+        db.session.add(cmd)
+        db.session.commit()
+
+        create_audit_log(
+            action='patch_command_queued',
+            entity_type='tracked_device',
+            entity_id=device.id,
+            entity_name=device.device_name,
+            description=f'Queued {pkg_mgr} update: {pkg_name} → {cmd.target_version}',
+            changes={'package_manager': pkg_mgr, 'package_name': pkg_name,
+                     'target_version': cmd.target_version},
+        )
+        return jsonify({'success': True, 'command_id': cmd.id, 'data': cmd.to_dict()}), 201
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('QUEUE_PATCH_COMMAND_FAILED', 'Failed to queue patch command.', e)
+
+
+@tracking_bp.route('/api/tracking/<int:device_id>/patch-commands/<int:cmd_id>/cancel', methods=['POST'])
+@require_role('admin')
+def api_cancel_patch_command(device_id, cmd_id):
+    """Cancel a queued command before it is delivered to the agent."""
+    try:
+        from models.patch_command import PatchCommand
+        get_scoped_tracked_device_or_404(device_id)
+        cmd = PatchCommand.query.filter_by(id=cmd_id, tracked_device_id=device_id).first()
+        if not cmd:
+            return _json_error('NOT_FOUND', 'Command not found.', 404)
+        if cmd.status not in ('queued',):
+            return _json_error('NOT_CANCELLABLE', f'Cannot cancel a command in status "{cmd.status}".', 409)
+        cmd.status = 'cancelled'
+        db.session.commit()
+        return jsonify({'success': True, 'data': cmd.to_dict()})
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('CANCEL_PATCH_COMMAND_FAILED', 'Failed to cancel patch command.', e)
+
+
+@tracking_bp.route('/api/tracking/patch-commands/result', methods=['POST'])
+def api_patch_command_result():
+    """Agent reports the outcome of an executed patch command.
+
+    Called by the agent after executing a command received in the sync response.
+    Auth: shared API key (same as all agent endpoints).
+    """
+    try:
+        from models.patch_command import PatchCommand
+        auth_err = _require_tracking_api_key()
+        if auth_err:
+            return auth_err
+
+        body = request.get_json(silent=True) or {}
+        cmd_id = body.get('command_id')
+        if not cmd_id:
+            return _json_error('MISSING_COMMAND_ID', 'command_id is required.', 400)
+
+        cmd = PatchCommand.query.get(int(cmd_id))
+        if not cmd:
+            return _json_error('NOT_FOUND', 'Command not found.', 404)
+        if cmd.status not in ('sent', 'queued'):
+            # Already resolved — idempotent accept
+            return jsonify({'success': True})
+
+        success = bool(body.get('success', False))
+        cmd.status = 'success' if success else 'failed'
+        cmd.result_success = success
+        cmd.result_output = str(body.get('output') or '')[:4096]
+        cmd.result_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'success': True})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.session.rollback()
+        return _json_exception('PATCH_RESULT_FAILED', 'Failed to record patch result.', e)
+
+
 @tracking_bp.route('/api/tracking/<int:device_id>/log-action', methods=['POST'])
 @require_permission('tracking.view')
 def api_log_device_action(device_id):
