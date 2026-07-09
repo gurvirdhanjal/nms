@@ -1006,12 +1006,54 @@
                 </div>
                 <div id="patchesGroupContainer"></div>
                 <div id="patchesEmptyState" class="text-muted small mt-2 d-none">No patch data available.</div>
+
+                <!-- Patch command dispatch log -->
+                <div id="patchCommandsSection" class="mt-3 d-none">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <h6 class="panel-eyebrow m-0">Update Commands</h6>
+                        <button id="patchCommandsRefreshBtn" class="mo-btn mo-btn-ghost mo-btn-sm" type="button" aria-label="Refresh commands">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div id="patchCommandsContainer"></div>
+                </div>
             </section>
 
         </div>
     </div>
 
     <div id="deviceConsoleToastRoot" class="device-toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="modal fade" id="patchQueueModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="patchQueueModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content tactical-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="patchQueueModalLabel">Queue Update</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1 small text-muted">The agent will apply this update on its next sync (~60s).</p>
+                    <div class="device-info-card mt-2 p-2">
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="panel-eyebrow m-0" id="patchQueueManager" style="min-width:90px"></span>
+                            <span class="font-monospace small" id="patchQueuePackage"></span>
+                        </div>
+                        <div class="d-flex gap-2 mt-1 small text-muted">
+                            <span>Installed: <span id="patchQueueInstalled">--</span></span>
+                            <span>→</span>
+                            <span class="text-success">Available: <span id="patchQueueAvailable">--</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="mo-btn mo-btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button id="patchQueueConfirmBtn" type="button" class="mo-btn mo-btn-primary">
+                        <i class="fas fa-download me-1"></i>Queue Update
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="isolateConfirmModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="isolateConfirmModalLabel"
         aria-hidden="true">
@@ -1225,7 +1267,8 @@
         deviceName: {{ (device.device_name or '') | tojson }},
         lastLat: {{ device.last_lat | tojson }},
         lastLng: {{ device.last_lng | tojson }},
-        lastLocationSeenAt: {{ (device.last_location_seen_at.isoformat() if device.last_location_seen_at else None) | tojson }}
+        lastLocationSeenAt: {{ (device.last_location_seen_at.isoformat() if device.last_location_seen_at else None) | tojson }},
+        isAdmin: {{ is_admin | tojson }}
     };
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>

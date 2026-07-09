@@ -5960,7 +5960,9 @@ def tracked_device_live(device_id):
         .first()
     )
     linked_inventory_device_id = active_inventory_link.device_id if active_inventory_link else None
-    file_transfer_enabled = str(session.get('role') or '').strip().lower() == 'admin'
+    _role = str(session.get('role') or '').strip().lower()
+    file_transfer_enabled = _role == 'admin'
+    is_admin = _role == 'admin'
     identity_text = f"{device.device_name or ''} {device.hostname or ''}".strip().lower()
     if 'server' in identity_text:
         device_type_label = 'Server'
@@ -6010,6 +6012,7 @@ def tracked_device_live(device_id):
         initial_daily_uptime=initial_daily_uptime,
         initial_last_seen_utc=initial_last_seen_utc,
         file_transfer_enabled=file_transfer_enabled,
+        is_admin=is_admin,
         linked_inventory_device_id=linked_inventory_device_id,
     )
 

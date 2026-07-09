@@ -5365,7 +5365,12 @@
 
     // ── Patches Tab ───────────────────────────────────────────────────────
 
-    const _patchesState = { all: [], filtered: [] };
+    const _patchesState = { all: [], filtered: [], commands: [] };
+    const _isAdmin = !!(window.TRACKING_DEVICE_LIVE_CONFIG || {}).isAdmin;
+    let _patchCommandsTimer = null;
+
+    // pending command_ids for a package — key: "mgr|name"
+    const _pendingCommands = new Map();
 
     async function _loadPatchesTab() {
         try {
@@ -5376,14 +5381,96 @@
             _patchesState.all = data.data || [];
             _setupPatchesEvents();
             _renderPatches();
+            if (_isAdmin) {
+                await _loadPatchCommands();
+                _startCommandsPoll();
+            }
         } catch (_) {}
     }
 
     function _setupPatchesEvents() {
         const pendingOnly = document.getElementById('patchesPendingOnly');
         const search = document.getElementById('patchesSearch');
+        const refreshBtn = document.getElementById('patchCommandsRefreshBtn');
         if (pendingOnly) pendingOnly.addEventListener('change', _renderPatches);
         if (search) search.addEventListener('input', _renderPatches);
+        if (refreshBtn) refreshBtn.addEventListener('click', _loadPatchCommands);
+        _setupQueueModal();
+    }
+
+    function _setupQueueModal() {
+        const confirmBtn = document.getElementById('patchQueueConfirmBtn');
+        if (!confirmBtn || confirmBtn._patchBound) return;
+        confirmBtn._patchBound = true;
+        confirmBtn.addEventListener('click', async () => {
+            const pkg = confirmBtn._pendingPkg;
+            if (!pkg) return;
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Queuing…';
+            try {
+                const resp = await fetch(`/api/tracking/${deviceId}/patch-commands`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        package_manager: pkg.package_manager,
+                        package_name: pkg.package_name,
+                        target_version: pkg.available_version,
+                    }),
+                });
+                const data = resp.ok ? await resp.json() : null;
+                bootstrap.Modal.getInstance(document.getElementById('patchQueueModal'))?.hide();
+                if (data && data.success) {
+                    _pendingCommands.set(`${pkg.package_manager}|${pkg.package_name}`, data.command_id);
+                    _renderPatches();
+                    await _loadPatchCommands();
+                } else {
+                    const msg = (data && data.message) || 'Failed to queue update.';
+                    _showPatchToast(msg, 'danger');
+                }
+            } catch (e) {
+                _showPatchToast('Network error queuing update.', 'danger');
+            } finally {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-download me-1"></i>Queue Update';
+                confirmBtn._pendingPkg = null;
+            }
+        });
+    }
+
+    function _openQueueModal(pkg) {
+        document.getElementById('patchQueueManager').textContent = (pkg.package_manager || '').toUpperCase();
+        document.getElementById('patchQueuePackage').textContent = pkg.package_name || '';
+        document.getElementById('patchQueueInstalled').textContent = pkg.installed_version || '--';
+        document.getElementById('patchQueueAvailable').textContent = pkg.available_version || '--';
+        const confirmBtn = document.getElementById('patchQueueConfirmBtn');
+        if (confirmBtn) confirmBtn._pendingPkg = pkg;
+        const modalEl = document.getElementById('patchQueueModal');
+        (bootstrap.Modal.getOrCreateInstance(modalEl)).show();
+    }
+
+    async function _loadPatchCommands() {
+        try {
+            const resp = await fetch(`/api/tracking/${deviceId}/patch-commands`, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.success) return;
+            _patchesState.commands = data.data || [];
+            // Sync pending map from active commands
+            _pendingCommands.clear();
+            for (const c of _patchesState.commands) {
+                if (c.status === 'queued' || c.status === 'sent') {
+                    _pendingCommands.set(`${c.package_manager}|${c.package_name}`, c.id);
+                }
+            }
+            _renderPatchCommands();
+            _renderPatches(); // re-render rows to update button states
+        } catch (_) {}
+    }
+
+    function _startCommandsPoll() {
+        if (_patchCommandsTimer) return;
+        _patchCommandsTimer = setInterval(_loadPatchCommands, 30000);
     }
 
     function _renderPatches() {
@@ -5424,26 +5511,105 @@
             groups[mgr].push(p);
         }
 
+        const adminCol = _isAdmin ? '<th style="width:90px"></th>' : '';
         container.innerHTML = Object.entries(groups).map(([mgr, pkgs]) => {
             const rows = pkgs.map(p => {
                 const pendingBadge = p.is_pending_update
                     ? '<span class="mo-badge mo-badge-policy" style="font-size:10px">PENDING</span>'
                     : '';
+                let actionCell = '';
+                if (_isAdmin) {
+                    const cmdKey = `${p.package_manager}|${p.package_name}`;
+                    const cmdId = _pendingCommands.get(cmdKey);
+                    if (cmdId != null) {
+                        actionCell = '<td><span class="mo-badge mo-badge-policy" style="font-size:10px">QUEUED</span></td>';
+                    } else if (p.is_pending_update) {
+                        actionCell = `<td><button class="mo-btn mo-btn-primary mo-btn-sm patch-update-btn"
+                            data-mgr="${escapeHtml(p.package_manager || '')}"
+                            data-pkg="${escapeHtml(p.package_name || '')}"
+                            data-installed="${escapeHtml(p.installed_version || '')}"
+                            data-available="${escapeHtml(p.available_version || '')}">
+                            <i class="fas fa-download me-1"></i>Update</button></td>`;
+                    } else {
+                        actionCell = '<td></td>';
+                    }
+                }
                 return `<tr>
                     <td class="font-monospace small">${escapeHtml(p.package_name || '')}</td>
-                    <td class="small">${escapeHtml(p.current_version || '--')}</td>
+                    <td class="small">${escapeHtml(p.installed_version || '--')}</td>
                     <td class="small">${escapeHtml(p.available_version || '--')}</td>
                     <td class="metric">${pendingBadge}</td>
+                    ${actionCell}
                 </tr>`;
             }).join('');
             return `<div class="device-info-card mb-2">
                 <h6 class="panel-eyebrow">${escapeHtml(mgr.toUpperCase())} <span class="text-muted small">(${pkgs.length})</span></h6>
                 <div class="table-responsive"><table class="tactical-table">
-                    <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th class="metric">Status</th></tr></thead>
+                    <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th class="metric">Status</th>${adminCol}</tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>
             </div>`;
         }).join('');
+
+        // Bind update buttons
+        container.querySelectorAll('.patch-update-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _openQueueModal({
+                    package_manager: btn.dataset.mgr,
+                    package_name: btn.dataset.pkg,
+                    installed_version: btn.dataset.installed,
+                    available_version: btn.dataset.available,
+                });
+            });
+        });
+    }
+
+    function _renderPatchCommands() {
+        const section = document.getElementById('patchCommandsSection');
+        const container = document.getElementById('patchCommandsContainer');
+        if (!section || !container) return;
+        const cmds = _patchesState.commands;
+        if (!cmds.length) { section.classList.add('d-none'); return; }
+        section.classList.remove('d-none');
+
+        const STATUS_BADGE = {
+            queued:    '<span class="mo-badge mo-badge-policy" style="font-size:10px">QUEUED</span>',
+            sent:      '<span class="mo-badge mo-badge-policy" style="font-size:10px">SENT</span>',
+            success:   '<span class="mo-badge mo-badge-online" style="font-size:10px">SUCCESS</span>',
+            failed:    '<span class="mo-badge mo-badge-risk" style="font-size:10px">FAILED</span>',
+            cancelled: '<span class="mo-badge" style="font-size:10px;background:var(--ui-muted,#888);color:#fff">CANCELLED</span>',
+        };
+
+        container.innerHTML = `<div class="table-responsive"><table class="tactical-table">
+            <thead><tr><th>Package</th><th>Manager</th><th>Target</th><th class="metric">Status</th><th>Queued</th><th>Result</th></tr></thead>
+            <tbody>${cmds.map(c => {
+                const badge = STATUS_BADGE[c.status] || escapeHtml(c.status);
+                const queued = c.created_at ? new Date(c.created_at).toLocaleString() : '--';
+                const result = c.result_output
+                    ? `<span title="${escapeHtml(c.result_output)}" style="cursor:help;font-size:11px">${c.result_success ? '✓' : '✗'} ${escapeHtml((c.result_output || '').slice(0, 60))}…</span>`
+                    : '--';
+                return `<tr>
+                    <td class="font-monospace small">${escapeHtml(c.package_name || '')}</td>
+                    <td class="small">${escapeHtml(c.package_manager || '')}</td>
+                    <td class="small">${escapeHtml(c.target_version || '--')}</td>
+                    <td class="metric">${badge}</td>
+                    <td class="small text-muted">${queued}</td>
+                    <td class="small">${result}</td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table></div>`;
+    }
+
+    function _showPatchToast(message, type) {
+        const root = document.getElementById('deviceConsoleToastRoot');
+        if (!root) return;
+        const el = document.createElement('div');
+        el.className = `toast align-items-center text-bg-${type} border-0 show mb-2`;
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `<div class="d-flex"><div class="toast-body small">${escapeHtml(message)}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        root.appendChild(el);
+        setTimeout(() => el.remove(), 5000);
     }
 
     // ── Run Integrity from MORE dropdown ──────────────────────────────────
