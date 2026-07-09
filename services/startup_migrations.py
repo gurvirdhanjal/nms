@@ -232,6 +232,48 @@ def run_startup_migrations(db: "SQLAlchemy") -> None:
         logger.info("[STARTUP MIGRATION] all indexes verified")
 
 
+def _clean_mac_from_hostnames(db: "SQLAlchemy") -> None:
+    """One-time cleanup: move MAC-format hostnames into the macaddress field.
+
+    Some devices end up with a MAC address stored in the `hostname` column
+    (e.g. 'AA:BB:CC:DD:EE:FF') from old scan imports.  This scans all devices
+    where hostname matches the MAC pattern and, if macaddress is blank, moves
+    the value across and clears the hostname so it no longer pollutes name lookups.
+    """
+    import re
+    _MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}$')
+
+    try:
+        from models.device import Device
+        devices = db.session.query(Device).filter(Device.hostname.isnot(None)).all()
+        fixed = 0
+        for device in devices:
+            hn = (device.hostname or '').strip()
+            if not _MAC_RE.match(hn):
+                continue
+            # Normalise to lowercase colon format
+            cleaned = re.sub(r'[^0-9A-Fa-f]', '', hn).lower()
+            if len(cleaned) != 12:
+                continue
+            normalized = ':'.join(cleaned[i:i+2] for i in range(0, 12, 2))
+            # Only move if macaddress is currently empty/invalid
+            current_mac = (device.macaddress or '').strip().lower()
+            if current_mac in ('', 'n/a', 'unknown', 'none'):
+                device.macaddress = normalized
+            device.hostname = None
+            fixed += 1
+
+        if fixed:
+            db.session.commit()
+            logger.info("[STARTUP MIGRATION] moved %d MAC-format hostnames to macaddress field", fixed)
+    except Exception as exc:
+        logger.warning("[STARTUP MIGRATION] mac-from-hostname cleanup failed: %s", exc)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
 def run_startup_migrations_bg(app: "Flask", db: "SQLAlchemy") -> None:
     """Non-blocking variant: spawns a daemon thread with an app context.
 
@@ -242,6 +284,7 @@ def run_startup_migrations_bg(app: "Flask", db: "SQLAlchemy") -> None:
     def _run() -> None:
         with app.app_context():
             run_startup_migrations(db)
+            _clean_mac_from_hostnames(db)
 
     t = threading.Thread(target=_run, daemon=True, name="startup-migrations")
     t.start()

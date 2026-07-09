@@ -97,253 +97,449 @@
     background: var(--ui-hover);
 }
 
-/* ── Restricted Sites Policy (restricted_sites_policy.html) — Phase 3 ── */
+/* ── Restricted Sites Policy — Website Blocking admin page ── */
 
-.restricted-policy-page {
-    background-color: var(--ui-bg);
-}
+/* Page layout */
+.rsp-page { background: var(--ui-bg); }
 
-.restricted-policy-page .enterprise-panel {
-    background: var(--ui-surface-2) !important;
-    border: 1px solid var(--ui-border) !important;
-    border-radius: 2px !important;
-}
-
-.restricted-policy-page .panel-header {
-    border-bottom: 1px solid var(--ui-border);
-    padding: 0.8rem 1rem;
-}
-
-.restricted-policy-page .panel-header h5 {
-    font-family: var(--ui-font-sans);
-    font-weight: 600;
-    font-size: 16px;
-    color: var(--ui-text-primary);
-    letter-spacing: 0.02em;
-}
-
-.restricted-policy-page .panel-header .text-muted {
-    font-family: var(--ui-font-mono);
-    font-size: 11px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--ui-text-muted) !important;
-}
-
-.restricted-policy-page .badge {
-    font-family: var(--ui-font-mono);
-    font-size: 10px;
-    padding: 4px 8px;
-    border-radius: 2px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
-    border: 1px solid var(--ui-border);
-}
-
-.restricted-policy-page .bg-danger {
-    color: var(--status-critical) !important;
-    background: var(--status-critical-bg) !important;
-    border-color: var(--status-critical) !important;
-}
-
-.restricted-policy-page .bg-secondary {
-    color: var(--ui-accent) !important;
-    background: var(--ui-accent-soft) !important;
-    border-color: var(--ui-border-accent) !important;
-}
-
-.restricted-policy-page .panel-body {
-    padding: 1rem;
-    background: var(--ui-surface-2);
-}
-
-.restricted-policy-page .policy-section-card {
-    border: 1px solid var(--ui-border);
-    border-radius: 2px;
-    background: var(--ui-surface-3);
-    padding: 0.8rem;
-    min-height: 100%;
-}
-
-.restricted-policy-page .policy-meta-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    align-content: start;
-    border: 1px solid var(--ui-border);
-    border-radius: 2px;
-    background: var(--ui-surface-3);
-    padding: 0.8rem;
-    min-width: 0;
-}
-
-.restricted-policy-page .policy-preview-title {
-    font-family: var(--ui-font-mono);
-    font-size: 11px;
-    color: var(--ui-text-muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-}
-
-.restricted-policy-page .policy-meta-item {
-    border: none;
-    border-bottom: 1px solid var(--ui-hover);
-    border-radius: 0;
-    padding: 6px 0;
-    background: transparent;
+.rsp-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    min-width: 0;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
-.restricted-policy-page .policy-meta-item:last-child {
-    border-bottom: none;
-}
-
-.restricted-policy-page .policy-meta-item span {
-    color: var(--ui-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 10px;
+.rsp-eyebrow {
     font-family: var(--ui-font-mono);
-    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ui-accent);
+    margin-bottom: 4px;
+}
+
+.rsp-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ui-text-primary);
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.2;
+}
+
+.rsp-title-icon {
+    width: 22px;
+    height: 22px;
+    color: var(--ui-accent);
     flex-shrink: 0;
 }
 
-.restricted-policy-page .policy-meta-item strong {
-    color: var(--ui-text-primary);
-    font-size: 12px;
-    font-family: var(--ui-font-mono);
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    flex: 1;
-}
-
-.restricted-policy-page .policy-domain-stats {
-    border: 1px solid var(--ui-border);
-    border-radius: 2px;
-    background: var(--ui-surface-2);
-    color: var(--ui-text-primary);
-    padding: 2px 6px;
-    font-size: 10px;
-    font-family: var(--ui-font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.restricted-policy-page .form-label {
+.rsp-subtitle {
+    font-size: 13px;
     color: var(--ui-text-muted);
-    font-size: 10px;
-    font-family: var(--ui-font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    margin: 0;
+    max-width: 60ch;
+    line-height: 1.5;
 }
 
-.restricted-policy-page .form-check-label {
-    color: var(--ui-text-primary);
-    font-size: 11px;
-    letter-spacing: 0.05em;
-    font-family: var(--ui-font-mono);
-    text-transform: uppercase;
+.rsp-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-top: 4px;
 }
 
-.restricted-policy-page .form-control,
-.restricted-policy-page .form-select {
-    background: var(--ui-surface-2) !important;
-    border: 1px solid var(--ui-border) !important;
-    color: var(--ui-text-primary) !important;
-    border-radius: 2px !important;
-    font-family: var(--ui-font-mono) !important;
-    font-size: 12px !important;
-    padding: 0.3rem 0.5rem !important;
-    box-shadow: none !important;
-}
-
-.restricted-policy-page .form-control:focus,
-.restricted-policy-page .form-select:focus {
-    border-color: var(--ui-accent) !important;
-    outline: none !important;
-}
-
-.restricted-policy-page .tactical-btn {
-    border-radius: 2px;
-    font-family: var(--ui-font-sans);
-    font-size: 12px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--ui-text-primary);
-    padding: 0 12px;
-    height: 32px;
+/* Mode chip */
+.rsp-mode-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    padding: 3px 10px;
+    font-family: var(--ui-font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface-3);
+    color: var(--ui-text-muted);
+    transition: all 0.2s ease;
+}
+
+.rsp-mode-chip--blocking {
+    background: var(--status-critical-bg);
+    color: var(--status-critical);
+    border-color: var(--status-critical-bd);
+}
+
+/* Back/nav button */
+.rsp-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 3px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-hover);
+    color: var(--ui-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
     transition: all 0.15s ease;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
-.restricted-policy-page .tactical-btn-outline {
-    border-color: var(--ui-border);
-    background: var(--ui-hover);
-}
-
-.restricted-policy-page .tactical-btn-outline:hover {
+.rsp-nav-btn:hover {
     background: var(--ui-surface-3);
     border-color: var(--ui-border-strong);
     color: var(--ui-text-primary);
 }
 
-.restricted-policy-page .tactical-btn.btn-primary {
-    background: var(--ui-accent);
-    color: var(--ui-text-on-accent);
-    border-color: var(--ui-accent);
+/* Alert banner */
+.rsp-alert {
+    padding: 10px 14px;
+    border-radius: 3px;
+    font-size: 13px;
+    border: 1px solid transparent;
 }
 
-.restricted-policy-page .tactical-btn.btn-primary:hover {
+.rsp-alert-danger  { background: var(--status-critical-bg); color: var(--status-critical); border-color: var(--status-critical-bd); }
+.rsp-alert-success { background: rgba(0,201,141,.08); color: var(--teal, #00c98d); border-color: rgba(0,201,141,.25); }
+.rsp-alert-info    { background: var(--ui-surface-3); color: var(--ui-text-secondary); border-color: var(--ui-border); }
+
+/* Cards */
+.rsp-card {
+    background: var(--ui-surface-2);
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    padding: 14px 16px;
+}
+
+.rsp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.rsp-card-label {
+    font-family: var(--ui-font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+}
+
+.rsp-card-label-solo {
+    display: block;
+    margin-bottom: 12px;
+}
+
+.rsp-domain-count {
+    font-family: var(--ui-font-mono);
+    font-size: 10px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-3);
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    padding: 2px 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Mode toggle row */
+.rsp-mode-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
+}
+
+.rsp-toggle-wrap { flex-shrink: 0; padding-top: 2px; }
+
+.rsp-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.rsp-toggle-track {
+    display: block;
+    width: 38px;
+    height: 22px;
+    background: var(--ui-border-strong);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.2s ease;
+}
+
+.rsp-toggle-input:checked + .rsp-toggle-track {
+    background: var(--status-critical);
+}
+
+.rsp-toggle-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transition: left 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+
+.rsp-toggle-input:checked + .rsp-toggle-track .rsp-toggle-knob {
+    left: 19px;
+}
+
+.rsp-mode-text { flex: 1; min-width: 0; }
+
+.rsp-mode-strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ui-text-primary);
+    margin-bottom: 4px;
+}
+
+.rsp-mode-hint {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Add-domain form */
+.rsp-add-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.rsp-field {
+    background: var(--ui-surface-3) !important;
+    border: 1px solid var(--ui-border) !important;
+    color: var(--ui-text-primary) !important;
+    border-radius: 3px !important;
+    font-family: var(--ui-font-mono) !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    outline: none;
+    transition: border-color 0.15s ease;
+    box-shadow: none !important;
+}
+
+.rsp-field:focus { border-color: var(--ui-accent) !important; }
+
+.rsp-field-domain { flex: 2; min-width: 120px; }
+.rsp-field-reason { flex: 1.5; min-width: 90px; }
+.rsp-field-num    { width: 78px; text-align: right; }
+
+/* Buttons */
+.rsp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 3px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-hover);
+    color: var(--ui-text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.rsp-btn:hover {
+    background: var(--ui-surface-3);
+    border-color: var(--ui-border-strong);
+    color: var(--ui-text-primary);
+}
+
+.rsp-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+
+.rsp-btn-primary {
+    background: var(--ui-accent);
+    border-color: var(--ui-accent);
+    color: var(--ui-text-on-accent);
+}
+
+.rsp-btn-primary:hover {
     background: var(--ui-accent-strong);
     border-color: var(--ui-accent-strong);
     color: var(--ui-text-on-accent);
 }
 
-.restricted-policy-page .tactical-btn.text-danger {
-    color: var(--status-critical) !important;
-    border-color: var(--status-critical-bd) !important;
-    background: var(--status-critical-bg) !important;
+.rsp-btn-danger {
+    color: var(--status-critical);
+    border-color: var(--status-critical-bd);
+    background: var(--status-critical-bg);
 }
 
-.restricted-policy-page .tactical-btn.text-danger:hover {
-    background: var(--status-critical-bg) !important;
-    border-color: var(--status-critical) !important;
-    color: var(--ui-text-primary) !important;
+.rsp-btn-danger:hover {
+    border-color: var(--status-critical);
+    color: var(--status-critical);
 }
 
-.restricted-policy-page .policy-domain-list {
-    margin-top: 8px;
+/* Domain list */
+.rsp-domain-list {
+    max-height: 340px;
+    overflow-y: auto;
     border: 1px solid var(--ui-border);
-    border-radius: 2px;
+    border-radius: 3px;
     background: var(--ui-bg);
+    margin-top: 4px;
 }
 
-.restricted-policy-page .policy-domain-list::-webkit-scrollbar {
-    width: 6px;
+.rsp-domain-list::-webkit-scrollbar { width: 5px; }
+.rsp-domain-list::-webkit-scrollbar-track { background: var(--ui-bg); }
+.rsp-domain-list::-webkit-scrollbar-thumb { background: var(--ui-border-strong); border-radius: 2px; }
+
+.rsp-domain-empty {
+    padding: 14px 12px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    text-align: center;
 }
 
-.restricted-policy-page .policy-domain-list::-webkit-scrollbar-track {
-    background: var(--ui-bg);
+.rsp-domain-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    gap: 8px;
 }
 
-.restricted-policy-page .policy-domain-list::-webkit-scrollbar-thumb {
-    background-color: var(--ui-border-strong);
+.rsp-domain-row:last-child { border-bottom: none; }
+
+.rsp-domain-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    cursor: pointer;
+    margin: 0;
+}
+
+.rsp-domain-cb { accent-color: var(--ui-accent); flex-shrink: 0; }
+
+.rsp-domain-name {
+    font-family: var(--ui-font-mono);
+    font-size: 12px;
+    color: var(--ui-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rsp-domain-remove {
+    background: transparent;
+    border: none;
+    color: var(--ui-text-muted);
+    padding: 3px;
+    cursor: pointer;
+    line-height: 1;
     border-radius: 2px;
+    opacity: 0.65;
+    transition: opacity 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.rsp-domain-remove:hover { opacity: 1; color: var(--status-critical); }
+
+/* Policy info rows */
+.rsp-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--ui-hover);
+}
+
+.rsp-info-row:last-child { border-bottom: none; }
+
+.rsp-info-row span {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    flex-shrink: 0;
+}
+
+.rsp-info-row strong {
+    font-family: var(--ui-font-mono);
+    font-size: 12px;
+    color: var(--ui-text-primary);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Agent timing settings */
+.rsp-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--ui-hover);
+}
+
+.rsp-setting:last-of-type { border-bottom: none; }
+
+.rsp-setting-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.rsp-setting-text span {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ui-text-primary);
+}
+
+.rsp-setting-text small {
+    display: block;
+    font-size: 11px;
+    color: var(--ui-text-muted);
+    margin-top: 2px;
+}
+
+.rsp-setting-input {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.rsp-unit {
+    font-family: var(--ui-font-mono);
+    font-size: 10px;
+    color: var(--ui-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }

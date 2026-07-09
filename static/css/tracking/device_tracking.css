@@ -196,6 +196,15 @@
     box-shadow: 0 0 8px var(--teal-dim);
 }
 
+.ops-btn-live--disabled {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: rgba(150, 150, 150, 0.2);
+    opacity: 0.42;
+    pointer-events: none;
+    cursor: default;
+}
+
 .ops-btn-icon {
     background: transparent;
     color: var(--text-secondary);
@@ -988,6 +997,12 @@
     border-color: var(--s-warning-bd);
 }
 
+.ops-status-badge.inactive {
+    background: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+    border-color: rgba(100, 116, 139, 0.25);
+}
+
 /* Network Info */
 .ops-network-line {
     font-family: var(--font-mono);
@@ -1614,6 +1629,12 @@
     background: var(--red-dim);
     color: var(--red);
     border-color: rgba(232, 69, 69, 0.3);
+}
+
+.tactical-badge-inactive {
+    background: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+    border-color: rgba(100, 116, 139, 0.25);
 }
 
 /* ── SCAN TABLE CELLS ───────────────────────────────────── */

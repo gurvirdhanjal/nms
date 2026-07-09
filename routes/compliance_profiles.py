@@ -112,6 +112,73 @@ def api_profile_devices(profile_id):
     ])
 
 
+# ── API: distinct device types (for the type-selector UI) ────────────────────
+
+@compliance_profiles_bp.route('/api/compliance-profiles/device-types')
+@require_login
+def api_device_types():
+    """Return sorted distinct device_type values present in the Device table."""
+    from models.device import Device
+    from sqlalchemy import func
+    rows = (
+        db.session.query(Device.device_type)
+        .filter(Device.device_type.isnot(None))
+        .group_by(Device.device_type)
+        .order_by(func.count(Device.device_id).desc())
+        .all()
+    )
+    types = [r[0] for r in rows if (r[0] or '').strip()]
+    return jsonify({'device_types': types})
+
+
+# ── API: apply profile to all devices of matching types ───────────────────────
+
+@compliance_profiles_bp.route('/api/compliance-profiles/<int:profile_id>/apply-to-types', methods=['POST'])
+@require_role('admin')
+def api_apply_to_types(profile_id):
+    """Assign this profile to every device whose device_type is in the profile's
+    applicable_device_types list.  Returns the number of devices updated."""
+    profile = ComplianceProfile.query.get_or_404(profile_id)
+    rules = profile.rules_json or {}
+    applicable = [t.lower() for t in (rules.get('applicable_device_types') or []) if t]
+    if not applicable:
+        return jsonify({'success': False, 'error': 'Profile has no applicable_device_types set'}), 400
+
+    from models.device import Device
+    from sqlalchemy import func as sa_func
+    from models.server_metric_threshold_state import ServerMetricThresholdState
+
+    try:
+        matching_ids = [
+            row[0] for row in
+            db.session.query(Device.device_id)
+            .filter(sa_func.lower(Device.device_type).in_(applicable))
+            .all()
+        ]
+        if not matching_ids:
+            return jsonify({'success': True, 'updated_count': 0, 'message': 'No matching devices found'})
+
+        updated = (
+            Device.query
+            .filter(Device.device_id.in_(matching_ids))
+            .update({'compliance_profile_id': profile_id}, synchronize_session=False)
+        )
+        # Reset streak counters so new thresholds take effect immediately
+        (
+            ServerMetricThresholdState.query
+            .filter(ServerMetricThresholdState.device_id.in_(matching_ids))
+            .update({'breach_streak': 0, 'recovery_streak': 0}, synchronize_session=False)
+        )
+        db.session.commit()
+        logger.info('[Compliance] apply-to-types profile=%d applied to %d devices (types=%s)',
+                    profile_id, updated, applicable)
+        return jsonify({'success': True, 'updated_count': updated})
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('[Compliance] apply-to-types failed: %s', exc)
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+
+
 # ── API: create ───────────────────────────────────────────────────────────────
 
 @compliance_profiles_bp.route('/api/compliance-profiles', methods=['POST'])

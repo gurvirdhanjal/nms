@@ -12,19 +12,18 @@
 <div class="page-section departments-page">
     <div class="page-container">
         <div class="departments-header-shell">
-        <!-- Modernized Page Header -->
-        <div class="departments-header flex justify-between items-end mb-6">
+        <!-- Page Header -->
+        <div class="departments-header d-flex justify-content-between align-items-end mb-3">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight text-white mb-2">Departments</h1>
-                <p class="text-sm text-slate-400">Manage departments and their site assignments.</p>
+                <h1>Departments</h1>
+                <p>Manage departments and their site assignments.</p>
             </div>
-            
-            <div class="departments-toolbar flex gap-3">
-                <button type="button" onclick="loadDepartments()" class="departments-secondary-btn rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">
-                    <i class="fas fa-sync-alt mr-2"></i> Refresh
+            <div class="departments-toolbar d-flex gap-2">
+                <button type="button" onclick="loadDepartments()" class="departments-secondary-btn">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh
                 </button>
-                <button type="button" onclick="showCreateDepartmentModal()" class="departments-primary-btn rounded-md bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">
-                    <i class="fas fa-plus mr-2"></i> Add Department
+                <button type="button" onclick="showCreateDepartmentModal()" class="departments-primary-btn">
+                    <i class="fas fa-plus me-2"></i>Add Department
                 </button>
             </div>
         </div>
@@ -55,64 +54,47 @@
         </div>
 
         <div class="page-body">
-            <div class="departments-filter-shell flex flex-col sm:flex-row gap-4 mb-6">
-                <div class="relative flex-grow">
-                    <input type="text" id="deptSearch" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-10 pr-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 transition-all duration-200 hover:bg-slate-800/50" placeholder="Search departments..." oninput="filterDepartmentsTable()">
-                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <i class="fas fa-search text-slate-500"></i>
-                    </div>
-                </div>
-
-                <div class="sm:w-64 shrink-0">
-                    <select id="siteFilter" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" onchange="filterDepartmentsTable()">
-                        <option value="">All Sites</option>
-                        {% for site in sites %}
-                        <option value="{{ site.id }}">{{ site.site_name|trim }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
+            <div class="departments-filter-shell">
+                <input type="text" id="deptSearch" class="form-control" placeholder="Search departments..." oninput="filterDepartmentsTable()">
+                <select id="siteFilter" class="form-select" onchange="filterDepartmentsTable()" style="max-width:220px;">
+                    <option value="">All Sites</option>
+                    {% for site in sites %}
+                    <option value="{{ site.id }}">{{ site.site_name|trim }}</option>
+                    {% endfor %}
+                </select>
             </div>
             
             {# Table Container Macro #}
             {% call ui_table_container() %}
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-slate-700/50 {% if not departments %}hidden{% endif %}" id="departmentsTable">
-                        <thead class="bg-slate-900/50">
+                    <table class="table {% if not departments %}d-none{% endif %}" id="departmentsTable">
+                        <thead>
                             <tr>
-                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider sm:pl-6">Name</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Description</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Site</th>
-                                <th scope="col" class="px-3 py-3.5 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Assets</th>
-                                <th scope="col" class="px-3 py-3.5 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Personnel</th>
-                                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Actions</th>
+                                <th scope="col">Name</th>
+                                <th scope="col">Description</th>
+                                <th scope="col">Site</th>
+                                <th scope="col" class="text-end">Assets</th>
+                                <th scope="col" class="text-end">Personnel</th>
+                                <th scope="col" class="text-end">Actions</th>
                             </tr>
                         </thead>
                         {{ ui_table_loading(colspan=6, rows=3) }}
-                        <tbody class="divide-y divide-slate-700/50 bg-slate-800/20" id="departmentsTableBody">
+                        <tbody id="departmentsTableBody">
                             {% for department in departments %}
                             {% set department_payload = departments_payload[loop.index0] %}
-                            <tr class="hover:bg-slate-700/30 transition-colors group">
-                                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">
-                                    <a href="/departments/{{ department.id }}" class="hover:text-blue-400 transition-colors">{{ department.name|trim }}</a>
+                            <tr>
+                                <td class="text-white fw-medium">
+                                    <a href="/departments/{{ department.id }}" class="depts-table-link">{{ department.name|trim }}</a>
                                 </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
-                                    {{ (department.description or '-')|trim }}
+                                <td class="text-secondary">{{ (department.description or '-')|trim }}</td>
+                                <td class="font-monospace">
+                                    {% if department.site %}{{ department.site.site_name|trim }}
+                                    {% else %}{{ ui_badge('UNMAPPED', 'warning') }}{% endif %}
                                 </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-slate-300">
-                                    {% if department.site %}
-                                    {{ department.site.site_name|trim }}
-                                    {% else %}
-                                    {{ ui_badge('UNMAPPED', 'warning') }}
-                                    {% endif %}
-                                </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
-                                    {{ department_payload.device_count }}
-                                </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm text-right font-mono text-slate-300">
-                                    {{ department_payload.user_count }}
-                                </td>
-                                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                    <div class="flex items-center justify-end gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                                <td class="text-end font-monospace">{{ department_payload.device_count }}</td>
+                                <td class="text-end font-monospace">{{ department_payload.user_count }}</td>
+                                <td class="text-end">
+                                    <div class="d-flex align-items-center justify-content-end gap-2">
                                         <button onclick="window.location.href='/departments/{{ department.id }}'" class="table-action-btn" title="Open overview">
                                             <i class="fas fa-chart-line"></i>
                                         </button>
@@ -122,7 +104,7 @@
                                         <button onclick="editDepartment({{ department.id }})" class="table-action-btn" title="Edit department">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <button onclick='deleteDepartment({{ department.id }}, {{ department.name|trim|tojson }})' class="table-action-btn text-red-400" title="Delete department">
+                                        <button onclick='deleteDepartment({{ department.id }}, {{ department.name|trim|tojson }})' class="table-action-btn" style="color:var(--status-down)" title="Delete department">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
@@ -143,135 +125,109 @@
 
 {# Create/Edit Department Slide Over #}
 {% call ui_slide_over('department-slide-over', 'Department details') %}
-    <form id="departmentForm" class="drawer-form flex min-h-full flex-col gap-4" onsubmit="saveDepartment(event)">
+    <form id="departmentForm" class="drawer-form d-flex flex-column h-100 gap-3" onsubmit="saveDepartment(event)">
         <input type="hidden" id="departmentId">
 
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
-            <div>
+        <div class="row g-3">
+            <div class="col-6">
                 <label for="departmentName" class="field-label">Department Name *</label>
-                <input type="text" id="departmentName" required class="block w-full rounded-md border-0 bg-slate-900/50 py-2 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                <input type="text" id="departmentName" required class="form-control">
             </div>
-
-            <div>
+            <div class="col-6">
                 <label for="siteId" class="field-label">Site</label>
-                <select id="siteId" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6">
+                <select id="siteId" class="form-select">
                     <option value="">-- No Site --</option>
                     {% for site in sites %}
                     <option value="{{ site.id }}">{{ site.site_name|trim }}</option>
                     {% endfor %}
                 </select>
-                <p class="field-help">Leave empty when the department is not tied to one site.</p>
+                <p class="field-help">Leave empty when not tied to one site.</p>
             </div>
-
-            <div class="sm:col-span-2">
+            <div class="col-12">
                 <label for="description" class="field-label">Description</label>
-                <textarea id="description" rows="3" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6"></textarea>
+                <textarea id="description" rows="3" class="form-control"></textarea>
             </div>
         </div>
 
-        <div class="sticky bottom-0 mt-auto -mx-6 border-t border-slate-700/50 bg-slate-800/95 px-6 pt-4 pb-1 backdrop-blur-sm sm:-mx-8 sm:px-8">
-            <div class="flex justify-end gap-x-3">
-                <button type="button" onclick="window.UI.SlideOver.close('department-slide-over')" class="rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">Cancel</button>
-                <button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">Save Department</button>
-            </div>
+        <div class="slide-over-footer mt-auto">
+            <button type="button" onclick="window.UI.SlideOver.close('department-slide-over')" class="btn btn-outline-secondary btn-sm">Cancel</button>
+            <button type="submit" class="departments-primary-btn btn btn-sm">Save Department</button>
         </div>
     </form>
 {% endcall %}
 
 {# Assign Devices Slide Over #}
 {% call ui_slide_over('assign-devices-slide-over', 'Assign devices') %}
-    <div class="flex min-h-full flex-col gap-4">
-        <div class="assign-context mb-4">
+    <div class="d-flex flex-column h-100 gap-3">
+        <div class="assign-context mb-2">
             <div class="assign-context-item">
                 <strong>Department</strong>
-                <span id="assignDeptName" class="text-blue-400 font-mono font-bold">-</span>
+                <span id="assignDeptName" class="font-monospace fw-bold" style="color:var(--ui-accent)">-</span>
             </div>
             <div class="assign-context-item">
-                <strong>Site_Reference</strong>
-                <span id="assignDeptSite" class="text-slate-300 font-mono">-</span>
-            </div>
-        </div>
-        
-        <div id="assignDevicesNoSiteAlert" class="hidden rounded-md bg-amber-500/10 p-4 mb-4 ring-1 ring-amber-500/20">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle text-amber-400"></i>
-                </div>
-                <div class="ml-3">
-                    <h3 class="text-sm font-medium text-amber-400">No site selected</h3>
-                    <div class="mt-2 text-sm text-amber-200/80">
-                        <p>This department is not linked to a site yet. Devices can still be assigned, but site-based views will remain empty.</p>
-                    </div>
-                </div>
+                <strong>Site</strong>
+                <span id="assignDeptSite" class="font-monospace text-secondary">-</span>
             </div>
         </div>
 
-        <div id="subnetInfoAlert" class="hidden rounded-md bg-blue-500/10 p-4 mb-4 ring-1 ring-blue-500/20">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-info-circle text-blue-400"></i>
-                </div>
-                <div class="ml-3 text-sm text-blue-200/80 mt-0.5" id="subnetInfoAlertContent">
-                    <!-- Populated via JS -->
-                </div>
-            </div>
+        <div id="assignDevicesNoSiteAlert" class="alert alert-warning d-none py-2 small" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Department not linked to a site — devices can still be assigned.
         </div>
 
-        <div id="subnetWarningAlert" class="hidden rounded-md bg-amber-500/10 p-4 mb-4 ring-1 ring-amber-500/20">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle text-amber-400"></i>
-                </div>
-                <div class="ml-3 text-sm text-amber-200/80 mt-0.5" id="subnetWarningAlertContent">
-                    <!-- Populated via JS -->
-                </div>
-            </div>
+        <div id="subnetInfoAlert" class="assign-info-alert d-none" role="alert">
+            <i class="fas fa-info-circle me-2" style="color:var(--ui-accent)"></i>
+            <span id="subnetInfoAlertContent"></span>
+        </div>
+
+        <div id="subnetWarningAlert" class="alert alert-warning d-none py-2 small" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span id="subnetWarningAlertContent"></span>
         </div>
         
         <div class="mb-4">
-            <div class="relative w-full">
-                <input type="text" id="deviceSearch" class="block w-full rounded-md border-0 bg-slate-900/50 py-2 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6" placeholder="Search devices..." oninput="renderInventoryDevices()">
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                    <i class="fas fa-search text-slate-500"></i>
+            <div class="d-flex gap-2 mb-2">
+                <div class="position-relative flex-grow-1">
+                    <input type="text" id="deviceSearch" class="form-control form-control-sm dept-assign-input" placeholder="Search devices..." oninput="renderInventoryDevices()">
+                    <i class="fas fa-search position-absolute" style="right:.65rem;top:50%;transform:translateY(-50%);color:var(--ui-text-muted);pointer-events:none;font-size:.72rem;"></i>
                 </div>
+                <select id="deviceTypeFilter" class="form-select form-select-sm dept-assign-select" onchange="renderInventoryDevices()" style="max-width:160px;">
+                    <option value="">All Types</option>
+                </select>
             </div>
-            
-            <div class="mt-3 flex items-center gap-4">
-                <div class="flex items-center">
-                    <input id="showAssignedDevices" type="checkbox" class="h-4 w-4 rounded border-slate-700 bg-slate-900/50 text-blue-500 focus:ring-blue-600 focus:ring-offset-slate-800" onchange="renderInventoryDevices()">
-                    <label for="showAssignedDevices" class="ml-2 block text-sm text-slate-300">Show devices already assigned elsewhere</label>
-                </div>
+
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <input id="showAssignedDevices" type="checkbox" class="form-check-input" onchange="renderInventoryDevices()">
+                <label for="showAssignedDevices" class="form-check-label small text-secondary">Show already assigned</label>
             </div>
-            
-            <div class="mt-4 flex gap-2">
-                <button type="button" class="table-action-btn bg-slate-700 text-sm py-1.5" onclick="selectAllAvailableDevices()">Select Available</button>
-                <button type="button" class="table-action-btn bg-slate-700 text-sm py-1.5" onclick="clearSelectedDevices()">Clear</button>
-                <span class="ml-auto text-xs text-slate-400 self-center" id="deviceSelectionSummary"></span>
+
+            <div class="d-flex gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllAvailableDevices()">Select Visible</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelectedDevices()">Clear</button>
+                <span class="ms-auto small text-secondary" id="deviceSelectionSummary"></span>
             </div>
         </div>
         
-        <div class="flex-1 min-h-0 overflow-y-auto border border-slate-700/50 rounded-md bg-slate-900/30">
-            <table class="min-w-full divide-y divide-slate-700/50" id="inventoryDevicesTable">
-                <thead class="bg-slate-800/80 sticky top-0 z-10">
+        <div class="flex-1 overflow-y-auto border rounded" style="border-color:var(--border-subtle);background:rgba(0,0,0,0.15)">
+            <table class="table table-sm table-hover mb-0" id="inventoryDevicesTable">
+                <thead class="sticky-top">
                     <tr>
-                        <th scope="col" class="py-2 pl-4 pr-3 text-left w-10"></th>
-                        <th scope="col" class="py-2 px-3 text-left text-xs font-semibold text-slate-300">Identity / Subnet Details</th>
-                        <th scope="col" class="py-2 px-3 text-right text-xs font-semibold text-slate-300">Routing State</th>
+                        <th scope="col" class="py-2 ps-3" style="width:2.5rem"></th>
+                        <th scope="col" class="py-2 px-2 text-secondary small">Identity / Subnet Details</th>
+                        <th scope="col" class="py-2 px-2 text-secondary small text-end">Routing State</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-800 bg-transparent" id="inventoryDevicesBody">
+                <tbody id="inventoryDevicesBody">
                     <tr>
-                        <td colspan="3" class="text-center text-slate-500 text-sm py-8 italic font-mono">Awaiting hardware inventory synchronization...</td>
+                        <td colspan="3" class="text-center text-secondary small py-5 fst-italic font-monospace">Awaiting hardware inventory synchronization...</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        
-        <div class="sticky bottom-0 mt-1 -mx-6 border-t border-slate-700/50 bg-slate-800/95 px-6 pt-4 pb-1 backdrop-blur-sm sm:-mx-8 sm:px-8">
-            <div class="flex justify-end gap-x-3">
-                <button type="button" onclick="window.UI.SlideOver.close('assign-devices-slide-over')" class="rounded-md bg-transparent px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 hover:bg-slate-700 transition-colors">Cancel</button>
-                <button type="button" onclick="assignSelectedDevicesToDepartment()" class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors">Save Assignments</button>
-            </div>
+
+        <div class="slide-over-footer mt-auto">
+            <button type="button" class="departments-secondary-btn" onclick="window.UI.SlideOver.close('assign-devices-slide-over')">Cancel</button>
+            <button type="button" class="departments-primary-btn" onclick="assignSelectedDevicesToDepartment()">Save Assignments</button>
         </div>
     </div>
 {% endcall %}
@@ -465,7 +421,7 @@
             'success': 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
             'danger': 'bg-red-500/10 text-red-400 ring-red-500/20',
             'warning': 'bg-amber-500/10 text-amber-400 ring-amber-500/20',
-            'info': 'bg-blue-500/10 text-blue-400 ring-blue-500/20',
+            'info': 'bg-[#00d4aa]/10 text-[#00d4aa] ring-[#00d4aa]/20',
             'neutral': 'bg-slate-500/10 text-slate-400 ring-slate-500/20'
         };
         const s = styleMap[type] || styleMap['neutral'];
@@ -498,7 +454,7 @@
             
             row.innerHTML = `
                 <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">
-                    <a href="/departments/${dept.id}" class="hover:text-blue-400 transition-colors">${escapeHtml(dept.name)}</a>
+                    <a href="/departments/${dept.id}" class="hover:text-[#00d4aa] transition-colors">${escapeHtml(dept.name)}</a>
                 </td>
                 <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
                     ${escapeHtml(dept.description || '-')}
@@ -566,12 +522,13 @@
             const result = await requestJson(`/api/departments/${deptId}/assignable-devices`, {}, 'Failed to load assignable devices');
             inventoryDevices = result.data || [];
             inventoryLoaded = true;
+            populateDeviceTypeFilter();
 
             // Show subnet information
             if (result.site_subnets && result.site_subnets.length > 0) {
                 if (subnetInfoAlert) {
                     const subnetList = result.site_subnets.join(', ');
-                    document.getElementById('subnetInfoAlertContent').innerHTML = `Available within site scope: <strong class="text-blue-100">${escapeHtml(subnetList)}</strong><br>(${result.total_assignable} matching devices)`;
+                    document.getElementById('subnetInfoAlertContent').innerHTML = `Available within site scope: <strong class="text-[#ccf5ec]">${escapeHtml(subnetList)}</strong><br>(${result.total_assignable} matching devices)`;
                     subnetInfoAlert.classList.remove('hidden');
                 }
             }
@@ -592,6 +549,7 @@
     function getFilteredInventoryDevices() {
         const search = (document.getElementById('deviceSearch').value || '').toLowerCase();
         const showAssigned = document.getElementById('showAssignedDevices').checked;
+        const typeFilter = (document.getElementById('deviceTypeFilter').value || '').toLowerCase();
 
         return inventoryDevices.filter(device => {
             const haystack = [
@@ -603,15 +561,25 @@
                 device.manufacturer || ''
             ].join(' ').toLowerCase();
 
-            if (search && !haystack.includes(search)) {
-                return false;
-            }
-
-            if (!showAssigned) {
-                return !device.department_id || device.department_id === currentAssignDeptId;
-            }
+            if (search && !haystack.includes(search)) return false;
+            if (typeFilter && (device.device_type || '').toLowerCase() !== typeFilter) return false;
+            if (!showAssigned) return !device.department_id || device.department_id === currentAssignDeptId;
 
             return true;
+        });
+    }
+
+    function populateDeviceTypeFilter() {
+        const sel = document.getElementById('deviceTypeFilter');
+        if (!sel) return;
+        const types = [...new Set(inventoryDevices.map(d => (d.device_type || '').toLowerCase()).filter(Boolean))].sort();
+        // Clear all except first "All Types" option
+        while (sel.options.length > 1) sel.remove(1);
+        types.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            sel.appendChild(opt);
         });
     }
 
@@ -654,7 +622,7 @@
             }
 
             const row = document.createElement('tr');
-            row.className = `group hover:bg-slate-700/30 transition-colors cursor-pointer ${isChecked ? 'bg-blue-500/10' : ''} ${!isSelectable ? 'opacity-60 cursor-not-allowed' : ''}`;
+            row.className = `group hover:bg-slate-700/30 transition-colors cursor-pointer ${isChecked ? 'bg-[#00d4aa]/10' : ''} ${!isSelectable ? 'opacity-60 cursor-not-allowed' : ''}`;
             
             if(isSelectable) {
                 row.onclick = function(e) {
@@ -667,7 +635,7 @@
 
             row.innerHTML = `
                 <td class="py-3 pl-4 pr-3 w-10">
-                    <input type="checkbox" class="h-4 w-4 rounded border-slate-700 bg-slate-900 ring-offset-slate-800 text-blue-500 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-50" 
+                    <input type="checkbox" class="h-4 w-4 rounded border-slate-700 bg-slate-900 ring-offset-slate-800 text-[#00d4aa] focus:ring-[#00d4aa] focus:ring-offset-2 disabled:opacity-50" 
                         ${isSelectable ? '' : 'disabled'}
                         ${isChecked ? 'checked' : ''}
                         onchange="toggleDeviceSelection(${device.device_id}, this.checked)">

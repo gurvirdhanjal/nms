@@ -219,13 +219,62 @@ def _get_ip_location():
 class LocationProvider:
     """Runs the 3-tier fallback chain and caches the last good fix for
     min_interval_seconds so callers can poll frequently without hammering
-    the OS API / external services."""
+    the OS API / external services.
 
-    def __init__(self, google_api_key=None, min_interval_seconds=300):
+    Tier 2 (Google Geolocation) is billed per call, unlike Tiers 1/3 — so it
+    gets its own, stricter rate gate independent of min_interval_seconds:
+    a dedicated minimum interval between calls (GOOGLE_GEOLOCATION_MIN_INTERVAL_SECONDS,
+    default 8 h) plus a hard rolling-24 h cap on call count
+    (GOOGLE_GEOLOCATION_MAX_CALLS_PER_DAY, default 3 — kept low so usage stays
+    within Google's free-tier monthly credit even across a whole fleet of
+    agents). Both apply even if min_interval_seconds is configured very low or
+    get_location(force=True) is used, so a misconfiguration or a stuck polling
+    loop can't run up a Google Cloud bill. State is in-memory and resets on
+    service restart."""
+
+    def __init__(
+        self,
+        google_api_key=None,
+        min_interval_seconds=300,
+        google_min_interval_seconds=None,
+        google_max_calls_per_day=None,
+    ):
         self._google_api_key = (google_api_key or "").strip() or None
         self._min_interval_seconds = max(30, int(min_interval_seconds or 300))
+
+        # Tier-2-specific rate gate (independent of the general cache interval).
+        _g_min = int(
+            google_min_interval_seconds
+            if google_min_interval_seconds is not None
+            else int(os.getenv('GOOGLE_GEOLOCATION_MIN_INTERVAL_SECONDS') or 28800)
+        )
+        self._google_min_interval_seconds = max(60, _g_min)
+
+        _g_max = int(
+            google_max_calls_per_day
+            if google_max_calls_per_day is not None
+            else int(os.getenv('GOOGLE_GEOLOCATION_MAX_CALLS_PER_DAY') or 3)
+        )
+        self._google_max_calls_per_day = max(1, _g_max)
+
         self._last_fix = None
         self._last_fix_at = 0.0
+        # -inf, not 0.0: time.monotonic() starts near 0 at boot, so 0.0 would
+        # make the first call appear to have just fired.
+        self._google_last_call_at = float('-inf')
+        self._google_call_timestamps: list[float] = []
+
+    def _google_rate_allowed(self, now: float) -> bool:
+        """Return True if a Tier-2 call is permitted under both rate gates."""
+        if (now - self._google_last_call_at) < self._google_min_interval_seconds:
+            return False
+        cutoff = now - 86400.0
+        self._google_call_timestamps = [t for t in self._google_call_timestamps if t > cutoff]
+        return len(self._google_call_timestamps) < self._google_max_calls_per_day
+
+    def _google_record_call(self, now: float) -> None:
+        self._google_last_call_at = now
+        self._google_call_timestamps.append(now)
 
     def get_location(self, force=False):
         now = time.monotonic()
@@ -254,7 +303,21 @@ class LocationProvider:
         return _get_windows_location()
 
     def _tier_wifi(self):
-        return _get_wifi_location(self._google_api_key)
+        now = time.monotonic()
+        if not self._google_rate_allowed(now):
+            remaining = self._google_max_calls_per_day - len(
+                [t for t in self._google_call_timestamps if t > now - 86400.0]
+            )
+            print(
+                f"[Location] Tier 2 (Wi-Fi) skipped: Google rate gate active "
+                f"(min interval {self._google_min_interval_seconds}s, "
+                f"{remaining} call(s) left today)."
+            )
+            return None
+        fix = _get_wifi_location(self._google_api_key)
+        if fix is not None:
+            self._google_record_call(now)
+        return fix
 
     def _tier_ip(self):
         return _get_ip_location()

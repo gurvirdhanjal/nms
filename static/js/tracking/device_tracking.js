@@ -459,7 +459,17 @@
                 : 'offline';
         const identitySource = safeValue(device.identity_source, row.dataset.identitySource || 'legacy_confirmed');
 
-        row.dataset.deviceStatus = availabilityStatus;
+        // "inactive" = host is pingable but the tracking agent is not installed/running.
+        // Probe method 'ping' or 'port' means the HTTP agent endpoints never responded.
+        const probeMethod = safeValue(device.probe_method, '').toLowerCase();
+        const probeError = safeValue(device.probe_error_code, '');
+        const agentRunning = ['stats', 'identity', 'health', 'sync'].includes(probeMethod)
+            || Boolean(device.agent_sync_recent);
+        const displayStatus = (availabilityStatus === 'degraded' && !agentRunning)
+            ? 'inactive'
+            : availabilityStatus;
+
+        row.dataset.deviceStatus = displayStatus;
         row.dataset.identitySource = identitySource;
         const ipAddress = safeValue(device.ip_address, '').trim();
         const hostName = safeValue(device.hostname, '').trim();
@@ -503,21 +513,35 @@
                 }
             }
 
-            if (row.dataset.lastBadgeStatus !== availabilityStatus) {
-                row.dataset.lastBadgeStatus = availabilityStatus;
+            if (row.dataset.lastBadgeStatus !== displayStatus) {
+                row.dataset.lastBadgeStatus = displayStatus;
 
                 statusSpan.className = 'tactical-badge status-badge'; // Reset class
 
-                if (availabilityStatus === 'online') {
+                if (displayStatus === 'online') {
                     statusSpan.classList.add('tactical-badge-healthy');
                     statusSpan.textContent = 'ONLINE';
-                } else if (availabilityStatus === 'degraded') {
+                } else if (displayStatus === 'inactive') {
+                    statusSpan.classList.add('tactical-badge-inactive');
+                    statusSpan.textContent = 'INACTIVE';
+                } else if (displayStatus === 'degraded') {
                     statusSpan.classList.add('tactical-badge-warning');
                     statusSpan.textContent = 'DEGRADED';
                 } else {
                     statusSpan.classList.add('tactical-badge-critical');
                     statusSpan.textContent = 'OFFLINE';
                 }
+            }
+
+            // Gate the LIVE button — only enabled when the agent is actually running.
+            const liveBtn = row.querySelector('.ops-btn-live');
+            if (liveBtn) {
+                const agentActive = displayStatus === 'online' || displayStatus === 'degraded';
+                liveBtn.classList.toggle('ops-btn-live--disabled', !agentActive);
+                liveBtn.setAttribute('aria-disabled', String(!agentActive));
+                liveBtn.title = agentActive
+                    ? 'Live Tracking'
+                    : 'Agent not active — deploy agent to enable live tracking';
             }
         }
 
@@ -622,6 +646,9 @@
             return probeMethod ? `Probe ok via ${probeMethod}` : 'Reachable';
         }
         if (availability === 'degraded') {
+            if (probeMethod === 'ping' || probeMethod === 'port' || probeError === 'AGENT_UNREACHABLE') {
+                return 'Host reachable — agent not installed or not running';
+            }
             if (probeMethod === 'health') {
                 return probeError ? `Health-only (${probeError})` : 'Health-only reachability';
             }
@@ -1335,6 +1362,47 @@
         }
     }
 
+    async function autoSaveScannedDevices(devices, options = {}) {
+        let savedCount = 0;
+        for (const device of devices) {
+            try {
+                const mac = safeValue(device.authoritative_mac || device.mac_address, '').trim();
+                const ip = safeValue(device.ip, '').trim();
+                const hostname = safeValue(device.hostname, 'Auto-Discovered Device').trim();
+                const payload = {
+                    device_name: hostname,
+                    employee_name: '',
+                    mac_address: mac,
+                    ip_address: ip,
+                    hostname: hostname,
+                    department: '',
+                    notes: 'Auto-added: agent detected on network scan',
+                };
+                const response = await requestJson('/api/tracking/save-device', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+                if (response.success) {
+                    savedCount++;
+                    if (response.device) {
+                        upsertStoredDeviceRow(response.device);
+                    }
+                }
+            } catch (error) {
+                console.debug('[tracking] Auto-save failed:', error?.message || error);
+            }
+        }
+        if (savedCount > 0 && !options.silent) {
+            showNotification(
+                `Auto-added ${savedCount} new agent-active device${savedCount === 1 ? '' : 's'} to monitoring.`,
+                'success'
+            );
+            inventoryDevicesLoaded = false;
+            await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
+        }
+        return savedCount;
+    }
+
     async function scanNetworkDevices(event) {
         const button = event?.currentTarget || document.getElementById('trackingScanBtn');
         const originalLabel = button ? button.innerHTML : 'Scan Network';
@@ -1357,7 +1425,16 @@
             }
 
             renderScanSummary(response);
-            patchScanResults(response.devices_found || []);
+            const devicesFound = response.devices_found || [];
+            patchScanResults(devicesFound);
+
+            // Auto-save any tracking_active devices not yet in monitored inventory.
+            const newAgentDevices = devicesFound.filter(
+                (d) => safeValue(d.status, '').toLowerCase() === 'tracking_active' && !d.is_saved
+            );
+            if (newAgentDevices.length > 0) {
+                autoSaveScannedDevices(newAgentDevices);
+            }
 
             if (Array.isArray(response.updated_ips) && response.updated_ips.length > 0) {
                 showNotification(`Updated IP addresses for ${response.updated_ips.length} device(s).`, 'success');
@@ -1428,15 +1505,39 @@
                 method: 'POST',
             });
 
+            // Also scan for newly installed agents and auto-add them.
+            let autoSaved = 0;
+            try {
+                const scanResponse = await requestJson('/api/tracking/scan', { method: 'POST' });
+                if (scanResponse.success && Array.isArray(scanResponse.devices_found)) {
+                    const newAgentDevices = scanResponse.devices_found.filter(
+                        (d) => safeValue(d.status, '').toLowerCase() === 'tracking_active' && !d.is_saved
+                    );
+                    if (newAgentDevices.length > 0) {
+                        autoSaved = await autoSaveScannedDevices(newAgentDevices, { silent: true });
+                    }
+                }
+            } catch (scanError) {
+                console.debug('[tracking] Live-sync agent scan failed:', scanError?.message || scanError);
+            }
+
             await refreshStoredDeviceStatuses({ reason: 'manual', manual: true });
 
             const refreshedDevices = Number(response.refreshed_devices || 0);
+            const detailParts = [];
+            if (refreshedDevices > 0) {
+                detailParts.push(`Refreshed ${refreshedDevices} tracked device snapshot${refreshedDevices === 1 ? '' : 's'}.`);
+            }
+            if (autoSaved > 0) {
+                detailParts.push(`Auto-added ${autoSaved} new agent-active device${autoSaved === 1 ? '' : 's'} to monitoring.`);
+            }
+            if (detailParts.length === 0) {
+                detailParts.push('Live status view refreshed from latest snapshot cache.');
+            }
             showActionBanner({
                 title: 'Live sync complete',
                 message: response.message || 'Live sync completed.',
-                detail: refreshedDevices > 0
-                    ? `Refreshed ${refreshedDevices} tracked device snapshot${refreshedDevices === 1 ? '' : 's'} and updated the live status view.`
-                    : 'The live status view was refreshed using the latest available tracking snapshot cache.',
+                detail: detailParts.join(' '),
             });
         } catch (error) {
             showNotification(error.message || 'Live sync failed.', 'danger');

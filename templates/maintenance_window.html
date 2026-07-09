@@ -120,9 +120,18 @@
                 <form id="scheduleMaintenanceForm" class="row g-3">
                     <div class="col-12">
                         <label class="text-uppercase fw-bold text-muted mb-2" style="font-size: 10px; letter-spacing: 0.1em;">Asset Selection</label>
-                        <div class="input-group input-group-sm mb-2">
-                            <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
-                            <input type="text" class="form-control bg-dark text-white border-secondary" id="scheduleDeviceSearch" placeholder="SEARCH IDENTIFIERS...">
+                        <div class="row g-2 mb-2">
+                            <div class="col-7">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
+                                    <input type="text" class="form-control bg-dark text-white border-secondary" id="scheduleDeviceSearch" placeholder="SEARCH IDENTIFIERS...">
+                                </div>
+                            </div>
+                            <div class="col-5">
+                                <select class="form-select form-select-sm bg-dark text-white border-secondary" id="scheduleDeviceTypeFilter" onchange="filterScheduleDevices()">
+                                    <option value="">ALL TYPES</option>
+                                </select>
+                            </div>
                         </div>
                         <select class="form-select form-select-sm bg-dark text-white border-secondary" id="scheduleDevice" required>
                             <option value="">SELECT TARGET ASSET</option>

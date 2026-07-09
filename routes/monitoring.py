@@ -197,9 +197,12 @@ def get_monitoring_status():
         latest_map = {}
 
         if target_device_ips:
+            # Use max(scan_timestamp) — covered by idx_device_scan_history_ip_time
+            # on (device_ip, scan_timestamp). max(scan_id) has no usable index on
+            # this TimescaleDB hypertable and causes statement timeouts at fleet scale.
             latest_subq = db.session.query(
                 DeviceScanHistory.device_ip,
-                func.max(DeviceScanHistory.scan_id).label('max_id')
+                func.max(DeviceScanHistory.scan_timestamp).label('max_ts')
             ).filter(
                 DeviceScanHistory.device_ip.in_(target_device_ips)
             ).group_by(DeviceScanHistory.device_ip).subquery()
@@ -207,7 +210,7 @@ def get_monitoring_status():
             latest_rows = db.session.query(DeviceScanHistory).join(
                 latest_subq,
                 (DeviceScanHistory.device_ip == latest_subq.c.device_ip) &
-                (DeviceScanHistory.scan_id == latest_subq.c.max_id)
+                (DeviceScanHistory.scan_timestamp == latest_subq.c.max_ts)
             ).all()
             latest_map = {row.device_ip: row for row in latest_rows}
 

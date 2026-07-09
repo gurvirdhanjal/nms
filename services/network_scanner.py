@@ -733,9 +733,37 @@ class NetworkScanner:
             3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB",
             6379: "Redis", 1433: "MSSQL",
             445: "SMB", 139: "NetBIOS-SSN", 9100: "JetDirect",
-            631: "IPP", 515: "LPD"
+            631: "IPP", 515: "LPD",
+            2049: "NFS", 111: "RPC", 873: "Rsync",
+            548: "AFP", 3260: "iSCSI",
         }
         return services.get(port, "Unknown")
+
+    # File-sharing ports — presence of any means device is likely a file server
+    _FILE_SERVER_PORTS = frozenset([445, 139, 2049, 548, 873])
+
+    def _nmap_smb_hostname(self, ip: str) -> str | None:
+        """Try to get a NetBIOS/WINS computer name via nmap smb-os-discovery script.
+
+        Returns the computer name string or None on failure.  Only attempted when
+        port 445 is already known to be open (avoids wasting time on non-SMB hosts).
+        """
+        try:
+            result = subprocess.run(
+                ['nmap', '-p', '445', '--script=smb-os-discovery',
+                 '--host-timeout', '8s', ip],
+                capture_output=True, text=True, timeout=12
+            )
+            import re as _re
+            # Match "Computer name: DESKTOP-ABC123" or "NetBIOS computer name: PC-NAME"
+            m = _re.search(r'(?:Computer name|NetBIOS computer name):\s*(\S+)', result.stdout)
+            if m:
+                candidate = m.group(1).strip().rstrip('\\')
+                if candidate and not _re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
+                    return candidate
+        except Exception:
+            pass
+        return None
     
     # ---------------------------
     # Agent Discovery
@@ -931,6 +959,18 @@ class NetworkScanner:
             else:
                 # Port scan enabled for device classification (provides 15% classification weight)
                 device_info["open_ports"] = await self.scan_ports(ip)
+
+                # Detect file-server role from open ports
+                open_port_nums = {p["port"] for p in device_info["open_ports"] if isinstance(p, dict)}
+                device_info["file_server"] = bool(open_port_nums & self._FILE_SERVER_PORTS)
+
+                # SMB hostname fallback — only if 445 is open and hostname still unknown
+                if 445 in open_port_nums and device_info.get("hostname") in ("Unknown", None, ""):
+                    smb_name = await loop.run_in_executor(
+                        self._executor, self._nmap_smb_hostname, ip
+                    )
+                    if smb_name:
+                        device_info["hostname"] = smb_name
 
                 # Run Classification Engine if not agent
 

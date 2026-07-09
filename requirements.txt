@@ -43,3 +43,6 @@ ldap3>=2.9
 
 # AI Classification (Gemini LLM fallback for unknown device classification)
 google-generativeai>=0.8.0
+
+# Date/time utilities (used in tracking routes)
+python-dateutil>=2.8.0

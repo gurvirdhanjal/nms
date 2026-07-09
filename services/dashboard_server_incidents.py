@@ -612,7 +612,7 @@ def build_server_incident_snapshot(scoped_servers, range_hours: int = 24) -> dic
         metric_key: {"warning": 0, "critical": 0}
         for metric_key in PRIMARY_HEALTH_METRICS
     }
-    counts = {"total": len(scoped_servers), "healthy": 0, "warning": 0, "critical": 0, "offline": 0}
+    counts = {"total": len(scoped_servers), "healthy": 0, "warning": 0, "critical": 0, "offline": 0, "online": 0}
     rows = []
     active_issues = []
     synthetic_alerts = []
@@ -622,6 +622,12 @@ def build_server_incident_snapshot(scoped_servers, range_hours: int = 24) -> dic
         log = log_map.get(device_id)
         scan = latest_scan_map.get(device.device_ip)
         health = compute_server_health(log)
+        # If agent log is stale/absent but a recent ping shows the device is up, downgrade from Offline to Online
+        if health == "Offline" and scan is not None:
+            scan_ts = getattr(scan, "scan_timestamp", None)
+            scan_age = (now - scan_ts).total_seconds() if scan_ts else 9999
+            if getattr(scan, "status", "") == "online" and scan_age < 600:
+                health = "Online"
         counts[str(health).lower()] = counts.get(str(health).lower(), 0) + 1
 
         evaluations = evaluate_metrics_for_log(log, thresholds) if log is not None and health != "Offline" else {}
@@ -738,7 +744,7 @@ def build_server_incident_snapshot(scoped_servers, range_hours: int = 24) -> dic
 
     problem_count = sum(1 for row in rows if row.get("primary_issue"))
     total_servers = len(scoped_servers)
-    healthy_count = int(counts.get("healthy", 0))
+    healthy_count = int(counts.get("healthy", 0)) + int(counts.get("online", 0))
     impact_pct = round((problem_count / total_servers) * 100.0, 1) if total_servers else 0.0
 
     metric_cards = {}

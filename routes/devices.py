@@ -33,6 +33,23 @@ _bulk_delete_jobs = {}
 _bulk_delete_jobs_lock = threading.Lock()
 
 
+def _reset_threshold_streaks(device_ids: list[int]) -> None:
+    """Reset breach/recovery streak counters when a compliance profile changes.
+
+    Without this, stale streak counts from the old threshold context can delay
+    or suppress alerts under the newly-assigned profile thresholds.
+    """
+    try:
+        from models.server_metric_threshold_state import ServerMetricThresholdState
+        (
+            ServerMetricThresholdState.query
+            .filter(ServerMetricThresholdState.device_id.in_(device_ids))
+            .update({'breach_streak': 0, 'recovery_streak': 0}, synchronize_session=False)
+        )
+    except Exception as exc:
+        logger.warning('[devices] Could not reset threshold streaks for %s devices: %s', len(device_ids), exc)
+
+
 def _is_lock_timeout_error(error: Exception) -> bool:
     """Detect PostgreSQL lock-not-available / lock-timeout errors.
 
@@ -1100,6 +1117,44 @@ def api_device_subnets():
     subnets = sorted([r[0] for r in rows if r[0]])
     return jsonify(subnets)
 
+@devices_bp.route('/api/devices/types')
+@require_login
+def api_device_types():
+    """Return the canonical device type list merged with any DB-only types present."""
+    from services.device_classifier import DeviceClassifier
+    from models.device import Device
+    from sqlalchemy import func as sa_func
+
+    # Canonical types in display order
+    canonical = [
+        'server', 'workstation', 'switch', 'router', 'firewall',
+        'access_point', 'printer', 'camera', 'mobile', 'unknown',
+    ]
+    canonical_set = set(canonical)
+
+    # Also pull any non-canonical types actually in the DB
+    db_rows = (
+        db.session.query(Device.device_type)
+        .filter(Device.device_type.isnot(None))
+        .group_by(Device.device_type)
+        .order_by(sa_func.count(Device.device_id).desc())
+        .all()
+    )
+    extra = [
+        DeviceClassifier.normalize_device_type(r[0])
+        for r in db_rows
+        if (r[0] or '').strip()
+    ]
+    # Merge: canonical first, then any DB types not already in canonical
+    merged = list(canonical)
+    for t in extra:
+        if t and t not in canonical_set:
+            merged.append(t)
+            canonical_set.add(t)
+
+    return jsonify({'device_types': merged})
+
+
 @devices_bp.route('/api/devices')
 @require_login
 def api_devices():
@@ -1124,8 +1179,11 @@ def api_devices():
         subnet=subnet,
         status=status,
     )
-    _SORT_COLS = {'ip': Device.device_ip, 'hostname': Device.hostname}
-    sort_col = _SORT_COLS.get(request.args.get('sort', 'ip'), Device.device_ip)
+    from sqlalchemy import cast
+    from sqlalchemy.dialects.postgresql import INET
+    _ip_sort_col = cast(Device.device_ip, INET) if db.engine.dialect.name == 'postgresql' else Device.device_ip
+    _SORT_COLS = {'ip': _ip_sort_col, 'hostname': Device.hostname}
+    sort_col = _SORT_COLS.get(request.args.get('sort', 'ip'), _ip_sort_col)
     sort_dir = request.args.get('dir', 'asc')
     order_expr = sort_col.asc().nullslast() if sort_dir == 'asc' else sort_col.desc().nullslast()
     query = query.order_by(order_expr)
@@ -2874,6 +2932,7 @@ def set_device_compliance_profile(device_id):
             return jsonify({'error': 'Compliance profile not found'}), 404
 
     device.compliance_profile_id = profile_id
+    _reset_threshold_streaks([device_id])
     try:
         db.session.commit()
     except Exception as exc:
@@ -2921,6 +2980,7 @@ def bulk_set_compliance_profile():
             .filter(Device.device_id.in_(device_ids))
             .update({'compliance_profile_id': profile_id}, synchronize_session=False)
         )
+        _reset_threshold_streaks(device_ids)
         db.session.commit()
     except Exception as exc:
         db.session.rollback()

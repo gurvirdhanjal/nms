@@ -1608,6 +1608,25 @@ def _build_server_fleet(report: dict, styles) -> list:
 
     styles_ref = getSampleStyleSheet()
 
+    # ── Per-Device Detail Cards — one card per stored device ─────────────────
+    # Each card: identity row (name/IP/type/status/SLA) + ICMP metrics row
+    # + agent telemetry row (CPU/mem/disk/net). Shows ALL devices in the fleet.
+    elems.append(PageBreak())
+    elems.extend(section_title_flowable(
+        "Device-by-Device Detail",
+        f"Full metrics for all {len(rows)} stored devices — identity, availability, and agent telemetry.",
+    ))
+    elems.append(SP_BLOCK)
+    for row in rows:
+        elems.extend(_build_server_device_card(row, styles))
+
+    elems.append(PageBreak())
+    elems.extend(section_title_flowable(
+        "Fleet Summary Tables",
+        "Cross-device comparison tables for availability, latency, and telemetry.",
+    ))
+    elems.append(SP_BLOCK)
+
     # ── TABLE 1 of 3 — Availability & SLA Ledger ─────────────────────────────
     elems.append(_table_label("TABLE 1 of 3 — Availability & SLA Ledger", styles_ref))
     elems.extend(build_fleet_table(

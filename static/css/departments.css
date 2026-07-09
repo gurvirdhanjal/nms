@@ -71,40 +71,15 @@
         color: var(--ui-text-primary) !important;
     }
 
-    /* ── Tailwind blue → app accent overrides ── */
-    .departments-page .bg-blue-500,
-    .departments-page [class*="bg-blue-"] {
-        background-color: var(--ui-accent) !important;
-        color: #07100f !important;
-    }
-    .departments-page .hover\:bg-blue-400:hover {
-        background-color: var(--ui-accent-strong) !important;
-    }
-    .departments-page .text-blue-400,
-    .departments-page .text-blue-100,
-    .departments-page .text-blue-200,
-    .departments-page [class*="text-blue-"] {
-        color: var(--ui-accent-strong) !important;
-    }
-    .departments-page .hover\:text-blue-400:hover {
-        color: var(--ui-accent-strong) !important;
-    }
+    /* ── Focus ring — brand accent ── */
     .departments-page input:focus,
     .departments-page select:focus,
     .departments-page textarea:focus {
-        --tw-ring-color: var(--ui-accent) !important;
         border-color: rgba(0,212,170,0.45) !important;
         outline: none !important;
+        box-shadow: 0 0 0 2px rgba(0,212,170,0.15) !important;
     }
-    .departments-page .text-blue-600 { color: var(--ui-accent-strong) !important; }
     .departments-page input[type="checkbox"] { accent-color: var(--ui-accent); }
-    .departments-page .ring-blue-500,
-    .departments-page [class*="ring-blue-"] { --tw-ring-color: var(--ui-accent) !important; }
-    .departments-page .bg-blue-500\/10 { background: rgba(0,212,170,0.08) !important; }
-    .departments-page .ring-blue-500\/20 { --tw-ring-color: rgba(0,212,170,0.2) !important; }
-    .departments-page .bg-blue-500\/10,
-    .departments-page [class*="bg-blue-"][class*="\/"] { background: rgba(0,212,170,0.08) !important; }
-    .departments-page .cursor-pointer.bg-blue-500\/10 { background: rgba(0,212,170,0.10) !important; }
 
     /* KPI Summary Strip */
     .enterprise-kpi-row {
@@ -258,22 +233,42 @@
         font-size: 0.82rem !important;
     }
 
-    #department-slide-over .sticky,
-    #assign-devices-slide-over .sticky {
-        padding-top: 0.85rem;
-    }
-
     #inventoryDevicesTable thead th,
     #inventoryDevicesTable tbody td {
         padding-top: 0.46rem;
         padding-bottom: 0.46rem;
     }
 
-    #assignDevicesNoSiteAlert,
-    #subnetInfoAlert,
-    #subnetWarningAlert {
-        padding: 0.7rem !important;
-        margin-bottom: 0.75rem !important;
+    .assign-info-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        border-radius: 6px;
+        background: rgba(0,212,170,0.07);
+        border: 1px solid rgba(0,212,170,0.2);
+        font-size: 0.82rem;
+        color: var(--ui-text-secondary);
+        margin-bottom: 0.75rem;
+    }
+
+    .depts-table-link {
+        color: var(--ui-text-primary);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+
+    .depts-table-link:hover {
+        color: var(--ui-accent);
+    }
+
+    .slide-over-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.6rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid var(--ui-border);
+        margin-top: auto;
     }
 
 /* ── Department Profile (templates/departments/profile.html) ── */

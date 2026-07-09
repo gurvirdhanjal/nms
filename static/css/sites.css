@@ -47,39 +47,15 @@
         color: #07100f !important;
     }
 
-    /* ── Tailwind blue → app accent overrides ── */
-    .sites-page .bg-blue-500,
-    .sites-page [class*="bg-blue-"] {
-        background-color: var(--ui-accent) !important;
-        color: #07100f !important;
-    }
-    .sites-page .hover\:bg-blue-400:hover {
-        background-color: var(--ui-accent-strong) !important;
-    }
-    .sites-page .text-blue-400,
-    .sites-page .text-blue-100,
-    .sites-page .text-blue-200,
-    .sites-page [class*="text-blue-"] {
-        color: var(--ui-accent-strong) !important;
-    }
-    .sites-page .hover\:text-blue-400:hover {
-        color: var(--ui-accent-strong) !important;
-    }
+    /* ── Focus ring — brand accent ── */
     .sites-page input:focus,
     .sites-page select:focus,
     .sites-page textarea:focus {
-        --tw-ring-color: var(--ui-accent) !important;
         border-color: rgba(0,212,170,0.45) !important;
         outline: none !important;
+        box-shadow: 0 0 0 2px rgba(0,212,170,0.15) !important;
     }
     .sites-page input[type="checkbox"] { accent-color: var(--ui-accent); }
-    .sites-page .ring-blue-500,
-    .sites-page [class*="ring-blue-"] { --tw-ring-color: var(--ui-accent) !important; }
-    .sites-page .bg-blue-500\/10,
-    .sites-page [class*="bg-blue-"][class*="\/"] { background: rgba(0,212,170,0.08) !important; }
-    .sites-page .ring-blue-500\/20 { --tw-ring-color: rgba(0,212,170,0.2) !important; }
-    .sites-page .cursor-pointer.bg-blue-500\/10 { background: rgba(0,212,170,0.10) !important; }
-    .sites-page [class*="outline-blue-"] { outline-color: var(--ui-accent) !important; }
 
     /* KPI Summary Strip */
     .enterprise-kpi-row {
@@ -221,15 +197,41 @@
         font-size: 0.82rem !important;
     }
 
-    #site-slide-over .sticky,
-    #assign-devices-slide-over .sticky {
-        padding-top: 0.85rem;
-    }
-
     #siteInventoryDevicesTable thead th,
     #siteInventoryDevicesTable tbody td {
         padding-top: 0.46rem;
         padding-bottom: 0.46rem;
+    }
+
+    .sites-code-badge {
+        display: inline-block;
+        background: var(--ui-surface-3);
+        border: 1px solid var(--ui-border);
+        border-radius: 4px;
+        padding: 0.1rem 0.42rem;
+        font-family: var(--ui-font-mono);
+        font-size: 0.75rem;
+        color: var(--ui-text-secondary);
+        letter-spacing: 0.04em;
+    }
+
+    .sites-table-link {
+        color: var(--ui-text-primary);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+
+    .sites-table-link:hover {
+        color: var(--ui-accent);
+    }
+
+    .slide-over-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.6rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid var(--ui-border);
+        margin-top: auto;
     }
 
 /* ── Site Dashboard (templates/sites/dashboard.html) ── */

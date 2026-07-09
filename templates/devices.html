@@ -166,7 +166,7 @@
     .devices-page .devices-table thead th:last-child {
         position: sticky;
         right: 0;
-        background-color: #212529;
+        background-color: var(--ui-bg);
         z-index: 3;
         box-shadow: -3px 0 6px rgba(0,0,0,.4);
     }
@@ -610,8 +610,72 @@
         border-color: rgba(148, 163, 184, 0.14);
         background: rgba(15, 23, 42, 0.5);
         color: #64748b;
-        cursor: help;
+        cursor: pointer;
     }
+    .devices-page .port-badge-more:hover {
+        border-color: rgba(148, 163, 184, 0.3);
+        color: #94a3b8;
+    }
+    .devices-page .filter-count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.1rem;
+        height: 1.1rem;
+        padding: 0 0.22rem;
+        border-radius: 999px;
+        background: rgba(0, 212, 170, 0.25);
+        color: #00d4aa;
+        font-size: 0.58rem;
+        font-weight: 700;
+        margin-left: 0.28rem;
+        vertical-align: middle;
+    }
+    .devices-page .filters-dropdown-menu {
+        min-width: 220px;
+        padding: 0.72rem 0.78rem;
+        border-radius: 8px !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+        background: rgba(12, 16, 24, 0.98) !important;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4) !important;
+    }
+    .devices-page .filters-dropdown-label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--d-text-muted);
+        margin-bottom: 0.2rem;
+        display: block;
+    }
+    .ports-detail-row {
+        display: flex;
+        align-items: center;
+        gap: 0.46rem;
+        padding: 0.3rem 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        font-size: 0.72rem;
+    }
+    .ports-detail-row:last-child { border-bottom: none; }
+    .ports-detail-num {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 600;
+        font-size: 0.7rem;
+        min-width: 2.6rem;
+    }
+    .ports-detail-num.web { color: #7dd3fc; }
+    .ports-detail-num.plain { color: #94a3b8; }
+    .ports-detail-svc { font-size: 0.64rem; color: #64748b; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ports-detail-open {
+        font-size: 0.63rem;
+        color: #38bdf8;
+        text-decoration: none;
+        padding: 0.12rem 0.34rem;
+        border-radius: 4px;
+        border: 1px solid rgba(56, 189, 248, 0.22);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .ports-detail-open:hover { background: rgba(56, 189, 248, 0.1); color: #bae6fd; }
 
     .devices-page .device-name-cell,
     .devices-page .devices-table td code,
@@ -1480,54 +1544,70 @@
                                 <span id="filteredSelectionProgressText">Resolving filtered devices...</span>
                             </span>
 
-                            <select
-                                class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
-                                id="statusFilter" name="status" onchange="submitServerFilters()">
-                                <option value="" {% if not active_status %}selected{% endif %}>All Status</option>
-                                <option value="Online" {% if active_status=='Online' %}selected{% endif %}>Online
-                                </option>
-                                <option value="Offline" {% if active_status=='Offline' %}selected{% endif %}>Offline
-                                </option>
-                                <option value="Maintenance" {% if active_status=='Maintenance' %}selected{% endif %}>
-                                    Maintenance
-                                </option>
-                            </select>
-
-                            <select
-                                class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select"
-                                id="typeFilter" name="type" onchange="submitServerFilters()">
-                                <option value="" {% if not active_type %}selected{% endif %}>All Types</option>
-                                <option value="switch" {% if active_type=='switch' %}selected{% endif %}>Switch</option>
-                                <option value="access_point" {% if active_type=='access_point' %}selected{% endif %}>Access Point</option>
-                                <option value="router" {% if active_type=='router' %}selected{% endif %}>Router</option>
-                                <option value="firewall" {% if active_type=='firewall' %}selected{% endif %}>Firewall</option>
-                                <option value="server" {% if active_type=='server' %}selected{% endif %}>Server</option>
-                                <option value="workstation" {% if active_type=='workstation' %}selected{% endif %}>Workstation</option>
-                                <option value="camera" {% if active_type in ['camera', 'camera/iot', 'camera_iot'] %}selected{% endif %}>Camera</option>
-                                <option value="nvr" {% if active_type=='nvr' %}selected{% endif %}>NVR</option>
-                                <option value="dvr" {% if active_type=='dvr' %}selected{% endif %}>DVR</option>
-                                <option value="printer" {% if active_type=='printer' %}selected{% endif %}>Printer</option>
-                                <option value="mobile" {% if active_type=='mobile' %}selected{% endif %}>Mobile</option>
-                                <option value="iphone" {% if active_type=='iphone' %}selected{% endif %}>iPhone</option>
-                                <option value="android" {% if active_type=='android' %}selected{% endif %}>Android</option>
-                                <option value="tv" {% if active_type=='tv' %}selected{% endif %}>TV</option>
-                                <option value="iot" {% if active_type=='iot' %}selected{% endif %}>IoT</option>
-                                <option value="ipbx" {% if active_type=='ipbx' %}selected{% endif %}>IPBX</option>
-                                <option value="virtual_server" {% if active_type=='virtual_server' %}selected{% endif %}>Virtual Server</option>
-                                <option value="virtual_device" {% if active_type=='virtual_device' %}selected{% endif %}>Virtual Device</option>
-                                <option value="vlan_ip" {% if active_type=='vlan_ip' %}selected{% endif %}>VLAN IP</option>
-                                <option value="vlan_device" {% if active_type=='vlan_device' %}selected{% endif %}>VLAN Device</option>
-                                <option value="unknown" {% if active_type=='unknown' %}selected{% endif %}>Unknown</option>
-                            </select>
-
-                            <select
-                                class="form-select form-select-sm bg-dark text-light border-secondary toolbar-select subnet"
-                                id="subnetFilter" name="subnet" onchange="submitServerFilters()">
-                                <option value="" {% if not active_subnet %}selected{% endif %}>All Subnets</option>
-                                {% for sn in subnets %}
-                                <option value="{{ sn }}" {% if active_subnet==sn %}selected{% endif %}>{{ sn }}</option>
-                                {% endfor %}
-                            </select>
+                            <!-- Filters dropdown — Status, Type, Subnet collapsed into one button -->
+                            <div class="dropdown">
+                                <button type="button" class="btn btn-outline-secondary btn-sm border-secondary dropdown-toggle"
+                                    id="devicesFiltersBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                    aria-expanded="false" title="Filter devices">
+                                    <i data-lucide="sliders-horizontal"></i> Filters
+                                    <span class="filter-count-badge" id="filterCountBadge" style="display:none;">0</span>
+                                </button>
+                                <div class="dropdown-menu filters-dropdown-menu" aria-labelledby="devicesFiltersBtn">
+                                    <div class="mb-2">
+                                        <label class="filters-dropdown-label" for="statusFilter">Status</label>
+                                        <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                            id="statusFilter" name="status" onchange="submitServerFilters()">
+                                            <option value="" {% if not active_status %}selected{% endif %}>All Status</option>
+                                            <option value="Online" {% if active_status=='Online' %}selected{% endif %}>Online</option>
+                                            <option value="Offline" {% if active_status=='Offline' %}selected{% endif %}>Offline</option>
+                                            <option value="Maintenance" {% if active_status=='Maintenance' %}selected{% endif %}>Maintenance</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="filters-dropdown-label" for="typeFilter">Device Type</label>
+                                        <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                            id="typeFilter" name="type" onchange="submitServerFilters()">
+                                            <option value="" {% if not active_type %}selected{% endif %}>All Types</option>
+                                            <option value="switch" {% if active_type=='switch' %}selected{% endif %}>Switch</option>
+                                            <option value="access_point" {% if active_type=='access_point' %}selected{% endif %}>Access Point</option>
+                                            <option value="router" {% if active_type=='router' %}selected{% endif %}>Router</option>
+                                            <option value="firewall" {% if active_type=='firewall' %}selected{% endif %}>Firewall</option>
+                                            <option value="server" {% if active_type=='server' %}selected{% endif %}>Server</option>
+                                            <option value="workstation" {% if active_type=='workstation' %}selected{% endif %}>Workstation</option>
+                                            <option value="camera" {% if active_type in ['camera', 'camera/iot', 'camera_iot'] %}selected{% endif %}>Camera</option>
+                                            <option value="nvr" {% if active_type=='nvr' %}selected{% endif %}>NVR</option>
+                                            <option value="dvr" {% if active_type=='dvr' %}selected{% endif %}>DVR</option>
+                                            <option value="printer" {% if active_type=='printer' %}selected{% endif %}>Printer</option>
+                                            <option value="mobile" {% if active_type=='mobile' %}selected{% endif %}>Mobile</option>
+                                            <option value="iphone" {% if active_type=='iphone' %}selected{% endif %}>iPhone</option>
+                                            <option value="android" {% if active_type=='android' %}selected{% endif %}>Android</option>
+                                            <option value="tv" {% if active_type=='tv' %}selected{% endif %}>TV</option>
+                                            <option value="iot" {% if active_type=='iot' %}selected{% endif %}>IoT</option>
+                                            <option value="ipbx" {% if active_type=='ipbx' %}selected{% endif %}>IPBX</option>
+                                            <option value="virtual_server" {% if active_type=='virtual_server' %}selected{% endif %}>Virtual Server</option>
+                                            <option value="virtual_device" {% if active_type=='virtual_device' %}selected{% endif %}>Virtual Device</option>
+                                            <option value="vlan_ip" {% if active_type=='vlan_ip' %}selected{% endif %}>VLAN IP</option>
+                                            <option value="vlan_device" {% if active_type=='vlan_device' %}selected{% endif %}>VLAN Device</option>
+                                            <option value="unknown" {% if active_type=='unknown' %}selected{% endif %}>Unknown</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="filters-dropdown-label" for="subnetFilter">Subnet</label>
+                                        <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                            id="subnetFilter" name="subnet" onchange="submitServerFilters()">
+                                            <option value="" {% if not active_subnet %}selected{% endif %}>All Subnets</option>
+                                            {% for sn in subnets %}
+                                            <option value="{{ sn }}" {% if active_subnet==sn %}selected{% endif %}>{{ sn }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <hr style="border-color:rgba(148,163,184,0.12);margin:0.4rem 0 0.5rem;">
+                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                        style="width:100%;font-size:0.7rem;" onclick="clearServerFilters()">
+                                        <i data-lucide="x-circle"></i> Clear All Filters
+                                    </button>
+                                </div>
+                            </div>
 
                             <div class="input-group input-group-sm toolbar-search">
                                 <span class="input-group-text bg-dark border-secondary text-light"><i
@@ -1709,6 +1789,20 @@
                         <a id="deviceChooserExternal" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">
                             <i data-lucide="external-link"></i> Open Device Web UI
                         </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ports Detail Modal -->
+        <div class="modal fade" id="portsDetailModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content" style="background:rgba(12,16,24,0.98);border:1px solid rgba(148,163,184,0.18);border-radius:10px;overflow:hidden;">
+                    <div class="modal-header" style="background:rgba(15,19,28,0.95);border-bottom:1px solid rgba(148,163,184,0.12);padding:0.58rem 0.88rem;">
+                        <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#e6edf5;" id="portsDetailTitle">Open Ports</span>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size:0.6rem;"></button>
+                    </div>
+                    <div class="modal-body" id="portsDetailBody" style="padding:0.62rem 0.88rem;background:rgba(12,16,24,0.98);max-height:300px;overflow-y:auto;">
                     </div>
                 </div>
             </div>
@@ -2269,6 +2363,86 @@
         let snmpModalInstance = null;
         let currentSnmpDeviceId = null;
         let lastSnmpModalTrigger = null;
+        let lastFetchedDevices = [];
+
+        function _compareIpString(a, b) {
+            const pa = (a || '').split('.').map(n => parseInt(n, 10) || 0);
+            const pb = (b || '').split('.').map(n => parseInt(n, 10) || 0);
+            for (let i = 0; i < 4; i++) {
+                const d = (pa[i] || 0) - (pb[i] || 0);
+                if (d !== 0) return d;
+            }
+            return 0;
+        }
+
+        function _sortTableRowsClientSide(sortKey, sortDir) {
+            const tbody = document.getElementById('devices-table-body');
+            if (!tbody || !lastFetchedDevices.length) return;
+
+            const sorted = [...lastFetchedDevices];
+            if (sortKey === 'ip') {
+                sorted.sort((a, b) => {
+                    const d = _compareIpString(a.device_ip, b.device_ip);
+                    return sortDir === 'asc' ? d : -d;
+                });
+            } else if (sortKey === 'hostname') {
+                sorted.sort((a, b) => {
+                    const va = (a.hostname || a.device_name || '').toLowerCase();
+                    const vb = (b.hostname || b.device_name || '').toLowerCase();
+                    const c = va < vb ? -1 : va > vb ? 1 : 0;
+                    return sortDir === 'asc' ? c : -c;
+                });
+            }
+
+            sorted.forEach(d => {
+                const row = tbody.querySelector(`tr[data-row-key="${d.device_id}"]`);
+                if (row) tbody.appendChild(row);
+            });
+            lastFetchedDevices = sorted;
+        }
+
+        window.openPortsModal = function (badge) {
+            let ports;
+            try { ports = JSON.parse(badge.dataset.ports || '[]'); } catch (e) { ports = []; }
+            const deviceIp = badge.dataset.ip || '';
+
+            const title = document.getElementById('portsDetailTitle');
+            const body = document.getElementById('portsDetailBody');
+            if (!title || !body) return;
+
+            title.textContent = deviceIp ? `Ports — ${deviceIp}` : 'Open Ports';
+
+            if (!ports.length) {
+                body.innerHTML = '<span style="font-size:0.75rem;color:#64748b;">No ports found</span>';
+            } else {
+                body.innerHTML = ports.map(p => {
+                    const num = p.port_number;
+                    const svc = p.service_name || '';
+                    const isWeb = _PORT_WEB.has(num);
+                    if (isWeb && deviceIp) {
+                        const scheme = (num === 443 || num === 8443 || num === 4443) ? 'https' : 'http';
+                        const defaultPort = scheme === 'https' ? 443 : 80;
+                        const suffix = num !== defaultPort ? `:${num}` : '';
+                        const url = `${scheme}://${deviceIp}${suffix}`;
+                        return `<div class="ports-detail-row">
+                            <span class="ports-detail-num web">${num}</span>
+                            <span class="ports-detail-svc">${svc ? escapeHtml(svc) : ''}</span>
+                            <a href="${url}" target="_blank" rel="noopener noreferrer" class="ports-detail-open"
+                               onclick="bootstrap.Modal.getInstance(document.getElementById('portsDetailModal'))?.hide()">Open ↗</a>
+                        </div>`;
+                    }
+                    return `<div class="ports-detail-row">
+                        <span class="ports-detail-num plain">${num}</span>
+                        <span class="ports-detail-svc">${svc ? escapeHtml(svc) : ''}</span>
+                    </div>`;
+                }).join('');
+            }
+
+            const modalEl = document.getElementById('portsDetailModal');
+            if (modalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+        };
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -2360,8 +2534,8 @@
             }).join('');
 
             if (hidden.length) {
-                const moreTitle = hidden.map(p => p.service_name ? `${p.port_number} (${p.service_name})` : String(p.port_number)).join(', ');
-                html += `<span class="port-badge port-badge-more" title="${moreTitle}">+${hidden.length}</span>`;
+                const portsJson = escapeHtml(JSON.stringify(ports));
+                html += `<span class="port-badge port-badge-more" data-no-row-nav="true" onclick="event.stopPropagation(); openPortsModal(this)" data-ports="${portsJson}" data-ip="${escapeHtml(deviceIp || '')}" title="Click to see all ${ports.length} ports">+${hidden.length}</span>`;
             }
 
             return `<div class="port-badges-wrap">${html}</div>`;
@@ -2434,6 +2608,18 @@
                     key: 'subnet',
                     label: `Subnet: ${escapeHtml(filters.subnet)}`
                 });
+            }
+
+            // Update the Filters button badge count
+            const filterBadge = document.getElementById('filterCountBadge');
+            const filterBtnCount = activeChips.filter(c => c.key !== 'search').length;
+            if (filterBadge) {
+                if (filterBtnCount > 0) {
+                    filterBadge.textContent = String(filterBtnCount);
+                    filterBadge.style.display = '';
+                } else {
+                    filterBadge.style.display = 'none';
+                }
             }
 
             if (!activeChips.length) {
@@ -2571,6 +2757,7 @@
                     const totalPages = data.total_pages || 1;
                     const devices = data.devices || [];
                     const globalCount = data.global_device_count || totalDevices;
+                    lastFetchedDevices = devices;
                     renderActiveFilterChips(filters);
 
                     const wrapper = document.getElementById('devices-wrapper');
@@ -3280,6 +3467,9 @@
                         currentSortDir = 'asc';
                     }
                     _updateSortCarets();
+                    // Instantly reorder current page rows client-side for zero-latency feedback
+                    _sortTableRowsClientSide(currentSort, currentSortDir);
+                    // Background server fetch so next page navigation uses correct server sort
                     if (typeof scheduleFetchDevices === 'function') scheduleFetchDevices();
                 });
             });

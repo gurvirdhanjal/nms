@@ -313,16 +313,39 @@ def add_to_inventory():
             assigned_site_id = suggested_site_id
             site_assignment_action = 'auto_assigned' if suggested_site_id else 'unassigned'
 
+        manufacturer_raw = (data.get('manufacturer') or '').strip() or 'Unknown'
         device, action, _prev_ip = upsert_device_from_identity(
             ip=ip_address,
             mac=mac_address,
             hostname=hostname or 'Unknown',
-            manufacturer='Unknown',
+            manufacturer=manufacturer_raw,
             device_type=device_type or 'unknown',
             is_monitored=True,
             is_active=True,
             site_id=assigned_site_id  # Safe: either preserved or auto-assigned for new
         )
+
+        # For existing devices: back-fill hostname and MAC when the scan resolved them
+        # and the device currently has no value (upsert_device_from_identity skips
+        # hostname updates when the incoming value is generic).
+        if device and action in ("existing", "updated"):
+            _needs_commit = False
+            _invalid = ('', 'unknown', 'n/a', 'none')
+            if hostname and hostname.lower() not in _invalid:
+                current_hn = (device.hostname or '').strip().lower()
+                if current_hn in _invalid:
+                    device.hostname = hostname
+                    _needs_commit = True
+            if mac_address and mac_address.lower() not in _invalid:
+                current_mac = (device.macaddress or '').strip().lower()
+                if current_mac in _invalid:
+                    from services.device_identity import _normalize_mac as _nm
+                    normalized = _nm(mac_address)
+                    if normalized:
+                        device.macaddress = normalized
+                        _needs_commit = True
+            if _needs_commit and action == "existing":
+                action = "updated"
 
         if device and (classification_confidence or confidence_score is not None or classification_details):
             if (device.classification_confidence or '').strip().lower() != 'manual':

@@ -17,6 +17,7 @@ if (!window.__serverMenuDismissAttached) {
 
 const STATE_TO_BADGE = {
     Healthy: 'tactical-badge-success',
+    Online: 'tactical-badge-secondary',
     Warning: 'tactical-badge-warning',
     Critical: 'tactical-badge-danger',
     Offline: 'tactical-badge-danger',
@@ -70,6 +71,7 @@ function normalizeSeverityLabel(value) {
     if (normalized === 'critical') return 'Critical';
     if (normalized === 'warning') return 'Warning';
     if (normalized === 'healthy') return 'Healthy';
+    if (normalized === 'online') return 'Online';
     return 'Unknown';
 }
 
@@ -108,10 +110,10 @@ function sortServers(servers) {
 function filteredServers(payload) {
     const servers = sortServers(payload?.servers || []);
     if (currentFilter === 'problem') {
-        return servers.filter((server) => Boolean(server.primary_issue) || server.health !== 'Healthy');
+        return servers.filter((server) => Boolean(server.primary_issue) || (server.health !== 'Healthy' && server.health !== 'Online'));
     }
     if (currentFilter === 'healthy') {
-        return servers.filter((server) => !server.primary_issue && server.health === 'Healthy');
+        return servers.filter((server) => !server.primary_issue && (server.health === 'Healthy' || server.health === 'Online'));
     }
     return servers;
 }
@@ -805,7 +807,7 @@ export function renderEnhancedServerTable(payload) {
             const name = server.hostname || server.device_name || server.ip || 'Unknown';
             const stateLabel = normalizeSeverityLabel(server.health);
             const stateBadge = STATE_TO_BADGE[stateLabel] || 'tactical-badge-secondary';
-            const issueLabel = server.primary_issue?.metric_label || (stateLabel === 'Healthy' ? 'Nominal' : 'Attention Required');
+            const issueLabel = server.primary_issue?.metric_label || (stateLabel === 'Healthy' ? 'Nominal' : stateLabel === 'Online' ? 'No agent data' : 'Attention Required');
             const issueValue = server.primary_issue?.formatted_value || formatPercent(server.memory_usage, 1, 'N/A');
             const lastSeenLabel = server.last_seen ? timeAgo(server.last_seen) : 'Never';
             const lastSeenExact = server.last_seen ? new Date(server.last_seen).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-';

@@ -78,6 +78,7 @@ async function loadDevices() {
 function populateDeviceFilters() {
     const filterSelect = document.getElementById('maintenanceDeviceFilter');
     const scheduleSelect = document.getElementById('scheduleDevice');
+    const typeFilter = document.getElementById('scheduleDeviceTypeFilter');
     if (!filterSelect || !scheduleSelect) return;
 
     // Preserve selection
@@ -85,6 +86,18 @@ function populateDeviceFilters() {
 
     filterSelect.innerHTML = '<option value="">All Devices</option>';
     scheduleSelect.innerHTML = '<option value="">Select device</option>';
+
+    // Populate device type filter from unique types
+    if (typeFilter) {
+        const types = [...new Set(allDevices.map(d => (d.device_type || 'unknown').toLowerCase()))].sort();
+        typeFilter.innerHTML = '<option value="">ALL TYPES</option>';
+        types.forEach(t => {
+            const o = document.createElement('option');
+            o.value = t;
+            o.textContent = t.replace(/_/g, ' ').toUpperCase();
+            typeFilter.appendChild(o);
+        });
+    }
 
     allDevices.forEach(d => {
         const text = `${d.device_name} (${d.device_ip}) - ${d.device_type || 'Unknown'}`;
@@ -97,9 +110,8 @@ function populateDeviceFilters() {
         const schedOpt = document.createElement('option');
         schedOpt.value = d.device_id;
         schedOpt.textContent = text;
-
-        // Add data attributes for search
         schedOpt.dataset.search = text.toLowerCase();
+        schedOpt.dataset.type = (d.device_type || 'unknown').toLowerCase();
         scheduleSelect.appendChild(schedOpt);
     });
 
@@ -108,6 +120,7 @@ function populateDeviceFilters() {
 
 function filterScheduleDevices() {
     const search = (document.getElementById('scheduleDeviceSearch')?.value || '').toLowerCase();
+    const typeVal = (document.getElementById('scheduleDeviceTypeFilter')?.value || '').toLowerCase();
     const select = document.getElementById('scheduleDevice');
     if (!select) return;
 
@@ -115,10 +128,11 @@ function filterScheduleDevices() {
     Array.from(select.options).forEach((opt, index) => {
         if (index === 0) return; // Skip "Select device"
 
-        if (!search || (opt.dataset.search && opt.dataset.search.includes(search))) {
+        const matchSearch = !search || (opt.dataset.search && opt.dataset.search.includes(search));
+        const matchType = !typeVal || (opt.dataset.type && opt.dataset.type === typeVal);
+
+        if (matchSearch && matchType) {
             opt.style.display = '';
-            // If the current value is hidden, we might want to unselect it or select the first visible one
-            // But let's keep it simple for now, just CSS hiding
             hasVisibleOption = true;
         } else {
             opt.style.display = 'none';

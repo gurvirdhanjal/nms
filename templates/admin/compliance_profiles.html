@@ -86,6 +86,13 @@
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-3.5 text-xs text-slate-500">{{ p.created_at.strftime('%b %d, %Y') if p.created_at else '—' }}</td>
                                 <td class="whitespace-nowrap px-3 py-3.5 text-right text-sm font-medium">
+                                    {% if p.rules_json and p.rules_json.get('applicable_device_types') %}
+                                    <button class="text-indigo-400 hover:text-indigo-300 transition-colors mr-3"
+                                            onclick="applyToMatchingTypes({{ p.id }}, '{{ p.name | e }}', {{ p.rules_json.get('applicable_device_types') | tojson }})"
+                                            title="Apply to all devices of matching types">
+                                        <i class="fas fa-wand-magic-sparkles"></i>
+                                    </button>
+                                    {% endif %}
                                     <button class="text-blue-400 hover:text-blue-300 transition-colors mr-3"
                                             onclick="editProfile(this)" title="Edit">
                                         <i class="fas fa-pen-to-square"></i>
@@ -215,10 +222,17 @@
 
                     <!-- Applicable Device Types -->
                     <div style="grid-column:1/-1;margin-top:.5rem;">
-                        <label class="cp-field-label" for="ruleDeviceTypes">Applicable Device Types <span style="font-size:.58rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b;">(comma-separated; blank = all types)</span></label>
-                        <input type="text" id="ruleDeviceTypes"
-                               class="block w-full rounded-md border-0 bg-slate-800/80 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-slate-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
-                               placeholder="e.g. server, switch, workstation">
+                        <label class="cp-field-label">Applicable Device Types <span style="font-size:.58rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b;">(blank = all types)</span></label>
+                        <div id="deviceTypeSelector" style="display:flex;flex-wrap:wrap;gap:.35rem;padding:.45rem .5rem;min-height:2.4rem;background:rgba(30,41,59,.8);border-radius:6px;border:1px solid rgba(148,163,184,.25);cursor:pointer;" onclick="focusTypeInput()">
+                            <span id="deviceTypeTags" style="display:contents;"></span>
+                            <input type="text" id="typeSearchInput" autocomplete="off"
+                                   style="flex:1;min-width:120px;background:transparent;border:none;outline:none;color:#e2e8f0;font-size:.8rem;padding:.1rem .2rem;"
+                                   placeholder="Type or pick…"
+                                   oninput="filterTypeDropdown(this.value)"
+                                   onkeydown="handleTypeKey(event)">
+                        </div>
+                        <div id="typeDropdown" style="display:none;position:absolute;z-index:900;background:#1e293b;border:1px solid rgba(148,163,184,.25);border-radius:6px;margin-top:2px;max-height:180px;overflow-y:auto;min-width:200px;"></div>
+                        <input type="hidden" id="ruleDeviceTypes">
                     </div>
                 </div>
             </div>
@@ -260,13 +274,25 @@
     'use strict';
 
     var profileModal = null;
-    var deleteModal = null;
+    var deleteModal  = null;
     var pendingDeleteId = null;
+
+    // Device types loaded from DB for the tag-selector
+    var _allDeviceTypes = [];
+    var _selectedTypes  = [];
 
     document.addEventListener('DOMContentLoaded', function () {
         profileModal = new bootstrap.Modal(document.getElementById('profileModal'));
         deleteModal  = new bootstrap.Modal(document.getElementById('deleteProfileModal'));
         loadAssignedCount();
+        loadDeviceTypes();
+
+        // Close dropdown on outside click
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('#deviceTypeSelector') && !e.target.closest('#typeDropdown')) {
+                hideTypeDropdown();
+            }
+        });
     });
 
     // ── Assigned device count (best-effort) ──────────────────────────────────
@@ -280,6 +306,114 @@
                 }
             })
             .catch(function () {});
+    }
+
+    // ── Device types from DB ─────────────────────────────────────────────────
+
+    function loadDeviceTypes() {
+        fetch('/api/compliance-profiles/device-types', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data && Array.isArray(data.device_types)) {
+                    _allDeviceTypes = data.device_types;
+                }
+            })
+            .catch(function () {});
+    }
+
+    // ── Type tag-selector helpers ─────────────────────────────────────────────
+
+    window.focusTypeInput = function () {
+        document.getElementById('typeSearchInput').focus();
+        showTypeDropdown('');
+    };
+
+    window.filterTypeDropdown = function (q) {
+        showTypeDropdown(q.toLowerCase());
+    };
+
+    window.handleTypeKey = function (e) {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            var v = e.target.value.trim().toLowerCase().replace(/,/g, '');
+            if (v) addType(v);
+            e.target.value = '';
+            hideTypeDropdown();
+        } else if (e.key === 'Backspace' && !e.target.value) {
+            removeType(_selectedTypes.length - 1);
+        } else if (e.key === 'Escape') {
+            hideTypeDropdown();
+        }
+    };
+
+    function showTypeDropdown(q) {
+        var dd = document.getElementById('typeDropdown');
+        var opts = _allDeviceTypes.filter(function (t) {
+            return (!q || t.toLowerCase().includes(q)) && !_selectedTypes.includes(t.toLowerCase());
+        });
+        if (!opts.length) { dd.style.display = 'none'; return; }
+        dd.innerHTML = '';
+        opts.forEach(function (t) {
+            var item = document.createElement('div');
+            item.textContent = t;
+            item.style.cssText = 'padding:.4rem .75rem;font-size:.8rem;color:#e2e8f0;cursor:pointer;';
+            item.onmouseenter = function () { item.style.background = 'rgba(99,102,241,.25)'; };
+            item.onmouseleave = function () { item.style.background = ''; };
+            item.onmousedown = function (e) {
+                e.preventDefault();
+                addType(t);
+                document.getElementById('typeSearchInput').value = '';
+                hideTypeDropdown();
+            };
+            dd.appendChild(item);
+        });
+        // Position dropdown under the selector box
+        var sel = document.getElementById('deviceTypeSelector');
+        var rect = sel.getBoundingClientRect();
+        var modalBody = sel.closest('.modal-body');
+        if (modalBody) {
+            var mbRect = modalBody.getBoundingClientRect();
+            dd.style.top = (rect.bottom - mbRect.top + modalBody.scrollTop) + 'px';
+            dd.style.left = (rect.left - mbRect.left) + 'px';
+            dd.style.width = rect.width + 'px';
+            dd.style.position = 'absolute';
+            modalBody.style.position = 'relative';
+            modalBody.appendChild(dd);
+        }
+        dd.style.display = 'block';
+    }
+
+    function hideTypeDropdown() {
+        document.getElementById('typeDropdown').style.display = 'none';
+    }
+
+    function addType(t) {
+        t = t.toLowerCase().trim();
+        if (!t || _selectedTypes.includes(t)) return;
+        _selectedTypes.push(t);
+        renderTypeTags();
+        syncTypeHidden();
+    }
+
+    window.removeType = function (idx) {
+        _selectedTypes.splice(idx, 1);
+        renderTypeTags();
+        syncTypeHidden();
+    };
+
+    function renderTypeTags() {
+        var container = document.getElementById('deviceTypeTags');
+        container.innerHTML = '';
+        _selectedTypes.forEach(function (t, i) {
+            var tag = document.createElement('span');
+            tag.style.cssText = 'display:inline-flex;align-items:center;gap:.25rem;background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.4);border-radius:4px;padding:.15rem .45rem;font-size:.73rem;color:#a5b4fc;white-space:nowrap;';
+            tag.innerHTML = t + ' <span style="cursor:pointer;opacity:.7;font-size:.85em;" onmousedown="event.preventDefault();removeType(' + i + ')">✕</span>';
+            container.appendChild(tag);
+        });
+    }
+
+    function syncTypeHidden() {
+        document.getElementById('ruleDeviceTypes').value = _selectedTypes.join(',');
     }
 
     // ── Open modal ───────────────────────────────────────────────────────────
@@ -311,8 +445,12 @@
         setField('ruleLatCrit',      rules.latency_critical_ms);
         setField('ruleLossWarn',     rules.packet_loss_warning_pct);
         setField('ruleLossCrit',     rules.packet_loss_critical_pct);
-        var adt = rules.applicable_device_types;
-        setField('ruleDeviceTypes',  Array.isArray(adt) ? adt.join(', ') : '');
+
+        _selectedTypes = Array.isArray(rules.applicable_device_types)
+            ? rules.applicable_device_types.map(function (t) { return t.toLowerCase(); })
+            : [];
+        renderTypeTags();
+        syncTypeHidden();
 
         profileModal.show();
     };
@@ -353,7 +491,6 @@
         addRule('memory_critical','ruleMemCritical');
         addRule('disk_warning',   'ruleDiskWarning');
         addRule('disk_critical',  'ruleDiskCritical');
-        // ICMP keys — latency as int, packet_loss as float
         function addIntRule(key, fieldId) {
             var v = document.getElementById(fieldId).value.trim();
             if (v !== '') { rules[key] = parseInt(v, 10); }
@@ -362,9 +499,8 @@
         addIntRule('latency_critical_ms', 'ruleLatCrit');
         addRule('packet_loss_warning_pct',  'ruleLossWarn');
         addRule('packet_loss_critical_pct', 'ruleLossCrit');
-        var adtRaw = (document.getElementById('ruleDeviceTypes').value || '').trim();
-        if (adtRaw) {
-            rules.applicable_device_types = adtRaw.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean);
+        if (_selectedTypes.length) {
+            rules.applicable_device_types = _selectedTypes.slice();
         }
 
         var btn = document.getElementById('profileSaveBtn');
@@ -399,6 +535,32 @@
             btn.disabled = false;
             btn.textContent = 'Save Profile';
         });
+    };
+
+    // ── Apply to matching device types ───────────────────────────────────────
+
+    window.applyToMatchingTypes = function (profileId, profileName, types) {
+        var typeList = Array.isArray(types) ? types.join(', ') : types;
+        if (!confirm('Apply "' + profileName + '" to ALL devices of type: ' + typeList + '?\n\nThis will overwrite existing profile assignments for those devices.')) return;
+
+        fetch('/api/compliance-profiles/' + profileId + '/apply-to-types', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                var msg = data.updated_count > 0
+                    ? 'Applied to ' + data.updated_count + ' device(s).'
+                    : (data.message || 'No matching devices found.');
+                alert(msg);
+                if (data.updated_count > 0) window.location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function () { alert('Network error.'); });
     };
 
     // ── Delete ───────────────────────────────────────────────────────────────
@@ -446,6 +608,8 @@
             var el = document.getElementById(id);
             if (el) { el.value = ''; }
         });
+        _selectedTypes = [];
+        renderTypeTags();
         var errEl = document.getElementById('profileNameError');
         if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
     }

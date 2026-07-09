@@ -60,7 +60,7 @@ def load_config():
             cfg = json.load(f)
         NMS_SERVER_URL = cfg.get('nms_server_url', NMS_SERVER_URL)
         AGENT_TOKEN = cfg.get('agent_token', AGENT_TOKEN)
-        BOOTSTRAP_TOKEN = cfg.get('bootstrap_token', BOOTSTRAP_TOKEN)
+        BOOTSTRAP_TOKEN = cfg.get('bootstrap_token') or BOOTSTRAP_TOKEN
         INTERVAL_SECONDS = cfg.get('interval_seconds', INTERVAL_SECONDS)
         REQUEST_TIMEOUT = cfg.get('request_timeout', REQUEST_TIMEOUT)
         TOP_PROCESSES_LIMIT = cfg.get('top_processes_limit', TOP_PROCESSES_LIMIT)

@@ -1247,7 +1247,7 @@ def build_enterprise_uptime_report(
         },
     }
 
-    return {
+    result = {
         "period": {
             "start": start_dt.isoformat(),
             "end": end_dt.isoformat(),
@@ -1299,12 +1299,11 @@ def build_enterprise_uptime_report(
     try:
         from services.report_insight_engine import ReportInsightEngine
         engine = ReportInsightEngine()
-        report_dict = result  # alias for clarity
-        insights = engine.generate_insights(report_dict, "enterprise")
+        insights = engine.generate_insights(result, "enterprise")
         try:
             from flask import current_app
             if current_app.config.get("GEMINI_REPORT_INSIGHTS_ENABLED"):
-                insights = engine.enhance_with_gemini(insights, report_dict)
+                insights = engine.enhance_with_gemini(insights, result)
         except RuntimeError:
             pass  # Outside app context
         result["insights"] = insights

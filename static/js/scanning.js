@@ -372,6 +372,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <th>Hostname</th>
                             <th>MAC Address</th>
                             <th>Manufacturer</th>
+                            <th>Type</th>
                             <th>Status</th>
                             <th>Latency</th>
                             <th class="text-center">Actions</th>
@@ -466,6 +467,14 @@ document.addEventListener('DOMContentLoaded', function () {
         // Latency
         const latency = device.latency ? `${Math.round(device.latency)} ms` : '-';
 
+        // Device type label
+        const rawType = (device.device_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '-';
+
+        // File server badge
+        const fsTag = device.file_server
+            ? '<span class="badge ms-1" style="font-size:0.6rem;background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;">File Server</span>'
+            : '';
+
         const actionIcons = `
             <div class="d-flex justify-content-center gap-3 device-actions">
                 <span class="action-icon action-add" title="Add to Inventory" data-ip="${device.ip}" style="cursor: pointer; color: var(--e-text-secondary);">
@@ -487,9 +496,10 @@ document.addEventListener('DOMContentLoaded', function () {
         tr.innerHTML = `
             ${checkboxCell}
             <td class="device-name-cell"><strong>${device.ip}</strong></td>
-            <td>${device.hostname || 'Unknown'}</td>
+            <td>${device.hostname || 'Unknown'}${fsTag}</td>
             <td><div class="device-mac">${device.mac || 'N/A'}</div></td>
             <td>${device.manufacturer || 'Unknown'}</td>
+            <td style="font-size:0.72rem;color:#94a3b8;">${rawType}</td>
             <td>${statusBadge}</td>
             <td>${latency}</td>
             <td class="text-center">

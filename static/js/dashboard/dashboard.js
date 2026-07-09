@@ -1595,7 +1595,7 @@ function renderOverallHealth(state) {
     card.classList.remove('health-healthy', 'health-degraded', 'health-critical');
     card.classList.add(`health-${overall.toLowerCase()}`);
     statusEl.textContent = overall;
-    if (subEl) subEl.textContent = 'Based on network health, server telemetry, and critical alerts.';
+    if (subEl) subEl.textContent = '';
 }
 
 function renderServerLastCheck(serverHealth) {
